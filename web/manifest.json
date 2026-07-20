@@ -1,6 +1,6 @@
 {
-    "name": "mercadito_um",
-    "short_name": "mercadito_um",
+    "name": "Mercadito UM",
+    "short_name": "Mercadito UM",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
