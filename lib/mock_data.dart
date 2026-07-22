@@ -464,6 +464,363 @@ final mockProducts = <Product>[
     imageIcon: Icons.router_rounded,
     imageColor: const Color(0xFF1B998B),
   ),
+  // ─── SanksUm (Comida) ────────────────────────────────────────
+  Product(
+    id: 'f1',
+    title: 'Chilaquiles del dia con pollo',
+    price: r'$55',
+    category: mockCategories[5],
+    description:
+        'Chilaquiles verdes o rojos con pollo, crema y queso. Servidos de 8:00 AM a 11:00 AM en la cafeteria central. Incluye bebida pequena.',
+    publishedAgo: 'Hoy 8:00 AM',
+    seller: mockFoodEstablishment,
+    imageIcon: Icons.ramen_dining_rounded,
+    imageColor: const Color(0xFFD32F2F),
+    isFeatured: true,
+  ),
+  Product(
+    id: 'f2',
+    title: 'Quesadilla de harina con ingredientes',
+    price: r'$30',
+    category: mockCategories[5],
+    description:
+        'Quesadilla de harina preparada al momento con queso Oaxaca. Puedes agregar pollo, tinga o champiñones por \$10 extra.',
+    publishedAgo: 'Hoy 9:15 AM',
+    seller: mockFoodEstablishment,
+    imageIcon: Icons.lunch_dining_rounded,
+    imageColor: const Color(0xFFE65100),
+  ),
+  Product(
+    id: 'f3',
+    title: 'Burrito de pollo o carne',
+    price: r'$45',
+    previousPrice: r'$52',
+    discountLabel: '-13%',
+    isOffer: true,
+    category: mockCategories[5],
+    description:
+        'Burrito grande con arroz, frijoles, pollo o carne asada, crema y guacamole. Promocion especial de mitad de semana.',
+    publishedAgo: 'Hoy 10:30 AM',
+    seller: mockFoodEstablishment,
+    imageIcon: Icons.takeout_dining_rounded,
+    imageColor: const Color(0xFFBF360C),
+    isFeatured: true,
+  ),
+  Product(
+    id: 'f4',
+    title: 'Agua fresca de horchata 500ml',
+    price: r'$18',
+    category: mockCategories[5],
+    description:
+        'Agua fresca de horchata natural, preparada diariamente. Tambien tenemos jamaica y limon.',
+    publishedAgo: 'Hoy 11:00 AM',
+    seller: mockFoodEstablishment,
+    imageIcon: Icons.local_drink_rounded,
+    imageColor: const Color(0xFFF9A825),
+  ),
+  Product(
+    id: 'f5',
+    title: 'Torta de jamon con verduras',
+    price: r'$38',
+    category: mockCategories[5],
+    description:
+        'Torta en telera crujiente con jamon, queso, aguacate, lechuga y tomate. Preparada al momento.',
+    publishedAgo: 'Hoy 12:15 PM',
+    seller: mockFoodEstablishment,
+    imageIcon: Icons.fastfood_rounded,
+    imageColor: const Color(0xFF795548),
+  ),
+  Product(
+    id: 'f6',
+    title: 'Papas fritas con salsa y queso',
+    price: r'$25',
+    previousPrice: r'$32',
+    discountLabel: '-22%',
+    isOffer: true,
+    category: mockCategories[5],
+    description:
+        'Orden de papas fritas bañadas en salsa de queso amarillo y chipotle. Ideal para compartir entre clases.',
+    publishedAgo: 'Hoy 1:00 PM',
+    seller: mockFoodEstablishment,
+    imageIcon: Icons.dinner_dining_rounded,
+    imageColor: const Color(0xFFF57F17),
+  ),
+  Product(
+    id: 'f7',
+    title: 'Hot dog completo',
+    price: r'$28',
+    category: mockCategories[5],
+    description:
+        'Hot dog con salchicha, pan suave, salsa de tomate, mostaza, mayonesa, cebolla y jalapenos.',
+    publishedAgo: 'Hoy 2:30 PM',
+    seller: mockFoodEstablishment,
+    imageIcon: Icons.dining_rounded,
+    imageColor: const Color(0xFFD84315),
+  ),
+  Product(
+    id: 'f8',
+    title: 'Combo estudiante: torta + agua',
+    price: r'$50',
+    previousPrice: r'$56',
+    discountLabel: '-11%',
+    isOffer: true,
+    category: mockCategories[5],
+    description:
+        'Combo torta de tu preferencia + agua fresca 500ml. Ahorra \$6 con este combo exclusivo.',
+    publishedAgo: 'Promo permanente',
+    seller: mockFoodEstablishment,
+    imageIcon: Icons.set_meal_rounded,
+    imageColor: const Color(0xFFE65100),
+    isFeatured: true,
+    isFavorite: true,
+  ),
+  // ─── Hospedaje ───────────────────────────────────────────────
+  Product(
+    id: 'h1',
+    title: 'Cuarto amueblado cerca de biblioteca',
+    price: r'$2,800/mes',
+    category: mockCategories[6],
+    description:
+        'Cuarto individual con cama, escritorio y closet. Bano compartido con 2 personas. Agua y luz incluidos.',
+    publishedAgo: 'Disponible desde agosto',
+    seller: mockSellers[1],
+    imageIcon: Icons.bedroom_parent_rounded,
+    imageColor: const Color(0xFF4E342E),
+    isFeatured: true,
+  ),
+  Product(
+    id: 'h2',
+    title: 'Departamento compartido 2 habs',
+    price: r'$3,500/mes',
+    category: mockCategories[6],
+    description:
+        'Departamento con sala, cocina equipada, 2 habitaciones y bano. Internet incluido.',
+    publishedAgo: 'Disponible inmediato',
+    seller: mockSellers[5],
+    imageIcon: Icons.apartment_rounded,
+    imageColor: const Color(0xFF3E2723),
+  ),
+  Product(
+    id: 'h3',
+    title: 'Residencia femenil cerca de la uni',
+    price: r'$2,500/mes',
+    category: mockCategories[6],
+    description:
+        'Residencia exclusiva para mujeres. Cuarto individual con closet, areas comunes, cocina y lavanderia.',
+    publishedAgo: 'Disponible desde septiembre',
+    seller: mockHousingHost,
+    imageIcon: Icons.home_work_rounded,
+    imageColor: const Color(0xFF6D4C41),
+    isFeatured: true,
+  ),
+  Product(
+    id: 'h4',
+    title: 'Sofa cama en sala de departamento',
+    price: r'$1,800/mes',
+    previousPrice: r'$2,100/mes',
+    discountLabel: '-14%',
+    isOffer: true,
+    category: mockCategories[6],
+    description:
+        'Sofa cama individual en sala de departamento amplio. Compartes con 2 roomies tranquilos. Servicios incluidos.',
+    publishedAgo: 'Disponible inmediato',
+    seller: mockSellers[3],
+    imageIcon: Icons.weekend_rounded,
+    imageColor: const Color(0xFF5D4037),
+  ),
+];
+
+// ─── Establecimientos ──────────────────────────────────────────────
+
+const mockFoodEstablishment = Seller(
+  name: 'SanksUm',
+  avatarInitials: 'SU',
+  major: 'Cafeteria UM • Establecimiento',
+  rating: 4.7,
+  reviews: 56,
+  verified: true,
+);
+
+const mockHousingHost = Seller(
+  name: 'Residencias UM',
+  avatarInitials: 'RU',
+  major: 'Hospedaje universitario',
+  rating: 4.5,
+  reviews: 23,
+  verified: true,
+);
+
+// ─── Productos de SanksUm (Comida) ─────────────────────────────────
+
+final mockFoodProducts = <Product>[
+  Product(
+    id: 'f1',
+    title: 'Chilaquiles del dia con pollo',
+    price: r'$55',
+    category: mockCategories[5],
+    description:
+        'Chilaquiles verdes o rojos con pollo, crema y queso. Servidos de 8:00 AM a 11:00 AM en la cafeteria central. Incluye bebida pequena.',
+    publishedAgo: 'Disponible hoy',
+    seller: mockFoodEstablishment,
+    imageIcon: Icons.ramen_dining_rounded,
+    imageColor: Color(0xFFD32F2F),
+    isFeatured: true,
+    isOffer: false,
+  ),
+  Product(
+    id: 'f2',
+    title: 'Quesadilla de harina con ingredientes',
+    price: r'$30',
+    category: mockCategories[5],
+    description:
+        'Quesadilla de harina preparada al momento con queso Oaxaca. Puedes agregar pollo, tinga o champiñones por \$10 extra.',
+    publishedAgo: 'Disponible hoy',
+    seller: mockFoodEstablishment,
+    imageIcon: Icons.lunch_dining_rounded,
+    imageColor: Color(0xFFE65100),
+  ),
+  Product(
+    id: 'f3',
+    title: 'Burrito de pollo o carne',
+    price: r'$45',
+    previousPrice: r'$52',
+    discountLabel: '-13%',
+    isOffer: true,
+    category: mockCategories[5],
+    description:
+        'Burrito grande con arroz, frijoles, pollo o carne asada, crema y guacamole. Promocion especial de mitad de semana.',
+    publishedAgo: 'Oferta del dia',
+    seller: mockFoodEstablishment,
+    imageIcon: Icons.takeout_dining_rounded,
+    imageColor: Color(0xFFBF360C),
+    isFeatured: true,
+  ),
+  Product(
+    id: 'f4',
+    title: 'Agua fresca de horchata 500ml',
+    price: r'$18',
+    category: mockCategories[5],
+    description:
+        'Agua fresca de horchata natural, preparada diariamente. Tambien tenemos jamaica y limon. Pregunta por el combo con comida.',
+    publishedAgo: 'Disponible hoy',
+    seller: mockFoodEstablishment,
+    imageIcon: Icons.local_drink_rounded,
+    imageColor: Color(0xFFF9A825),
+  ),
+  Product(
+    id: 'f5',
+    title: 'Torta de jamon con verduras',
+    price: r'$38',
+    category: mockCategories[5],
+    description:
+        'Torta en telera crujiente con jamon, queso, aguacate, lechuga y tomate. Preparada al momento en la cafeteria.',
+    publishedAgo: 'Disponible hoy',
+    seller: mockFoodEstablishment,
+    imageIcon: Icons.fastfood_rounded,
+    imageColor: Color(0xFF795548),
+  ),
+  Product(
+    id: 'f6',
+    title: 'Papas fritas con salsa y queso',
+    price: r'$25',
+    previousPrice: r'$32',
+    discountLabel: '-22%',
+    isOffer: true,
+    category: mockCategories[5],
+    description:
+        'Orden de papas fritas bañadas en salsa de queso amarillo y chipotle. Ideal para compartir entre clases.',
+    publishedAgo: 'Oferta del dia',
+    seller: mockFoodEstablishment,
+    imageIcon: Icons.dinner_dining_rounded,
+    imageColor: Color(0xFFF57F17),
+  ),
+  Product(
+    id: 'f7',
+    title: 'Hot dog completo',
+    price: r'$28',
+    category: mockCategories[5],
+    description:
+        'Hot dog con salchicha, pan suave, salsa de tomate, mostaza, mayonesa, cebolla y jalapenos. Tu eliges los ingredientes.',
+    publishedAgo: 'Disponible hoy',
+    seller: mockFoodEstablishment,
+    imageIcon: Icons.dining_rounded,
+    imageColor: Color(0xFFD84315),
+  ),
+  Product(
+    id: 'f8',
+    title: 'Combo estudiante: torta + agua',
+    price: r'$50',
+    previousPrice: r'$56',
+    discountLabel: '-11%',
+    isOffer: true,
+    category: mockCategories[5],
+    description:
+        'Combo que incluye torta de tu preferencia + agua fresca 500ml. Ahorra \$6 con este combo exclusivo para estudiantes.',
+    publishedAgo: 'Promo permanente',
+    seller: mockFoodEstablishment,
+    imageIcon: Icons.set_meal_rounded,
+    imageColor: Color(0xFFE65100),
+    isFeatured: true,
+    isFavorite: true,
+  ),
+];
+
+// ─── Productos de Hospedaje ────────────────────────────────────────
+
+final mockHousingProducts = <Product>[
+  Product(
+    id: 'h1',
+    title: 'Cuarto amueblado cerca de biblioteca',
+    price: r'$2,800/mes',
+    category: mockCategories[6],
+    description:
+        'Cuarto individual con cama, escritorio y closet. Bano compartido con 2 personas. Agua y luz incluidos. A 3 min caminando de la biblioteca central.',
+    publishedAgo: 'Disponible desde agosto',
+    seller: mockSellers[1],
+    imageIcon: Icons.bedroom_parent_rounded,
+    imageColor: Color(0xFF4E342E),
+    isFeatured: true,
+  ),
+  Product(
+    id: 'h2',
+    title: 'Departamento compartido 2 habitaciones',
+    price: r'$3,500/mes',
+    category: mockCategories[6],
+    description:
+        'Departamento con sala, cocina equipada, 2 habitaciones y bano. Rentamos una habitacion. Ideal para estudiante responsable. Internet incluido.',
+    publishedAgo: 'Disponible inmediato',
+    seller: mockSellers[5],
+    imageIcon: Icons.apartment_rounded,
+    imageColor: Color(0xFF3E2723),
+  ),
+  Product(
+    id: 'h3',
+    title: 'Residencia femenil cerca de la uni',
+    price: r'$2,500/mes',
+    category: mockCategories[6],
+    description:
+        'Residencia exclusiva para mujeres. Cuarto individual con closet, areas comunes, cocina y lavanderia. Reglas claras y ambiente de estudio.',
+    publishedAgo: 'Disponible desde septiembre',
+    seller: mockHousingHost,
+    imageIcon: Icons.home_work_rounded,
+    imageColor: Color(0xFF6D4C41),
+    isFeatured: true,
+  ),
+  Product(
+    id: 'h4',
+    title: 'Sofa cama en sala de departamento',
+    price: r'$1,800/mes',
+    category: mockCategories[6],
+    description:
+        'Sofa cama individual en sala de departamento amplio. Compartes con 2 roomies tranquilos. Ideal para presupuesto ajustado. Servicios incluidos.',
+    publishedAgo: 'Disponible inmediato',
+    seller: mockSellers[3],
+    imageIcon: Icons.weekend_rounded,
+    imageColor: Color(0xFF5D4037),
+    isOffer: true,
+    previousPrice: r'$2,100/mes',
+    discountLabel: '-14%',
+  ),
 ];
 
 final mockOwnListings = <Product>[

@@ -359,7 +359,7 @@ class _CategoryScroller extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 88,
+      height: 96,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: categories.length,
@@ -367,44 +367,66 @@ class _CategoryScroller extends StatelessWidget {
         separatorBuilder: (_, _) => const SizedBox(width: 14),
         itemBuilder: (context, index) {
           final category = categories[index];
-          return Column(
-            children: [
-              Material(
-                color: category.color.withValues(alpha: 0.12),
-                shape: const CircleBorder(),
-                child: InkWell(
-                  customBorder: const CircleBorder(),
-                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Categoria: ${category.name}')),
-                  ),
-                  child: SizedBox(
-                    width: 58,
-                    height: 58,
-                    child: Center(
-                      child: Text(
-                        category.emoji,
-                        style: const TextStyle(fontSize: 28),
+          return GestureDetector(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => SearchScreen(
+                  initialCategoryId: category.id,
+                ),
+              ),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        category.color.withValues(alpha: 0.25),
+                        category.color.withValues(alpha: 0.08),
+                      ],
+                    ),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: category.color.withValues(alpha: 0.30),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: category.color.withValues(alpha: 0.18),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
                       ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      category.emoji,
+                      style: const TextStyle(fontSize: 30),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 6),
-              SizedBox(
-                width: 64,
-                child: Text(
-                  category.name,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.ink,
+                const SizedBox(height: 7),
+                SizedBox(
+                  width: 68,
+                  child: Text(
+                    category.name,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.ink,
+                      letterSpacing: 0.2,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           );
         },
       ),
