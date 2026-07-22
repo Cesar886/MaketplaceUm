@@ -1,16 +1,50 @@
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
-import '../mock_data.dart';
 import '../models.dart';
+import '../services/api_service.dart';
 import '../widgets/badges.dart';
 import '../widgets/mock_product_image.dart';
 
-class MyListingsScreen extends StatelessWidget {
+class MyListingsScreen extends StatefulWidget {
   const MyListingsScreen({super.key});
 
   @override
+  State<MyListingsScreen> createState() => _MyListingsScreenState();
+}
+
+class _MyListingsScreenState extends State<MyListingsScreen> {
+  List<Product> _listings = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadListings();
+  }
+
+  Future<void> _loadListings() async {
+    try {
+      final listings = await ApiService.getListings();
+      if (!mounted) return;
+      setState(() {
+        _listings = listings;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const SafeArea(
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return SafeArea(
       child: ListView(
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
@@ -40,9 +74,9 @@ class MyListingsScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
-          _StatsRow(listings: mockOwnListings),
+          _StatsRow(listings: _listings),
           const SizedBox(height: 18),
-          for (final product in mockOwnListings) ...[
+          for (final product in _listings) ...[
             _MyListingTile(product: product),
             const SizedBox(height: 12),
           ],
@@ -126,7 +160,7 @@ class _StatCard extends StatelessWidget {
             value,
             style: TextStyle(
               fontSize: 22,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w700,
               color: color,
             ),
           ),
@@ -189,7 +223,7 @@ class _MyListingTile extends StatelessWidget {
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              fontWeight: FontWeight.w900,
+                              fontWeight: FontWeight.w700,
                               fontSize: 15,
                             ),
                           ),
@@ -203,7 +237,7 @@ class _MyListingTile extends StatelessWidget {
                       product.price,
                       style: const TextStyle(
                         fontSize: 18,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w700,
                         color: AppColors.primaryDark,
                       ),
                     ),

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../mock_data.dart';
 import '../models.dart';
+import '../services/api_service.dart';
 import '../widgets/product_card.dart';
 import 'product_detail_screen.dart';
 
@@ -17,11 +17,33 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen> {
   final _queryController = TextEditingController();
   String? _selectedCategoryId;
+  List<Product> _allProducts = [];
+  List<MarketplaceCategory> _categories = [];
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
     _selectedCategoryId = widget.initialCategoryId;
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    try {
+      final results = await Future.wait([
+        ApiService.getProducts(),
+        ApiService.getCategories(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _allProducts = results[0] as List<Product>;
+        _categories = results[1] as List<MarketplaceCategory>;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
   }
 
   @override
@@ -30,10 +52,9 @@ class _SearchScreenState extends State<SearchScreen> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
+  List<Product> get _filteredResults {
     final query = _queryController.text.trim().toLowerCase();
-    final results = mockProducts.where((product) {
+    return _allProducts.where((product) {
       final matchesCategory =
           _selectedCategoryId == null ||
           product.category.id == _selectedCategoryId;
@@ -43,6 +64,11 @@ class _SearchScreenState extends State<SearchScreen> {
           product.category.name.toLowerCase().contains(query);
       return matchesCategory && matchesQuery;
     }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final results = _filteredResults;
 
     return SafeArea(
       child: ListView(
@@ -76,7 +102,7 @@ class _SearchScreenState extends State<SearchScreen> {
                         setState(() => _selectedCategoryId = null),
                   ),
                 ),
-                for (final category in mockCategories)
+                for (final category in _categories)
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: ChoiceChip(
@@ -99,7 +125,9 @@ class _SearchScreenState extends State<SearchScreen> {
             children: [
               Expanded(
                 child: Text(
-                  '${results.length} resultados mock',
+                  _loading
+                      ? 'Cargando...'
+                      : '${results.length} resultados',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ),
@@ -113,17 +141,23 @@ class _SearchScreenState extends State<SearchScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          for (final product in results) ...[
-            SizedBox(
-              height: 118,
-              child: ProductCard(
-                product: product,
-                horizontal: true,
-                onTap: () => _openDetail(context, product),
+          if (_loading)
+            const Center(child: Padding(
+              padding: EdgeInsets.all(24),
+              child: CircularProgressIndicator(),
+            ))
+          else
+            for (final product in results) ...[
+              SizedBox(
+                height: 118,
+                child: ProductCard(
+                  product: product,
+                  horizontal: true,
+                  onTap: () => _openDetail(context, product),
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-          ],
+              const SizedBox(height: 12),
+            ],
         ],
       ),
     );

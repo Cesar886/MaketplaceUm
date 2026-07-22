@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../app_theme.dart';
+
 class SectionHeader extends StatelessWidget {
   const SectionHeader({
     super.key,
@@ -17,14 +19,18 @@ class SectionHeader extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+          child: Text(title, style: Theme.of(context).textTheme.titleMedium),
         ),
         if (actionLabel != null)
           TextButton(
             onPressed: onAction,
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.primary,
+              visualDensity: VisualDensity.compact,
+            ),
             child: Text(
               actionLabel!,
-              style: const TextStyle(fontWeight: FontWeight.w800),
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
       ],

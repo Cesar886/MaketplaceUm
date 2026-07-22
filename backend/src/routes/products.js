@@ -1,4 +1,5 @@
-const { products, sellers, categories } = require('../data');
+const { requireAuth } = require('../auth');
+const { products, sellers, categories, saveData } = require('../data');
 
 function attachRelations(productsList) {
   return productsList.map(p => ({
@@ -44,37 +45,51 @@ function register(app) {
     res.json(attachRelations([product])[0]);
   });
 
-  // POST /api/products – crear nuevo producto
-  app.post('/api/products', (req, res) => {
-    const { title, price, category, description, seller } = req.body;
-    if (!title || !price || !category || !description) {
-      return res.status(400).json({ error: 'Faltan campos requeridos (title, price, category, description)' });
-    }
+  // POST /api/products – crear nuevo producto (con imágenes)
+  const upload = req.app ? req.app.get('upload') : null; // fallback
+  app.post('/api/products', requireAuth, (req, res, next) => {
+    const uploadMw = req.app.get('upload');
+    uploadMw.array('images', 5)(req, res, (err) => {
+      if (err) {
+        return res.status(400).json({ error: 'Error al subir imágenes: ' + err.message });
+      }
 
-    const newProduct = {
-      id: `p${Date.now()}`,
-      title,
-      price,
-      category,
-      description,
-      publishedAgo: 'Ahora mismo',
-      seller: seller || 's1',
-      imageIcon: 'inventory_2',
-      imageColor: '#607D8B',
-      isFeatured: false,
-      isOffer: false,
-      isFavorite: false,
-    };
+      const { title, price, category, description, seller } = req.body;
+      if (!title || !price || !category || !description) {
+        return res.status(400).json({ error: 'Faltan campos requeridos (title, price, category, description)' });
+      }
 
-    products.unshift(newProduct);
-    res.status(201).json(attachRelations([newProduct])[0]);
+      // Guardar rutas de las imágenes subidas
+      const images = (req.files || []).map(f => `/uploads/${f.filename}`);
+
+      const newProduct = {
+        id: `p${Date.now()}`,
+        title,
+        price,
+        category,
+        description,
+        publishedAgo: 'Ahora mismo',
+        seller: seller || 's1',
+        images,                              // <-- URLs de imágenes reales
+        imageIcon: images.length > 0 ? null : 'inventory_2',
+        imageColor: '#607D8B',
+        isFeatured: false,
+        isOffer: false,
+        isFavorite: false,
+      };
+
+      products.unshift(newProduct);
+      saveData();
+      res.status(201).json(attachRelations([newProduct])[0]);
+    });
   });
 
   // PATCH /api/products/:id/favorite – toggle favorito
-  app.patch('/api/products/:id/favorite', (req, res) => {
+  app.patch('/api/products/:id/favorite', requireAuth, (req, res) => {
     const product = products.find(p => p.id === req.params.id);
     if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
     product.isFavorite = !product.isFavorite;
+    saveData();
     res.json(attachRelations([product])[0]);
   });
 }

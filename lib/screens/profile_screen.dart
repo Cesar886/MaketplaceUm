@@ -1,152 +1,480 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
-import '../mock_data.dart';
 import '../models.dart';
+import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
 import '../widgets/badges.dart';
+import 'auth/login_screen.dart';
 import 'cart_screen.dart';
 import 'my_listings_screen.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
   @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  List<Product> _listings = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadListings();
+  }
+
+  Future<void> _loadListings() async {
+    try {
+      final results = await Future.wait([
+        ApiService.getSellers(),
+        ApiService.getListings(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _listings = results[1] as List<Product>;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {});
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final user = mockSellers.first;
-    final activeCount = mockOwnListings
-        .where((product) => product.status != ListingStatus.expired)
+    final auth = context.watch<AuthProvider>();
+
+    if (!auth.isLoggedIn) {
+      return SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.person_outline_rounded,
+                  size: 64, color: AppColors.muted),
+              const SizedBox(height: 16),
+              const Text(
+                'Inicia sesión para ver tu perfil',
+                style: TextStyle(color: AppColors.muted),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                      builder: (_) => const LoginScreen()),
+                ),
+                child: const Text('Iniciar sesión'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final user = auth.currentUser!;
+    final userName = user['name'] as String;
+
+    // Iniciales para el avatar
+    final initials = userName.split(' ').map((w) => w.isNotEmpty ? w[0] : '').take(2).join().toUpperCase();
+
+    final activeCount = _listings
+        .where((p) => p.status != ListingStatus.expired)
         .length;
 
     return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-        children: [
-          Text('Perfil', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 18),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 38,
-                      backgroundColor: AppColors.primary.withValues(
-                        alpha: 0.12,
-                      ),
-                      child: Text(
-                        user.avatarInitials,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          color: AppColors.primaryDark,
-                          fontWeight: FontWeight.w900,
+      child: RefreshIndicator(
+        onRefresh: _loadListings,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+          children: [
+            Text('Perfil', style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 18),
+
+            // ─── Card de usuario ────────────────────────────
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 38,
+                        backgroundColor:
+                            AppColors.primary.withValues(alpha: 0.12),
+                        child: Text(
+                          initials,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            color: AppColors.primaryDark,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            user.name,
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            user.major,
-                            style: const TextStyle(
-                              color: AppColors.muted,
-                              fontWeight: FontWeight.w600,
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              userName,
+                              style: Theme.of(context).textTheme.titleLarge,
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          const VerifiedBadge(),
-                        ],
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(
+                                  _typeIcon(auth.accountType),
+                                  size: 14,
+                                  color: AppColors.muted,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  auth.accountTypeLabel,
+                                  style: const TextStyle(
+                                    color: AppColors.muted,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            VerificationStatusBadge(
+                              accountType: auth.accountType,
+                              verificationStatus: auth.verificationStatus,
+                              compact: true,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _ProfileMetric(
-                        value: '${user.rating}',
-                        label: 'Calificacion',
-                        icon: Icons.star_rounded,
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _ProfileMetric(
+                          value: user['rating']?.toStringAsFixed(1) ?? '0.0',
+                          label: 'Calificación',
+                          icon: Icons.star_rounded,
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: _ProfileMetric(
-                        value: '${user.reviews}',
-                        label: 'Opiniones',
-                        icon: Icons.reviews_rounded,
+                      Expanded(
+                        child: _ProfileMetric(
+                          value: '${user['total_ratings'] ?? 0}',
+                          label: 'Opiniones',
+                          icon: Icons.reviews_rounded,
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: _ProfileMetric(
-                        value: '$activeCount',
-                        label: 'Activas',
-                        icon: Icons.store_rounded,
+                      Expanded(
+                        child: _ProfileMetric(
+                          value: '$activeCount',
+                          label: 'Activas',
+                          icon: Icons.store_rounded,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          _VerificationCard(
-            onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Verificacion universitaria simulada'),
+                    ],
+                  ),
+                ],
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          _ProfileOption(
-            icon: Icons.inventory_2_rounded,
-            title: 'Mis publicaciones',
-            subtitle: 'Activas, destacadas y expiradas',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const MyListingsScreen()),
+            const SizedBox(height: 16),
+
+            // ─── Card de verificación ───────────────────────
+            _VerificationCard(auth: auth),
+            const SizedBox(height: 16),
+
+            // ─── Opciones del perfil ────────────────────────
+            _ProfileOption(
+              icon: Icons.inventory_2_rounded,
+              title: 'Mis publicaciones',
+              subtitle: 'Activas, destacadas y expiradas',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                    builder: (_) => const MyListingsScreen()),
+              ),
             ),
+            _ProfileOption(
+              icon: Icons.shopping_bag_rounded,
+              title: 'Carrito',
+              subtitle: 'Productos guardados para coordinar compra',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                    builder: (_) => const CartScreen()),
+              ),
+            ),
+            _ProfileOption(
+              icon: Icons.favorite_rounded,
+              title: 'Favoritos guardados',
+              subtitle: 'Productos que quieres revisar después',
+            ),
+            _ProfileOption(
+              icon: Icons.shield_rounded,
+              title: 'Confianza y seguridad',
+              subtitle: 'Recomendaciones para comprar en campus',
+            ),
+            _ProfileOption(
+              icon: Icons.payments_rounded,
+              title: 'Planes para destacar',
+              subtitle: 'Consulta opciones de visibilidad pagada',
+            ),
+            _ProfileOption(
+              icon: Icons.help_rounded,
+              title: 'Ayuda',
+              subtitle: 'Preguntas frecuentes',
+            ),
+
+            const SizedBox(height: 20),
+
+            // ─── Cerrar sesión ─────────────────────────────
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  auth.logout();
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute<void>(
+                        builder: (_) => const LoginScreen()),
+                    (_) => false,
+                  );
+                },
+                icon: const Icon(Icons.logout_rounded),
+                label: const Text('Cerrar sesión'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.danger,
+                  side: BorderSide(color: AppColors.danger.withValues(alpha: 0.3)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _typeIcon(AccountType type) {
+    switch (type) {
+      case AccountType.estudiante:
+        return Icons.school_rounded;
+      case AccountType.particular:
+        return Icons.person_rounded;
+      case AccountType.negocio:
+        return Icons.store_rounded;
+    }
+  }
+}
+
+class _VerificationCard extends StatelessWidget {
+  const _VerificationCard({required this.auth});
+
+  final AuthProvider auth;
+
+  @override
+  Widget build(BuildContext context) {
+    // Si ya está verificado, mostrar estado positivo
+    if (auth.verificationStatus == VerificationStatus.aprobada) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.teal.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.teal.withValues(alpha: 0.22)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: VerificationStatusBadge(
+                accountType: auth.accountType,
+                verificationStatus: auth.verificationStatus,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _verifiedTitle(auth),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    _verifiedSubtitle(auth),
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Estado pendiente
+    if (auth.verificationStatus == VerificationStatus.pendiente) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.gold.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.gold.withValues(alpha: 0.22)),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.hourglass_bottom_rounded,
+                color: AppColors.gold, size: 28),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Verificación en revisión',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  SizedBox(height: 3),
+                  Text(
+                    'Tus documentos están siendo revisados por el equipo.',
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // No iniciada → mostrar opción para verificar
+    return InkWell(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              const _ProfileVerificationRedirect(),
+        ),
+      ),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.teal.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.teal.withValues(alpha: 0.22)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.badge_rounded,
+                  color: AppColors.teal),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Verifica tu cuenta',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  SizedBox(height: 3),
+                  Text(
+                    'Obtén un badge de confianza para tus compradores.',
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                color: AppColors.muted),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _verifiedTitle(AuthProvider auth) {
+    switch (auth.accountType) {
+      case AccountType.estudiante:
+        return 'Credencial universitaria verificada';
+      case AccountType.particular:
+        return 'Identidad verificada';
+      case AccountType.negocio:
+        return 'Negocio confirmado';
+    }
+  }
+
+  String _verifiedSubtitle(AuthProvider auth) {
+    switch (auth.accountType) {
+      case AccountType.estudiante:
+        return 'Badge "Verificado UM" visible para generar confianza.';
+      case AccountType.particular:
+        return 'Badge "Identidad verificada" activo en tu perfil.';
+      case AccountType.negocio:
+        return 'Badge "Negocio confirmado" activo en tu perfil.';
+    }
+  }
+}
+
+/// Pantalla temporal de redirección para verificación desde perfil.
+/// En una versión completa llevaría a un formulario de verificación.
+class _ProfileVerificationRedirect extends StatelessWidget {
+  const _ProfileVerificationRedirect();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Verificación')),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.badge_rounded,
+                  size: 64, color: AppColors.teal),
+              const SizedBox(height: 20),
+              Text(
+                'Verificación de cuenta',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Puedes iniciar tu verificación desde el registro o contactar al administrador.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
-          _ProfileOption(
-            icon: Icons.shopping_bag_rounded,
-            title: 'Carrito',
-            subtitle: 'Productos guardados para coordinar compra',
-            onTap: () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute<void>(builder: (_) => const CartScreen())),
-          ),
-          _ProfileOption(
-            icon: Icons.favorite_rounded,
-            title: 'Favoritos guardados',
-            subtitle: 'Productos que quieres revisar despues',
-          ),
-          _ProfileOption(
-            icon: Icons.shield_rounded,
-            title: 'Confianza y seguridad',
-            subtitle: 'Recomendaciones para comprar en campus',
-          ),
-          _ProfileOption(
-            icon: Icons.payments_rounded,
-            title: 'Planes para destacar',
-            subtitle: 'Consulta opciones de visibilidad pagada',
-          ),
-          _ProfileOption(
-            icon: Icons.help_rounded,
-            title: 'Ayuda',
-            subtitle: 'Preguntas frecuentes mock',
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -173,7 +501,7 @@ class _ProfileMetric extends StatelessWidget {
           value,
           style: const TextStyle(
             fontSize: 18,
-            fontWeight: FontWeight.w900,
+            fontWeight: FontWeight.w700,
             color: AppColors.primaryDark,
           ),
         ),
@@ -188,61 +516,6 @@ class _ProfileMetric extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _VerificationCard extends StatelessWidget {
-  const _VerificationCard({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.teal.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.teal.withValues(alpha: 0.22)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(Icons.badge_rounded, color: AppColors.teal),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Credencial universitaria verificada',
-                    style: TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                  SizedBox(height: 3),
-                  Text(
-                    'Badge visible para generar confianza en compradores.',
-                    style: TextStyle(
-                      color: AppColors.muted,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -271,14 +544,14 @@ class _ProfileOption extends StatelessWidget {
       ),
       child: ListTile(
         leading: Icon(icon, color: AppColors.primary),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+        title:
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
         subtitle: Text(subtitle),
         trailing: const Icon(Icons.chevron_right_rounded),
-        onTap:
-            onTap ??
-            () => ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text('$title mock'))),
+        onTap: onTap ??
+            () => ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('$title mock')),
+                ),
       ),
     );
   }

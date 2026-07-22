@@ -39,153 +39,56 @@ class _MainShellState extends State<MainShell> {
             HeroMode(enabled: i == _currentIndex, child: _pages[i]),
         ],
       ),
-      bottomNavigationBar: _MercaditoBottomNav(
-        currentIndex: _currentIndex,
-        onTap: _selectTab,
-      ),
-    );
-  }
-}
-
-class _MercaditoBottomNav extends StatelessWidget {
-  const _MercaditoBottomNav({required this.currentIndex, required this.onTap});
-
-  final int currentIndex;
-  final ValueChanged<int> onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final items = <_NavItemData>[
-      const _NavItemData('Inicio', Icons.home_rounded),
-      const _NavItemData('Ofertas', Icons.local_offer_rounded),
-      const _NavItemData('Publicar', Icons.add_rounded, emphasized: true),
-      const _NavItemData('Carrito', Icons.shopping_bag_rounded),
-      const _NavItemData('Perfil', Icons.person_rounded),
-    ];
-
-    return SafeArea(
-      top: false,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          border: const Border(top: BorderSide(color: AppColors.border)),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primaryDark.withValues(alpha: 0.08),
-              blurRadius: 20,
-              offset: const Offset(0, -8),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            for (var i = 0; i < items.length; i++)
-              Expanded(
-                child: _BottomNavButton(
-                  data: items[i],
-                  selected: i == currentIndex,
-                  onTap: () => onTap(i),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _NavItemData {
-  const _NavItemData(this.label, this.icon, {this.emphasized = false});
-
-  final String label;
-  final IconData icon;
-  final bool emphasized;
-}
-
-class _BottomNavButton extends StatelessWidget {
-  const _BottomNavButton({
-    required this.data,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final _NavItemData data;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = selected ? AppColors.primary : AppColors.muted;
-
-    if (data.emphasized) {
-      return InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color: selected ? AppColors.orange : AppColors.primaryDark,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: AppColors.gold.withValues(alpha: 0.6),
-                ),
-                boxShadow: AppShadows.lifted,
-              ),
-              child: Icon(data.icon, color: Colors.white, size: 29),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              data.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            border: Border(top: BorderSide(color: AppColors.border)),
+          ),
+          child: NavigationBar(
+            selectedIndex: _currentIndex,
+            onDestinationSelected: _selectTab,
+            height: 68,
+            elevation: 0,
+            backgroundColor: AppColors.surface,
+            indicatorColor: AppColors.primary.withValues(alpha: 0.10),
+            labelTextStyle: WidgetStateProperty.resolveWith((states) {
+              final selected = states.contains(WidgetState.selected);
+              return TextStyle(
+                color: selected ? AppColors.primary : AppColors.muted,
                 fontSize: 11,
-                color: AppColors.primaryDark,
-                fontWeight: FontWeight.w900,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              );
+            }),
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.home_outlined),
+                selectedIcon: Icon(Icons.home_rounded),
+                label: 'Inicio',
               ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              width: 36,
-              height: 28,
-              decoration: BoxDecoration(
-                color: selected
-                    ? AppColors.primary.withValues(alpha: 0.10)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(10),
+              NavigationDestination(
+                icon: Icon(Icons.local_offer_outlined),
+                selectedIcon: Icon(Icons.local_offer_rounded),
+                label: 'Ofertas',
               ),
-              child: Icon(data.icon, color: color, size: 23),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              data.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: color,
-                fontSize: 11,
-                fontWeight: FontWeight.w900,
+              NavigationDestination(
+                icon: Icon(Icons.add_circle_outline_rounded),
+                selectedIcon: Icon(Icons.add_circle_rounded),
+                label: 'Publicar',
               ),
-            ),
-          ],
+              NavigationDestination(
+                icon: Icon(Icons.shopping_bag_outlined),
+                selectedIcon: Icon(Icons.shopping_bag_rounded),
+                label: 'Carrito',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.person_outline_rounded),
+                selectedIcon: Icon(Icons.person_rounded),
+                label: 'Perfil',
+              ),
+            ],
+          ),
         ),
       ),
     );

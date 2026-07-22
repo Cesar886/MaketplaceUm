@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
 import '../models.dart';
+import '../providers/auth_provider.dart';
 
 class FeaturedBadge extends StatelessWidget {
   const FeaturedBadge({super.key, this.compact = false});
@@ -10,35 +11,13 @@ class FeaturedBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 8 : 10,
-        vertical: compact ? 5 : 6,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.gold,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.75)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.star_rounded,
-            size: compact ? 14 : 16,
-            color: AppColors.primaryDark,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            'Destacado',
-            style: TextStyle(
-              color: AppColors.primaryDark,
-              fontSize: compact ? 11 : 12,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
+    return _Badge(
+      icon: Icons.star_rounded,
+      label: 'Destacado',
+      foreground: AppColors.gold,
+      background: AppColors.champagne,
+      border: AppColors.premiumBorder,
+      compact: compact,
     );
   }
 }
@@ -51,35 +30,13 @@ class OfferBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 8 : 10,
-        vertical: compact ? 5 : 6,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.orange,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.75)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.local_offer_rounded,
-            size: compact ? 13 : 16,
-            color: Colors.white,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            label ?? 'Oferta',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: compact ? 11 : 12,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
+    return _Badge(
+      icon: Icons.local_offer_rounded,
+      label: label ?? 'Oferta',
+      foreground: AppColors.orange,
+      background: AppColors.orange.withValues(alpha: 0.08),
+      border: AppColors.orange.withValues(alpha: 0.18),
+      compact: compact,
     );
   }
 }
@@ -96,21 +53,19 @@ class StatusBadge extends StatelessWidget {
       ListingStatus.featured => AppColors.gold,
       ListingStatus.expired => AppColors.danger,
     };
-    final foreground = status == ListingStatus.featured
-        ? AppColors.primaryDark
-        : Colors.white;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(8),
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
       ),
       child: Text(
         status.label,
         style: TextStyle(
-          color: foreground,
-          fontWeight: FontWeight.w900,
+          color: color,
+          fontWeight: FontWeight.w700,
           fontSize: 12,
         ),
       ),
@@ -125,31 +80,133 @@ class VerifiedBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return _Badge(
+      icon: Icons.verified_rounded,
+      label: 'Verificado',
+      foreground: AppColors.teal,
+      background: AppColors.teal.withValues(alpha: 0.08),
+      border: AppColors.teal.withValues(alpha: 0.18),
+      compact: compact,
+    );
+  }
+}
+
+/// Badge contextual que muestra el nivel de verificación según el tipo de cuenta.
+class VerificationStatusBadge extends StatelessWidget {
+  const VerificationStatusBadge({
+    super.key,
+    required this.accountType,
+    required this.verificationStatus,
+    this.compact = false,
+  });
+
+  final AccountType accountType;
+  final VerificationStatus verificationStatus;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    // No mostrar nada si no hay verificación iniciada
+    if (verificationStatus == VerificationStatus.noIniciada) {
+      return const SizedBox.shrink();
+    }
+
+    // Si está pendiente o rechazada, mostrar status genérico
+    if (verificationStatus == VerificationStatus.pendiente) {
+      return _Badge(
+        icon: Icons.hourglass_bottom_rounded,
+        label: 'En revisión',
+        foreground: AppColors.gold,
+        background: AppColors.gold.withValues(alpha: 0.10),
+        border: AppColors.gold.withValues(alpha: 0.22),
+        compact: compact,
+      );
+    }
+
+    if (verificationStatus == VerificationStatus.rechazada) {
+      return _Badge(
+        icon: Icons.gpp_bad_rounded,
+        label: 'Rechazada',
+        foreground: AppColors.danger,
+        background: AppColors.danger.withValues(alpha: 0.08),
+        border: AppColors.danger.withValues(alpha: 0.18),
+        compact: compact,
+      );
+    }
+
+    // Aprobada → badge según tipo de cuenta
+    switch (accountType) {
+      case AccountType.estudiante:
+        return _Badge(
+          icon: Icons.school_rounded,
+          label: 'Verificado UM',
+          foreground: AppColors.teal,
+          background: AppColors.teal.withValues(alpha: 0.10),
+          border: AppColors.teal.withValues(alpha: 0.22),
+          compact: compact,
+        );
+      case AccountType.particular:
+        return _Badge(
+          icon: Icons.badge_rounded,
+          label: 'Identidad verificada',
+          foreground: AppColors.primary,
+          background: AppColors.primary.withValues(alpha: 0.10),
+          border: AppColors.primary.withValues(alpha: 0.22),
+          compact: compact,
+        );
+      case AccountType.negocio:
+        return _Badge(
+          icon: Icons.store_rounded,
+          label: 'Negocio confirmado',
+          foreground: AppColors.gold,
+          background: AppColors.champagne,
+          border: AppColors.premiumBorder,
+          compact: compact,
+        );
+    }
+  }
+}
+
+class _Badge extends StatelessWidget {
+  const _Badge({
+    required this.icon,
+    required this.label,
+    required this.foreground,
+    required this.background,
+    required this.border,
+    required this.compact,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color foreground;
+  final Color background;
+  final Color border;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: compact ? 8 : 10,
-        vertical: compact ? 5 : 6,
+        horizontal: compact ? 7 : 9,
+        vertical: compact ? 4 : 6,
       ),
       decoration: BoxDecoration(
-        color: AppColors.teal.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.teal.withValues(alpha: 0.3)),
+        color: background,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.verified_rounded,
-            color: AppColors.teal,
-            size: compact ? 14 : 16,
-          ),
+          Icon(icon, size: compact ? 13 : 15, color: foreground),
           const SizedBox(width: 4),
           Text(
-            'Verificado',
+            label,
             style: TextStyle(
-              color: AppColors.teal,
-              fontWeight: FontWeight.w900,
+              color: foreground,
               fontSize: compact ? 11 : 12,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],

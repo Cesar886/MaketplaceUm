@@ -14,42 +14,36 @@ class AppLogo extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: AppColors.primary,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(8),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.18),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        border: Border.all(color: AppColors.border),
       ),
       child: Stack(
         alignment: Alignment.center,
         children: [
           Icon(
             Icons.storefront_rounded,
-            color: Colors.white,
-            size: size * 0.54,
+            color: AppColors.primary,
+            size: size * 0.52,
           ),
           Positioned(
-            right: size * 0.12,
-            bottom: size * 0.1,
+            right: size * 0.10,
+            bottom: size * 0.10,
             child: Container(
               padding: EdgeInsets.symmetric(
                 horizontal: size * 0.08,
                 vertical: size * 0.02,
               ),
               decoration: BoxDecoration(
-                color: AppColors.gold,
+                color: AppColors.primary.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(5),
               ),
               child: Text(
                 'UM',
                 style: TextStyle(
-                  color: AppColors.primaryDark,
+                  color: AppColors.primary,
                   fontSize: size * 0.14,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
@@ -65,19 +59,30 @@ class AppLogo extends StatelessWidget {
       children: [
         mark,
         const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Mercadito UM', style: Theme.of(context).textTheme.titleLarge),
-            const Text(
-              'Compra y vende en campus',
-              style: TextStyle(
-                color: AppColors.muted,
-                fontWeight: FontWeight.w600,
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Mercadito UM',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleLarge,
               ),
-            ),
-          ],
+              const SizedBox(height: 2),
+              const Text(
+                'Compra y vende en campus',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );

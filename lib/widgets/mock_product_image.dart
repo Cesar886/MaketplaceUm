@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
 import '../models.dart';
+import '../services/api_service.dart';
 import 'badges.dart';
 
 class MockProductImage extends StatelessWidget {
@@ -22,74 +23,101 @@ class MockProductImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorShift = photoIndex * 0.08;
-    final base = product.imageColor;
+    // Si hay imágenes reales subidas, mostrarlas
+    if (product.images.isNotEmpty) {
+      final index = photoIndex < product.images.length ? photoIndex : 0;
+      final imageUrl = '${ApiService.baseUrl}${product.images[index]}';
+
+      return ClipRRect(
+        borderRadius: borderRadius,
+        child: Stack(
+          children: [
+            Image.network(
+              imageUrl,
+              height: height,
+              width: double.infinity,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => _buildMockIcon(),
+              loadingBuilder: (_, child, progress) {
+                if (progress == null) return child;
+                return Container(
+                  height: height,
+                  color: AppColors.surfaceMuted,
+                  child: const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                );
+              },
+            ),
+            if (showFeaturedBadge && (product.isOffer || product.isFeatured))
+              Positioned(
+                right: 8,
+                top: 8,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (product.isOffer)
+                      OfferBadge(label: product.discountLabel, compact: true),
+                    if (product.isOffer && product.isFeatured)
+                      const SizedBox(height: 6),
+                    if (product.isFeatured) const FeaturedBadge(compact: true),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
+    // Sin imágenes reales: mock icon
+    return _buildMockIcon();
+  }
+
+  Widget _buildMockIcon() {
+    final tintAmount = 0.08 + (photoIndex * 0.03).clamp(0, 0.09);
+    final background = Color.lerp(
+      AppColors.surface,
+      product.imageColor,
+      tintAmount,
+    )!;
+    final accent =
+        Color.lerp(product.imageColor, AppColors.primaryDark, 0.14)!;
 
     return ClipRRect(
       borderRadius: borderRadius,
       child: Container(
         height: height,
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              base.withValues(alpha: 0.95 - colorShift.clamp(0, 0.2)),
-              AppColors.primaryDark.withValues(alpha: 0.86),
-            ],
-          ),
+          color: background,
+          border: Border.all(color: accent.withValues(alpha: 0.10)),
         ),
         child: Stack(
           children: [
             Positioned(
-              right: -18,
-              bottom: -24,
+              right: -20,
+              bottom: -26,
               child: Icon(
                 product.imageIcon,
-                size: 132,
-                color: Colors.white.withValues(alpha: 0.12),
+                size: 128,
+                color: accent.withValues(alpha: 0.07),
               ),
             ),
             Center(
-              child: Icon(product.imageIcon, size: 58, color: Colors.white),
-            ),
-            Positioned(
-              left: 12,
-              top: 12,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                width: 58,
+                height: 58,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.94),
+                  color: AppColors.surface.withValues(alpha: 0.72),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.6),
-                  ),
+                  border: Border.all(color: accent.withValues(alpha: 0.12)),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      product.category.icon,
-                      size: 14,
-                      color: product.category.color,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      product.category.name,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.ink,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
+                child: Icon(product.imageIcon, size: 32, color: accent),
               ),
             ),
             if (showFeaturedBadge && (product.isOffer || product.isFeatured))
               Positioned(
-                right: 10,
-                top: 10,
+                right: 8,
+                top: 8,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [

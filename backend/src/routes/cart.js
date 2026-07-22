@@ -1,4 +1,5 @@
-const { cart, products } = require('../data');
+const { requireAuth } = require('../auth');
+const { cart, products, saveData } = require('../data');
 
 function register(app) {
   // GET /api/cart
@@ -11,7 +12,7 @@ function register(app) {
   });
 
   // POST /api/cart – agregar item
-  app.post('/api/cart', (req, res) => {
+  app.post('/api/cart', requireAuth, (req, res) => {
     const { productId, quantity, meetingPoint } = req.body;
     if (!productId || !quantity) {
       return res.status(400).json({ error: 'productId y quantity son requeridos' });
@@ -30,6 +31,7 @@ function register(app) {
       });
     }
 
+    saveData();
     const enriched = cart.map(item => ({
       ...item,
       product: products.find(p => p.id === item.productId) || null,
@@ -38,12 +40,13 @@ function register(app) {
   });
 
   // PUT /api/cart/:id
-  app.put('/api/cart/:id', (req, res) => {
+  app.put('/api/cart/:id', requireAuth, (req, res) => {
     const item = cart.find(i => i.id === req.params.id);
     if (!item) return res.status(404).json({ error: 'Item no encontrado' });
 
     if (req.body.quantity != null) item.quantity = req.body.quantity;
     if (req.body.meetingPoint) item.meetingPoint = req.body.meetingPoint;
+    saveData();
 
     const enriched = cart.map(i => ({
       ...i,
@@ -53,10 +56,11 @@ function register(app) {
   });
 
   // DELETE /api/cart/:id
-  app.delete('/api/cart/:id', (req, res) => {
+  app.delete('/api/cart/:id', requireAuth, (req, res) => {
     const idx = cart.findIndex(i => i.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Item no encontrado' });
     cart.splice(idx, 1);
+    saveData();
     res.json({ ok: true });
   });
 }

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
-import '../mock_data.dart';
 import '../models.dart';
+import '../services/api_service.dart';
 import '../widgets/product_card.dart';
 import '../widgets/section_header.dart';
 import 'product_detail_screen.dart';
@@ -16,15 +16,41 @@ class OffersScreen extends StatefulWidget {
 
 class _OffersScreenState extends State<OffersScreen> {
   String? _selectedCategoryId;
+  List<Product> _offers = [];
+  List<MarketplaceCategory> _categories = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    try {
+      final results = await Future.wait([
+        ApiService.getProducts(offer: true),
+        ApiService.getCategories(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _offers = results[0] as List<Product>;
+        _categories = results[1] as List<MarketplaceCategory>;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final offers = mockProducts.where((product) {
-      final matchesOffer = product.isOffer;
+    final filtered = _offers.where((product) {
       final matchesCategory =
           _selectedCategoryId == null ||
           product.category.id == _selectedCategoryId;
-      return matchesOffer && matchesCategory;
+      return matchesCategory;
     }).toList();
 
     return SafeArea(
@@ -45,40 +71,47 @@ class _OffersScreenState extends State<OffersScreen> {
                     'Precios especiales publicados por estudiantes esta semana.',
                     style: TextStyle(
                       color: AppColors.muted,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                   const SizedBox(height: 18),
-                  const _OfferHeroBand(),
+                  _OfferHeroBand(offers: _offers.take(3).toList()),
                   const SizedBox(height: 16),
                   _OfferCategoryChips(
+                    categories: _categories,
                     selectedCategoryId: _selectedCategoryId,
                     onSelected: (id) =>
                         setState(() => _selectedCategoryId = id),
                   ),
                   const SizedBox(height: 18),
-                  SectionHeader(title: '${offers.length} ofertas activas'),
+                  SectionHeader(
+                    title: _loading
+                        ? 'Cargando...'
+                        : '${filtered.length} ofertas activas'),
                 ],
               ),
             ),
           ),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
-            sliver: SliverList.separated(
-              itemCount: offers.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final product = offers[index];
-                return SizedBox(
-                  height: 122,
-                  child: ProductCard(
-                    product: product,
-                    horizontal: true,
-                    onTap: () => _openDetail(context, product),
+            sliver: _loading
+                ? const SliverFillRemaining(
+                    child: Center(child: CircularProgressIndicator()))
+                : SliverList.separated(
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final product = filtered[index];
+                      return SizedBox(
+                        height: 122,
+                        child: ProductCard(
+                          product: product,
+                          horizontal: true,
+                          onTap: () => _openDetail(context, product),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
           ),
         ],
       ),
@@ -95,24 +128,20 @@ class _OffersScreenState extends State<OffersScreen> {
 }
 
 class _OfferHeroBand extends StatelessWidget {
-  const _OfferHeroBand();
+  const _OfferHeroBand({required this.offers});
+
+  final List<Product> offers;
 
   @override
   Widget build(BuildContext context) {
-    final bestOffers = mockProducts
-        .where((product) => product.isOffer)
-        .take(3)
-        .toList();
+    if (offers.isEmpty) return const SizedBox.shrink();
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.primaryDark,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: AppColors.premiumBorder.withValues(alpha: 0.7),
-        ),
-        boxShadow: AppShadows.lifted,
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -120,14 +149,14 @@ class _OfferHeroBand extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(9),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.gold.withValues(alpha: 0.18),
+                  color: AppColors.orange.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
                   Icons.local_offer_rounded,
-                  color: AppColors.gold,
+                  color: AppColors.orange,
                 ),
               ),
               const SizedBox(width: 10),
@@ -135,9 +164,9 @@ class _OfferHeroBand extends StatelessWidget {
                 child: Text(
                   'Precios de oportunidad',
                   style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                    color: AppColors.ink,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
@@ -147,26 +176,30 @@ class _OfferHeroBand extends StatelessWidget {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.orange,
-                  borderRadius: BorderRadius.circular(8),
+                  color: AppColors.orange.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: AppColors.orange.withValues(alpha: 0.18),
+                  ),
                 ),
                 child: const Text(
                   'Hasta -25%',
                   style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
+                    color: AppColors.orange,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          for (final product in bestOffers)
+          for (final product in offers)
             Padding(
               padding: const EdgeInsets.only(bottom: 7),
               child: Row(
                 children: [
-                  Icon(product.category.icon, color: AppColors.gold, size: 16),
+                  Icon(product.category.icon,
+                      color: AppColors.primary, size: 16),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -174,8 +207,8 @@ class _OfferHeroBand extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
+                        color: AppColors.ink,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
@@ -183,8 +216,8 @@ class _OfferHeroBand extends StatelessWidget {
                   Text(
                     product.price,
                     style: const TextStyle(
-                      color: AppColors.gold,
-                      fontWeight: FontWeight.w900,
+                      color: AppColors.primaryDark,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ],
@@ -198,10 +231,12 @@ class _OfferHeroBand extends StatelessWidget {
 
 class _OfferCategoryChips extends StatelessWidget {
   const _OfferCategoryChips({
+    required this.categories,
     required this.selectedCategoryId,
     required this.onSelected,
   });
 
+  final List<MarketplaceCategory> categories;
   final String? selectedCategoryId;
   final ValueChanged<String?> onSelected;
 
@@ -221,7 +256,7 @@ class _OfferCategoryChips extends StatelessWidget {
               onSelected: (_) => onSelected(null),
             ),
           ),
-          for (final category in mockCategories)
+          for (final category in categories)
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: ChoiceChip(

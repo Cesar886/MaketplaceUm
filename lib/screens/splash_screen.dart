@@ -15,7 +15,7 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Future<void>.delayed(const Duration(milliseconds: 1100), () {
+    Future<void>.delayed(const Duration(milliseconds: 800), () {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(builder: (_) => const MainShell()),
@@ -32,13 +32,14 @@ class _SplashScreenState extends State<SplashScreen> {
           child: Column(
             children: [
               const Spacer(),
-              const AppLogo(size: 78),
+              const AppLogo(size: 78, showText: false),
               const SizedBox(height: 28),
               Text(
                 'Mercadito UM',
-                style: Theme.of(
-                  context,
-                ).textTheme.headlineMedium?.copyWith(fontSize: 34),
+                style: Theme.of(context)
+                    .textTheme
+                    .headlineMedium
+                    ?.copyWith(fontSize: 34),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 10),
@@ -49,38 +50,6 @@ class _SplashScreenState extends State<SplashScreen> {
                   color: AppColors.muted,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 34),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 9,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.gold.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: AppColors.gold.withValues(alpha: 0.35),
-                  ),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.verified_user_rounded,
-                      color: AppColors.primary,
-                      size: 18,
-                    ),
-                    SizedBox(width: 8),
-                    Text(
-                      'Solo comunidad UM',
-                      style: TextStyle(
-                        color: AppColors.primaryDark,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
                 ),
               ),
               const Spacer(),

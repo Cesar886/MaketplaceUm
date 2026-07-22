@@ -906,16 +906,19 @@ final mockOwnListings = <Product>[
 
 final mockCartItems = <CartItem>[
   CartItem(
+    id: 'c1',
     product: mockProducts[10],
     quantity: 1,
     meetingPoint: 'Biblioteca central, 4:00 PM',
   ),
   CartItem(
+    id: 'c2',
     product: mockProducts[7],
     quantity: 1,
     meetingPoint: 'Residencias norte, 7:30 PM',
   ),
   CartItem(
+    id: 'c3',
     product: mockProducts[19],
     quantity: 2,
     meetingPoint: 'Cafeteria UM, despues de capilla',
@@ -925,30 +928,30 @@ final mockCartItems = <CartItem>[
 const highlightPlans = <HighlightPlan>[
   HighlightPlan(
     id: 'd1',
-    title: 'Impulso rapido',
-    price: r'$10',
-    description: '1 dia arriba para vender algo urgente.',
+    title: 'Destacado 24h',
+    price: r'$20',
+    description: 'Para ventas rapidas y urgentes. Aparece arriba por un dia.',
     days: 1,
   ),
   HighlightPlan(
     id: 'd3',
-    title: '3 dias',
-    price: r'$15',
-    description: 'Aparece arriba durante momentos de alta actividad.',
+    title: 'Destacado 3 dias',
+    price: r'$40',
+    description: 'Buena opcion para rotar inventario sin pagar de mas.',
     days: 3,
   ),
   HighlightPlan(
     id: 'd7',
-    title: '7 dias',
-    price: r'$25',
-    description: 'Mayor exposicion en el feed de estudiantes.',
+    title: 'Destacado 7 dias',
+    price: r'$70',
+    description: 'Mayor visibilidad durante toda la semana escolar.',
     days: 7,
   ),
   HighlightPlan(
-    id: 'd14',
-    title: '14 dias',
-    price: r'$40',
-    description: 'Ideal para productos de mayor precio.',
-    days: 14,
+    id: 'm1',
+    title: 'Plan mensual',
+    price: r'$180',
+    description: 'Pensado para negocios fijos: aparece arriba en su categoria todo el mes.',
+    days: 30,
   ),
 ];

@@ -23,27 +23,28 @@ class ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = product.isOffer
-        ? AppColors.orange.withValues(alpha: 0.72)
+    final accent = product.isOffer
+        ? AppColors.orange
         : product.isFeatured
-        ? AppColors.premiumBorder
+        ? AppColors.gold
+        : AppColors.border;
+    final borderColor = product.isOffer || product.isFeatured
+        ? accent.withValues(alpha: 0.32)
         : AppColors.border;
 
-    final card = Container(
+    final card = DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: product.isFeatured || product.isOffer
-            ? AppShadows.soft
-            : null,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: product.isFeatured || product.isOffer ? AppShadows.soft : null,
       ),
       child: Material(
         color: AppColors.surface,
+        clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(8),
           side: BorderSide(color: borderColor),
         ),
         child: InkWell(
-          borderRadius: BorderRadius.circular(10),
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.all(10),
@@ -77,7 +78,7 @@ class _GridProductCard extends StatelessWidget {
         _HeroProductImage(
           product: product,
           enabled: heroEnabled,
-          child: MockProductImage(product: product, height: 100),
+          child: MockProductImage(product: product, height: 104),
         ),
         const SizedBox(height: 10),
         _PriceBlock(product: product),
@@ -86,7 +87,7 @@ class _GridProductCard extends StatelessWidget {
           product.title,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w900, height: 1.15),
+          style: const TextStyle(fontWeight: FontWeight.w700, height: 1.18),
         ),
         const Spacer(),
         Row(
@@ -99,7 +100,7 @@ class _GridProductCard extends StatelessWidget {
                 style: const TextStyle(
                   color: AppColors.muted,
                   fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
@@ -129,11 +130,11 @@ class _HorizontalProductCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 96,
+          width: 92,
           child: _HeroProductImage(
             product: product,
             enabled: heroEnabled,
-            child: MockProductImage(product: product, height: 96),
+            child: MockProductImage(product: product, height: 92),
           ),
         ),
         const SizedBox(width: 12),
@@ -157,8 +158,8 @@ class _HorizontalProductCard extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontWeight: FontWeight.w900,
-                  height: 1.15,
+                  fontWeight: FontWeight.w700,
+                  height: 1.18,
                 ),
               ),
               const Spacer(),
@@ -178,7 +179,7 @@ class _HorizontalProductCard extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 12,
                         color: AppColors.muted,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
@@ -187,7 +188,7 @@ class _HorizontalProductCard extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 12,
                       color: AppColors.muted,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
@@ -235,8 +236,8 @@ class _PriceBlock extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
             color: AppColors.primaryDark,
           ),
         ),
@@ -248,7 +249,7 @@ class _PriceBlock extends StatelessWidget {
             style: const TextStyle(
               fontSize: 12,
               color: AppColors.muted,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
               decoration: TextDecoration.lineThrough,
             ),
           ),

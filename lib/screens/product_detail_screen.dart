@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
 import '../models.dart';
+import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
 import '../widgets/badges.dart';
 import '../widgets/mock_product_image.dart';
+import 'auth/login_screen.dart';
 import 'cart_screen.dart';
 
 class ProductDetailScreen extends StatefulWidget {
@@ -38,7 +42,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ),
             actions: [
               IconButton.filledTonal(
-                onPressed: () => setState(() => _favorite = !_favorite),
+                onPressed: () => _requireAuth(context, () async {
+                  try {
+                    await ApiService.toggleFavorite(widget.product.id);
+                    if (!mounted) return;
+                    setState(() => _favorite = !_favorite);
+                  } catch (_) {}
+                }),
                 icon: Icon(
                   _favorite
                       ? Icons.favorite_rounded
@@ -111,7 +121,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           style: const TextStyle(
                             color: AppColors.muted,
                             fontSize: 18,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w600,
                             decoration: TextDecoration.lineThrough,
                           ),
                         ),
@@ -183,7 +193,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           child: Row(
             children: [
               IconButton.outlined(
-                onPressed: () => setState(() => _favorite = !_favorite),
+                onPressed: () => _requireAuth(context, () async {
+                  try {
+                    await ApiService.toggleFavorite(widget.product.id);
+                    if (!mounted) return;
+                    setState(() => _favorite = !_favorite);
+                  } catch (_) {}
+                }),
                 icon: Icon(
                   _favorite
                       ? Icons.favorite_rounded
@@ -194,10 +210,22 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => _showMockMessage(
-                    context,
-                    'Producto agregado al carrito mock',
-                  ),
+                  onPressed: () => _requireAuth(context, () async {
+                    try {
+                      await ApiService.addToCart(product.id,
+                          meetingPoint: 'Biblioteca central');
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('Producto agregado al carrito')),
+                      );
+                    } catch (e) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error: $e')),
+                      );
+                    }
+                  }),
                   icon: const Icon(Icons.add_shopping_cart_rounded),
                   label: const Text('Carrito'),
                 ),
@@ -227,6 +255,29 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Si no hay sesión activa, pide login. Si sí, ejecuta [action].
+  void _requireAuth(BuildContext context, VoidCallback action) {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLoggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Inicia sesión para realizar esta acción'),
+          action: SnackBarAction(
+            label: 'Iniciar sesión',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                    builder: (_) => const LoginScreen()),
+              );
+            },
+          ),
+        ),
+      );
+      return;
+    }
+    action();
   }
 }
 
@@ -305,7 +356,7 @@ class _InfoPill extends StatelessWidget {
           Text(
             label,
             style: const TextStyle(
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w600,
               color: AppColors.ink,
             ),
           ),
@@ -338,7 +389,7 @@ class _SellerCard extends StatelessWidget {
               seller.avatarInitials,
               style: const TextStyle(
                 color: AppColors.primaryDark,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
@@ -355,7 +406,7 @@ class _SellerCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontWeight: FontWeight.w900,
+                          fontWeight: FontWeight.w700,
                           fontSize: 16,
                         ),
                       ),
@@ -392,7 +443,7 @@ class _SellerCard extends StatelessWidget {
                     const SizedBox(width: 3),
                     Text(
                       '${seller.rating} (${seller.reviews})',
-                      style: const TextStyle(fontWeight: FontWeight.w900),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ],
                 ),
