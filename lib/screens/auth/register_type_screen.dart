@@ -43,18 +43,6 @@ class RegisterTypeScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     _TypeCard(
-                      emoji: '🧑',
-                      title: 'Particular',
-                      subtitle: 'Persona externa a la universidad',
-                      features: [
-                        'Ofrece hospedaje, servicios y productos',
-                        'Verifica tu identidad opcionalmente',
-                      ],
-                      color: AppColors.orange,
-                      onTap: () => _goToForm(context, 'particular'),
-                    ),
-                    const SizedBox(height: 12),
-                    _TypeCard(
                       emoji: '🏪',
                       title: 'Negocio',
                       subtitle: 'Puesto dentro o cerca del campus',
@@ -64,6 +52,18 @@ class RegisterTypeScreen extends StatelessWidget {
                       ],
                       color: AppColors.gold,
                       onTap: () => _goToForm(context, 'negocio'),
+                    ),
+                    const SizedBox(height: 12),
+                    _TypeCard(
+                      emoji: '🧑',
+                      title: 'Particular',
+                      subtitle: 'Persona externa a la universidad',
+                      features: [
+                        'Ofrece hospedaje, servicios y productos',
+                        'Verifica tu identidad opcionalmente',
+                      ],
+                      color: AppColors.orange,
+                      onTap: () => _goToForm(context, 'particular'),
                     ),
                   ],
                 ),

@@ -21,9 +21,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   List<Product> _products = [];
+  List<Product> _featuredProducts = [];
   List<MarketplaceCategory> _categories = [];
   List<CartItem> _cart = [];
   List<HighlightPlan> _highlightPlans = [];
+  List<Seller> _sellers = [];
   bool _loading = true;
   bool _hasPublished = false;
   String? _error;
@@ -40,9 +42,11 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final results = await Future.wait([
         ApiService.getProducts(),
+        ApiService.getProducts(featured: true),
         ApiService.getCategories(),
         ApiService.getCart(),
         ApiService.getHighlightPlans(),
+        ApiService.getSellers(),
       ]);
       if (!mounted) return;
 
@@ -60,9 +64,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _products = results[0] as List<Product>;
-        _categories = results[1] as List<MarketplaceCategory>;
-        _cart = results[2] as List<CartItem>;
-        _highlightPlans = results[3] as List<HighlightPlan>;
+        _featuredProducts = results[1] as List<Product>;
+        _categories = results[2] as List<MarketplaceCategory>;
+        _cart = results[3] as List<CartItem>;
+        _highlightPlans = results[4] as List<HighlightPlan>;
+        _sellers = results[5] as List<Seller>;
         _hasPublished = hasPublished;
         _loading = false;
         _error = null;
@@ -78,6 +84,31 @@ class _HomeScreenState extends State<HomeScreen> {
 
   int get _cartCount =>
       _cart.fold<int>(0, (sum, item) => sum + item.quantity);
+
+  /// Agrupa productos por vendedor, excluyendo al usuario actual.
+  /// Solo incluye vendedores marcados como negocio (isBusiness = true).
+  /// Ordenados por: más productos primero, luego verificados.
+  List<MapEntry<Seller, List<Product>>> get _businessesWithProducts {
+    final currentSellerId = context.read<AuthProvider>().backendSellerId;
+    final Map<String, List<Product>> grouped = {};
+    for (final p in _products) {
+      grouped.putIfAbsent(p.seller.id, () => []).add(p);
+    }
+    final result = <MapEntry<Seller, List<Product>>>[];
+    for (final seller in _sellers) {
+      final products = grouped[seller.id];
+      if (products != null && products.isNotEmpty && seller.id != currentSellerId && seller.isBusiness) {
+        result.add(MapEntry(seller, products));
+      }
+    }
+    // Ordenar: más productos primero, luego verificados
+    result.sort((a, b) {
+      final byCount = b.value.length.compareTo(a.value.length);
+      if (byCount != 0) return byCount;
+      return (b.key.verified ? 1 : 0).compareTo(a.key.verified ? 1 : 0);
+    });
+    return result;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -119,8 +150,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final filtered = _selectedCategoryId == null
         ? _products
         : _products.where((p) => p.category.id == _selectedCategoryId).toList();
-    final featured = filtered.where((p) => p.isFeatured).toList();
-    final offers = filtered.where((p) => p.isOffer).toList();
+    final offers = _products.where((p) => p.isOffer).toList();
     final recent = filtered.where((p) => !p.isFeatured).toList();
 
     return SafeArea(
@@ -199,21 +229,31 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             SliverToBoxAdapter(
               child: SizedBox(
-                height: 280,
-                child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 4),
-                  scrollDirection: Axis.horizontal,
-                  itemCount: featured.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 12),
-                  itemBuilder: (context, index) {
-                    final product = featured[index];
-                    return ProductCard(
-                      product: product,
-                      width: 216,
-                      onTap: () => _openDetail(context, product),
-                    );
-                  },
-                ),
+                height: 230,
+                child: _featuredProducts.isNotEmpty
+                    ? ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(18, 8, 18, 4),
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _featuredProducts.length,
+                        separatorBuilder: (_, _) => const SizedBox(width: 10),
+                        itemBuilder: (context, index) {
+                          final product = _featuredProducts[index];
+                          return ProductCard(
+                            product: product,
+                            width: 168,
+                            onTap: () => _openDetail(context, product),
+                          );
+                        },
+                      )
+                    : Center(
+                        child: Text(
+                          'Aún no hay productos destacados',
+                          style: TextStyle(
+                            color: AppColors.muted,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
               ),
             ),
             SliverToBoxAdapter(
@@ -252,6 +292,32 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
             ),
+            // ─── Negocios del campus ────────────────────────────
+            if (_businessesWithProducts.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 24, 18, 0),
+                  child: SectionHeader(
+                    title: 'Negocios del campus',
+                    actionLabel: null,
+                    onAction: null,
+                  ),
+                ),
+              ),
+            for (final entry in _businessesWithProducts)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
+                  child: _BusinessCard(
+                    seller: entry.key,
+                    products: entry.value,
+                    onProductTap: (p) => _openDetail(context, p),
+                    onSellerTap: () => _openSellerProducts(context, entry.key, entry.value),
+                  ),
+                ),
+              ),
+            if (_businessesWithProducts.isNotEmpty)
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
           ],
         ),
       ),
@@ -264,6 +330,16 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (_) => ProductDetailScreen(product: product),
       ),
     ).then((_) => _loadData());
+  }
+
+  Future<void> _openSellerProducts(BuildContext context, Seller seller, List<Product> products) async {
+    final sorted = List<Product>.from(products)
+      ..sort((a, b) => b.isFeatured ? 1 : 0 - (a.isFeatured ? 1 : 0));
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _SellerProductsScreen(seller: seller, products: sorted),
+      ),
+    );
   }
 
   void _openSearch(BuildContext context) {
@@ -748,6 +824,245 @@ class _CategoryScroller extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// Tarjeta de negocio con logo + publicaciones.
+class _BusinessCard extends StatelessWidget {
+  const _BusinessCard({
+    required this.seller,
+    required this.products,
+    required this.onProductTap,
+    required this.onSellerTap,
+  });
+
+  final Seller seller;
+  final List<Product> products;
+  final void Function(Product) onProductTap;
+  final VoidCallback onSellerTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final displayProducts = products.take(4).toList();
+    final remaining = products.length - displayProducts.length;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
+        boxShadow: AppShadows.soft,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ─── Header con logo + info ────────────────────────
+          InkWell(
+            onTap: onSellerTap,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 26,
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.10),
+                    child: seller.logoUrl != null && seller.logoUrl!.isNotEmpty
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(26),
+                            child: Image.network(
+                              '${ApiService.baseUrl}${seller.logoUrl}',
+                              width: 52,
+                              height: 52,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => const Icon(
+                                Icons.store_rounded,
+                                color: AppColors.primaryDark,
+                                size: 26,
+                              ),
+                            ),
+                          )
+                        : const Icon(Icons.store_rounded,
+                            color: AppColors.primaryDark, size: 26),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                seller.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 15,
+                                ),
+                              ),
+                            ),
+                            if (seller.verified)
+                              const Padding(
+                                padding: EdgeInsets.only(left: 5),
+                                child: Icon(Icons.verified_rounded,
+                                    size: 16, color: AppColors.teal),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '${products.length} publicación${products.length == 1 ? '' : 'es'}',
+                          style: const TextStyle(
+                            color: AppColors.muted,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right_rounded,
+                      color: AppColors.muted, size: 20),
+                ],
+              ),
+            ),
+          ),
+          const Divider(height: 1, color: AppColors.border),
+          // ─── Productos ───────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+            child: SizedBox(
+              height: 110,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: displayProducts.length +
+                          (remaining > 0 ? 1 : 0),
+                      separatorBuilder: (_, _) => const SizedBox(width: 10),
+                      itemBuilder: (context, index) {
+                        if (index < displayProducts.length) {
+                          final product = displayProducts[index];
+                          return ProductCard(
+                            product: product,
+                            width: 118,
+                            onTap: () => onProductTap(product),
+                            heroEnabled: false,
+                          );
+                        }
+                        // ─── Botón "Ver todo" ────────────
+                        return SizedBox(
+                          width: 100,
+                          child: Material(
+                            color: AppColors.primary.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(8),
+                            child: InkWell(
+                              onTap: onSellerTap,
+                              borderRadius: BorderRadius.circular(8),
+                              child: const Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.grid_view_rounded,
+                                        color: AppColors.primary),
+                                    SizedBox(height: 6),
+                                    Text(
+                                      'Ver todo',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.primary,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Pantalla simple que muestra todos los productos de un negocio.
+class _SellerProductsScreen extends StatelessWidget {
+  const _SellerProductsScreen({
+    required this.seller,
+    required this.products,
+  });
+
+  final Seller seller;
+  final List<Product> products;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(
+          children: [
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+              child: const Icon(Icons.store_rounded,
+                  size: 16, color: AppColors.primaryDark),
+            ),
+            const SizedBox(width: 10),
+            Text(seller.name),
+          ],
+        ),
+      ),
+      body: SafeArea(
+        child: products.isEmpty
+            ? const Center(
+                child: Text(
+                  'Este negocio aún no tiene publicaciones.',
+                  style: TextStyle(color: AppColors.muted),
+                ),
+              )
+            : Padding(
+                padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final columns = constraints.maxWidth >= 720 ? 3 : 2;
+                    return GridView.builder(
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: columns,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        childAspectRatio: columns == 3 ? 0.72 : 0.64,
+                      ),
+                      itemCount: products.length,
+                      itemBuilder: (context, index) {
+                        return ProductCard(
+                          product: products[index],
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    ProductDetailScreen(product: products[index]),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
       ),
     );
   }

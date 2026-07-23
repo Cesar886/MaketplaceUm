@@ -3,6 +3,7 @@ const fs = require('fs');
 const sharp = require('sharp');
 const { products, sellers, categories, saveData } = require('../data');
 const { requireAuth } = require('../auth');
+const db = require('../database');
 
 // ─── Helper para subir imágenes: usa multer directamente ────
 const multer = require('multer');
@@ -49,6 +50,8 @@ function attachRelations(productsList) {
         name: p.seller,
         avatarInitials: p.seller.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
         major: '',
+        isBusiness: false,
+        logoUrl: null,
         rating: 0,
         reviews: 0,
         verified: false,
@@ -114,10 +117,14 @@ function register(app) {
 
       Promise.all(conversionPromises)
         .then((images) => {
+          const priceNum = Number(price);
+          const validStatuses = ['available', 'reserved', 'sold', 'negotiating', 'paused', 'unavailable'];
+          const status = req.body?.status || 'available';
+
           const newProduct = {
             id: productId,
             title,
-            price,
+            price: !isNaN(priceNum) && priceNum > 0 ? priceNum : 0,
             category,
             description,
             publishedAgo: 'Ahora mismo',
@@ -125,6 +132,11 @@ function register(app) {
             images,
             imageIcon: images.length > 0 ? null : 'inventory_2',
             imageColor: '#607D8B',
+            status: validStatuses.includes(status) ? status : 'available',
+            extras: Array.isArray(req.body?.extras) ? req.body.extras.map(e => ({
+              name: String(e.name || ''),
+              extraPrice: Number(e.extraPrice) || 0,
+            })).filter(e => e.name) : [],
             isFeatured: false,
             isOffer: false,
             isFavorite: false,
@@ -177,6 +189,42 @@ function register(app) {
     }
   });
 
+  // PATCH /api/products/:id/status – cambiar estado de disponibilidad (solo dueño)
+  const VALID_STATUSES = ['available', 'reserved', 'sold', 'negotiating', 'paused', 'unavailable'];
+  app.patch('/api/products/:id/status', requireAuth, (req, res) => {
+    try {
+      const product = products.find(p => p.id === req.params.id);
+      if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+
+      if (product.seller !== req.user.id) {
+        return res.status(403).json({ error: 'No tienes permiso para cambiar el estado de este producto' });
+      }
+
+      const { status } = req.body;
+      if (!status || !VALID_STATUSES.includes(status)) {
+        return res.status(400).json({
+          error: 'Estado inválido. Valores válidos: ' + VALID_STATUSES.join(', '),
+        });
+      }
+
+      product.status = status;
+
+      // Si se marca como vendido, la oferta expira automáticamente
+      if (status === 'sold' && product.isOffer) {
+        product.isOffer = false;
+        product.previousPrice = null;
+        product.discountLabel = null;
+        product.offerExpiresAt = null;
+      }
+
+      saveData();
+      res.json(attachRelations([product])[0]);
+    } catch (err) {
+      console.error('Error en PATCH /api/products/:id/status:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // PATCH /api/products/:id/favorite – toggle favorito
   app.patch('/api/products/:id/favorite', (req, res) => {
     const product = products.find(p => p.id === req.params.id);
@@ -184,6 +232,110 @@ function register(app) {
     product.isFavorite = !product.isFavorite;
     saveData();
     res.json(attachRelations([product])[0]);
+  });
+
+  // PATCH /api/products/:id/featured – toggle destacado (solo el dueño)
+  app.patch('/api/products/:id/featured', requireAuth, (req, res) => {
+    const product = products.find(p => p.id === req.params.id);
+    if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+
+    if (product.seller !== req.user.id) {
+      return res.status(403).json({ error: 'No tienes permiso para destacar este producto' });
+    }
+
+    product.isFeatured = !product.isFeatured;
+    saveData();
+    res.json(attachRelations([product])[0]);
+  });
+
+  // PATCH /api/products/:id – editar precio (solo el dueño)
+  // Incluye: historial de precios, umbral mínimo 5%, rate limit, expiración de oferta
+  app.patch('/api/products/:id', requireAuth, (req, res) => {
+    try {
+      const product = products.find(p => p.id === req.params.id);
+      if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+
+      if (product.seller !== req.user.id) {
+        return res.status(403).json({ error: 'No tienes permiso para editar este producto' });
+      }
+
+      const { price } = req.body;
+
+      // Solo procesamos si viene un precio (el endpoint es específico para editar precio)
+      if (price === undefined) {
+        return res.status(400).json({ error: 'El campo "price" es requerido' });
+      }
+
+      const newPrice = Number(price);
+
+      // ─── Validaciones ──────────────────────────────────────
+      if (!Number.isFinite(newPrice) || newPrice <= 0) {
+        return res.status(400).json({ error: 'El precio debe ser un número positivo mayor a cero' });
+      }
+
+      // ─── Extras opcionales ─────────────────────────────────
+      if (req.body.extras !== undefined) {
+        product.extras = Array.isArray(req.body.extras) ? req.body.extras.map(e => ({
+          name: String(e.name || ''),
+          extraPrice: Number(e.extraPrice) || 0,
+        })).filter(e => e.name) : [];
+      }
+
+      // ─── Rate limit: máximo 3 ediciones por hora ────────────
+      const editsInLastHour = db.countPriceEditsLastHour(product.id);
+      if (editsInLastHour >= 3) {
+        return res.status(429).json({
+          error: 'Has alcanzado el límite de ediciones de precio (3 por hora). Intenta más tarde.',
+        });
+      }
+
+      const oldPrice = typeof product.price === 'number'
+        ? product.price
+        : parseFloat(String(product.price || '0').replace(/[^0-9.]/g, '')) || 0;
+
+      // ─── Registrar en price_history ────────────────────────
+      db.insertPriceHistory(product.id, oldPrice, newPrice, req.user.id);
+
+      // ─── Calcular descuento contra el precio más alto de los últimos 30 días ──
+      const highestIn30d = db.getHighestPriceInLastDays(product.id, 30);
+      // También considerar el precio actual si es mayor que cualquier histórico
+      const referencePrice = Math.max(oldPrice, highestIn30d || 0);
+
+      if (newPrice < referencePrice && referencePrice > 0) {
+        const discountPercent = Math.round((1 - newPrice / referencePrice) * 100);
+
+        if (discountPercent >= 5) {
+          // ✅ Activar oferta
+          product.isOffer = true;
+          product.previousPrice = referencePrice;
+          product.discountLabel = `-${discountPercent}%`;
+          // Expira en 30 días sin nueva edición
+          const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+          product.offerExpiresAt = expiresAt;
+        } else {
+          // Descuento menor a 5% → no se marca como oferta
+          product.isOffer = false;
+          product.previousPrice = null;
+          product.discountLabel = null;
+          product.offerExpiresAt = null;
+        }
+      } else {
+        // Precio igual o mayor → quitar oferta
+        product.isOffer = false;
+        product.previousPrice = null;
+        product.discountLabel = null;
+        product.offerExpiresAt = null;
+      }
+
+      // ─── Actualizar precio y guardar ───────────────────────
+      product.price = newPrice;
+      product.publishedAgo = 'Editado ahora';
+      saveData();
+      res.json(attachRelations([product])[0]);
+    } catch (err) {
+      console.error('Error en PATCH /api/products/:id:', err);
+      res.status(500).json({ error: err.message });
+    }
   });
 }
 

@@ -119,6 +119,12 @@ class AuthProvider extends ChangeNotifier {
     required String phone,
     required String password,
     required AccountType userType,
+    // Campos específicos para negocio
+    String? businessName,
+    String? businessType,
+    String? responsibleName,
+    String? businessDescription,
+    String? logoPath,
   }) async {
     _loading = true;
     notifyListeners();
@@ -131,12 +137,24 @@ class AuthProvider extends ChangeNotifier {
       };
 
       final userId = await _db.registerUser(
-        name: name,
+        name: businessName ?? name,
         email: email,
         phone: phone,
         password: password,
         userType: dbType,
       );
+
+      // Si es negocio, crear perfil de negocio inmediatamente
+      if (userType == AccountType.negocio && businessType != null) {
+        await _db.createBusinessProfile(
+          userId: userId,
+          businessName: businessName ?? name,
+          businessType: businessType,
+          responsibleName: responsibleName,
+          businessDescription: businessDescription,
+          logoPath: logoPath,
+        );
+      }
 
       // Auto-login después de registro
       final user = await _db.getUserById(userId);
@@ -186,6 +204,9 @@ class AuthProvider extends ChangeNotifier {
   Future<void> createBusinessProfile({
     required String businessName,
     required String businessType,
+    String? responsibleName,
+    String? businessDescription,
+    String? logoPath,
     String? locationDescription,
     String? schedule,
   }) async {
@@ -193,6 +214,9 @@ class AuthProvider extends ChangeNotifier {
       userId: userId,
       businessName: businessName,
       businessType: businessType,
+      responsibleName: responsibleName,
+      businessDescription: businessDescription,
+      logoPath: logoPath,
       locationDescription: locationDescription,
       schedule: schedule,
     );
@@ -299,5 +323,19 @@ class AuthProvider extends ChangeNotifier {
   Future<Map<String, dynamic>?> getBusinessProfile() async {
     if (accountType != AccountType.negocio) return null;
     return await _db.getBusinessProfile(userId);
+  }
+
+  /// Asegura que exista un token de backend válido.
+  /// Si no hay token, reintenta la sincronización con el backend.
+  /// Devuelve `true` si hay token disponible después del intento.
+  Future<bool> ensureBackendSync() async {
+    if (_backendToken != null) return true;
+    if (_currentUser == null) return false;
+    try {
+      await _syncBackend();
+      return _backendToken != null;
+    } catch (_) {
+      return false;
+    }
   }
 }

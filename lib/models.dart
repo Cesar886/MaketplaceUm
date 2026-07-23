@@ -99,6 +99,8 @@ class Seller {
     required this.name,
     required this.avatarInitials,
     required this.major,
+    this.isBusiness = false,
+    this.logoUrl,
     required this.rating,
     required this.reviews,
     required this.verified,
@@ -110,6 +112,8 @@ class Seller {
       name: json['name'] as String,
       avatarInitials: json['avatarInitials'] as String,
       major: json['major'] as String,
+      isBusiness: json['isBusiness'] as bool? ?? false,
+      logoUrl: json['logoUrl'] as String?,
       rating: (json['rating'] as num).toDouble(),
       reviews: json['reviews'] as int,
       verified: json['verified'] as bool,
@@ -120,6 +124,8 @@ class Seller {
   final String name;
   final String avatarInitials;
   final String major;
+  final bool isBusiness;
+  final String? logoUrl;
   final double rating;
   final int reviews;
   final bool verified;
@@ -136,6 +142,54 @@ extension ListingStatusCopy on ListingStatus {
         return 'Destacada';
       case ListingStatus.expired:
         return 'Expirada';
+    }
+  }
+}
+
+/// Estados de disponibilidad que el dueño puede asignar a su producto.
+enum ProductAvailability {
+  available,
+  reserved,
+  sold,
+  negotiating,
+  paused,
+  unavailable;
+
+  String get label {
+    switch (this) {
+      case ProductAvailability.available:
+        return 'Disponible';
+      case ProductAvailability.reserved:
+        return 'Apartado';
+      case ProductAvailability.sold:
+        return 'Vendido';
+      case ProductAvailability.negotiating:
+        return 'En negociación';
+      case ProductAvailability.paused:
+        return 'Pausado';
+      case ProductAvailability.unavailable:
+        return 'No disponible';
+    }
+  }
+
+  /// Map from the backend string value.
+  static ProductAvailability? fromString(String? value) {
+    if (value == null) return null;
+    switch (value) {
+      case 'available':
+        return ProductAvailability.available;
+      case 'reserved':
+        return ProductAvailability.reserved;
+      case 'sold':
+        return ProductAvailability.sold;
+      case 'negotiating':
+        return ProductAvailability.negotiating;
+      case 'paused':
+        return ProductAvailability.paused;
+      case 'unavailable':
+        return ProductAvailability.unavailable;
+      default:
+        return null;
     }
   }
 }
@@ -158,7 +212,24 @@ class Product {
     this.isOffer = false,
     this.isFavorite = false,
     this.status,
+    this.availability,
+    this.extras = const [],
   });
+
+  /// Formatea un precio numérico a string con símbolo de moneda.
+  /// Ej: 250.0 → "\$250", 1500.0 → "\$1,500"
+  static String formatPrice(double price) {
+    final whole = price.floor();
+    final cents = ((price - whole) * 100).round();
+    final formatted = whole.toString().replaceAllMapped(
+      RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
+      (match) => '${match.group(1)},',
+    );
+    if (cents > 0) {
+      return '\$${formatted}.${cents.toString().padLeft(2, '0')}';
+    }
+    return '\$$formatted';
+  }
 
   factory Product.fromJson(Map<String, dynamic> json) {
     Seller parseSeller() {
@@ -215,10 +286,40 @@ class Product {
       }
     }
 
+    // Price viene del API como número; si por algún motivo es string, lo parseamos
+    final dynamic rawPrice = json['price'];
+    final double priceVal;
+    if (rawPrice is num) {
+      priceVal = rawPrice.toDouble();
+    } else if (rawPrice is String) {
+      priceVal = double.tryParse(rawPrice.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0.0;
+    } else {
+      priceVal = 0.0;
+    }
+
+    final dynamic rawPrev = json['previousPrice'];
+    final double? prevVal;
+    if (rawPrev is num) {
+      prevVal = rawPrev.toDouble();
+    } else if (rawPrev is String) {
+      prevVal = double.tryParse(rawPrev.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0.0;
+    } else {
+      prevVal = null;
+    }
+
+    List<ProductExtra> parseExtras() {
+      if (json['extras'] != null && json['extras'] is List) {
+        return (json['extras'] as List)
+            .map((e) => ProductExtra.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+      return [];
+    }
+
     return Product(
       id: json['id'] as String,
       title: json['title'] as String,
-      price: json['price'] as String,
+      price: priceVal,
       category: parseCategory(),
       description: json['description'] as String,
       publishedAgo: json['publishedAgo'] as String,
@@ -226,19 +327,22 @@ class Product {
       images: parsedImages,
       imageIcon: _parseIcon(json['imageIcon'] as String? ?? 'inventory_2'),
       imageColor: _parseColor(json['imageColor'] as String? ?? '#607D8B'),
-      previousPrice: json['previousPrice'] as String?,
+      previousPrice: prevVal,
       discountLabel: json['discountLabel'] as String?,
       isFeatured: json['isFeatured'] as bool? ?? false,
       isOffer: json['isOffer'] as bool? ?? false,
       isFavorite: json['isFavorite'] as bool? ?? false,
       status: parseStatus(),
+      availability:
+          ProductAvailability.fromString(json['status'] as String?),
+      extras: parseExtras(),
     );
   }
 
   final String id;
   final String title;
-  final String price;
-  final String? previousPrice;
+  final double price;
+  final double? previousPrice;
   final String? discountLabel;
   final MarketplaceCategory category;
   final String description;
@@ -251,6 +355,8 @@ class Product {
   final bool isOffer;
   final bool isFavorite;
   final ListingStatus? status;
+  final ProductAvailability? availability;
+  final List<ProductExtra> extras;
 }
 
 class CartItem {
@@ -300,4 +406,27 @@ class HighlightPlan {
   final String price;
   final String description;
   final int days;
+}
+
+/// Extra opcional que el comprador puede agregar a un producto.
+class ProductExtra {
+  const ProductExtra({
+    required this.name,
+    required this.extraPrice,
+  });
+
+  factory ProductExtra.fromJson(Map<String, dynamic> json) {
+    return ProductExtra(
+      name: json['name'] as String? ?? '',
+      extraPrice: (json['extraPrice'] as num?)?.toDouble() ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'extraPrice': extraPrice,
+  };
+
+  final String name;
+  final double extraPrice;
 }

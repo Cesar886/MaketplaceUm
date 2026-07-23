@@ -48,8 +48,12 @@ class ApiService {
   ///   hostname -I | awk '{print $1}'
   ///
   ///                  👇 CÁMBIAME si usas dispositivo físico
-  static const String _backendHost = '192.168.1.214';
-  static const int _backendPort = 3000;
+  // static const String _backendHost = '192.168.27.77';
+  // static const int _backendPort = 3000;
+
+      static const String _backendHost = 'localhost';
+      static const int _backendPort = 3000;
+
 
   /// URL base del backend. Usa [_backendHost] siempre.
   static String get baseUrl {
@@ -146,7 +150,9 @@ class ApiService {
     required String price,
     required String category,
     required String description,
-    List<String>? imagePaths, // rutas de archivos locales
+    String status = 'available',
+    List<Map<String, dynamic>> extras = const [],
+    List<String>? imagePaths,
   }) async {
     // Si hay imágenes, usar multipart
     if (imagePaths != null && imagePaths.isNotEmpty) {
@@ -155,8 +161,13 @@ class ApiService {
       request.fields['price'] = price;
       request.fields['category'] = category;
       request.fields['description'] = description;
+      request.fields['status'] = status;
+      request.fields['extras'] = jsonEncode(extras);
       // El seller se obtiene del JWT en el backend (requireAuth)
-      if (_token != null) request.headers['Authorization'] = 'Bearer $_token';
+      if (_token == null) {
+        throw Exception('No hay sesión activa en el backend. Vuelve a iniciar sesión.');
+      }
+      request.headers['Authorization'] = 'Bearer $_token';
 
       for (final path in imagePaths) {
         final file = await http.MultipartFile.fromPath('images', path);
@@ -175,6 +186,8 @@ class ApiService {
       'price': price,
       'category': category,
       'description': description,
+      'status': status,
+      'extras': extras,
     };
     final res = await _client.post(
       _uri('/products'),
@@ -194,6 +207,22 @@ class ApiService {
     return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  /// Actualiza el precio de un producto (solo el dueño).
+  /// Envía PATCH /api/products/:id con el nuevo precio numérico.
+  /// El backend calcula ofertas automáticas, historial, etc.
+  static Future<Product> updateProduct(String productId, num newPrice) async {
+    final res = await _client.patch(
+      _uri('/products/$productId'),
+      headers: _authHeaders,
+      body: jsonEncode({'price': newPrice}),
+    );
+    if (res.statusCode != 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['error'] ?? 'Error al actualizar precio');
+    }
+    return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
   /// Elimina un producto (solo el dueño puede hacerlo).
   static Future<void> deleteProduct(String productId) async {
     final res = await _client.delete(
@@ -204,6 +233,21 @@ class ApiService {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       throw Exception(body['error'] ?? 'Error al eliminar producto');
     }
+  }
+
+  /// Cambia el estado de disponibilidad de un producto (solo el dueño).
+  static Future<Product> updateProductStatus(
+      String productId, String status) async {
+    final res = await _client.patch(
+      _uri('/products/$productId/status'),
+      headers: _authHeaders,
+      body: jsonEncode({'status': status}),
+    );
+    if (res.statusCode != 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['error'] ?? 'Error al cambiar estado');
+    }
+    return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
   // ─── Sellers ────────────────────────────────────────────
@@ -219,6 +263,28 @@ class ApiService {
   static Future<Seller> getSeller(String id) async {
     final res = await _client.get(_uri('/sellers/$id'));
     if (res.statusCode != 200) throw Exception('Seller not found');
+    return Seller.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  /// Sube el logo de un negocio al servidor.
+  /// [sellerId] es el ID del vendedor en el backend.
+  /// [imagePath] es la ruta local del archivo.
+  /// Devuelve el Seller actualizado.
+  static Future<Seller> uploadBusinessLogo({
+    required String sellerId,
+    required String imagePath,
+  }) async {
+    final request = http.MultipartRequest(
+      'POST',
+      _uri('/sellers/$sellerId/logo'),
+    );
+    request.files.add(await http.MultipartFile.fromPath('logo', imagePath));
+    if (_token != null) {
+      request.headers['Authorization'] = 'Bearer $_token';
+    }
+    final streamed = await _client.send(request);
+    final res = await http.Response.fromStream(streamed);
+    if (res.statusCode != 200) throw Exception('Error al subir logo: ${res.statusCode}');
     return Seller.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 

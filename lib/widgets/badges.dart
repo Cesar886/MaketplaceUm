@@ -91,6 +91,66 @@ class VerifiedBadge extends StatelessWidget {
   }
 }
 
+class AvailabilityBadge extends StatelessWidget {
+  const AvailabilityBadge({super.key, required this.availability});
+
+  final ProductAvailability availability;
+
+  @override
+  Widget build(BuildContext context) {
+    final (Color foreground, Color background, Color border) =
+        switch (availability) {
+      ProductAvailability.available => (
+        AppColors.success,
+        AppColors.success.withValues(alpha: 0.08),
+        AppColors.success.withValues(alpha: 0.18),
+      ),
+      ProductAvailability.reserved => (
+        AppColors.orange,
+        AppColors.orange.withValues(alpha: 0.08),
+        AppColors.orange.withValues(alpha: 0.18),
+      ),
+      ProductAvailability.sold => (
+        AppColors.danger,
+        AppColors.danger.withValues(alpha: 0.08),
+        AppColors.danger.withValues(alpha: 0.18),
+      ),
+      ProductAvailability.negotiating => (
+        AppColors.primary,
+        AppColors.primary.withValues(alpha: 0.08),
+        AppColors.primary.withValues(alpha: 0.18),
+      ),
+      ProductAvailability.paused => (
+        AppColors.muted,
+        AppColors.muted.withValues(alpha: 0.08),
+        AppColors.muted.withValues(alpha: 0.18),
+      ),
+      ProductAvailability.unavailable => (
+        AppColors.muted,
+        AppColors.muted.withValues(alpha: 0.08),
+        AppColors.muted.withValues(alpha: 0.18),
+      ),
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: border),
+      ),
+      child: Text(
+        availability.label,
+        style: TextStyle(
+          color: foreground,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
 /// Badge contextual que muestra el nivel de verificación según el tipo de cuenta.
 class VerificationStatusBadge extends StatelessWidget {
   const VerificationStatusBadge({

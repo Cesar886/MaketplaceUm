@@ -214,7 +214,7 @@ class _OfferHeroBand extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    product.price,
+                    Product.formatPrice(product.price),
                     style: const TextStyle(
                       color: AppColors.primaryDark,
                       fontWeight: FontWeight.w700,

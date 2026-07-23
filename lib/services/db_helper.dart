@@ -29,8 +29,9 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _createTables,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -81,17 +82,34 @@ class DBHelper {
 
     // Perfil de NEGOCIO (puestos dentro o cerca del campus)
     await db.execute('''
-      CREATE TABLE business_profiles (
+      CREATE TABLE IF NOT EXISTS business_profiles (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
         business_name TEXT NOT NULL,
         business_type TEXT NOT NULL, -- ej. 'comida', 'papeleria', 'servicios'
+        responsible_name TEXT,
+        business_description TEXT,
+        logo_path TEXT,
         location_description TEXT,   -- ej. 'Puesto 4, patio central'
         schedule TEXT,               -- ej. 'Lun-Vie 8am-4pm'
         admin_confirmed INTEGER NOT NULL DEFAULT 0, -- verificación manual del admin, no documento
         FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
       )
     ''');
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      try {
+        await db.execute('ALTER TABLE business_profiles ADD COLUMN responsible_name TEXT');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE business_profiles ADD COLUMN business_description TEXT');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE business_profiles ADD COLUMN logo_path TEXT');
+      } catch (_) {}
+    }
   }
 
   // ---------- Utilidad: hash de contraseña con bcrypt ----------
@@ -187,6 +205,9 @@ class DBHelper {
     required int userId,
     required String businessName,
     required String businessType,
+    String? responsibleName,
+    String? businessDescription,
+    String? logoPath,
     String? locationDescription,
     String? schedule,
   }) async {
@@ -196,6 +217,9 @@ class DBHelper {
       'user_id': userId,
       'business_name': businessName,
       'business_type': businessType,
+      'responsible_name': responsibleName,
+      'business_description': businessDescription,
+      'logo_path': logoPath,
       'location_description': locationDescription,
       'schedule': schedule,
       'admin_confirmed': 0,

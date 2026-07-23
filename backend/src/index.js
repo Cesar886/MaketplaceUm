@@ -91,6 +91,7 @@ app.post('/api/auth/register', (req, res) => {
     name: name.trim(),
     avatarInitials: computeInitials(name),
     major,
+    isBusiness: userType === 'negocio',
     rating: 0,
     reviews: 0,
     verified: false,

@@ -234,7 +234,7 @@ class _MyListingTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      product.price,
+                      Product.formatPrice(product.price),
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,

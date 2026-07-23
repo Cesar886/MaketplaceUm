@@ -34,20 +34,20 @@ class ProductCard extends StatelessWidget {
 
     final card = DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: product.isFeatured || product.isOffer ? AppShadows.soft : null,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: product.isFeatured || product.isOffer ? AppShadows.lifted : null,
       ),
       child: Material(
         color: AppColors.surface,
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
           side: BorderSide(color: borderColor),
         ),
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(9),
             child: horizontal
                 ? _HorizontalProductCard(
                     product: product,
@@ -78,16 +78,28 @@ class _GridProductCard extends StatelessWidget {
         _HeroProductImage(
           product: product,
           enabled: heroEnabled,
-          child: MockProductImage(product: product, height: 104),
+          child: MockProductImage(product: product, height: 100),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         _PriceBlock(product: product),
-        const SizedBox(height: 5),
+        const SizedBox(height: 4),
         Text(
           product.title,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontWeight: FontWeight.w700, height: 1.18),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          product.description,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: AppColors.muted,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            height: 1.3,
+          ),
         ),
         const Spacer(),
         Row(
@@ -104,10 +116,8 @@ class _GridProductCard extends StatelessWidget {
                 ),
               ),
             ),
-            if (product.isOffer)
-              OfferBadge(label: product.discountLabel, compact: true)
-            else if (product.isFeatured)
-              const FeaturedBadge(compact: true),
+            if (product.availability != null)
+              AvailabilityBadge(availability: product.availability!),
           ],
         ),
       ],
@@ -142,16 +152,7 @@ class _HorizontalProductCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: _PriceBlock(product: product)),
-                  if (product.isOffer)
-                    OfferBadge(label: product.discountLabel, compact: true)
-                  else if (product.isFeatured)
-                    const FeaturedBadge(compact: true),
-                ],
-              ),
+              _PriceBlock(product: product),
               const SizedBox(height: 6),
               Text(
                 product.title,
@@ -160,6 +161,18 @@ class _HorizontalProductCard extends StatelessWidget {
                 style: const TextStyle(
                   fontWeight: FontWeight.w700,
                   height: 1.18,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                product.description,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  height: 1.3,
                 ),
               ),
               const Spacer(),
@@ -191,6 +204,10 @@ class _HorizontalProductCard extends StatelessWidget {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
+                  if (product.availability != null) ...[
+                    const SizedBox(width: 6),
+                    AvailabilityBadge(availability: product.availability!),
+                  ],
                 ],
               ),
             ],
@@ -232,18 +249,18 @@ class _PriceBlock extends StatelessWidget {
       runSpacing: 1,
       children: [
         Text(
-          product.price,
+          Product.formatPrice(product.price),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
-            fontSize: 17,
+            fontSize: 16,
             fontWeight: FontWeight.w700,
             color: AppColors.primaryDark,
           ),
         ),
         if (product.previousPrice != null)
           Text(
-            product.previousPrice!,
+            Product.formatPrice(product.previousPrice!),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
@@ -253,6 +270,10 @@ class _PriceBlock extends StatelessWidget {
               decoration: TextDecoration.lineThrough,
             ),
           ),
+        if (product.isOffer)
+          OfferBadge(label: product.discountLabel, compact: true)
+        else if (product.isFeatured)
+          const FeaturedBadge(compact: true),
       ],
     );
   }

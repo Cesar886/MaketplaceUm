@@ -308,63 +308,44 @@ class _VerificationScreenState extends State<VerificationScreen> {
   Widget _buildBusinessForm() {
     return Column(
       children: [
-        TextFormField(
-          controller: _businessNameController,
-          decoration: const InputDecoration(
-            labelText: 'Nombre del negocio *',
-            prefixIcon: Icon(Icons.store_rounded),
-          ),
-        ),
-        const SizedBox(height: 14),
-        DropdownButtonFormField<String>(
-          initialValue: _businessType,
-          decoration: const InputDecoration(
-            labelText: 'Tipo de negocio',
-            prefixIcon: Icon(Icons.category_rounded),
-          ),
-          items: businessTypes.map((t) {
-            return DropdownMenuItem(value: t, child: Text(t));
-          }).toList(),
-          onChanged: (v) => setState(() => _businessType = v!),
-        ),
-        const SizedBox(height: 14),
-        TextFormField(
-          controller: _locationController,
-          decoration: const InputDecoration(
-            labelText: 'Ubicación dentro del campus',
-            hintText: 'Ej. Puesto 4, patio central',
-            prefixIcon: Icon(Icons.place_rounded),
-          ),
-        ),
-        const SizedBox(height: 14),
-        TextFormField(
-          controller: _scheduleController,
-          decoration: const InputDecoration(
-            labelText: 'Horario',
-            hintText: 'Ej. Lun-Vie 8am-4pm',
-            prefixIcon: Icon(Icons.schedule_rounded),
-          ),
-        ),
-        const SizedBox(height: 14),
         Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.gold.withValues(alpha: 0.08),
+            color: AppColors.teal.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.gold.withValues(alpha: 0.22)),
+            border: Border.all(color: AppColors.teal.withValues(alpha: 0.22)),
           ),
           child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.info_rounded, color: AppColors.gold, size: 20),
-              SizedBox(width: 10),
+              Icon(Icons.check_circle_rounded,
+                  color: AppColors.teal, size: 24),
+              SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  'Un administrador confirmará tu puesto. No necesitas subir documentos personales.',
-                  style: TextStyle(
-                    color: AppColors.primaryDark,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Negocio registrado',
+                      style: TextStyle(
+                        color: AppColors.teal,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
+                    ),
+                    SizedBox(height: 6),
+                    Text(
+                      'Los datos de tu negocio ya fueron guardados durante el registro. '
+                      'Un administrador revisará y confirmará tu puesto manualmente. '
+                      'Te notificaremos cuando sea aprobado.',
+                      style: TextStyle(
+                        color: AppColors.primaryDark,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

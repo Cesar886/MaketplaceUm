@@ -311,7 +311,7 @@ class _CartItemTile extends StatelessWidget {
                       crossAxisAlignment: WrapCrossAlignment.end,
                       children: [
                         Text(
-                          product.price,
+                          Product.formatPrice(product.price),
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w700,
@@ -320,7 +320,7 @@ class _CartItemTile extends StatelessWidget {
                         ),
                         if (product.previousPrice != null)
                           Text(
-                            product.previousPrice!,
+                            Product.formatPrice(product.previousPrice!),
                             style: const TextStyle(
                               color: AppColors.muted,
                               decoration: TextDecoration.lineThrough,
@@ -505,9 +505,8 @@ class _SummaryRow extends StatelessWidget {
   }
 }
 
-int _priceValue(String price) {
-  final digits = price.replaceAll(RegExp(r'[^0-9]'), '');
-  return int.tryParse(digits) ?? 0;
+int _priceValue(double price) {
+  return price.round();
 }
 
 String _money(int value) {

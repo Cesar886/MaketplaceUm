@@ -140,7 +140,7 @@ final mockProducts = <Product>[
   Product(
     id: 'p1',
     title: 'MacBook Air M1 2020 en buen estado',
-    price: r'$9,800',
+    price: 9800.0,
     category: mockCategories[2],
     description:
         'Laptop ligera para clases, tareas y edicion basica. Tiene 8 GB de RAM, 256 GB SSD, cargador original y bateria en buen estado. Entrego en biblioteca o cafeteria central.',
@@ -154,7 +154,7 @@ final mockProducts = <Product>[
   Product(
     id: 'p2',
     title: 'Pack de libros de Anatomia + apuntes',
-    price: r'$850',
+    price: 850.0,
     category: mockCategories[0],
     description:
         'Incluye atlas, cuaderno de laboratorio y apuntes resumidos por unidades. Ideal para primer y segundo semestre. Sin hojas faltantes.',
@@ -167,7 +167,7 @@ final mockProducts = <Product>[
   Product(
     id: 'p3',
     title: 'Tutoria de Calculo I antes de examenes',
-    price: r'$120/h',
+    price: 120.0,
     category: mockCategories[4],
     description:
         'Sesiones de repaso con ejercicios tipo examen, limites, derivadas y aplicaciones. Puedo atender en biblioteca o por videollamada.',
@@ -180,7 +180,7 @@ final mockProducts = <Product>[
   Product(
     id: 'p4',
     title: 'Mini refri para dormitorio',
-    price: r'$1,750',
+    price: 1750.0,
     category: mockCategories[7],
     description:
         'Frigobar compacto, enfria bien y cabe debajo de escritorio. Tiene pequenas marcas de uso pero funciona sin problema.',
@@ -193,8 +193,8 @@ final mockProducts = <Product>[
   Product(
     id: 'p5',
     title: 'iPad 9na gen con Apple Pencil generico',
-    price: r'$5,200',
-    previousPrice: r'$5,900',
+    price: 5200.0,
+    previousPrice: 5900.0,
     discountLabel: '-12%',
     isOffer: true,
     category: mockCategories[2],
@@ -209,8 +209,8 @@ final mockProducts = <Product>[
   Product(
     id: 'p6',
     title: 'Paquete semanal de comida saludable',
-    price: r'$390',
-    previousPrice: r'$450',
+    price: 390.0,
+    previousPrice: 450.0,
     discountLabel: '-13%',
     isOffer: true,
     category: mockCategories[5],
@@ -225,7 +225,7 @@ final mockProducts = <Product>[
   Product(
     id: 'p7',
     title: 'Guitarra acustica Yamaha F310',
-    price: r'$2,400',
+    price: 2400.0,
     category: mockCategories[7],
     description:
         'Guitarra con cuerdas nuevas, afinador y funda suave. Ideal para clases, ensayos o ministerio de musica.',
@@ -238,8 +238,8 @@ final mockProducts = <Product>[
   Product(
     id: 'p8',
     title: 'Sudadera UM talla M color azul',
-    price: r'$280',
-    previousPrice: r'$350',
+    price: 280.0,
+    previousPrice: 350.0,
     discountLabel: '-20%',
     isOffer: true,
     category: mockCategories[3],
@@ -253,7 +253,7 @@ final mockProducts = <Product>[
   Product(
     id: 'p9',
     title: 'Apuntes de Bioquimica ordenados por tema',
-    price: r'$90',
+    price: 90.0,
     category: mockCategories[1],
     description:
         'Resumen digital impreso con mapas, tablas y preguntas frecuentes de clase. Entrego engargolado.',
@@ -265,8 +265,8 @@ final mockProducts = <Product>[
   Product(
     id: 'p10',
     title: 'Audifonos Sony WH-CH520',
-    price: r'$750',
-    previousPrice: r'$920',
+    price: 750.0,
+    previousPrice: 920.0,
     discountLabel: '-18%',
     isOffer: true,
     category: mockCategories[2],
@@ -280,8 +280,8 @@ final mockProducts = <Product>[
   Product(
     id: 'p11',
     title: 'Calculadora Casio fx-991EX',
-    price: r'$430',
-    previousPrice: r'$520',
+    price: 430.0,
+    previousPrice: 520.0,
     discountLabel: '-17%',
     isOffer: true,
     category: mockCategories[2],
@@ -296,7 +296,7 @@ final mockProducts = <Product>[
   Product(
     id: 'p12',
     title: 'Silla de escritorio ergonomica',
-    price: r'$620',
+    price: 620.0,
     category: mockCategories[7],
     description:
         'Silla comoda para estudiar, con altura ajustable. El tapizado esta limpio y sin rasgaduras.',
@@ -308,7 +308,7 @@ final mockProducts = <Product>[
   Product(
     id: 'p13',
     title: 'Diseno de presentaciones para exposiciones',
-    price: r'$150',
+    price: 150.0,
     category: mockCategories[4],
     description:
         'Armo presentaciones limpias con portada, graficas y estructura clara. Entrego editable en PowerPoint o Canva.',
@@ -320,8 +320,8 @@ final mockProducts = <Product>[
   Product(
     id: 'p14',
     title: 'Uniforme clinico blanco talla S',
-    price: r'$360',
-    previousPrice: r'$480',
+    price: 360.0,
+    previousPrice: 480.0,
     discountLabel: '-25%',
     isOffer: true,
     category: mockCategories[3],
@@ -335,7 +335,7 @@ final mockProducts = <Product>[
   Product(
     id: 'p15',
     title: 'Kit de dibujo tecnico con escuadras',
-    price: r'$210',
+    price: 210.0,
     category: mockCategories[0],
     description:
         'Incluye escuadras, compas, escalimetro y portaminas. Lo use un semestre en dibujo arquitectonico.',
@@ -347,8 +347,8 @@ final mockProducts = <Product>[
   Product(
     id: 'p16',
     title: 'Monitor Samsung 24 pulgadas Full HD',
-    price: r'$1,900',
-    previousPrice: r'$2,300',
+    price: 1900.0,
+    previousPrice: 2300.0,
     discountLabel: '-17%',
     isOffer: true,
     category: mockCategories[2],
@@ -362,7 +362,7 @@ final mockProducts = <Product>[
   Product(
     id: 'p17',
     title: 'Mesa plegable para cuarto',
-    price: r'$320',
+    price: 320.0,
     category: mockCategories[7],
     description:
         'Mesa compacta para estudiar o comer. Se dobla facil y cabe bajo la cama.',
@@ -374,7 +374,7 @@ final mockProducts = <Product>[
   Product(
     id: 'p18',
     title: 'Servicio de impresion y engargolado',
-    price: r'$1.50 hoja',
+    price: 1.5,
     category: mockCategories[4],
     description:
         'Impresiones en blanco y negro o color. Tambien hago engargolados para proyectos finales. Entrega en biblioteca.',
@@ -386,8 +386,8 @@ final mockProducts = <Product>[
   Product(
     id: 'p19',
     title: 'Mochila impermeable para laptop',
-    price: r'$480',
-    previousPrice: r'$620',
+    price: 480.0,
+    previousPrice: 620.0,
     discountLabel: '-23%',
     isOffer: true,
     category: mockCategories[3],
@@ -401,8 +401,8 @@ final mockProducts = <Product>[
   Product(
     id: 'p20',
     title: 'Termo Stanley 887 ml color verde',
-    price: r'$520',
-    previousPrice: r'$690',
+    price: 520.0,
+    previousPrice: 690.0,
     discountLabel: '-25%',
     isOffer: true,
     category: mockCategories[7],
@@ -416,7 +416,7 @@ final mockProducts = <Product>[
   Product(
     id: 'p21',
     title: 'Libro de Psicologia del desarrollo',
-    price: r'$300',
+    price: 300.0,
     category: mockCategories[0],
     description:
         'Edicion reciente con subrayado moderado. Incluye separadores por capitulo y resumen digital.',
@@ -428,8 +428,8 @@ final mockProducts = <Product>[
   Product(
     id: 'p22',
     title: 'Cafetera individual para dormitorio',
-    price: r'$390',
-    previousPrice: r'$500',
+    price: 390.0,
+    previousPrice: 500.0,
     discountLabel: '-22%',
     isOffer: true,
     category: mockCategories[7],
@@ -443,7 +443,7 @@ final mockProducts = <Product>[
   Product(
     id: 'p23',
     title: 'Clases de guitarra para principiantes',
-    price: r'$100/h',
+    price: 100.0,
     category: mockCategories[4],
     description:
         'Acordes basicos, rasgueos, lectura sencilla y preparacion para participar en grupos de alabanza.',
@@ -455,7 +455,7 @@ final mockProducts = <Product>[
   Product(
     id: 'p24',
     title: 'Router WiFi TP-Link doble banda',
-    price: r'$650',
+    price: 650.0,
     category: mockCategories[2],
     description:
         'Router en perfecto estado, ideal para departamento compartido. Incluye adaptador y cable Ethernet.',
@@ -468,7 +468,7 @@ final mockProducts = <Product>[
   Product(
     id: 'f1',
     title: 'Chilaquiles del dia con pollo',
-    price: r'$55',
+    price: 55.0,
     category: mockCategories[5],
     description:
         'Chilaquiles verdes o rojos con pollo, crema y queso. Servidos de 8:00 AM a 11:00 AM en la cafeteria central. Incluye bebida pequena.',
@@ -481,7 +481,7 @@ final mockProducts = <Product>[
   Product(
     id: 'f2',
     title: 'Quesadilla de harina con ingredientes',
-    price: r'$30',
+    price: 30.0,
     category: mockCategories[5],
     description:
         'Quesadilla de harina preparada al momento con queso Oaxaca. Puedes agregar pollo, tinga o champiñones por \$10 extra.',
@@ -493,8 +493,8 @@ final mockProducts = <Product>[
   Product(
     id: 'f3',
     title: 'Burrito de pollo o carne',
-    price: r'$45',
-    previousPrice: r'$52',
+    price: 45.0,
+    previousPrice: 52.0,
     discountLabel: '-13%',
     isOffer: true,
     category: mockCategories[5],
@@ -509,7 +509,7 @@ final mockProducts = <Product>[
   Product(
     id: 'f4',
     title: 'Agua fresca de horchata 500ml',
-    price: r'$18',
+    price: 18.0,
     category: mockCategories[5],
     description:
         'Agua fresca de horchata natural, preparada diariamente. Tambien tenemos jamaica y limon.',
@@ -521,7 +521,7 @@ final mockProducts = <Product>[
   Product(
     id: 'f5',
     title: 'Torta de jamon con verduras',
-    price: r'$38',
+    price: 38.0,
     category: mockCategories[5],
     description:
         'Torta en telera crujiente con jamon, queso, aguacate, lechuga y tomate. Preparada al momento.',
@@ -533,8 +533,8 @@ final mockProducts = <Product>[
   Product(
     id: 'f6',
     title: 'Papas fritas con salsa y queso',
-    price: r'$25',
-    previousPrice: r'$32',
+    price: 25.0,
+    previousPrice: 32.0,
     discountLabel: '-22%',
     isOffer: true,
     category: mockCategories[5],
@@ -548,7 +548,7 @@ final mockProducts = <Product>[
   Product(
     id: 'f7',
     title: 'Hot dog completo',
-    price: r'$28',
+    price: 28.0,
     category: mockCategories[5],
     description:
         'Hot dog con salchicha, pan suave, salsa de tomate, mostaza, mayonesa, cebolla y jalapenos.',
@@ -560,8 +560,8 @@ final mockProducts = <Product>[
   Product(
     id: 'f8',
     title: 'Combo estudiante: torta + agua',
-    price: r'$50',
-    previousPrice: r'$56',
+    price: 50.0,
+    previousPrice: 56.0,
     discountLabel: '-11%',
     isOffer: true,
     category: mockCategories[5],
@@ -578,7 +578,7 @@ final mockProducts = <Product>[
   Product(
     id: 'h1',
     title: 'Cuarto amueblado cerca de biblioteca',
-    price: r'$2,800/mes',
+    price: 2800.0,
     category: mockCategories[6],
     description:
         'Cuarto individual con cama, escritorio y closet. Bano compartido con 2 personas. Agua y luz incluidos.',
@@ -591,7 +591,7 @@ final mockProducts = <Product>[
   Product(
     id: 'h2',
     title: 'Departamento compartido 2 habs',
-    price: r'$3,500/mes',
+    price: 3500.0,
     category: mockCategories[6],
     description:
         'Departamento con sala, cocina equipada, 2 habitaciones y bano. Internet incluido.',
@@ -603,7 +603,7 @@ final mockProducts = <Product>[
   Product(
     id: 'h3',
     title: 'Residencia femenil cerca de la uni',
-    price: r'$2,500/mes',
+    price: 2500.0,
     category: mockCategories[6],
     description:
         'Residencia exclusiva para mujeres. Cuarto individual con closet, areas comunes, cocina y lavanderia.',
@@ -616,8 +616,8 @@ final mockProducts = <Product>[
   Product(
     id: 'h4',
     title: 'Sofa cama en sala de departamento',
-    price: r'$1,800/mes',
-    previousPrice: r'$2,100/mes',
+    price: 1800.0,
+    previousPrice: 2100.0,
     discountLabel: '-14%',
     isOffer: true,
     category: mockCategories[6],
@@ -656,7 +656,7 @@ final mockFoodProducts = <Product>[
   Product(
     id: 'f1',
     title: 'Chilaquiles del dia con pollo',
-    price: r'$55',
+    price: 55.0,
     category: mockCategories[5],
     description:
         'Chilaquiles verdes o rojos con pollo, crema y queso. Servidos de 8:00 AM a 11:00 AM en la cafeteria central. Incluye bebida pequena.',
@@ -670,7 +670,7 @@ final mockFoodProducts = <Product>[
   Product(
     id: 'f2',
     title: 'Quesadilla de harina con ingredientes',
-    price: r'$30',
+    price: 30.0,
     category: mockCategories[5],
     description:
         'Quesadilla de harina preparada al momento con queso Oaxaca. Puedes agregar pollo, tinga o champiñones por \$10 extra.',
@@ -682,8 +682,8 @@ final mockFoodProducts = <Product>[
   Product(
     id: 'f3',
     title: 'Burrito de pollo o carne',
-    price: r'$45',
-    previousPrice: r'$52',
+    price: 45.0,
+    previousPrice: 52.0,
     discountLabel: '-13%',
     isOffer: true,
     category: mockCategories[5],
@@ -698,7 +698,7 @@ final mockFoodProducts = <Product>[
   Product(
     id: 'f4',
     title: 'Agua fresca de horchata 500ml',
-    price: r'$18',
+    price: 18.0,
     category: mockCategories[5],
     description:
         'Agua fresca de horchata natural, preparada diariamente. Tambien tenemos jamaica y limon. Pregunta por el combo con comida.',
@@ -710,7 +710,7 @@ final mockFoodProducts = <Product>[
   Product(
     id: 'f5',
     title: 'Torta de jamon con verduras',
-    price: r'$38',
+    price: 38.0,
     category: mockCategories[5],
     description:
         'Torta en telera crujiente con jamon, queso, aguacate, lechuga y tomate. Preparada al momento en la cafeteria.',
@@ -722,8 +722,8 @@ final mockFoodProducts = <Product>[
   Product(
     id: 'f6',
     title: 'Papas fritas con salsa y queso',
-    price: r'$25',
-    previousPrice: r'$32',
+    price: 25.0,
+    previousPrice: 32.0,
     discountLabel: '-22%',
     isOffer: true,
     category: mockCategories[5],
@@ -737,7 +737,7 @@ final mockFoodProducts = <Product>[
   Product(
     id: 'f7',
     title: 'Hot dog completo',
-    price: r'$28',
+    price: 28.0,
     category: mockCategories[5],
     description:
         'Hot dog con salchicha, pan suave, salsa de tomate, mostaza, mayonesa, cebolla y jalapenos. Tu eliges los ingredientes.',
@@ -749,8 +749,8 @@ final mockFoodProducts = <Product>[
   Product(
     id: 'f8',
     title: 'Combo estudiante: torta + agua',
-    price: r'$50',
-    previousPrice: r'$56',
+    price: 50.0,
+    previousPrice: 56.0,
     discountLabel: '-11%',
     isOffer: true,
     category: mockCategories[5],
@@ -771,7 +771,7 @@ final mockHousingProducts = <Product>[
   Product(
     id: 'h1',
     title: 'Cuarto amueblado cerca de biblioteca',
-    price: r'$2,800/mes',
+    price: 2800.0,
     category: mockCategories[6],
     description:
         'Cuarto individual con cama, escritorio y closet. Bano compartido con 2 personas. Agua y luz incluidos. A 3 min caminando de la biblioteca central.',
@@ -784,7 +784,7 @@ final mockHousingProducts = <Product>[
   Product(
     id: 'h2',
     title: 'Departamento compartido 2 habitaciones',
-    price: r'$3,500/mes',
+    price: 3500.0,
     category: mockCategories[6],
     description:
         'Departamento con sala, cocina equipada, 2 habitaciones y bano. Rentamos una habitacion. Ideal para estudiante responsable. Internet incluido.',
@@ -796,7 +796,7 @@ final mockHousingProducts = <Product>[
   Product(
     id: 'h3',
     title: 'Residencia femenil cerca de la uni',
-    price: r'$2,500/mes',
+    price: 2500.0,
     category: mockCategories[6],
     description:
         'Residencia exclusiva para mujeres. Cuarto individual con closet, areas comunes, cocina y lavanderia. Reglas claras y ambiente de estudio.',
@@ -809,7 +809,7 @@ final mockHousingProducts = <Product>[
   Product(
     id: 'h4',
     title: 'Sofa cama en sala de departamento',
-    price: r'$1,800/mes',
+    price: 1800.0,
     category: mockCategories[6],
     description:
         'Sofa cama individual en sala de departamento amplio. Compartes con 2 roomies tranquilos. Ideal para presupuesto ajustado. Servicios incluidos.',
@@ -818,7 +818,7 @@ final mockHousingProducts = <Product>[
     imageIcon: Icons.weekend_rounded,
     imageColor: Color(0xFF5D4037),
     isOffer: true,
-    previousPrice: r'$2,100/mes',
+    previousPrice: 2100.0,
     discountLabel: '-14%',
   ),
 ];
@@ -827,7 +827,7 @@ final mockOwnListings = <Product>[
   Product(
     id: 'o1',
     title: 'Bicicleta urbana rodada 26',
-    price: r'$1,200',
+    price: 1200.0,
     category: mockCategories[7],
     description:
         'Bicicleta para moverse dentro del campus. Requiere ajuste menor de frenos.',
@@ -840,7 +840,7 @@ final mockOwnListings = <Product>[
   Product(
     id: 'o2',
     title: 'Libro de Ingles academico',
-    price: r'$220',
+    price: 220.0,
     category: mockCategories[0],
     description: 'Libro usado durante un semestre, con pocas marcas en lapiz.',
     publishedAgo: 'Destaca 4 dias mas',
@@ -853,7 +853,7 @@ final mockOwnListings = <Product>[
   Product(
     id: 'o3',
     title: 'Lampara de escritorio LED',
-    price: r'$160',
+    price: 160.0,
     category: mockCategories[7],
     description: 'Lampara blanca con tres niveles de intensidad.',
     publishedAgo: 'Expirada hace 2 dias',
@@ -865,7 +865,7 @@ final mockOwnListings = <Product>[
   Product(
     id: 'o4',
     title: 'Tenis deportivos Nike talla 27',
-    price: r'$690',
+    price: 690.0,
     category: mockCategories[3],
     description:
         'Tenis con poco uso para correr en pista o gimnasio. Suela en buen estado.',
@@ -878,7 +878,7 @@ final mockOwnListings = <Product>[
   Product(
     id: 'o5',
     title: 'Paquete de notas de Fisiologia',
-    price: r'$140',
+    price: 140.0,
     category: mockCategories[1],
     description:
         'Notas impresas por sistemas, con esquemas y preguntas de repaso para examenes parciales.',
@@ -892,7 +892,7 @@ final mockOwnListings = <Product>[
   Product(
     id: 'o6',
     title: 'Organizador plastico de cajones',
-    price: r'$110',
+    price: 110.0,
     category: mockCategories[7],
     description:
         'Organizador para escritorio o closet. Limpio, sin piezas quebradas.',

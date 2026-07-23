@@ -22,6 +22,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   final _descriptionController = TextEditingController();
   final _priceController = TextEditingController();
   String _selectedCategoryId = 'other';
+  String _selectedStatus = 'available';
   String? _selectedPlanId;
   List<MarketplaceCategory> _categories = [];
   List<HighlightPlan> _plans = [];
@@ -31,6 +32,11 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   // ─── Imágenes reales ─────────────────────────────────────
   final List<XFile> _selectedImages = [];
   final _picker = ImagePicker();
+
+  // ─── Extras opcionales ───────────────────────────────────
+  final List<ProductExtra> _extras = [];
+  final _extraNameController = TextEditingController();
+  final _extraPriceController = TextEditingController();
 
   @override
   void initState() {
@@ -88,8 +94,16 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     final description = _descriptionController.text.trim();
     final price = _priceController.text.trim();
 
-    if (title.isEmpty || description.isEmpty || price.isEmpty) {
-      _showError('Completa todos los campos requeridos');
+    if (title.isEmpty) {
+      _showError('Escribe un título para el producto');
+      return;
+    }
+    if (description.isEmpty) {
+      _showError('Escribe una descripción del producto');
+      return;
+    }
+    if (price.isEmpty) {
+      _showError('Escribe el precio del producto');
       return;
     }
     if (_selectedImages.isEmpty) {
@@ -99,13 +113,23 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
 
     setState(() => _publishing = true);
     try {
+      // Asegurar que tenemos un token JWT del backend antes de publicar
+      final auth = context.read<AuthProvider>();
+      final synced = await auth.ensureBackendSync();
+      if (!synced) {
+        _showError('Error de autenticación. Vuelve a iniciar sesión.');
+        return;
+      }
+
       // El vendedor se obtiene del JWT en el backend (requireAuth),
       // no se envía desde el cliente.
       await ApiService.createProduct(
         title: title,
-        price: '\$$price',
+        price: price,
         category: _selectedCategoryId,
         description: description,
+        status: _selectedStatus,
+        extras: _extras.map((e) => e.toJson()).toList(),
         imagePaths: _selectedImages.map((xf) => xf.path).toList(),
       );
       if (!mounted) return;
@@ -130,11 +154,212 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     );
   }
 
+  void _addExtra() {
+    if (_extras.length >= 8) {
+      _showError('Máximo 8 extras por producto');
+      return;
+    }
+    final name = _extraNameController.text.trim();
+    final priceText = _extraPriceController.text.trim();
+    if (name.isEmpty) return;
+    final price = double.tryParse(priceText);
+    if (price == null || price <= 0) {
+      _showError('Ingresa un precio válido mayor a cero');
+      return;
+    }
+    setState(() {
+      _extras.add(ProductExtra(name: name, extraPrice: price));
+      _extraNameController.clear();
+      _extraPriceController.clear();
+    });
+  }
+
+  void _removeExtra(int index) {
+    setState(() => _extras.removeAt(index));
+  }
+
+  IconData _statusIcon(ProductAvailability status) {
+    switch (status) {
+      case ProductAvailability.available:
+        return Icons.check_circle_rounded;
+      case ProductAvailability.reserved:
+        return Icons.bookmark_rounded;
+      case ProductAvailability.sold:
+        return Icons.sell_rounded;
+      case ProductAvailability.negotiating:
+        return Icons.handshake_rounded;
+      case ProductAvailability.paused:
+        return Icons.pause_circle_rounded;
+      case ProductAvailability.unavailable:
+        return Icons.block_rounded;
+    }
+  }
+
+  Color _statusColor(ProductAvailability status) {
+    switch (status) {
+      case ProductAvailability.available:
+        return const Color(0xFF2E7D32);
+      case ProductAvailability.reserved:
+        return const Color(0xFFE65100);
+      case ProductAvailability.sold:
+        return const Color(0xFFC62828);
+      case ProductAvailability.negotiating:
+        return const Color(0xFF1565C0);
+      case ProductAvailability.paused:
+        return const Color(0xFF6A1B9A);
+      case ProductAvailability.unavailable:
+        return const Color(0xFF546E7A);
+    }
+  }
+
+  Widget _buildExtrasSection() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceMuted,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.add_box_rounded, color: AppColors.primary),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('Extras opcionales',
+                    style: Theme.of(context).textTheme.titleMedium),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text('Opcional',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, color: AppColors.muted)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Agrega opciones que el comprador pueda añadir (ej. "Huevo +\$10", "Con estuche +\$50").',
+            style: TextStyle(
+                color: AppColors.muted,
+                fontWeight: FontWeight.w600,
+                height: 1.35),
+          ),
+          const SizedBox(height: 12),
+          // Lista de extras agregados
+          ...List.generate(_extras.length, (i) {
+            final extra = _extras[i];
+            return Padding(
+              padding: EdgeInsets.only(bottom: i < _extras.length - 1 ? 8 : 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      extra.name,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  Text(
+                    '+${Product.formatPrice(extra.extraPrice)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primaryDark,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: () => _removeExtra(i),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: AppColors.danger.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(Icons.close_rounded,
+                          size: 16, color: AppColors.danger),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+          if (_extras.isNotEmpty) const SizedBox(height: 10),
+          // Agregar nuevo extra
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  controller: _extraNameController,
+                  decoration: const InputDecoration(
+                    hintText: 'Nombre del extra',
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(),
+                  ),
+                  textCapitalization: TextCapitalization.sentences,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 1,
+                child: TextField(
+                  controller: _extraPriceController,
+                  decoration: const InputDecoration(
+                    hintText: '+ \$0',
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Material(
+                color: _extras.length >= 8
+                    ? AppColors.border
+                    : AppColors.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                child: InkWell(
+                  onTap: _extras.length >= 8 ? null : _addExtra,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Icon(Icons.add_rounded,
+                        color: _extras.length >= 8
+                            ? AppColors.muted
+                            : AppColors.primary,
+                        size: 22),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
     _priceController.dispose();
+    _extraNameController.dispose();
+    _extraPriceController.dispose();
     super.dispose();
   }
 
@@ -273,6 +498,33 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
               setState(() => _selectedCategoryId = value);
             },
           ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: _selectedStatus,
+            decoration: const InputDecoration(
+              labelText: 'Estado del producto',
+              hintText: '¿En qué estado está tu producto?',
+            ),
+            items: [
+              for (final status in ProductAvailability.values)
+                DropdownMenuItem(
+                  value: status.name,
+                  child: Row(
+                    children: [
+                      Icon(_statusIcon(status), size: 20, color: _statusColor(status)),
+                      const SizedBox(width: 10),
+                      Text(status.label),
+                    ],
+                  ),
+                ),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() => _selectedStatus = value);
+            },
+          ),
+          const SizedBox(height: 12),
+          _buildExtrasSection(),
           const SizedBox(height: 24),
           _HighlightSection(
             plans: _plans,

@@ -10,7 +10,6 @@ import '../widgets/badges.dart';
 import '../widgets/mock_product_image.dart';
 import 'auth/login_screen.dart';
 import 'cart_screen.dart';
-import 'home_screen.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({super.key, required this.product});
@@ -24,8 +23,29 @@ class ProductDetailScreen extends StatefulWidget {
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
   int _photoIndex = 0;
   late bool _favorite = widget.product.isFavorite;
+  late Product _product;
 
-  Product get product => widget.product;
+  Product get product => _product;
+
+  @override
+  void initState() {
+    super.initState();
+    _product = widget.product;
+  }
+
+  /// Refresca el producto desde la API y actualiza el estado local.
+  Future<void> _refreshProductFromApi() async {
+    try {
+      final fresh = await ApiService.getProduct(product.id);
+      if (!mounted) return;
+      setState(() {
+        _product = fresh;
+        _favorite = fresh.isFavorite;
+      });
+    } catch (_) {
+      // Si falla, mantenemos los datos locales
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +54,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         slivers: [
           SliverAppBar(
             pinned: true,
-            expandedHeight: 330,
+            expandedHeight: 260,
             leading: Padding(
               padding: const EdgeInsets.all(8),
               child: IconButton.filled(
@@ -78,12 +98,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ),
             ],
             flexibleSpace: FlexibleSpaceBar(
-              background: Hero(
-                tag: 'product-${product.id}',
-                child: MockProductImage(
-                  product: product,
-                  photoIndex: _photoIndex,
-                  borderRadius: BorderRadius.zero,
+              background: GestureDetector(
+                onTap: () => _showFullScreenImage(context),
+                child: Hero(
+                  tag: 'product-${product.id}',
+                  child: MockProductImage(
+                    product: product,
+                    photoIndex: _photoIndex,
+                    borderRadius: BorderRadius.zero,
+                  ),
                 ),
               ),
             ),
@@ -123,13 +146,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     runSpacing: 6,
                     children: [
                       Text(
-                        product.price,
+                        Product.formatPrice(product.price),
                         style: Theme.of(context).textTheme.headlineMedium
                             ?.copyWith(color: AppColors.primaryDark),
                       ),
                       if (product.previousPrice != null)
                         Text(
-                          product.previousPrice!,
+                          Product.formatPrice(product.previousPrice!),
                           style: const TextStyle(
                             color: AppColors.muted,
                             fontSize: 18,
@@ -139,6 +162,25 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         ),
                       if (product.isOffer)
                         OfferBadge(label: product.discountLabel),
+                      // Botón editar precio (solo dueño)
+                      if (context.read<AuthProvider>().backendSellerId ==
+                          product.seller.id)
+                        InkWell(
+                          onTap: () => _showEditPriceDialog(context),
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Icon(
+                              Icons.edit_rounded,
+                              size: 18,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 14),
@@ -156,6 +198,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         label: product.publishedAgo,
                         color: AppColors.muted,
                       ),
+                      // Badge de disponibilidad
+                      if (product.availability != null)
+                        _StatusBadge(availability: product.availability!),
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -172,6 +217,58 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       color: AppColors.ink,
                     ),
                   ),
+                  // ─── Extras opcionales ─────────────────────────
+                  if (product.extras.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    Text(
+                      'Extras opcionales',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (final extra in product.extras) ...[
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 5),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.circle_rounded,
+                                      size: 6, color: AppColors.muted),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      extra.name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.ink,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    '+${Product.formatPrice(extra.extraPrice)}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.primaryDark,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (extra != product.extras.last)
+                              const Divider(height: 1, color: AppColors.border),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 26),
                   Text(
                     'Vendedor',
@@ -193,6 +290,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     icon: const Icon(Icons.flag_outlined),
                     label: const Text('Reportar publicacion'),
                   ),
+                  const SizedBox(height: 16),
+                  // Selector de estado (solo visible para el dueño)
+                  if (context.read<AuthProvider>().backendSellerId ==
+                      product.seller.id)
+                    _StatusSelector(
+                      productId: product.id,
+                      currentStatus: product.availability,
+                      onChanged: (_) => _refreshProductFromApi(),
+                    ),
                 ],
               ),
             ),
@@ -269,7 +375,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Future<void> _openWhatsApp(BuildContext context) async {
     final name = product.seller.name;
     final title = product.title;
-    final price = product.price;
+    final price = Product.formatPrice(product.price);
     final text = 'Hola $name, me interesa "$title" ($price) que vi en Mercadito UM.';
     final encoded = Uri.encodeComponent(text);
     final candidates = <Uri>[
@@ -321,11 +427,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Producto eliminado')),
       );
-      // Volver al inicio
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-        (_) => false,
-      );
+      // Volver a la pantalla anterior (HomeScreen se recarga solo)
+      Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -355,6 +458,128 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       return;
     }
     action();
+  }
+
+  /// Muestra un diálogo para editar el precio del producto.
+  Future<void> _showEditPriceDialog(BuildContext context) async {
+    final priceController = TextEditingController(
+      text: product.price.toStringAsFixed(product.price == product.price.floor() ? 0 : 2),
+    );
+
+    final result = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Editar precio'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Ingresa el nuevo precio para este producto.'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: priceController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              autofocus: true,
+              decoration: const InputDecoration(
+                prefixText: '\$ ',
+                labelText: 'Nuevo precio',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = double.tryParse(priceController.text);
+              if (value == null || value <= 0) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                    content: Text('Ingresa un precio válido mayor a cero'),
+                    backgroundColor: AppColors.danger,
+                  ),
+                );
+                return;
+              }
+              Navigator.of(ctx).pop(value);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null || !mounted) return;
+
+    try {
+      await ApiService.updateProduct(product.id, result);
+      if (!mounted) return;
+      // Refrescar producto completo desde la API para reflejar ofertas, badges, etc.
+      await _refreshProductFromApi();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Precio actualizado correctamente')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    }
+  }
+
+  /// Abre la imagen del producto en pantalla completa con zoom.
+  void _showFullScreenImage(BuildContext context) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        pageBuilder: (context, _, __) {
+          return Scaffold(
+            backgroundColor: Colors.black.withValues(alpha: 0.95),
+            body: Stack(
+              fit: StackFit.expand,
+              children: [
+                GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: InteractiveViewer(
+                    minScale: 0.5,
+                    maxScale: 4.0,
+                    child: Center(
+                      child: Hero(
+                        tag: 'product-${product.id}',
+                        child: MockProductImage(
+                          product: product,
+                          photoIndex: _photoIndex,
+                          borderRadius: BorderRadius.zero,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 8,
+                  right: 16,
+                  child: IconButton.filled(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.white24,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 }
 
@@ -530,5 +755,218 @@ class _SellerCard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Badge que muestra el estado de disponibilidad con color.
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.availability});
+
+  final ProductAvailability availability;
+
+  Color get _color {
+    switch (availability) {
+      case ProductAvailability.available:
+        return const Color(0xFF2E7D32);
+      case ProductAvailability.reserved:
+        return const Color(0xFFE65100);
+      case ProductAvailability.sold:
+        return const Color(0xFFC62828);
+      case ProductAvailability.negotiating:
+        return const Color(0xFF1565C0);
+      case ProductAvailability.paused:
+        return const Color(0xFF6A1B9A);
+      case ProductAvailability.unavailable:
+        return const Color(0xFF546E7A);
+    }
+  }
+
+  IconData get _icon {
+    switch (availability) {
+      case ProductAvailability.available:
+        return Icons.check_circle_rounded;
+      case ProductAvailability.reserved:
+        return Icons.bookmark_rounded;
+      case ProductAvailability.sold:
+        return Icons.sell_rounded;
+      case ProductAvailability.negotiating:
+        return Icons.handshake_rounded;
+      case ProductAvailability.paused:
+        return Icons.pause_circle_rounded;
+      case ProductAvailability.unavailable:
+        return Icons.block_rounded;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+      decoration: BoxDecoration(
+        color: _color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(_icon, size: 16, color: _color),
+          const SizedBox(width: 6),
+          Text(
+            availability.label,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: _color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Selector de estado tipo dropdown (solo lo ve el dueño del producto).
+class _StatusSelector extends StatefulWidget {
+  const _StatusSelector({
+    required this.productId,
+    required this.currentStatus,
+    required this.onChanged,
+  });
+
+  final String productId;
+  final ProductAvailability? currentStatus;
+  final ValueChanged<ProductAvailability> onChanged;
+
+  @override
+  State<_StatusSelector> createState() => _StatusSelectorState();
+}
+
+class _StatusSelectorState extends State<_StatusSelector> {
+  late String _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = widget.currentStatus?.name ?? 'available';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Estado del producto',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(width: 12),
+            if (widget.currentStatus != null)
+              _StatusBadge(availability: widget.currentStatus!),
+          ],
+        ),
+        const SizedBox(height: 14),
+        DropdownButtonFormField<String>(
+          initialValue: _selected,
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+            contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          ),
+          items: [
+            for (final status in ProductAvailability.values)
+              DropdownMenuItem(
+                value: status.name,
+                child: Row(
+                  children: [
+                    Icon(
+                      _iconFor(status),
+                      size: 20,
+                      color: _colorFor(status),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      status.label,
+                      style: TextStyle(
+                        fontWeight: status.name == _selected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+          onChanged: (value) {
+            if (value == null || value == _selected) return;
+            setState(() => _selected = value);
+            _updateStatus(context, value);
+          },
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Elige cómo quieres mostrar la disponibilidad de tu producto.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: AppColors.muted,
+                fontWeight: FontWeight.w500,
+              ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _updateStatus(BuildContext context, String statusName) async {
+    try {
+      final statusEnum = ProductAvailability.values.firstWhere(
+        (s) => s.name == statusName,
+      );
+      await ApiService.updateProductStatus(widget.productId, statusName);
+      if (context.mounted) widget.onChanged(statusEnum);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Estado cambiado a "${statusEnum.label}"')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Color _colorFor(ProductAvailability status) {
+    switch (status) {
+      case ProductAvailability.available:
+        return const Color(0xFF2E7D32);
+      case ProductAvailability.reserved:
+        return const Color(0xFFE65100);
+      case ProductAvailability.sold:
+        return const Color(0xFFC62828);
+      case ProductAvailability.negotiating:
+        return const Color(0xFF1565C0);
+      case ProductAvailability.paused:
+        return const Color(0xFF6A1B9A);
+      case ProductAvailability.unavailable:
+        return const Color(0xFF546E7A);
+    }
+  }
+
+  IconData _iconFor(ProductAvailability status) {
+    switch (status) {
+      case ProductAvailability.available:
+        return Icons.check_circle_rounded;
+      case ProductAvailability.reserved:
+        return Icons.bookmark_rounded;
+      case ProductAvailability.sold:
+        return Icons.sell_rounded;
+      case ProductAvailability.negotiating:
+        return Icons.handshake_rounded;
+      case ProductAvailability.paused:
+        return Icons.pause_circle_rounded;
+      case ProductAvailability.unavailable:
+        return Icons.block_rounded;
+    }
   }
 }

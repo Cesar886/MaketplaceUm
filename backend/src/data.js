@@ -9,6 +9,9 @@ const categories = db.getCategories();
 const sellers = db.getSellers();
 const highlightPlans = db.getHighlightPlans();
 
+// Limpiar ofertas expiradas al arrancar
+db.expireStaleOffers();
+
 // Cargar products, cart y ownListings desde SQLite
 let products = db.getAllProducts();
 
@@ -28,13 +31,15 @@ let ownListings = db.getAllListings().map(row => ({
 function registerSeller(sellerData) {
   // Insertar en SQLite
   db.getDb().prepare(`
-    INSERT OR IGNORE INTO sellers (id, name, avatarInitials, major, rating, reviews, verified)
-    VALUES (@id, @name, @avatarInitials, @major, @rating, @reviews, @verified)
+    INSERT OR IGNORE INTO sellers (id, name, avatarInitials, major, isBusiness, logoUrl, rating, reviews, verified)
+    VALUES (@id, @name, @avatarInitials, @major, @isBusiness, @logoUrl, @rating, @reviews, @verified)
   `).run({
     ...sellerData,
+    isBusiness: sellerData.isBusiness ? 1 : 0,
     verified: sellerData.verified ? 1 : 0,
     rating: sellerData.rating ?? 0,
     reviews: sellerData.reviews ?? 0,
+    logoUrl: sellerData.logoUrl || null,
   });
   // Refrescar la lista en memoria desde DB
   sellers.length = 0;
