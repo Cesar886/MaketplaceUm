@@ -1,4 +1,6 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/api_service.dart';
 import '../services/db_helper.dart';
 
 enum AccountType { estudiante, particular, negocio }
@@ -51,9 +53,15 @@ class AuthProvider extends ChangeNotifier {
   Map<String, dynamic>? _currentUser;
   bool _loading = false;
 
+  // ─── Sincronización con backend ─────────────────────────────
+  String? _backendToken;
+  String? _backendSellerId;
+
   Map<String, dynamic>? get currentUser => _currentUser;
   bool get isLoggedIn => _currentUser != null;
   bool get isLoading => _loading;
+  String? get backendToken => _backendToken;
+  String? get backendSellerId => _backendSellerId;
 
   int get userId => _currentUser!['id'] as int;
   AccountType get accountType =>
@@ -71,6 +79,35 @@ class AuthProvider extends ChangeNotifier {
         return 'Particular';
       case AccountType.negocio:
         return 'Negocio';
+    }
+  }
+
+  // ─── Sincronización con backend ────────────────────────────
+
+  /// Sincroniza el usuario local con el backend:
+  /// llama a POST /api/auth/register (idempotente), guarda el token JWT
+  /// y el sellerId del backend.
+  Future<void> _syncBackend() async {
+    if (_currentUser == null) return;
+    try {
+      final result = await ApiService.registerBackendUser(
+        name: _currentUser!['name'] as String,
+        email: _currentUser!['email'] as String,
+        userType: _currentUser!['user_type'] as String,
+      );
+      _backendToken = result['token'] as String;
+      _backendSellerId = result['seller']['id'] as String;
+
+      // Configurar el token en ApiService para futuros requests autenticados
+      ApiService.setToken(_backendToken!);
+
+      // Persistir token y sellerId
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('backend_token', _backendToken!);
+      await prefs.setString('backend_seller_id', _backendSellerId!);
+    } catch (_) {
+      // Si falla la sincronización, el usuario aún puede usar la app offline
+      // pero deberá sincronizar después para publicar productos
     }
   }
 
@@ -104,6 +141,11 @@ class AuthProvider extends ChangeNotifier {
       // Auto-login después de registro
       final user = await _db.getUserById(userId);
       _currentUser = user;
+      await _saveSession(userId);
+
+      // Sincronizar con backend (crear vendedor y obtener JWT)
+      await _syncBackend();
+
       return userId;
     } finally {
       _loading = false;
@@ -164,6 +206,49 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ─── Persistencia de sesión ────────────────────────────────
+
+  static const _sessionKey = 'logged_user_id';
+
+  Future<void> _saveSession(int userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_sessionKey, userId);
+  }
+
+  Future<void> _clearSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_sessionKey);
+    await prefs.remove('backend_token');
+    await prefs.remove('backend_seller_id');
+  }
+
+  /// Intenta restaurar la sesión desde shared_preferences.
+  /// Devuelve true si se pudo restaurar.
+  Future<bool> tryAutoLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt(_sessionKey);
+    if (userId == null) return false;
+
+    final user = await _db.getUserById(userId);
+    if (user == null) {
+      // El usuario fue eliminado de la DB — limpiar sesión
+      await _clearSession();
+      return false;
+    }
+
+    _currentUser = user;
+
+    // Restaurar token de backend si existe
+    _backendToken = prefs.getString('backend_token');
+    _backendSellerId = prefs.getString('backend_seller_id');
+    if (_backendToken != null) {
+      ApiService.setToken(_backendToken!);
+    }
+
+    notifyListeners();
+    return true;
+  }
+
   // ─── Login / Logout ────────────────────────────────────────
 
   Future<bool> login(String email, String password) async {
@@ -174,6 +259,11 @@ class AuthProvider extends ChangeNotifier {
       final user = await _db.login(email, password);
       if (user != null) {
         _currentUser = user;
+        await _saveSession(user['id'] as int);
+
+        // Sincronizar con backend (obtener JWT y sellerId)
+        await _syncBackend();
+
         _loading = false;
         notifyListeners();
         return true;
@@ -188,8 +278,12 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  void logout() {
+  Future<void> logout() async {
     _currentUser = null;
+    _backendToken = null;
+    _backendSellerId = null;
+    ApiService.clearToken();
+    await _clearSession();
     notifyListeners();
   }
 

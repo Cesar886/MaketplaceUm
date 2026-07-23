@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../app_theme.dart';
 import '../models.dart';
@@ -9,6 +10,7 @@ import '../widgets/badges.dart';
 import '../widgets/mock_product_image.dart';
 import 'auth/login_screen.dart';
 import 'cart_screen.dart';
+import 'home_screen.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({super.key, required this.product});
@@ -55,6 +57,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       : Icons.favorite_border_rounded,
                 ),
               ),
+              // Botón eliminar: solo visible si el producto es del usuario actual
+              if (context.read<AuthProvider>().backendSellerId ==
+                  product.seller.id)
+                IconButton.filledTonal(
+                  onPressed: () => _confirmDelete(context),
+                  icon: const Icon(Icons.delete_rounded),
+                  style: IconButton.styleFrom(
+                    foregroundColor: AppColors.danger,
+                  ),
+                ),
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: IconButton.filledTonal(
@@ -169,10 +181,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   _SellerCard(seller: product.seller),
                   const SizedBox(height: 18),
                   OutlinedButton.icon(
-                    onPressed: () => _showMockMessage(
-                      context,
-                      'Reporte guardado como accion visual',
-                    ),
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Reporte enviado. Revisaremos la publicación.',
+                          ),
+                        ),
+                      );
+                    },
                     icon: const Icon(Icons.flag_outlined),
                     label: const Text('Reportar publicacion'),
                   ),
@@ -215,9 +232,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       await ApiService.addToCart(product.id,
                           meetingPoint: 'Biblioteca central');
                       if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('Producto agregado al carrito')),
+                      // Navegar al carrito después de agregar
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                            builder: (_) => const CartScreen()),
                       );
                     } catch (e) {
                       if (!context.mounted) return;
@@ -233,10 +251,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () => _showMockMessage(
-                    context,
-                    'Contacto por WhatsApp simulado',
-                  ),
+                  onPressed: () => _openWhatsApp(context),
                   icon: const Icon(Icons.chat_rounded),
                   label: const Text('WhatsApp'),
                   style: ElevatedButton.styleFrom(
@@ -251,10 +266,72 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  void _showMockMessage(BuildContext context, String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+  Future<void> _openWhatsApp(BuildContext context) async {
+    final name = product.seller.name;
+    final title = product.title;
+    final price = product.price;
+    final text = 'Hola $name, me interesa "$title" ($price) que vi en Mercadito UM.';
+    final encoded = Uri.encodeComponent(text);
+    final candidates = <Uri>[
+      Uri.parse('https://wa.me/?text=$encoded'),
+      Uri.parse('whatsapp://send?text=$encoded'),
+    ];
+
+    for (final uri in candidates) {
+      try {
+        final launched = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
+        if (launched) return;
+      } catch (_) {}
+    }
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('No se pudo abrir WhatsApp')),
+    );
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar producto'),
+        content: Text('¿Seguro que quieres eliminar "${product.title}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await ApiService.deleteProduct(product.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Producto eliminado')),
+      );
+      // Volver al inicio
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (_) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al eliminar: $e')),
+      );
+    }
   }
 
   /// Si no hay sesión activa, pide login. Si sí, ejecuta [action].

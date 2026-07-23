@@ -1,12 +1,21 @@
 const { requireAuth } = require('../auth');
-const { cart, products, saveData } = require('../data');
+const { cart, products, sellers, categories, saveData } = require('../data');
 
 function register(app) {
+  function enrichProduct(p) {
+    if (!p) return null;
+    return {
+      ...p,
+      sellerObj: sellers.find(s => s.id === p.seller) || null,
+      categoryObj: categories.find(c => c.id === p.category) || null,
+    };
+  }
+
   // GET /api/cart
   app.get('/api/cart', (_req, res) => {
     const enriched = cart.map(item => ({
       ...item,
-      product: products.find(p => p.id === item.productId) || null,
+      product: enrichProduct(products.find(p => p.id === item.productId) || null),
     }));
     res.json(enriched);
   });
@@ -34,7 +43,7 @@ function register(app) {
     saveData();
     const enriched = cart.map(item => ({
       ...item,
-      product: products.find(p => p.id === item.productId) || null,
+      product: enrichProduct(products.find(p => p.id === item.productId) || null),
     }));
     res.status(201).json(enriched);
   });
@@ -50,7 +59,7 @@ function register(app) {
 
     const enriched = cart.map(i => ({
       ...i,
-      product: products.find(p => p.id === i.productId) || null,
+      product: enrichProduct(products.find(p => p.id === i.productId) || null),
     }));
     res.json(enriched);
   });

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../app_theme.dart';
 import '../models.dart';
 import '../services/api_service.dart';
 import '../widgets/product_card.dart';
@@ -70,12 +71,12 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget build(BuildContext context) {
     final results = _filteredResults;
 
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(title: const Text('Buscar')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
         children: [
-          Text('Buscar', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 14),
           TextField(
             controller: _queryController,
             onChanged: (_) => setState(() {}),
@@ -158,8 +159,8 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
               const SizedBox(height: 12),
             ],
-        ],
-      ),
+          ],
+        ),
     );
   }
 

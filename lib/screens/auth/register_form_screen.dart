@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../../app_theme.dart';
 import '../../providers/auth_provider.dart';
+import '../legal/terms_screen.dart';
+import '../legal/privacy_screen.dart';
 import 'verification_screen.dart';
 
 class RegisterFormScreen extends StatefulWidget {
@@ -23,6 +25,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
   final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
+  bool _acceptedTerms = false;
 
   final _typeLabels = <String, String>{
     'estudiante': 'Estudiante',
@@ -146,7 +149,99 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 14),
+                // ─── Aceptación de términos ─────────────────────
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _acceptedTerms
+                          ? AppColors.border
+                          : AppColors.danger.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Checkbox(
+                        value: _acceptedTerms,
+                        onChanged: (v) =>
+                            setState(() => _acceptedTerms = v ?? false),
+                        activeColor: AppColors.primary,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: RichText(
+                            textScaler:
+                                MediaQuery.of(context).textScaler,
+                            text: TextSpan(
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppColors.ink,
+                                height: 1.4,
+                              ),
+                              children: [
+                                const TextSpan(
+                                  text: 'Acepto los ',
+                                ),
+                                WidgetSpan(
+                                  alignment: PlaceholderAlignment.baseline,
+                                  baseline: TextBaseline.alphabetic,
+                                  child: GestureDetector(
+                                    onTap: () => Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => const TermsScreen(),
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'Términos y Condiciones',
+                                      style: TextStyle(
+                                        color: AppColors.primary,
+                                        fontWeight: FontWeight.w700,
+                                        decoration:
+                                            TextDecoration.underline,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const TextSpan(
+                                  text: ' y la ',
+                                ),
+                                WidgetSpan(
+                                  alignment: PlaceholderAlignment.baseline,
+                                  baseline: TextBaseline.alphabetic,
+                                  child: GestureDetector(
+                                    onTap: () => Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => const PrivacyScreen(),
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'Política de Privacidad',
+                                      style: TextStyle(
+                                        color: AppColors.primary,
+                                        fontWeight: FontWeight.w700,
+                                        decoration:
+                                            TextDecoration.underline,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const TextSpan(text: '.'),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -154,6 +249,17 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                         ? null
                         : () async {
                             if (!_formKey.currentState!.validate()) return;
+                            if (!_acceptedTerms) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Debes aceptar los Términos y Condiciones '
+                                    'y la Política de Privacidad para continuar.',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
                             try {
                               await auth.registerUser(
                                 name: _nameController.text.trim(),

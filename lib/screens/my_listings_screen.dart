@@ -40,32 +40,31 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const SafeArea(
-        child: Center(child: CircularProgressIndicator()),
+      return const Scaffold(
+        body: SafeArea(
+          child: Center(child: CircularProgressIndicator()),
+        ),
       );
     }
 
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Mis publicaciones',
-                  style: Theme.of(context).textTheme.headlineSmall,
+    return Scaffold(
+      appBar: AppBar(title: const Text('Mis publicaciones')),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+          children: [
+            Row(
+              children: [
+                const Spacer(),
+                IconButton.filled(
+                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Nueva publicacion mock')),
+                  ),
+                  icon: const Icon(Icons.add_rounded),
                 ),
-              ),
-              IconButton.filled(
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Nueva publicacion mock')),
-                ),
-                icon: const Icon(Icons.add_rounded),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
+              ],
+            ),
+            const SizedBox(height: 8),
           const Text(
             'Administra tus productos activos, destacados y expirados.',
             style: TextStyle(
@@ -81,6 +80,7 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
             const SizedBox(height: 12),
           ],
         ],
+        ),
       ),
     );
   }

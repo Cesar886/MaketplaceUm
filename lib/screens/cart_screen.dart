@@ -67,70 +67,66 @@ class _CartScreenState extends State<CartScreen> {
     final auth = context.watch<AuthProvider>();
 
     if (_loading) {
-      return const SafeArea(
-        child: Center(child: CircularProgressIndicator()),
+      return const Scaffold(
+        body: SafeArea(
+          child: Center(child: CircularProgressIndicator()),
+        ),
       );
     }
 
     if (!auth.isLoggedIn) {
-      return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.shopping_bag_outlined,
-                  size: 64, color: AppColors.muted),
-              const SizedBox(height: 20),
-              Text(
-                'Tu carrito',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Inicia sesión para guardar productos y coordinar compras.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppColors.muted,
-                  fontWeight: FontWeight.w600,
+      return Scaffold(
+        appBar: AppBar(title: const Text('Carrito')),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.shopping_bag_outlined,
+                    size: 64, color: AppColors.muted),
+                const SizedBox(height: 20),
+                Text(
+                  'Tu carrito',
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
-              ),
-              const SizedBox(height: 28),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                        builder: (_) => const LoginScreen()),
+                const SizedBox(height: 10),
+                const Text(
+                  'Inicia sesión para guardar productos y coordinar compras.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontWeight: FontWeight.w600,
                   ),
-                  child: const Text('Iniciar sesión'),
                 ),
-              ),
-            ],
+                const SizedBox(height: 28),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                          builder: (_) => const LoginScreen()),
+                    ),
+                    child: const Text('Iniciar sesión'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
     }
 
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+    return Scaffold(
+      appBar: AppBar(title: const Text('Carrito')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Carrito',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-              ),
-              _CartCountBadge(
-                count: _quantities.fold<int>(
-                  0,
-                  (sum, quantity) => sum + quantity,
-                ),
-              ),
-            ],
+          _CartCountBadge(
+            count: _quantities.fold<int>(
+              0,
+              (sum, quantity) => sum + quantity,
+            ),
           ),
           const SizedBox(height: 6),
           const Text(

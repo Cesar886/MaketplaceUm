@@ -99,6 +99,8 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
 
     setState(() => _publishing = true);
     try {
+      // El vendedor se obtiene del JWT en el backend (requireAuth),
+      // no se envía desde el cliente.
       await ApiService.createProduct(
         title: title,
         price: '\$$price',

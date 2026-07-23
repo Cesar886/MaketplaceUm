@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
 import '../models.dart';
+import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/product_card.dart';
 import '../widgets/section_header.dart';
-import 'cart_screen.dart';
-import 'offers_screen.dart';
+import 'main_shell.dart';
 import 'product_detail_screen.dart';
 import 'search_screen.dart';
 
@@ -22,8 +23,11 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Product> _products = [];
   List<MarketplaceCategory> _categories = [];
   List<CartItem> _cart = [];
+  List<HighlightPlan> _highlightPlans = [];
   bool _loading = true;
+  bool _hasPublished = false;
   String? _error;
+  String? _selectedCategoryId;
 
   @override
   void initState() {
@@ -38,12 +42,28 @@ class _HomeScreenState extends State<HomeScreen> {
         ApiService.getProducts(),
         ApiService.getCategories(),
         ApiService.getCart(),
+        ApiService.getHighlightPlans(),
       ]);
       if (!mounted) return;
+
+      // Verificar si el usuario ha publicado artículos
+      final auth = context.read<AuthProvider>();
+      bool hasPublished = false;
+      if (auth.isLoggedIn) {
+        try {
+          final listings = await ApiService.getListings();
+          hasPublished = listings.isNotEmpty;
+        } catch (_) {
+          // Si falla, asumir que no ha publicado
+        }
+      }
+
       setState(() {
         _products = results[0] as List<Product>;
         _categories = results[1] as List<MarketplaceCategory>;
         _cart = results[2] as List<CartItem>;
+        _highlightPlans = results[3] as List<HighlightPlan>;
+        _hasPublished = hasPublished;
         _loading = false;
         _error = null;
       });
@@ -51,8 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error =
-            'No se pudo conectar con el servidor. Asegúrate de que el backend esté corriendo.';
+        _error = e.toString();
       });
     }
   }
@@ -97,9 +116,12 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    final featured = _products.where((p) => p.isFeatured).toList();
-    final offers = _products.where((p) => p.isOffer).toList();
-    final recent = _products.where((p) => !p.isFeatured).toList();
+    final filtered = _selectedCategoryId == null
+        ? _products
+        : _products.where((p) => p.category.id == _selectedCategoryId).toList();
+    final featured = filtered.where((p) => p.isFeatured).toList();
+    final offers = filtered.where((p) => p.isOffer).toList();
+    final recent = filtered.where((p) => !p.isFeatured).toList();
 
     return SafeArea(
       child: RefreshIndicator(
@@ -130,51 +152,48 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 14),
                     _SearchBox(onTap: () => _openSearch(context)),
                     const SizedBox(height: 18),
-                    _CategoryScroller(categories: _categories),
+                    _CategoryScroller(
+                      categories: _categories,
+                      selectedCategoryId: _selectedCategoryId,
+                      onCategoryTap: (id) {
+                        if (_selectedCategoryId == id) {
+                          // Tap en la misma categoría → limpiar filtro
+                          setState(() => _selectedCategoryId = null);
+                        } else {
+                          setState(() => _selectedCategoryId = id);
+                        }
+                      },
+                    ),
+                    if (_selectedCategoryId != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: _CategoryFilterChip(
+                          category: _categories.firstWhere(
+                            (c) => c.id == _selectedCategoryId,
+                            orElse: () => _categories.first,
+                          ),
+                          onClear: () =>
+                              setState(() => _selectedCategoryId = null),
+                        ),
+                      ),
                   ],
                 ),
               ),
             ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
-                child: SectionHeader(
-                  title: 'Ofertas del campus',
-                  actionLabel: 'Ver todas',
-                  onAction: () => _openOffers(context),
+            if (_highlightPlans.isNotEmpty && _hasPublished)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+                  child: _HighlightPlansBanner(plans: _highlightPlans),
                 ),
               ),
-            ),
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: 262,
-                child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 4),
-                  scrollDirection: Axis.horizontal,
-                  itemCount: offers.take(8).length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 12),
-                  itemBuilder: (context, index) {
-                    final product = offers[index];
-                    return ProductCard(
-                      product: product,
-                      width: 200,
-                      heroEnabled: false,
-                      onTap: () => _openDetail(context, product),
-                    );
-                  },
-                ),
-              ),
-            ),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
                 child: SectionHeader(
                   title: 'Destacados',
-                  actionLabel: 'Premium',
-                  onAction: () => _showMockMessage(
-                    context,
-                    'Publicaciones destacadas pagadas',
-                  ),
+                  actionLabel: 'Ver planes',
+                  onAction: () => _showHighlightPlansSheet(context),
                 ),
               ),
             ),
@@ -253,18 +272,210 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openCart(BuildContext context) {
-    return Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => const CartScreen()));
-  }
-
-  void _openOffers(BuildContext context) {
-    Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => const OffersScreen()));
+    // Switch to cart tab (index 3) in MainShell
+    final shell = context.findAncestorStateOfType<MainShellState>();
+    shell?.selectTab(3);
+    return Future.value();
   }
 
   void _showMockMessage(BuildContext context, String message) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _showHighlightPlansSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Planes para destacar',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Pensados para estudiantes y negocios fijos: precios bajos, visibilidad por tiempo y un plan mensual para aparecer siempre arriba.',
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                for (final plan in _highlightPlans) ...[
+                  _HighlightPlanTile(plan: plan),
+                  if (plan != _highlightPlans.last) const SizedBox(height: 10),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _HighlightPlansBanner extends StatelessWidget {
+  const _HighlightPlansBanner({required this.plans});
+
+  final List<HighlightPlan> plans;
+
+  @override
+  Widget build(BuildContext context) {
+    final topPlan = plans.first;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.trending_up_rounded,
+                  color: AppColors.primaryDark,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Destaca sin pagar de más',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Desde ${topPlan.price} por ${topPlan.days == 1 ? '24h' : '${topPlan.days} días'}; también hay plan mensual.',
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontWeight: FontWeight.w600,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final plan in plans)
+                _HighlightPlanChip(
+                  label: plan.title,
+                  value: plan.price,
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HighlightPlanChip extends StatelessWidget {
+  const _HighlightPlanChip({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Text(
+        '$label · $value',
+        style: const TextStyle(
+          fontWeight: FontWeight.w700,
+          color: AppColors.primaryDark,
+        ),
+      ),
+    );
+  }
+}
+
+class _HighlightPlanTile extends StatelessWidget {
+  const _HighlightPlanTile({required this.plan});
+
+  final HighlightPlan plan;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            plan.days == 30 ? Icons.calendar_month_rounded : Icons.schedule_rounded,
+            color: AppColors.orange,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  plan.title,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  plan.description,
+                  style: const TextStyle(
+                    color: AppColors.muted,
+                    fontWeight: FontWeight.w600,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            plan.price,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: AppColors.primaryDark,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -383,6 +594,53 @@ class _PulseMetric extends StatelessWidget {
   }
 }
 
+class _CategoryFilterChip extends StatelessWidget {
+  const _CategoryFilterChip({
+    required this.category,
+    required this.onClear,
+  });
+
+  final MarketplaceCategory category;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.22),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(category.emoji, style: const TextStyle(fontSize: 16)),
+          const SizedBox(width: 6),
+          Text(
+            category.name,
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              color: AppColors.primaryDark,
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: onClear,
+            child: const Icon(
+              Icons.close_rounded,
+              size: 18,
+              color: AppColors.muted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SearchBox extends StatelessWidget {
   const _SearchBox({required this.onTap});
 
@@ -424,9 +682,15 @@ class _SearchBox extends StatelessWidget {
 }
 
 class _CategoryScroller extends StatelessWidget {
-  const _CategoryScroller({required this.categories});
+  const _CategoryScroller({
+    required this.categories,
+    this.selectedCategoryId,
+    this.onCategoryTap,
+  });
 
   final List<MarketplaceCategory> categories;
+  final String? selectedCategoryId;
+  final void Function(String)? onCategoryTap;
 
   @override
   Widget build(BuildContext context) {
@@ -439,13 +703,9 @@ class _CategoryScroller extends StatelessWidget {
         separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemBuilder: (context, index) {
           final category = categories[index];
+          final selected = category.id == selectedCategoryId;
           return InkWell(
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) =>
-                    SearchScreen(initialCategoryId: category.id),
-              ),
-            ),
+            onTap: () => onCategoryTap?.call(category.id),
             borderRadius: BorderRadius.circular(8),
             child: SizedBox(
               width: 68,
@@ -455,9 +715,14 @@ class _CategoryScroller extends StatelessWidget {
                     width: 56,
                     height: 56,
                     decoration: BoxDecoration(
-                      color: AppColors.surface,
+                      color: selected
+                          ? AppColors.primary.withValues(alpha: 0.10)
+                          : AppColors.surface,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.border),
+                      border: Border.all(
+                        color: selected ? AppColors.primary : AppColors.border,
+                        width: selected ? 2 : 1,
+                      ),
                     ),
                     child: Center(
                       child: Text(
@@ -472,10 +737,10 @@ class _CategoryScroller extends StatelessWidget {
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.ink,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                      color: selected ? AppColors.primary : AppColors.ink,
                     ),
                   ),
                 ],

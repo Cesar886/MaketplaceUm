@@ -1,9 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const multer = require('multer');
 const { generateToken, requireAuth } = require('./auth');
-const { sellers } = require('./data');
+const { sellers, saveData, registerSeller } = require('./data');
 
 const routes = [
   require('./routes/categories'),
@@ -17,29 +16,10 @@ const routes = [
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ─── Configuración de multer para subida de imágenes ──────
-const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname) || '.jpg';
-    cb(null, `product_${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`);
-  },
-});
-const upload = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB por imagen
-  fileFilter: (_req, file, cb) => {
-    const allowed = /\.(jpg|jpeg|png|gif|webp)$/i;
-    cb(null, allowed.test(path.extname(file.originalname)));
-  },
-});
-
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use('/uploads', express.static(UPLOADS_DIR));
-app.set('upload', upload); // exponer multer a las rutas
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Registrar rutas
 for (const route of routes) {
@@ -47,6 +27,20 @@ for (const route of routes) {
 }
 
 // ─── Auth ──────────────────────────────────────────────────
+
+/**
+ * Calcula iniciales a partir de un nombre.
+ * Ej: "Daniel Perez" → "DP", "SanksUm" → "SU"
+ */
+function computeInitials(name) {
+  if (!name) return '??';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  return parts.map(w => w[0]).join('').slice(0, 2).toUpperCase();
+}
+
 // Login: cualquier seller registrado puede obtener un token
 app.post('/api/auth/login', (req, res) => {
   const { sellerId } = req.body;
@@ -59,6 +53,57 @@ app.post('/api/auth/login', (req, res) => {
   }
   const token = generateToken(seller.id);
   res.json({ token, seller: { id: seller.id, name: seller.name, avatarInitials: seller.avatarInitials } });
+});
+
+// Register: crea un perfil de vendedor en el backend y devuelve un JWT
+app.post('/api/auth/register', (req, res) => {
+  const { name, email, userType } = req.body;
+
+  if (!name || !email) {
+    return res.status(400).json({ error: 'name y email son requeridos' });
+  }
+
+  // Generar un ID único basado en el email (parte local + hash corto)
+  const emailSlug = email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+  const suffix = Math.random().toString(36).slice(2, 6);
+  const sellerId = `u_${emailSlug}_${suffix}`;
+
+  // Verificar si ya existe un vendedor con este email (por el slug)
+  const existing = sellers.find(s => s.id.startsWith(`u_${emailSlug}_`));
+  if (existing) {
+    // Ya registrado, devolver token directamente
+    const token = generateToken(existing.id);
+    return res.json({
+      token,
+      seller: { id: existing.id, name: existing.name, avatarInitials: existing.avatarInitials },
+      created: false,
+    });
+  }
+
+  // Determinar major/carrera según tipo de cuenta
+  let major = '';
+  if (userType === 'estudiante') major = 'Estudiante';
+  else if (userType === 'negocio') major = 'Negocio • Establecimiento';
+  else if (userType === 'particular') major = 'Particular';
+
+  const newSeller = {
+    id: sellerId,
+    name: name.trim(),
+    avatarInitials: computeInitials(name),
+    major,
+    rating: 0,
+    reviews: 0,
+    verified: false,
+  };
+
+  registerSeller(newSeller);
+
+  const token = generateToken(newSeller.id);
+  res.status(201).json({
+    token,
+    seller: { id: newSeller.id, name: newSeller.name, avatarInitials: newSeller.avatarInitials },
+    created: true,
+  });
 });
 
 // Health check

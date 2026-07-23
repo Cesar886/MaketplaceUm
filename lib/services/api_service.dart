@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -7,23 +6,89 @@ import '../models.dart';
 
 /// Servicio centralizado para consumir la API REST de Mercadito UM.
 ///
-/// Configura automáticamente la URL base según la plataforma:
-/// - Android emulator → `http://10.0.2.2:3000`
-/// - Otros            → `http://localhost:3000`
+/// Auto-detecta la URL base según plataforma / entorno.
+/// Si falla, usa [customBaseUrl] para override manual.
 class ApiService {
   ApiService._();
 
   static final _client = http.Client();
 
-  static String get baseUrl {
-    if (Platform.isAndroid) {
-      return 'http://10.0.2.2:3000';
+  /// Override programático (alternativa a la constante _backendHost).
+  static String? _customBaseUrl;
+
+  // ─── Token JWT para rutas protegidas ─────────────────────────
+  // El token se asigna desde AuthProvider cuando el usuario inicia sesión.
+  // Ya NO se hardcodea 's1' — cada usuario tiene su propio token.
+  static String? _token;
+
+  /// Asigna el token JWT del usuario autenticado para usarlo en requests.
+  static void setToken(String token) {
+    _token = token;
+  }
+
+  /// Limpia el token (logout).
+  static void clearToken() {
+    _token = null;
+  }
+
+  static Map<String, String> get _authHeaders {
+    final headers = <String, String>{'Content-Type': 'application/json'};
+    if (_token != null) {
+      headers['Authorization'] = 'Bearer $_token';
     }
-    return 'http://localhost:3000';
+    return headers;
+  }
+
+  /// ─── CONFIGURACIÓN DEL BACKEND ─────────────────────────────
+  ///
+  /// En EMULADOR Android: 10.0.2.2:3000  (default automático)
+  /// En DISPOSITIVO FÍSICO: pon la IP de tu compu aquí 👇
+  ///
+  /// Para saber tu IP, corre en la terminal:
+  ///   hostname -I | awk '{print $1}'
+  ///
+  ///                  👇 CÁMBIAME si usas dispositivo físico
+  static const String _backendHost = '192.168.1.214';
+  static const int _backendPort = 3000;
+
+  /// URL base del backend. Usa [_backendHost] siempre.
+  static String get baseUrl {
+    if (_customBaseUrl != null) return _customBaseUrl!;
+    return 'http://$_backendHost:$_backendPort';
+  }
+
+  /// Override programático de la URL (alternativa a _backendHost).
+  static set customBaseUrl(String url) {
+    _customBaseUrl = url;
   }
 
   static Uri _uri(String path, [Map<String, String>? query]) {
     return Uri.parse('$baseUrl/api$path').replace(queryParameters: query);
+  }
+
+  // ─── Auth / Registro ──────────────────────────────────────
+
+  /// Llama a POST /api/auth/register para sincronizar el usuario local
+  /// con el backend. Crea un perfil de vendedor si no existe y devuelve
+  /// un JWT para requests autenticados.
+  static Future<Map<String, dynamic>> registerBackendUser({
+    required String name,
+    required String email,
+    required String userType,
+  }) async {
+    final res = await _client.post(
+      _uri('/auth/register'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'name': name,
+        'email': email,
+        'userType': userType,
+      }),
+    );
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw Exception('Error al sincronizar usuario con el backend');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   // ─── Health ─────────────────────────────────────────────
@@ -81,7 +146,6 @@ class ApiService {
     required String price,
     required String category,
     required String description,
-    String? seller,
     List<String>? imagePaths, // rutas de archivos locales
   }) async {
     // Si hay imágenes, usar multipart
@@ -91,7 +155,8 @@ class ApiService {
       request.fields['price'] = price;
       request.fields['category'] = category;
       request.fields['description'] = description;
-      if (seller != null) request.fields['seller'] = seller;
+      // El seller se obtiene del JWT en el backend (requireAuth)
+      if (_token != null) request.headers['Authorization'] = 'Bearer $_token';
 
       for (final path in imagePaths) {
         final file = await http.MultipartFile.fromPath('images', path);
@@ -100,7 +165,7 @@ class ApiService {
 
       final streamed = await _client.send(request);
       final res = await http.Response.fromStream(streamed);
-      if (res.statusCode != 201) throw Exception('Error creating product');
+      if (res.statusCode != 201) throw Exception('${res.statusCode}: ${res.body}');
       return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
     }
 
@@ -111,20 +176,34 @@ class ApiService {
       'category': category,
       'description': description,
     };
-    if (seller != null) body['seller'] = seller;
     final res = await _client.post(
       _uri('/products'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _authHeaders,
       body: jsonEncode(body),
     );
-    if (res.statusCode != 201) throw Exception('Error creating product');
+    if (res.statusCode != 201) throw Exception('${res.statusCode}: ${res.body}');
     return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
   static Future<Product> toggleFavorite(String productId) async {
-    final res = await _client.patch(_uri('/products/$productId/favorite'));
+    final res = await _client.patch(
+      _uri('/products/$productId/favorite'),
+      headers: _authHeaders,
+    );
     if (res.statusCode != 200) throw Exception('Error toggling favorite');
     return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  /// Elimina un producto (solo el dueño puede hacerlo).
+  static Future<void> deleteProduct(String productId) async {
+    final res = await _client.delete(
+      _uri('/products/$productId'),
+      headers: _authHeaders,
+    );
+    if (res.statusCode != 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['error'] ?? 'Error al eliminar producto');
+    }
   }
 
   // ─── Sellers ────────────────────────────────────────────
@@ -160,7 +239,7 @@ class ApiService {
   }) async {
     final res = await _client.post(
       _uri('/cart'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _authHeaders,
       body: jsonEncode({
         'productId': productId,
         'quantity': quantity,
@@ -173,14 +252,17 @@ class ApiService {
   static Future<void> updateCartQuantity(String cartItemId, int quantity) async {
     final res = await _client.put(
       _uri('/cart/$cartItemId'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _authHeaders,
       body: jsonEncode({'quantity': quantity}),
     );
     if (res.statusCode != 200) throw Exception('Error updating cart');
   }
 
   static Future<void> removeFromCart(String cartItemId) async {
-    final res = await _client.delete(_uri('/cart/$cartItemId'));
+    final res = await _client.delete(
+      _uri('/cart/$cartItemId'),
+      headers: _authHeaders,
+    );
     if (res.statusCode != 200) throw Exception('Error removing from cart');
   }
 

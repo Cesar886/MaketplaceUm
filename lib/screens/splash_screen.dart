@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
+import '../providers/auth_provider.dart';
 import '../widgets/app_logo.dart';
+import 'auth/onboarding_screen.dart';
 import 'main_shell.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -15,12 +18,32 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Future<void>.delayed(const Duration(milliseconds: 800), () {
-      if (!mounted) return;
+    _initApp();
+  }
+
+  Future<void> _initApp() async {
+    // Pequeña pausa para mostrar el splash
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+
+    if (!mounted) return;
+
+    // Intentar restaurar sesión guardada
+    final auth = context.read<AuthProvider>();
+    final restored = await auth.tryAutoLogin();
+
+    if (!mounted) return;
+
+    if (restored) {
+      // Sesión restaurada → ir directo al home
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(builder: (_) => const MainShell()),
       );
-    });
+    } else {
+      // No hay sesión → ir al onboarding
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(builder: (_) => const OnboardingScreen()),
+      );
+    }
   }
 
   @override

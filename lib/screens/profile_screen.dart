@@ -8,6 +8,9 @@ import '../services/api_service.dart';
 import '../widgets/badges.dart';
 import 'auth/login_screen.dart';
 import 'cart_screen.dart';
+import 'legal/cookies_screen.dart';
+import 'legal/privacy_screen.dart';
+import 'legal/terms_screen.dart';
 import 'my_listings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -231,14 +234,59 @@ class _ProfileScreenState extends State<ProfileScreen> {
               subtitle: 'Preguntas frecuentes',
             ),
 
+            // ─── Sección legal ──────────────────────────────────
+            const Padding(
+              padding: EdgeInsets.only(top: 8, bottom: 10),
+              child: Text(
+                'Legal',
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ),
+            _ProfileOption(
+              icon: Icons.description_rounded,
+              title: 'Términos y Condiciones',
+              subtitle: 'Reglas de uso de la plataforma',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const TermsScreen(),
+                ),
+              ),
+            ),
+            _ProfileOption(
+              icon: Icons.shield_rounded,
+              title: 'Política de Privacidad',
+              subtitle: 'Protección de tus datos personales',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const PrivacyScreen(),
+                ),
+              ),
+            ),
+            _ProfileOption(
+              icon: Icons.cookie_rounded,
+              title: 'Aviso de Cookies',
+              subtitle: 'Uso de cookies en la app',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const CookiesScreen(),
+                ),
+              ),
+            ),
+
             const SizedBox(height: 20),
 
             // ─── Cerrar sesión ─────────────────────────────
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () {
-                  auth.logout();
+                onPressed: () async {
+                  await auth.logout();
+                  if (!context.mounted) return;
                   Navigator.of(context).pushAndRemoveUntil(
                     MaterialPageRoute<void>(
                         builder: (_) => const LoginScreen()),

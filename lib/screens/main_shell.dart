@@ -11,10 +11,10 @@ class MainShell extends StatefulWidget {
   const MainShell({super.key});
 
   @override
-  State<MainShell> createState() => _MainShellState();
+  State<MainShell> createState() => MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
+class MainShellState extends State<MainShell> {
   int _currentIndex = 0;
 
   final _pages = const [
@@ -25,7 +25,7 @@ class _MainShellState extends State<MainShell> {
     ProfileScreen(),
   ];
 
-  void _selectTab(int index) {
+  void selectTab(int index) {
     setState(() => _currentIndex = index);
   }
 
@@ -48,7 +48,7 @@ class _MainShellState extends State<MainShell> {
           ),
           child: NavigationBar(
             selectedIndex: _currentIndex,
-            onDestinationSelected: _selectTab,
+            onDestinationSelected: selectTab,
             height: 68,
             elevation: 0,
             backgroundColor: AppColors.surface,
