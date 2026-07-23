@@ -10,6 +10,7 @@ import '../widgets/badges.dart';
 import '../widgets/mock_product_image.dart';
 import 'auth/login_screen.dart';
 import 'cart_screen.dart';
+import 'home_screen.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({super.key, required this.product});
@@ -54,7 +55,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         slivers: [
           SliverAppBar(
             pinned: true,
-            expandedHeight: 260,
+            expandedHeight: 330,
             leading: Padding(
               padding: const EdgeInsets.all(8),
               child: IconButton.filled(
@@ -98,15 +99,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ),
             ],
             flexibleSpace: FlexibleSpaceBar(
-              background: GestureDetector(
-                onTap: () => _showFullScreenImage(context),
-                child: Hero(
-                  tag: 'product-${product.id}',
-                  child: MockProductImage(
-                    product: product,
-                    photoIndex: _photoIndex,
-                    borderRadius: BorderRadius.zero,
-                  ),
+              background: Hero(
+                tag: 'product-${product.id}',
+                child: MockProductImage(
+                  product: product,
+                  photoIndex: _photoIndex,
+                  borderRadius: BorderRadius.zero,
                 ),
               ),
             ),
@@ -217,58 +215,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       color: AppColors.ink,
                     ),
                   ),
-                  // ─── Extras opcionales ─────────────────────────
-                  if (product.extras.isNotEmpty) ...[
-                    const SizedBox(height: 24),
-                    Text(
-                      'Extras opcionales',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          for (final extra in product.extras) ...[
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 5),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.circle_rounded,
-                                      size: 6, color: AppColors.muted),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      extra.name,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        color: AppColors.ink,
-                                      ),
-                                    ),
-                                  ),
-                                  Text(
-                                    '+${Product.formatPrice(extra.extraPrice)}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.primaryDark,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (extra != product.extras.last)
-                              const Divider(height: 1, color: AppColors.border),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
                   const SizedBox(height: 26),
                   Text(
                     'Vendedor',
@@ -427,8 +373,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Producto eliminado')),
       );
-      // Volver a la pantalla anterior (HomeScreen se recarga solo)
-      Navigator.of(context).pop();
+      // Volver al inicio
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (_) => false,
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -532,54 +481,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         ),
       );
     }
-  }
-
-  /// Abre la imagen del producto en pantalla completa con zoom.
-  void _showFullScreenImage(BuildContext context) {
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        opaque: false,
-        pageBuilder: (context, _, __) {
-          return Scaffold(
-            backgroundColor: Colors.black.withValues(alpha: 0.95),
-            body: Stack(
-              fit: StackFit.expand,
-              children: [
-                GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
-                  child: InteractiveViewer(
-                    minScale: 0.5,
-                    maxScale: 4.0,
-                    child: Center(
-                      child: Hero(
-                        tag: 'product-${product.id}',
-                        child: MockProductImage(
-                          product: product,
-                          photoIndex: _photoIndex,
-                          borderRadius: BorderRadius.zero,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: MediaQuery.of(context).padding.top + 8,
-                  right: 16,
-                  child: IconButton.filled(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.white24,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
   }
 }
 
@@ -825,8 +726,8 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
-/// Selector de estado tipo dropdown (solo lo ve el dueño del producto).
-class _StatusSelector extends StatefulWidget {
+/// Selector de estado (solo lo ve el dueño del producto).
+class _StatusSelector extends StatelessWidget {
   const _StatusSelector({
     required this.productId,
     required this.currentStatus,
@@ -838,102 +739,66 @@ class _StatusSelector extends StatefulWidget {
   final ValueChanged<ProductAvailability> onChanged;
 
   @override
-  State<_StatusSelector> createState() => _StatusSelectorState();
-}
-
-class _StatusSelectorState extends State<_StatusSelector> {
-  late String _selected;
-
-  @override
-  void initState() {
-    super.initState();
-    _selected = widget.currentStatus?.name ?? 'available';
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Text(
-              'Estado del producto',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(width: 12),
-            if (widget.currentStatus != null)
-              _StatusBadge(availability: widget.currentStatus!),
-          ],
-        ),
-        const SizedBox(height: 14),
-        DropdownButtonFormField<String>(
-          initialValue: _selected,
-          decoration: const InputDecoration(
-            border: OutlineInputBorder(),
-            contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          ),
-          items: [
-            for (final status in ProductAvailability.values)
-              DropdownMenuItem(
-                value: status.name,
-                child: Row(
-                  children: [
-                    Icon(
-                      _iconFor(status),
-                      size: 20,
-                      color: _colorFor(status),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      status.label,
-                      style: TextStyle(
-                        fontWeight: status.name == _selected
-                            ? FontWeight.w700
-                            : FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-          onChanged: (value) {
-            if (value == null || value == _selected) return;
-            setState(() => _selected = value);
-            _updateStatus(context, value);
-          },
-        ),
-        const SizedBox(height: 4),
         Text(
-          'Elige cómo quieres mostrar la disponibilidad de tu producto.',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppColors.muted,
-                fontWeight: FontWeight.w500,
+          'Estado del producto',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: ProductAvailability.values.map((status) {
+            final selected = status == currentStatus;
+            return ChoiceChip(
+              label: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _iconFor(status),
+                    size: 18,
+                    color: selected ? Colors.white : _colorFor(status),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(status.label),
+                ],
               ),
+              selected: selected,
+              selectedColor: _colorFor(status),
+              labelStyle: TextStyle(
+                color: selected ? Colors.white : AppColors.ink,
+                fontWeight: FontWeight.w600,
+              ),
+              onSelected: (isSelected) async {
+                if (!isSelected || selected) return;
+                try {
+                  await ApiService.updateProductStatus(
+                      productId, status.name);
+                  if (context.mounted) onChanged(status);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content:
+                            Text('Estado cambiado a "${status.label}"'),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e')),
+                    );
+                  }
+                }
+              },
+            );
+          }).toList(),
         ),
       ],
     );
-  }
-
-  Future<void> _updateStatus(BuildContext context, String statusName) async {
-    try {
-      final statusEnum = ProductAvailability.values.firstWhere(
-        (s) => s.name == statusName,
-      );
-      await ApiService.updateProductStatus(widget.productId, statusName);
-      if (context.mounted) widget.onChanged(statusEnum);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Estado cambiado a "${statusEnum.label}"')),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    }
   }
 
   Color _colorFor(ProductAvailability status) {
