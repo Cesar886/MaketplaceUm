@@ -155,6 +155,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                               builder: (_) => ChatScreen(
                                 conversationId: conv.id,
                                 productId: conv.productId,
+                                sellerId: conv.sellerId,
                               ),
                             ),
                           );

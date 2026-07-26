@@ -63,51 +63,77 @@ function register(app) {
 
   // POST /api/chat/send - enviar un mensaje (crea conversación si no existe)
   app.post('/api/chat/send', requireAuth, (req, res) => {
-    const { productId, sellerId, text } = req.body;
-    const buyerId = req.user.id;
+    const { productId, sellerId, text, conversationId } = req.body;
+    const userId = req.user.id;
 
-    if (!productId || !text) {
-      return res.status(400).json({ error: 'productId y text son requeridos' });
-    }
-    if (!text.trim()) {
+    if (!text || !text.trim()) {
       return res.status(400).json({ error: 'El mensaje no puede estar vacío' });
     }
 
-    // No puedes enviarte mensaje a ti mismo
-    if (buyerId === sellerId) {
-      return res.status(400).json({ error: 'No puedes enviarte un mensaje a ti mismo' });
-    }
+    let conversation;
 
-    // Buscar o crear conversación
-    let conversation = db.findConversation(productId, buyerId, sellerId);
-    if (!conversation) {
-      const convId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      db.createConversation(convId, productId, buyerId, sellerId);
-      conversation = db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(convId);
+    // Si se proporciona conversationId, usarla (útil cuando el vendedor responde)
+    if (conversationId) {
+      conversation = db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(conversationId);
+      if (!conversation) {
+        return res.status(404).json({ error: 'Conversación no encontrada' });
+      }
+      // Verificar que el usuario pertenece a la conversación
+      if (conversation.buyer_id !== userId && conversation.seller_id !== userId) {
+        return res.status(403).json({ error: 'No tienes acceso a esta conversación' });
+      }
+    } else {
+      // Crear nueva conversación (solo el comprador puede iniciar)
+      if (!productId || !sellerId) {
+        return res.status(400).json({ error: 'productId y sellerId son requeridos para iniciar una conversación' });
+      }
+
+      // No puedes enviarte mensaje a ti mismo
+      if (userId === sellerId) {
+        return res.status(400).json({ error: 'No puedes enviarte un mensaje a ti mismo' });
+      }
+
+      // Buscar o crear conversación
+      conversation = db.findConversation(productId, userId, sellerId);
+      if (!conversation) {
+        const convId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        db.createConversation(convId, productId, userId, sellerId);
+        conversation = db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(convId);
+      }
     }
 
     // Crear mensaje
     const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    db.createMessage(msgId, conversation.id, buyerId, text.trim());
+    db.createMessage(msgId, conversation.id, userId, text.trim());
 
-    // Notificar al vendedor
-    const product = db.getProductById(productId);
-    const buyer = db.getDb().prepare('SELECT name FROM sellers WHERE id = ?').get(buyerId);
+    // Notificar al otro usuario (seller si el que envía es buyer, buyer si el que envía es seller)
+    const otherUserId = conversation.buyer_id === userId ? conversation.seller_id : conversation.buyer_id;
+    const sender = db.getDb().prepare('SELECT name FROM sellers WHERE id = ?').get(userId);
     const notifId = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const isFirst = db.getDb().prepare(
       'SELECT COUNT(*) as c FROM messages WHERE conversation_id = ?'
     ).get(conversation.id);
+    const product = db.getProductById(conversation.product_id);
     db.createNotification(
       notifId,
-      sellerId,
+      otherUserId,
       isFirst && isFirst.c <= 1 ? 'new_chat' : 'new_message',
       'Nuevo mensaje',
-      `${buyer?.name || 'Alguien'} te escribió: "${text.trim().slice(0, 80)}"`,
-      { conversationId: conversation.id, productId, senderId: buyerId }
+      `${sender?.name || 'Alguien'} te escribió: \"${text.trim().slice(0, 80)}\"`,
+      { conversationId: conversation.id, productId: conversation.product_id, senderId: userId }
     );
 
     const messages = db.getMessages(conversation.id);
     res.status(201).json({ messages, conversationId: conversation.id });
+  });
+
+  // DELETE /api/chat/messages/:id - eliminar un mensaje propio
+  app.delete('/api/chat/messages/:id', requireAuth, (req, res) => {
+    const deleted = db.deleteMessage(req.params.id, req.user.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Mensaje no encontrado o no tienes permiso para eliminarlo' });
+    }
+    res.json({ success: true });
   });
 }
 

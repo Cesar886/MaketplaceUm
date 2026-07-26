@@ -678,6 +678,17 @@ function markConversationMessagesRead(conversationId, userId) {
   `).run(conversationId, userId);
 }
 
+/** Soft-delete: reemplaza el texto del mensaje por un placeholder.
+ *  Solo el sender puede borrar su propio mensaje.
+ *  Retorna true si se eliminó, false si no existía. */
+function deleteMessage(messageId, userId) {
+  const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId);
+  if (!msg) return false;
+  if (msg.sender_id !== userId) return false; // solo el dueño
+  db.prepare("UPDATE messages SET text = '[Mensaje eliminado]' WHERE id = ?").run(messageId);
+  return true;
+}
+
 module.exports = {
   initDatabase,
   getDb,
@@ -727,4 +738,5 @@ module.exports = {
   createMessage,
   getMessages,
   markConversationMessagesRead,
+  deleteMessage,
 };

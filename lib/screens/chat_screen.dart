@@ -97,16 +97,14 @@ class _ChatScreenState extends State<ChatScreen> {
               .toList();
           _currentConvId = result['conversationId'] as String?;
         });
-      } else if (_currentConvId != null) {
-        // Enviar en conversación existente - recargamos toda la conversación
-        // porque el backend guarda en la conversación existente con el mismo endpoint
-        // Lo hacemos mediante POST /chat/send con productId y sellerId
-        // Pero como ya tenemos convId, necesitamos obtener productId y sellerId
-        // Mejor usamos el mismo endpoint siempre
+      } else if (_currentConvId != null && _currentConvId!.isNotEmpty) {
+        // Enviar en conversación existente: pasamos el conversationId para que
+        // el backend lo use (tanto si envía el comprador como el vendedor)
         final result = await ApiService.sendMessage(
           productId: widget.productId ?? '',
           sellerId: widget.sellerId ?? '',
           text: text,
+          conversationId: _currentConvId,
         );
         if (!mounted) return;
         setState(() {
@@ -123,6 +121,52 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     } finally {
       if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _deleteMessage(ChatMessage msg) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar mensaje'),
+        content: const Text('¿Seguro que quieres eliminar este mensaje?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await ApiService.deleteMessage(msg.id);
+      if (!mounted) return;
+      setState(() {
+        // Soft-delete local: marcamos el texto como eliminado
+        final idx = _messages.indexOf(msg);
+        if (idx >= 0) {
+          _messages[idx] = ChatMessage(
+            id: msg.id,
+            conversationId: msg.conversationId,
+            senderId: msg.senderId,
+            text: '[Mensaje eliminado]',
+            createdAt: msg.createdAt,
+            read: msg.read,
+          );
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al eliminar: $e')),
+      );
     }
   }
 
@@ -182,12 +226,14 @@ class _ChatScreenState extends State<ChatScreen> {
                         itemBuilder: (context, index) {
                           final msg = _messages[index];
                           final isMine = msg.senderId == currentUserId;
+                          final canDelete = isMine && msg.text != '[Mensaje eliminado]';
                           return _MessageBubble(
                             message: msg,
                             isMine: isMine,
                             showSender: index == 0 ||
                                 _messages[index - 1].senderId !=
                                     msg.senderId,
+                            onDelete: canDelete ? () => _deleteMessage(msg) : null,
                           );
                         },
                       ),
@@ -305,97 +351,115 @@ class _MessageBubble extends StatelessWidget {
     required this.message,
     required this.isMine,
     this.showSender = false,
+    this.onDelete,
   });
 
   final ChatMessage message;
   final bool isMine;
   final bool showSender;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
+    final isDeleted = message.text == '[Mensaje eliminado]';
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Column(
-        crossAxisAlignment:
-            isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment:
-                isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
-            children: [
-              if (!isMine && showSender)
-                Padding(
-                  padding: const EdgeInsets.only(left: 4, bottom: 4),
-                  child: Text(
-                    'Comprador',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: AppColors.muted,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          Container(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.75,
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: isMine ? AppColors.primary : AppColors.surface,
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(16),
-                topRight: const Radius.circular(16),
-                bottomLeft: Radius.circular(isMine ? 16 : 4),
-                bottomRight: Radius.circular(isMine ? 4 : 16),
-              ),
-              border: isMine
-                  ? null
-                  : Border.all(color: AppColors.border),
-            ),
-            child: Column(
-              crossAxisAlignment: isMine
-                  ? CrossAxisAlignment.end
-                  : CrossAxisAlignment.start,
+      child: GestureDetector(
+        onLongPress: onDelete,
+        child: Column(
+          crossAxisAlignment:
+              isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment:
+                  isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
               children: [
-                Text(
-                  message.text,
-                  style: TextStyle(
-                    color: isMine ? Colors.white : AppColors.ink,
-                    fontSize: 15,
-                    height: 1.3,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _formatTime(message.createdAt),
-                      style: TextStyle(
-                        color: isMine
-                            ? Colors.white.withValues(alpha: 0.7)
-                            : AppColors.muted,
+                if (!isMine && showSender)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, bottom: 4),
+                    child: Text(
+                      'Comprador',
+                      style: const TextStyle(
                         fontSize: 11,
+                        color: AppColors.muted,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                    if (isMine) ...[
-                      const SizedBox(width: 4),
-                      Icon(
-                        message.read
-                            ? Icons.done_all_rounded
-                            : Icons.done_rounded,
-                        size: 14,
-                        color: Colors.white.withValues(alpha: 0.7),
-                      ),
-                    ],
-                  ],
-                ),
+                  ),
               ],
             ),
-          ),
-        ],
+            Container(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.75,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: isDeleted
+                    ? AppColors.muted.withValues(alpha: 0.12)
+                    : isMine
+                        ? AppColors.primary
+                        : AppColors.surface,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(16),
+                  topRight: const Radius.circular(16),
+                  bottomLeft: Radius.circular(isMine ? 16 : 4),
+                  bottomRight: Radius.circular(isMine ? 4 : 16),
+                ),
+                border: isMine
+                    ? null
+                    : Border.all(color: AppColors.border),
+              ),
+              child: Column(
+                crossAxisAlignment: isMine
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isDeleted ? '[Mensaje eliminado]' : message.text,
+                    style: TextStyle(
+                      color: isDeleted
+                          ? AppColors.muted
+                          : isMine
+                              ? Colors.white
+                              : AppColors.ink,
+                      fontSize: 15,
+                      height: 1.3,
+                      fontStyle: isDeleted ? FontStyle.italic : FontStyle.normal,
+                    ),
+                  ),
+                  if (!isDeleted) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _formatTime(message.createdAt),
+                          style: TextStyle(
+                            color: isMine
+                                ? Colors.white.withValues(alpha: 0.7)
+                                : AppColors.muted,
+                            fontSize: 11,
+                          ),
+                        ),
+                        if (isMine) ...[
+                          const SizedBox(width: 4),
+                          Icon(
+                            message.read
+                                ? Icons.done_all_rounded
+                                : Icons.done_rounded,
+                            size: 14,
+                            color: Colors.white.withValues(alpha: 0.7),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

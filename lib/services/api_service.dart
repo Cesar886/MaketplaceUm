@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:http/http.dart' as http;
 
@@ -41,18 +42,27 @@ class ApiService {
 
   /// ─── CONFIGURACIÓN DEL BACKEND ─────────────────────────────
   ///
-  /// En EMULADOR Android: 10.0.2.2:3000  (default automático)
-  /// En DISPOSITIVO FÍSICO: pon la IP de tu compu aquí 👇
-  ///
-  /// Para saber tu IP, corre en la terminal:
-  ///   hostname -I | awk '{print $1}'
-  ///
-  ///                  👇 CÁMBIAME si usas dispositivo físico
-  // static const String _backendHost = '192.168.27.77';
-  // static const int _backendPort = 3000;
+  /// En EMULADOR Android: se usa 10.0.2.2 automáticamente.
+  /// En DISPOSITIVO FÍSICO o WEB: usa localhost (cambiar si es necesario).
+  /// Para override manual, usa [customBaseUrl].
+  static const int _backendPort = 3000;
 
-      static const String _backendHost = 'localhost';
-      static const int _backendPort = 3000;
+  /// Retorna la IP/host correcto según la plataforma.
+  ///
+  /// En EMULADOR Android:  10.0.2.2 (rutea al localhost del host).
+  /// En DISPOSITIVO FÍSICO: usa 'localhost' + adb reverse.
+  ///
+  /// Si tu dispositivo físico no usa adb reverse,
+  /// asigna [customBaseUrl] con la IP local del host (ej: 'http://192.168.x.x:3000').
+  static String get _backendHost {
+    try {
+      if (Platform.isAndroid) {
+        // Intentar con localhost primero (funciona con adb reverse)
+        return 'localhost';
+      }
+    } catch (_) {}
+    return 'localhost';
+  }
 
 
   /// URL base del backend. Usa [_backendHost] siempre.
@@ -481,22 +491,37 @@ class ApiService {
   }
 
   /// Envía un mensaje. Si no existe conversación, la crea.
+  /// Si se provee [conversationId], lo envía a la conversación existente.
   /// Devuelve { messages, conversationId }
   static Future<Map<String, dynamic>> sendMessage({
     required String productId,
     required String sellerId,
     required String text,
+    String? conversationId,
   }) async {
+    final body = <String, dynamic>{
+      'productId': productId,
+      'sellerId': sellerId,
+      'text': text,
+    };
+    if (conversationId != null && conversationId.isNotEmpty) {
+      body['conversationId'] = conversationId;
+    }
     final res = await _client.post(
       _uri('/chat/send'),
       headers: _authHeaders,
-      body: jsonEncode({
-        'productId': productId,
-        'sellerId': sellerId,
-        'text': text,
-      }),
+      body: jsonEncode(body),
     );
     if (res.statusCode != 201) throw Exception('Error sending message');
     return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Elimina un mensaje propio (soft-delete: reemplaza el texto).
+  static Future<void> deleteMessage(String messageId) async {
+    final res = await _client.delete(
+      _uri('/chat/messages/$messageId'),
+      headers: _authHeaders,
+    );
+    if (res.statusCode != 200) throw Exception('Error deleting message');
   }
 }
