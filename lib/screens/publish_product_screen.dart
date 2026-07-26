@@ -18,11 +18,15 @@ class PublishProductScreen extends StatefulWidget {
 }
 
 class _PublishProductScreenState extends State<PublishProductScreen> {
+  static const List<String> _dayNames = [
+    'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom',
+  ];
+
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _priceController = TextEditingController();
   String _selectedCategoryId = 'other';
-  String _selectedStatus = 'available';
+  final Set<int> _selectedDays = {};
   String? _selectedPlanId;
   List<MarketplaceCategory> _categories = [];
   List<HighlightPlan> _plans = [];
@@ -128,7 +132,8 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
         price: price,
         category: _selectedCategoryId,
         description: description,
-        status: _selectedStatus,
+        status: 'available', // El backend deriva de availableDays
+        availableDays: _selectedDays.toList()..sort(),
         extras: _extras.map((e) => e.toJson()).toList(),
         imagePaths: _selectedImages.map((xf) => xf.path).toList(),
       );
@@ -178,38 +183,101 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     setState(() => _extras.removeAt(index));
   }
 
-  IconData _statusIcon(ProductAvailability status) {
-    switch (status) {
-      case ProductAvailability.available:
-        return Icons.check_circle_rounded;
-      case ProductAvailability.reserved:
-        return Icons.bookmark_rounded;
-      case ProductAvailability.sold:
-        return Icons.sell_rounded;
-      case ProductAvailability.negotiating:
-        return Icons.handshake_rounded;
-      case ProductAvailability.paused:
-        return Icons.pause_circle_rounded;
-      case ProductAvailability.unavailable:
-        return Icons.block_rounded;
-    }
-  }
-
-  Color _statusColor(ProductAvailability status) {
-    switch (status) {
-      case ProductAvailability.available:
-        return const Color(0xFF2E7D32);
-      case ProductAvailability.reserved:
-        return const Color(0xFFE65100);
-      case ProductAvailability.sold:
-        return const Color(0xFFC62828);
-      case ProductAvailability.negotiating:
-        return const Color(0xFF1565C0);
-      case ProductAvailability.paused:
-        return const Color(0xFF6A1B9A);
-      case ProductAvailability.unavailable:
-        return const Color(0xFF546E7A);
-    }
+  Widget _buildDaySelector() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceMuted,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.calendar_month_rounded, color: AppColors.primary),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('Días disponibles',
+                    style: Theme.of(context).textTheme.titleMedium),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _selectedDays.isEmpty ? 'Obligatorio' : '${_selectedDays.length}/7',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: _selectedDays.isEmpty ? AppColors.danger : AppColors.primary),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Selecciona los días de la semana en que este producto estará disponible. Los días no seleccionados se marcarán automáticamente como "No disponible".',
+            style: TextStyle(
+                color: AppColors.muted,
+                fontWeight: FontWeight.w600,
+                height: 1.35),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: List.generate(7, (i) {
+              final selected = _selectedDays.contains(i);
+              return FilterChip(
+                label: Text(_dayNames[i]),
+                selected: selected,
+                selectedColor: AppColors.primary.withValues(alpha: 0.15),
+                checkmarkColor: AppColors.primary,
+                onSelected: (value) {
+                  setState(() {
+                    if (value) {
+                      _selectedDays.add(i);
+                    } else {
+                      _selectedDays.remove(i);
+                    }
+                  });
+                },
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+              );
+            }),
+          ),
+          if (_selectedDays.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_rounded, size: 14, color: AppColors.danger),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Selecciona al menos un día para que tu producto sea visible',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.danger.withValues(alpha: 0.8),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Widget _buildExtrasSection() {
@@ -251,8 +319,8 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Agrega opciones que el comprador pueda añadir (ej. "Huevo +\$10", "Con estuche +\$50").',
+          Text(
+            r'Tu producto tiene variantes? Agrega extras como "Con estuche +$25", "Impresion a color +$10"',
             style: TextStyle(
                 color: AppColors.muted,
                 fontWeight: FontWeight.w600,
@@ -468,61 +536,46 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _priceController,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              prefixText: r'$ ',
-              labelText: 'Precio',
-            ),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            initialValue: _selectedCategoryId,
-            decoration: const InputDecoration(labelText: 'Categoría'),
-            items: [
-              for (final category in _categories)
-                DropdownMenuItem(
-                  value: category.id,
-                  child: Row(
-                    children: [
-                      Icon(category.icon, color: category.color, size: 20),
-                      const SizedBox(width: 10),
-                      Text(category.name),
-                    ],
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _priceController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    prefixText: r'$ ',
+                    labelText: 'Precio',
                   ),
                 ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  initialValue: _selectedCategoryId,
+                  decoration: const InputDecoration(labelText: 'Categoría'),
+                  items: [
+                    for (final category in _categories)
+                      DropdownMenuItem(
+                        value: category.id,
+                        child: Row(
+                          children: [
+                            Icon(category.icon, color: category.color, size: 20),
+                            const SizedBox(width: 10),
+                            Text(category.name),
+                          ],
+                        ),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _selectedCategoryId = value);
+                  },
+                ),
+              ),
             ],
-            onChanged: (value) {
-              if (value == null) return;
-              setState(() => _selectedCategoryId = value);
-            },
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            initialValue: _selectedStatus,
-            decoration: const InputDecoration(
-              labelText: 'Estado del producto',
-              hintText: '¿En qué estado está tu producto?',
-            ),
-            items: [
-              for (final status in ProductAvailability.values)
-                DropdownMenuItem(
-                  value: status.name,
-                  child: Row(
-                    children: [
-                      Icon(_statusIcon(status), size: 20, color: _statusColor(status)),
-                      const SizedBox(width: 10),
-                      Text(status.label),
-                    ],
-                  ),
-                ),
-            ],
-            onChanged: (value) {
-              if (value == null) return;
-              setState(() => _selectedStatus = value);
-            },
-          ),
+          _buildDaySelector(),
           const SizedBox(height: 12),
           _buildExtrasSection(),
           const SizedBox(height: 24),

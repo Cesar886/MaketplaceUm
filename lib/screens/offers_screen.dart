@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_theme.dart';
 import '../models.dart';
 import '../services/api_service.dart';
+import '../widgets/auto_refresh.dart';
 import '../widgets/product_card.dart';
 import '../widgets/section_header.dart';
 import 'product_detail_screen.dart';
@@ -14,7 +15,7 @@ class OffersScreen extends StatefulWidget {
   State<OffersScreen> createState() => _OffersScreenState();
 }
 
-class _OffersScreenState extends State<OffersScreen> {
+class _OffersScreenState extends State<OffersScreen> with AutoRefreshMixin {
   String? _selectedCategoryId;
   List<Product> _offers = [];
   List<MarketplaceCategory> _categories = [];
@@ -25,6 +26,9 @@ class _OffersScreenState extends State<OffersScreen> {
     super.initState();
     _loadData();
   }
+
+  @override
+  Future<void> onAutoRefresh() => _loadData();
 
   Future<void> _loadData() async {
     try {

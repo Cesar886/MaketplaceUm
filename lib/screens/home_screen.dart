@@ -5,11 +5,15 @@ import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../services/recent_products_service.dart';
 import '../widgets/app_logo.dart';
+import '../widgets/auto_refresh.dart';
 import '../widgets/product_card.dart';
 import '../widgets/section_header.dart';
 import 'main_shell.dart';
 import 'product_detail_screen.dart';
+import 'qr_scanner_screen.dart';
+import 'recent_products_screen.dart';
 import 'search_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -19,9 +23,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin {
   List<Product> _products = [];
-  List<Product> _featuredProducts = [];
   List<MarketplaceCategory> _categories = [];
   List<CartItem> _cart = [];
   List<HighlightPlan> _highlightPlans = [];
@@ -30,6 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _hasPublished = false;
   String? _error;
   String? _selectedCategoryId;
+  List<String> _recentIds = [];
 
   @override
   void initState() {
@@ -37,18 +41,27 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadData();
   }
 
-  Future<void> _loadData() async {
-    setState(() => _loading = true);
+  @override
+  Future<void> onAutoRefresh() => _loadData(silent: true);
+
+  Future<void> _loadData({bool silent = false}) async {
+    if (!silent) setState(() => _loading = true);
     try {
       final results = await Future.wait([
         ApiService.getProducts(),
-        ApiService.getProducts(featured: true),
         ApiService.getCategories(),
         ApiService.getCart(),
         ApiService.getHighlightPlans(),
-        ApiService.getSellers(),
       ]);
       if (!mounted) return;
+
+      // Cargar sellers por separado (no debe bloquear el resto)
+      List<Seller> loadedSellers = [];
+      try {
+        loadedSellers = await ApiService.getSellers();
+      } catch (_) {
+        // Si falla, seguimos con lista vacía
+      }
 
       // Verificar si el usuario ha publicado artículos
       final auth = context.read<AuthProvider>();
@@ -64,15 +77,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _products = results[0] as List<Product>;
-        _featuredProducts = results[1] as List<Product>;
-        _categories = results[2] as List<MarketplaceCategory>;
-        _cart = results[3] as List<CartItem>;
-        _highlightPlans = results[4] as List<HighlightPlan>;
-        _sellers = results[5] as List<Seller>;
+        _categories = results[1] as List<MarketplaceCategory>;
+        _cart = results[2] as List<CartItem>;
+        _highlightPlans = results[3] as List<HighlightPlan>;
+        _sellers = loadedSellers;
         _hasPublished = hasPublished;
         _loading = false;
         _error = null;
       });
+      // Cargar IDs de recientes (no bloqueante)
+      _loadRecentIds();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -82,14 +96,21 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _loadRecentIds() async {
+    try {
+      final ids = await RecentProductsService.getRecentIds();
+      if (!mounted) return;
+      setState(() => _recentIds = ids);
+    } catch (_) {}
+  }
+
   int get _cartCount =>
       _cart.fold<int>(0, (sum, item) => sum + item.quantity);
 
-  /// Agrupa productos por vendedor, excluyendo al usuario actual.
+  /// Agrupa productos por vendedor.
   /// Solo incluye vendedores marcados como negocio (isBusiness = true).
   /// Ordenados por: más productos primero, luego verificados.
   List<MapEntry<Seller, List<Product>>> get _businessesWithProducts {
-    final currentSellerId = context.read<AuthProvider>().backendSellerId;
     final Map<String, List<Product>> grouped = {};
     for (final p in _products) {
       grouped.putIfAbsent(p.seller.id, () => []).add(p);
@@ -97,7 +118,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final result = <MapEntry<Seller, List<Product>>>[];
     for (final seller in _sellers) {
       final products = grouped[seller.id];
-      if (products != null && products.isNotEmpty && seller.id != currentSellerId && seller.isBusiness) {
+      if (products != null && products.isNotEmpty && seller.isBusiness) {
         result.add(MapEntry(seller, products));
       }
     }
@@ -150,7 +171,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final filtered = _selectedCategoryId == null
         ? _products
         : _products.where((p) => p.category.id == _selectedCategoryId).toList();
-    final offers = _products.where((p) => p.isOffer).toList();
     final recent = filtered.where((p) => !p.isFeatured).toList();
 
     return SafeArea(
@@ -167,17 +187,27 @@ class _HomeScreenState extends State<HomeScreen> {
                     Row(
                       children: [
                         const Expanded(child: AppLogo(size: 44)),
+                        _ScanQrButton(
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const QrScannerScreen(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        _NotificationBell(
+                          onTap: () {
+                            final shell = context.findAncestorStateOfType<MainShellState>();
+                            shell?.openNotifications();
+                          },
+                        ),
+                        const SizedBox(width: 4),
                         _CartHeaderButton(
                           itemCount: _cartCount,
                           onTap: () =>
                               _openCart(context).then((_) => _loadData()),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 18),
-                    _MarketPulse(
-                      productsCount: _products.length,
-                      offersCount: offers.length,
                     ),
                     const SizedBox(height: 14),
                     _SearchBox(onTap: () => _openSearch(context)),
@@ -217,45 +247,25 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: _HighlightPlansBanner(plans: _highlightPlans),
                 ),
               ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
-                child: SectionHeader(
-                  title: 'Destacados',
-                  actionLabel: 'Ver planes',
-                  onAction: () => _showHighlightPlansSheet(context),
+
+            // ─── Vistos recientemente ────────────────────────────
+            if (_recentIds.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+                  child: _RecentSection(
+                    recentIds: _recentIds,
+                    allProducts: _products,
+                    onProductTap: (p) => _openDetail(context, p),
+                    onViewAll: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const RecentProductsScreen(),
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: 230,
-                child: _featuredProducts.isNotEmpty
-                    ? ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(18, 8, 18, 4),
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _featuredProducts.length,
-                        separatorBuilder: (_, _) => const SizedBox(width: 10),
-                        itemBuilder: (context, index) {
-                          final product = _featuredProducts[index];
-                          return ProductCard(
-                            product: product,
-                            width: 168,
-                            onTap: () => _openDetail(context, product),
-                          );
-                        },
-                      )
-                    : Center(
-                        child: Text(
-                          'Aún no hay productos destacados',
-                          style: TextStyle(
-                            color: AppColors.muted,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-              ),
-            ),
+
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
@@ -357,45 +367,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void _showMockMessage(BuildContext context, String message) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  void _showHighlightPlansSheet(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Planes para destacar',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Pensados para estudiantes y negocios fijos: precios bajos, visibilidad por tiempo y un plan mensual para aparecer siempre arriba.',
-                  style: TextStyle(
-                    color: AppColors.muted,
-                    fontWeight: FontWeight.w600,
-                    height: 1.35,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                for (final plan in _highlightPlans) ...[
-                  _HighlightPlanTile(plan: plan),
-                  if (plan != _highlightPlans.last) const SizedBox(height: 10),
-                ],
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 }
 
@@ -499,61 +470,7 @@ class _HighlightPlanChip extends StatelessWidget {
   }
 }
 
-class _HighlightPlanTile extends StatelessWidget {
-  const _HighlightPlanTile({required this.plan});
 
-  final HighlightPlan plan;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            plan.days == 30 ? Icons.calendar_month_rounded : Icons.schedule_rounded,
-            color: AppColors.orange,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  plan.title,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  plan.description,
-                  style: const TextStyle(
-                    color: AppColors.muted,
-                    fontWeight: FontWeight.w600,
-                    height: 1.3,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            plan.price,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: AppColors.primaryDark,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _CartHeaderButton extends StatelessWidget {
   const _CartHeaderButton({required this.itemCount, required this.onTap});
@@ -574,103 +491,7 @@ class _CartHeaderButton extends StatelessWidget {
   }
 }
 
-class _MarketPulse extends StatelessWidget {
-  const _MarketPulse({required this.productsCount, required this.offersCount});
-
-  final int productsCount;
-  final int offersCount;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _PulseMetric(
-              value: '$productsCount',
-              label: 'Publicaciones',
-              icon: Icons.storefront_rounded,
-            ),
-          ),
-          const _MetricDivider(),
-          Expanded(
-            child: _PulseMetric(
-              value: '$offersCount',
-              label: 'Ofertas',
-              icon: Icons.local_offer_rounded,
-            ),
-          ),
-          const _MetricDivider(),
-          const Expanded(
-            child: _PulseMetric(
-              value: '4.8',
-              label: 'Confianza',
-              icon: Icons.star_rounded,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MetricDivider extends StatelessWidget {
-  const _MetricDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(width: 1, height: 38, color: AppColors.border);
-  }
-}
-
-class _PulseMetric extends StatelessWidget {
-  const _PulseMetric({
-    required this.value,
-    required this.label,
-    required this.icon,
-  });
-
-  final String value;
-  final String label;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: AppColors.primary, size: 19),
-        const SizedBox(height: 5),
-        Text(
-          value,
-          style: const TextStyle(
-            color: AppColors.ink,
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: AppColors.muted,
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _CategoryFilterChip extends StatelessWidget {
+class _CategoryFilterChip extends StatefulWidget {
   const _CategoryFilterChip({
     required this.category,
     required this.onClear,
@@ -678,6 +499,51 @@ class _CategoryFilterChip extends StatelessWidget {
 
   final MarketplaceCategory category;
   final VoidCallback onClear;
+
+  @override
+  State<_CategoryFilterChip> createState() => _CategoryFilterChipState();
+}
+
+class _CategoryFilterChipState extends State<_CategoryFilterChip> {
+  bool _isFollowing = false;
+  bool _loading = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadStatus();
+  }
+
+  Future<void> _loadStatus() async {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLoggedIn) return;
+    try {
+      final interests = await ApiService.getCategoryInterests();
+      if (!mounted) return;
+      setState(() => _isFollowing = interests.contains(widget.category.id));
+    } catch (_) {}
+  }
+
+  Future<void> _toggleFollow() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      if (_isFollowing) {
+        await ApiService.removeCategoryInterest(widget.category.id);
+      } else {
+        await ApiService.addCategoryInterest(widget.category.id);
+      }
+      if (!mounted) return;
+      setState(() => _isFollowing = !_isFollowing);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error al cambiar seguimiento')),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -693,18 +559,30 @@ class _CategoryFilterChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(category.emoji, style: const TextStyle(fontSize: 16)),
+          Text(widget.category.emoji, style: const TextStyle(fontSize: 16)),
           const SizedBox(width: 6),
           Text(
-            category.name,
+            widget.category.name,
             style: const TextStyle(
               fontWeight: FontWeight.w700,
               color: AppColors.primaryDark,
             ),
           ),
           const SizedBox(width: 8),
+          // Botón de seguir/notificaciones
           GestureDetector(
-            onTap: onClear,
+            onTap: _loading ? null : _toggleFollow,
+            child: Icon(
+              _isFollowing
+                  ? Icons.notifications_active_rounded
+                  : Icons.notifications_none_rounded,
+              size: 18,
+              color: _isFollowing ? AppColors.primary : AppColors.muted,
+            ),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: widget.onClear,
             child: const Icon(
               Icons.close_rounded,
               size: 18,
@@ -771,12 +649,12 @@ class _CategoryScroller extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 86,
+      height: 72,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: categories.length,
         padding: const EdgeInsets.only(left: 2),
-        separatorBuilder: (_, _) => const SizedBox(width: 12),
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final category = categories[index];
           final selected = category.id == selectedCategoryId;
@@ -784,12 +662,12 @@ class _CategoryScroller extends StatelessWidget {
             onTap: () => onCategoryTap?.call(category.id),
             borderRadius: BorderRadius.circular(8),
             child: SizedBox(
-              width: 68,
+              width: 58,
               child: Column(
                 children: [
                   Container(
-                    width: 56,
-                    height: 56,
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
                       color: selected
                           ? AppColors.primary.withValues(alpha: 0.10)
@@ -800,21 +678,20 @@ class _CategoryScroller extends StatelessWidget {
                         width: selected ? 2 : 1,
                       ),
                     ),
-                    child: Center(
-                      child: Text(
-                        category.emoji,
-                        style: const TextStyle(fontSize: 27),
-                      ),
+                    child: Icon(
+                      category.icon,
+                      color: category.color,
+                      size: 22,
                     ),
                   ),
-                  const SizedBox(height: 7),
+                  const SizedBox(height: 5),
                   Text(
                     category.name,
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 11.5,
+                      fontSize: 10,
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
                       color: selected ? AppColors.primary : AppColors.ink,
                     ),
@@ -851,43 +728,42 @@ class _BusinessCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.border),
-        boxShadow: AppShadows.soft,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: AppShadows.lifted,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ─── Header con logo + info ────────────────────────
+          // ─── Header: logo + nombre ──────────────────────────
           InkWell(
             onTap: onSellerTap,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
             child: Padding(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.fromLTRB(16, 16, 12, 4),
               child: Row(
                 children: [
                   CircleAvatar(
-                    radius: 26,
-                    backgroundColor: AppColors.primary.withValues(alpha: 0.10),
+                    radius: 24,
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.08),
                     child: seller.logoUrl != null && seller.logoUrl!.isNotEmpty
                         ? ClipRRect(
-                            borderRadius: BorderRadius.circular(26),
+                            borderRadius: BorderRadius.circular(24),
                             child: Image.network(
                               '${ApiService.baseUrl}${seller.logoUrl}',
-                              width: 52,
-                              height: 52,
+                              width: 48,
+                              height: 48,
                               fit: BoxFit.cover,
                               errorBuilder: (_, _, _) => const Icon(
                                 Icons.store_rounded,
                                 color: AppColors.primaryDark,
-                                size: 26,
+                                size: 22,
                               ),
                             ),
                           )
                         : const Icon(Icons.store_rounded,
-                            color: AppColors.primaryDark, size: 26),
+                            color: AppColors.primaryDark, size: 22),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -901,40 +777,61 @@ class _BusinessCard extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w700,
-                                  fontSize: 15,
+                                  fontSize: 16,
+                                  letterSpacing: -0.3,
                                 ),
                               ),
                             ),
                             if (seller.verified)
                               const Padding(
-                                padding: EdgeInsets.only(left: 5),
+                                padding: EdgeInsets.only(left: 6),
                                 child: Icon(Icons.verified_rounded,
-                                    size: 16, color: AppColors.teal),
+                                    size: 18, color: AppColors.teal),
                               ),
                           ],
                         ),
-                        const SizedBox(height: 3),
-                        Text(
-                          '${products.length} publicación${products.length == 1 ? '' : 'es'}',
-                          style: const TextStyle(
-                            color: AppColors.muted,
-                            fontWeight: FontWeight.w500,
-                            fontSize: 13,
-                          ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${products.length} publicación${products.length == 1 ? '' : 'es'}',
+                                style: const TextStyle(
+                                  color: AppColors.muted,
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.star_rounded,
+                                size: 14, color: AppColors.gold),
+                            const SizedBox(width: 2),
+                            Text(
+                              seller.reviews > 0
+                                  ? '${seller.rating.toStringAsFixed(1)} (${seller.reviews})'
+                                  : 'Sin calificaciones',
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                  const Icon(Icons.chevron_right_rounded,
-                      color: AppColors.muted, size: 20),
+                  const SizedBox(width: 4),
+                  Icon(Icons.chevron_right_rounded,
+                      color: AppColors.muted.withValues(alpha: 0.4), size: 22),
                 ],
               ),
             ),
           ),
-          const Divider(height: 1, color: AppColors.border),
-          // ─── Productos ───────────────────────────────────────
+          // ─── Productos (sin divisor) ─────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             child: SizedBox(
               height: 110,
               child: Row(
@@ -955,31 +852,36 @@ class _BusinessCard extends StatelessWidget {
                             heroEnabled: false,
                           );
                         }
-                        // ─── Botón "Ver todo" ────────────
+                        // ─── "Ver todo" minimal ───────────────
                         return SizedBox(
-                          width: 100,
+                          width: 90,
                           child: Material(
-                            color: AppColors.primary.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(8),
+                            color: Colors.transparent,
                             child: InkWell(
                               onTap: onSellerTap,
-                              borderRadius: BorderRadius.circular(8),
-                              child: const Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.grid_view_rounded,
-                                        color: AppColors.primary),
-                                    SizedBox(height: 6),
-                                    Text(
-                                      'Ver todo',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.primary,
-                                        fontSize: 12,
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  color: AppColors.primary.withValues(alpha: 0.04),
+                                ),
+                                child: const Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.grid_view_rounded,
+                                          color: AppColors.muted, size: 20),
+                                      SizedBox(height: 6),
+                                      Text(
+                                        'Ver todo',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.muted,
+                                          fontSize: 12,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -1064,6 +966,144 @@ class _SellerProductsScreen extends StatelessWidget {
                 ),
               ),
       ),
+    );
+  }
+}
+
+/// Campana de notificaciones en el header del Home.
+class _NotificationBell extends StatefulWidget {
+  const _NotificationBell({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  State<_NotificationBell> createState() => _NotificationBellState();
+}
+
+class _NotificationBellState extends State<_NotificationBell> {
+  int _unreadCount = 0;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadCount();
+  }
+
+  Future<void> _loadCount() async {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLoggedIn) return;
+    try {
+      final count = await ApiService.getUnreadNotificationCount();
+      if (!mounted) return;
+      setState(() => _unreadCount = count);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    if (!auth.isLoggedIn) return const SizedBox.shrink();
+
+    return IconButton.outlined(
+      onPressed: () {
+        widget.onTap();
+        // Reset local count after opening
+        setState(() => _unreadCount = 0);
+      },
+      icon: Badge.count(
+        count: _unreadCount,
+        isLabelVisible: _unreadCount > 0,
+        backgroundColor: AppColors.primary,
+        child: const Icon(Icons.notifications_outlined),
+      ),
+    );
+  }
+}
+
+/// Botón para escanear códigos QR de productos.
+class _ScanQrButton extends StatelessWidget {
+  const _ScanQrButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton.outlined(
+      onPressed: onTap,
+      icon: const Icon(Icons.qr_code_scanner_rounded),
+      tooltip: 'Escanear QR',
+    );
+  }
+}
+
+/// Sección horizontal de productos vistos recientemente.
+class _RecentSection extends StatelessWidget {
+  const _RecentSection({
+    required this.recentIds,
+    required this.allProducts,
+    required this.onProductTap,
+    required this.onViewAll,
+  });
+
+  final List<String> recentIds;
+  final List<Product> allProducts;
+  final void Function(Product) onProductTap;
+  final VoidCallback onViewAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final Map<String, Product> productMap = {};
+    for (final p in allProducts) {
+      productMap[p.id] = p;
+    }
+
+    final recent = <Product>[];
+    for (final id in recentIds) {
+      if (recent.length >= 6) break;
+      final p = productMap[id];
+      if (p != null) recent.add(p);
+    }
+
+    if (recent.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.history_rounded,
+                size: 18, color: AppColors.primary),
+            const SizedBox(width: 6),
+            Text(
+              'Vistos recientemente',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const Spacer(),
+            TextButton(
+              onPressed: onViewAll,
+              child: const Text('Ver todos'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 136,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: recent.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              final product = recent[index];
+              return ProductCard(
+                product: product,
+                width: 140,
+                onTap: () => onProductTap(product),
+                heroEnabled: false,
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

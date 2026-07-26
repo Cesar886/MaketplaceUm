@@ -16,6 +16,14 @@ class AppColors {
   static const premiumBorder = Color(0xFFE4D4A7);
   static const danger = Color(0xFFC94F50);
   static const success = Color(0xFF2D7D55);
+
+  // ─── Oscuro ─────────────────────────────────────────────
+  static const darkBackground = Color(0xFF121212);
+  static const darkSurface = Color(0xFF1E1E1E);
+  static const darkSurfaceMuted = Color(0xFF2A2A2A);
+  static const darkInk = Color(0xFFE8EAE6);
+  static const darkMuted = Color(0xFF9A9F9C);
+  static const darkBorder = Color(0xFF333533);
 }
 
 class AppShadows {
@@ -141,6 +149,92 @@ class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
       dividerColor: AppColors.border,
+      visualDensity: VisualDensity.standard,
+    );
+  }
+
+  static ThemeData get dark {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: AppColors.primary,
+      brightness: Brightness.dark,
+    ).copyWith(
+      primary: AppColors.primary,
+      secondary: AppColors.teal,
+      tertiary: AppColors.gold,
+      surface: AppColors.darkSurface,
+      surfaceContainerHighest: AppColors.darkSurfaceMuted,
+      outline: AppColors.darkBorder,
+    );
+
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: scheme,
+      scaffoldBackgroundColor: AppColors.darkBackground,
+      appBarTheme: const AppBarTheme(
+        centerTitle: false,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        backgroundColor: AppColors.darkBackground,
+        foregroundColor: AppColors.darkInk,
+      ),
+      textTheme: const TextTheme(
+        headlineLarge: TextStyle(fontWeight: FontWeight.w700, color: AppColors.darkInk),
+        headlineMedium: TextStyle(fontWeight: FontWeight.w700, color: AppColors.darkInk),
+        headlineSmall: TextStyle(fontWeight: FontWeight.w700, color: AppColors.darkInk),
+        titleLarge: TextStyle(fontWeight: FontWeight.w700, color: AppColors.darkInk),
+        titleMedium: TextStyle(fontWeight: FontWeight.w700, color: AppColors.darkInk),
+        bodyLarge: TextStyle(color: AppColors.darkInk),
+        bodyMedium: TextStyle(color: AppColors.darkInk),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: AppColors.darkSurface,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: AppColors.darkBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: AppColors.darkBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: AppColors.primary),
+        ),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          minimumSize: const Size.fromHeight(52),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.primary,
+          side: const BorderSide(color: AppColors.darkBorder),
+          minimumSize: const Size.fromHeight(48),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: AppColors.darkSurface,
+        selectedColor: AppColors.primary.withValues(alpha: 0.20),
+        side: const BorderSide(color: AppColors.darkBorder),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        labelStyle: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.darkInk),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.darkSurface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+      dividerColor: AppColors.darkBorder,
       visualDensity: VisualDensity.standard,
     );
   }

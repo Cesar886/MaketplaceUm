@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
-
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../services/recent_products_service.dart';
 import '../widgets/badges.dart';
 import '../widgets/mock_product_image.dart';
 import 'auth/login_screen.dart';
 import 'cart_screen.dart';
+import 'chat_screen.dart';
 import 'home_screen.dart';
 
 class ProductDetailScreen extends StatefulWidget {
@@ -32,6 +34,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   void initState() {
     super.initState();
     _product = widget.product;
+    // Registrar el producto como visto recientemente
+    RecentProductsService.addRecent(widget.product.id);
   }
 
   /// Refresca el producto desde la API y actualiza el estado local.
@@ -88,6 +92,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     foregroundColor: AppColors.danger,
                   ),
                 ),
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: IconButton.filledTonal(
+                  onPressed: () => _shareProduct(context),
+                  icon: const Icon(Icons.share_rounded),
+                ),
+              ),
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: IconButton.filledTonal(
@@ -216,6 +227,167 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     ),
                   ),
                   const SizedBox(height: 26),
+                  // ─── Extras opcionales ────────────────────────────
+                  if (product.extras.isNotEmpty) ...[
+                    Text(
+                      'Extras opcionales',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Column(
+                        children: [
+                          for (final extra in product.extras) ...[
+                            Row(
+                              children: [
+                                Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.add_box_outlined,
+                                    size: 18,
+                                    color: AppColors.primary,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    extra.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.ink,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryDark.withValues(alpha: 0.06),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    '+${Product.formatPrice(extra.extraPrice)}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      color: AppColors.primaryDark,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (extra != product.extras.last)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 10),
+                                child: Divider(height: 1, indent: 44),
+                              ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 26),
+                  ],
+                  // ─── Código QR + Compartir ─────────────────────────
+                  Text(
+                    'Compartir',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Escanea o comparte',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 15,
+                                  color: AppColors.ink,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Muestra este código para que escaneen el producto o comparte el enlace.',
+                                style: TextStyle(
+                                  color: AppColors.muted,
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 13,
+                                  height: 1.35,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: () => _shareProduct(context),
+                                  icon: const Icon(Icons.share_rounded, size: 18),
+                                  label: const Text('Compartir'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: QrImageView(
+                            data: _qrData,
+                            version: QrVersions.auto,
+                            size: 100,
+                            eyeStyle: QrEyeStyle(
+                              eyeShape: QrEyeShape.square,
+                              color: AppColors.primaryDark,
+                            ),
+                            dataModuleStyle: const QrDataModuleStyle(
+                              dataModuleShape: QrDataModuleShape.square,
+                              color: AppColors.primaryDark,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 26),
+                  // ─── Calificaciones del producto ─────────────────
+                  _ProductRatingSection(
+                    product: product,
+                    isOwner: context.read<AuthProvider>().backendSellerId ==
+                        product.seller.id,
+                    onRated: (updatedProduct) {
+                      setState(() {
+                        _product = updatedProduct;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 26),
                   Text(
                     'Vendedor',
                     style: Theme.of(context).textTheme.titleMedium,
@@ -278,37 +450,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _requireAuth(context, () async {
-                    try {
-                      await ApiService.addToCart(product.id,
-                          meetingPoint: 'Biblioteca central');
-                      if (!context.mounted) return;
-                      // Navegar al carrito después de agregar
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                            builder: (_) => const CartScreen()),
-                      );
-                    } catch (e) {
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Error: $e')),
-                      );
-                    }
-                  }),
-                  icon: const Icon(Icons.add_shopping_cart_rounded),
-                  label: const Text('Carrito'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () => _openWhatsApp(context),
+                  onPressed: () => _openChat(context),
                   icon: const Icon(Icons.chat_rounded),
-                  label: const Text('WhatsApp'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF128C7E),
-                  ),
+                  label: const Text('Chat'),
                 ),
               ),
             ],
@@ -318,30 +463,45 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  Future<void> _openWhatsApp(BuildContext context) async {
-    final name = product.seller.name;
+  /// Datos para el código QR del producto.
+  String get _qrData {
+    return 'mercaditoum://product/${product.id}';
+  }
+
+  /// Comparte el producto usando share_plus.
+  void _shareProduct(BuildContext context) {
     final title = product.title;
     final price = Product.formatPrice(product.price);
-    final text = 'Hola $name, me interesa "$title" ($price) que vi en Mercadito UM.';
-    final encoded = Uri.encodeComponent(text);
-    final candidates = <Uri>[
-      Uri.parse('https://wa.me/?text=$encoded'),
-      Uri.parse('whatsapp://send?text=$encoded'),
-    ];
+    final seller = product.seller.name;
+    final text = 'Mira este producto en Mercadito UM:\n\n$title - $price\nVendedor: $seller';
+    Share.share(text);
+  }
 
-    for (final uri in candidates) {
-      try {
-        final launched = await launchUrl(
-          uri,
-          mode: LaunchMode.externalApplication,
-        );
-        if (launched) return;
-      } catch (_) {}
+  Future<void> _openChat(BuildContext context) async {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLoggedIn) {
+      _requireAuth(context, () => _openChat(context));
+      return;
     }
 
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('No se pudo abrir WhatsApp')),
+    // Verificar que no sea su propio producto
+    if (auth.backendSellerId == product.seller.id) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No puedes enviarte un mensaje a ti mismo')),
+      );
+      return;
+    }
+
+    // Navegar al chat con un conversationId vacío (se creará al enviar el primer mensaje)
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ChatScreen(
+          conversationId: '',
+          productId: product.id,
+          sellerId: product.seller.id,
+          product: product,
+        ),
+      ),
     );
   }
 
@@ -645,7 +805,9 @@ class _SellerCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 3),
                     Text(
-                      '${seller.rating} (${seller.reviews})',
+                      seller.reviews > 0
+                          ? '${seller.rating.toStringAsFixed(1)} (${seller.reviews} reseña${seller.reviews == 1 ? '' : 's'})'
+                          : 'Sin calificaciones',
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ],
@@ -833,5 +995,206 @@ class _StatusSelector extends StatelessWidget {
       case ProductAvailability.unavailable:
         return Icons.block_rounded;
     }
+  }
+}
+
+/// Sección de calificación del producto.
+/// Muestra estrellas interactivas si el usuario NO es el dueño,
+/// o solo el promedio (solo lectura) si SÍ es el dueño.
+class _ProductRatingSection extends StatelessWidget {
+  const _ProductRatingSection({
+    required this.product,
+    required this.isOwner,
+    required this.onRated,
+  });
+
+  final Product product;
+  final bool isOwner;
+  final ValueChanged<Product> onRated;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Calificación',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        if (isOwner)
+          // Solo lectura: promedio de estrellas
+          Row(
+            children: [
+              _StarDisplay(rating: product.productRating),
+              const SizedBox(width: 8),
+              Text(
+                product.productReviews > 0
+                    ? '${product.productRating.toStringAsFixed(1)} (${product.productReviews} reseña${product.productReviews == 1 ? '' : 's'})'
+                    : 'Sin calificaciones aún',
+                style: const TextStyle(
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          )
+        else
+          // Interactivo: permite al usuario calificar
+          _InteractiveStarRating(
+            product: product,
+            onRated: onRated,
+          ),
+      ],
+    );
+  }
+}
+
+/// Muestra estrellas rellenas según un valor decimal (solo lectura).
+class _StarDisplay extends StatelessWidget {
+  const _StarDisplay({required this.rating});
+
+  final double rating;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(5, (index) {
+        final starIndex = index + 1;
+        IconData icon;
+        if (rating >= starIndex) {
+          icon = Icons.star_rounded;
+        } else if (rating >= starIndex - 0.5) {
+          icon = Icons.star_half_rounded;
+        } else {
+          icon = Icons.star_border_rounded;
+        }
+        return Padding(
+          padding: const EdgeInsets.only(right: 2),
+          child: Icon(icon, size: 22, color: AppColors.gold),
+        );
+      }),
+    );
+  }
+}
+
+/// Estrellas tocables para que el usuario califique el producto.
+/// Si ya calificó antes, se pre-selecciona su calificación.
+class _InteractiveStarRating extends StatefulWidget {
+  const _InteractiveStarRating({
+    required this.product,
+    required this.onRated,
+  });
+
+  final Product product;
+  final ValueChanged<Product> onRated;
+
+  @override
+  State<_InteractiveStarRating> createState() => _InteractiveStarRatingState();
+}
+
+class _InteractiveStarRatingState extends State<_InteractiveStarRating> {
+  late int _selectedStars;
+  bool _sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedStars = widget.product.userRating ?? 0;
+  }
+
+  @override
+  void didUpdateWidget(_InteractiveStarRating oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.product.userRating != oldWidget.product.userRating) {
+      _selectedStars = widget.product.userRating ?? 0;
+    }
+  }
+
+  Future<void> _rate(int stars) async {
+    if (_sending || stars == _selectedStars) return; // misma calificación
+    setState(() => _sending = true);
+
+    try {
+      final updated = await ApiService.rateProduct(widget.product.id, stars);
+      if (!mounted) return;
+      setState(() {
+        _selectedStars = stars;
+        _sending = false;
+      });
+      widget.onRated(updated);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _sending = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(5, (index) {
+                final starIndex = index + 1;
+                final filled = starIndex <= _selectedStars;
+                return GestureDetector(
+                  onTap: _sending ? null : () => _rate(starIndex),
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Icon(
+                      filled ? Icons.star_rounded : Icons.star_border_rounded,
+                      size: 32,
+                      color: AppColors.gold,
+                    ),
+                  ),
+                );
+              }),
+            ),
+            if (_sending) ...[
+              const SizedBox(width: 10),
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Text(
+              _selectedStars > 0
+                  ? 'Tu calificación: $_selectedStars/5'
+                  : 'Toca una estrella para calificar',
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontWeight: FontWeight.w500,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Mostrar el promedio general
+            if (widget.product.productReviews > 0)
+              Text(
+                '· Promedio: ${widget.product.productRating.toStringAsFixed(1)} (${widget.product.productReviews})',
+                style: const TextStyle(
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 13,
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
   }
 }

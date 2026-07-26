@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const { generateToken, requireAuth } = require('./auth');
-const { sellers, saveData, registerSeller } = require('./data');
+const { sellers, saveData, registerSeller, updateSellerField } = require('./data');
 
 const routes = [
   require('./routes/categories'),
@@ -11,6 +11,8 @@ const routes = [
   require('./routes/cart'),
   require('./routes/listings'),
   require('./routes/highlightPlans'),
+  require('./routes/notifications'),
+  require('./routes/chat'),
 ];
 
 const app = express();
@@ -52,12 +54,12 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(404).json({ error: 'Vendedor no encontrado' });
   }
   const token = generateToken(seller.id);
-  res.json({ token, seller: { id: seller.id, name: seller.name, avatarInitials: seller.avatarInitials } });
+  res.json({ token, seller: { id: seller.id, name: seller.name, email: seller.email, phone: seller.phone, avatarInitials: seller.avatarInitials } });
 });
 
 // Register: crea un perfil de vendedor en el backend y devuelve un JWT
 app.post('/api/auth/register', (req, res) => {
-  const { name, email, userType } = req.body;
+  const { name, email, phone, userType } = req.body;
 
   if (!name || !email) {
     return res.status(400).json({ error: 'name y email son requeridos' });
@@ -71,11 +73,14 @@ app.post('/api/auth/register', (req, res) => {
   // Verificar si ya existe un vendedor con este email (por el slug)
   const existing = sellers.find(s => s.id.startsWith(`u_${emailSlug}_`));
   if (existing) {
-    // Ya registrado, devolver token directamente
+    // Ya registrado: actualizar teléfono si cambió
+    if (phone && phone.trim() !== existing.phone) {
+      updateSellerField(existing.id, 'phone', phone.trim());
+    }
     const token = generateToken(existing.id);
     return res.json({
       token,
-      seller: { id: existing.id, name: existing.name, avatarInitials: existing.avatarInitials },
+      seller: { id: existing.id, name: existing.name, email: existing.email, phone: existing.phone, avatarInitials: existing.avatarInitials },
       created: false,
     });
   }
@@ -89,6 +94,8 @@ app.post('/api/auth/register', (req, res) => {
   const newSeller = {
     id: sellerId,
     name: name.trim(),
+    email: email.trim(),
+    phone: (phone || '').trim(),
     avatarInitials: computeInitials(name),
     major,
     isBusiness: userType === 'negocio',
@@ -102,7 +109,7 @@ app.post('/api/auth/register', (req, res) => {
   const token = generateToken(newSeller.id);
   res.status(201).json({
     token,
-    seller: { id: newSeller.id, name: newSeller.name, avatarInitials: newSeller.avatarInitials },
+    seller: { id: newSeller.id, name: newSeller.name, email: newSeller.email, phone: newSeller.phone, avatarInitials: newSeller.avatarInitials },
     created: true,
   });
 });

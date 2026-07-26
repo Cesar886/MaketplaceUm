@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../app_theme.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../models.dart';
+import '../widgets/auto_refresh.dart';
 import '../widgets/badges.dart';
 import '../widgets/mock_product_image.dart';
 import 'auth/login_screen.dart';
@@ -16,9 +18,8 @@ class CartScreen extends StatefulWidget {
   State<CartScreen> createState() => _CartScreenState();
 }
 
-class _CartScreenState extends State<CartScreen> {
+class _CartScreenState extends State<CartScreen> with AutoRefreshMixin {
   List<CartItem> _items = [];
-  List<int> _quantities = [];
   bool _loading = true;
 
   @override
@@ -27,13 +28,15 @@ class _CartScreenState extends State<CartScreen> {
     _loadCart();
   }
 
+  @override
+  Future<void> onAutoRefresh() => _loadCart();
+
   Future<void> _loadCart() async {
     try {
       final items = await ApiService.getCart();
       if (!mounted) return;
       setState(() {
         _items = items;
-        _quantities = items.map((item) => item.quantity).toList();
         _loading = false;
       });
     } catch (_) {
@@ -42,24 +45,33 @@ class _CartScreenState extends State<CartScreen> {
     }
   }
 
-  int get _subtotal {
-    var total = 0;
-    for (var i = 0; i < _items.length; i++) {
-      total += _priceValue(_items[i].product.price) * _quantities[i];
-    }
-    return total;
-  }
+  Future<void> _openWhatsApp(BuildContext context, Product product) async {
+    final title = product.title;
+    final price = Product.formatPrice(product.price);
+    final text = 'Hola! Me interesa "$title" ($price)';
+    final encoded = Uri.encodeComponent(text);
 
-  int get _estimatedSavings {
-    var total = 0;
-    for (var i = 0; i < _items.length; i++) {
-      final product = _items[i].product;
-      if (product.previousPrice == null) continue;
-      total +=
-          (_priceValue(product.previousPrice!) - _priceValue(product.price)) *
-          _quantities[i];
+    final candidates = <Uri>[
+      if (product.seller.phone != null && product.seller.phone!.isNotEmpty)
+        Uri.parse('https://wa.me/${product.seller.phone}?text=$encoded'),
+      Uri.parse('https://wa.me/?text=$encoded'),
+      Uri.parse('whatsapp://send?text=$encoded'),
+    ];
+
+    for (final uri in candidates) {
+      try {
+        final launched = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
+        if (launched) return;
+      } catch (_) {}
     }
-    return total;
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('No se pudo abrir WhatsApp')),
+    );
   }
 
   @override
@@ -92,7 +104,7 @@ class _CartScreenState extends State<CartScreen> {
                 ),
                 const SizedBox(height: 10),
                 const Text(
-                  'Inicia sesión para guardar productos y coordinar compras.',
+                  'Inicia sesión para guardar productos y contactar vendedores.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: AppColors.muted,
@@ -122,15 +134,10 @@ class _CartScreenState extends State<CartScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
         children: [
-          _CartCountBadge(
-            count: _quantities.fold<int>(
-              0,
-              (sum, quantity) => sum + quantity,
-            ),
-          ),
+          _CartCountBadge(count: _items.length),
           const SizedBox(height: 6),
           const Text(
-            'Productos guardados para coordinar compra dentro del campus.',
+            'Productos guardados. Contacta al vendedor por WhatsApp para coordinar.',
             style: TextStyle(
               color: AppColors.muted,
               fontWeight: FontWeight.w500,
@@ -146,59 +153,16 @@ class _CartScreenState extends State<CartScreen> {
               ),
             )
           else
-            for (var i = 0; i < _items.length; i++) ...[
-            _CartItemTile(
-              item: _items[i],
-              quantity: _quantities[i],
-              onAdd: () async {
-                final newQty = _quantities[i] + 1;
-                setState(() => _quantities[i] = newQty);
-                try {
-                  await ApiService.updateCartQuantity(_items[i].id, newQty);
-                } catch (_) {
-                  // Silently fail — estado local ya se actualizó
-                }
-              },
-              onRemove: () async {
-                if (_quantities[i] <= 1) return;
-                final newQty = _quantities[i] - 1;
-                setState(() => _quantities[i] = newQty);
-                try {
-                  await ApiService.updateCartQuantity(_items[i].id, newQty);
-                } catch (_) {}
-              },
-            ),
-            const SizedBox(height: 12),
-          ],
-          if (_items.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          _CartSummary(subtotal: _subtotal, savings: _estimatedSavings),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: () =>
-                _showMockMessage(context, 'Solicitud de compra simulada'),
-            icon: const Icon(Icons.chat_rounded),
-            label: const Text('Coordinar compra'),
-          ),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: () => _showMockMessage(
-              context,
-              'Carrito guardado localmente como mock',
-            ),
-            icon: const Icon(Icons.bookmark_add_outlined),
-            label: const Text('Guardar para despues'),
-          ),
+            for (final item in _items) ...[
+              _CartItemTile(
+                item: item,
+                onWhatsApp: () => _openWhatsApp(context, item.product),
+              ),
+              const SizedBox(height: 12),
+            ],
         ],
-      ],
       ),
     );
-  }
-
-  void _showMockMessage(BuildContext context, String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -241,15 +205,11 @@ class _CartCountBadge extends StatelessWidget {
 class _CartItemTile extends StatelessWidget {
   const _CartItemTile({
     required this.item,
-    required this.quantity,
-    required this.onAdd,
-    required this.onRemove,
+    required this.onWhatsApp,
   });
 
   final CartItem item;
-  final int quantity;
-  final VoidCallback onAdd;
-  final VoidCallback onRemove;
+  final VoidCallback onWhatsApp;
 
   @override
   Widget build(BuildContext context) {
@@ -298,6 +258,9 @@ class _CartItemTile extends StatelessWidget {
                             ),
                           ),
                         ),
+                        const SizedBox(width: 6),
+                        if (product.availability != null)
+                          AvailabilityBadge(availability: product.availability!),
                         if (product.isOffer)
                           OfferBadge(
                             label: product.discountLabel,
@@ -368,10 +331,17 @@ class _CartItemTile extends StatelessWidget {
                   ],
                 ),
               ),
-              _QuantityStepper(
-                quantity: quantity,
-                onAdd: onAdd,
-                onRemove: onRemove,
+              ElevatedButton.icon(
+                onPressed: onWhatsApp,
+                icon: const Icon(Icons.chat_rounded, size: 18),
+                label: const Text('WhatsApp'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF128C7E),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
               ),
             ],
           ),
@@ -379,143 +349,4 @@ class _CartItemTile extends StatelessWidget {
       ),
     );
   }
-}
-
-class _QuantityStepper extends StatelessWidget {
-  const _QuantityStepper({
-    required this.quantity,
-    required this.onAdd,
-    required this.onRemove,
-  });
-
-  final int quantity;
-  final VoidCallback onAdd;
-  final VoidCallback onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surfaceMuted,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            onPressed: onRemove,
-            icon: const Icon(Icons.remove_rounded),
-            visualDensity: VisualDensity.compact,
-          ),
-          SizedBox(
-            width: 28,
-            child: Text(
-              '$quantity',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
-          IconButton(
-            onPressed: onAdd,
-            icon: const Icon(Icons.add_rounded),
-            visualDensity: VisualDensity.compact,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CartSummary extends StatelessWidget {
-  const _CartSummary({required this.subtotal, required this.savings});
-
-  final int subtotal;
-  final int savings;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        children: [
-          _SummaryRow(
-            label: 'Subtotal',
-            value: _money(subtotal),
-            highlighted: true,
-          ),
-          const SizedBox(height: 10),
-          _SummaryRow(
-            label: 'Ahorro estimado',
-            value: _money(savings),
-            accent: AppColors.success,
-          ),
-          const SizedBox(height: 10),
-          const _SummaryRow(label: 'Entrega', value: 'A coordinar en campus'),
-        ],
-      ),
-    );
-  }
-}
-
-class _SummaryRow extends StatelessWidget {
-  const _SummaryRow({
-    required this.label,
-    required this.value,
-    this.highlighted = false,
-    this.accent,
-  });
-
-  final String label;
-  final String value;
-  final bool highlighted;
-  final Color? accent;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: AppColors.muted,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-        Flexible(
-          child: Text(
-            value,
-            textAlign: TextAlign.end,
-            style: TextStyle(
-              color: accent ?? AppColors.primaryDark,
-              fontSize: highlighted ? 22 : 14,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-int _priceValue(double price) {
-  return price.round();
-}
-
-String _money(int value) {
-  final raw = value.toString();
-  final buffer = StringBuffer();
-  for (var i = 0; i < raw.length; i++) {
-    final remaining = raw.length - i;
-    buffer.write(raw[i]);
-    if (remaining > 1 && remaining % 3 == 1) buffer.write(',');
-  }
-  return '\$${buffer.toString()}';
 }

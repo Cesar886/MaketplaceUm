@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_theme.dart';
 import '../models.dart';
 import '../services/api_service.dart';
+import '../widgets/auto_refresh.dart';
 import '../widgets/badges.dart';
 import '../widgets/mock_product_image.dart';
 
@@ -13,7 +14,7 @@ class MyListingsScreen extends StatefulWidget {
   State<MyListingsScreen> createState() => _MyListingsScreenState();
 }
 
-class _MyListingsScreenState extends State<MyListingsScreen> {
+class _MyListingsScreenState extends State<MyListingsScreen> with AutoRefreshMixin {
   List<Product> _listings = [];
   bool _loading = true;
 
@@ -22,6 +23,9 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
     super.initState();
     _loadListings();
   }
+
+  @override
+  Future<void> onAutoRefresh() => _loadListings();
 
   Future<void> _loadListings() async {
     try {

@@ -3,7 +3,6 @@ const fs = require('fs');
 const sharp = require('sharp');
 const multer = require('multer');
 const { sellers, saveData } = require('../data');
-const db = require('../database');
 
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
 

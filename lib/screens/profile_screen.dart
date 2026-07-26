@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
+import '../providers/theme_provider.dart';
 import '../services/api_service.dart';
 import '../widgets/badges.dart';
 import 'auth/login_screen.dart';
@@ -233,6 +234,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
               title: 'Ayuda',
               subtitle: 'Preguntas frecuentes',
             ),
+
+            // ─── Modo oscuro ────────────────────────────────────
+            const Padding(
+              padding: EdgeInsets.only(top: 8, bottom: 10),
+              child: Text(
+                'Apariencia',
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ),
+            _DarkModeToggle(),
 
             // ─── Sección legal ──────────────────────────────────
             const Padding(
@@ -564,6 +580,38 @@ class _ProfileMetric extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _DarkModeToggle extends StatelessWidget {
+  const _DarkModeToggle();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.watch<ThemeProvider>();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: SwitchListTile(
+        secondary: Icon(
+          theme.darkMode ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+          color: AppColors.primary,
+        ),
+        title: const Text(
+          'Modo oscuro',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        subtitle: const Text('Cambia el tema de la interfaz'),
+        value: theme.darkMode,
+        onChanged: (_) => theme.toggleDarkMode(),
+        activeTrackColor: AppColors.primary.withValues(alpha: 0.5),
+        activeThumbColor: AppColors.primary,
+      ),
     );
   }
 }

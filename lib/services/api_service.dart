@@ -79,6 +79,7 @@ class ApiService {
     required String name,
     required String email,
     required String userType,
+    String? phone,
   }) async {
     final res = await _client.post(
       _uri('/auth/register'),
@@ -87,6 +88,7 @@ class ApiService {
         'name': name,
         'email': email,
         'userType': userType,
+        if (phone != null) 'phone': phone,
       }),
     );
     if (res.statusCode != 200 && res.statusCode != 201) {
@@ -151,6 +153,7 @@ class ApiService {
     required String category,
     required String description,
     String status = 'available',
+    List<int> availableDays = const [],
     List<Map<String, dynamic>> extras = const [],
     List<String>? imagePaths,
   }) async {
@@ -163,6 +166,9 @@ class ApiService {
       request.fields['description'] = description;
       request.fields['status'] = status;
       request.fields['extras'] = jsonEncode(extras);
+      if (availableDays.isNotEmpty) {
+        request.fields['availableDays'] = jsonEncode(availableDays);
+      }
       // El seller se obtiene del JWT en el backend (requireAuth)
       if (_token == null) {
         throw Exception('No hay sesión activa en el backend. Vuelve a iniciar sesión.');
@@ -188,6 +194,7 @@ class ApiService {
       'description': description,
       'status': status,
       'extras': extras,
+      if (availableDays.isNotEmpty) 'availableDays': availableDays,
     };
     final res = await _client.post(
       _uri('/products'),
@@ -235,6 +242,25 @@ class ApiService {
     }
   }
 
+  /// Califica un producto con 1-5 estrellas (requiere auth).
+  /// Crea o actualiza la calificación del usuario actual.
+  static Future<Product> rateProduct(String productId, int stars) async {
+    final res = await _client.post(
+      _uri('/products/$productId/rate'),
+      headers: _authHeaders,
+      body: jsonEncode({'stars': stars}),
+    );
+    if (res.statusCode == 403) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['error'] ?? 'No puedes calificar tu propio producto');
+    }
+    if (res.statusCode != 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['error'] ?? 'Error al calificar producto');
+    }
+    return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
   /// Cambia el estado de disponibilidad de un producto (solo el dueño).
   static Future<Product> updateProductStatus(
       String productId, String status) async {
@@ -246,6 +272,21 @@ class ApiService {
     if (res.statusCode != 200) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       throw Exception(body['error'] ?? 'Error al cambiar estado');
+    }
+    return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  /// Actualiza los días disponibles de un producto (solo el dueño).
+  static Future<Product> updateProductDays(
+      String productId, List<int> availableDays) async {
+    final res = await _client.patch(
+      _uri('/products/$productId/days'),
+      headers: _authHeaders,
+      body: jsonEncode({'availableDays': availableDays}),
+    );
+    if (res.statusCode != 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['error'] ?? 'Error al actualizar días disponibles');
     }
     return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
@@ -350,5 +391,112 @@ class ApiService {
     return data
         .map((e) => HighlightPlan.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  // ─── Notifications ──────────────────────────────────────
+
+  static Future<Map<String, dynamic>> getNotifications() async {
+    final res = await _client.get(_uri('/notifications'), headers: _authHeaders);
+    if (res.statusCode != 200) throw Exception('Error fetching notifications');
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  static Future<void> markNotificationRead(String id) async {
+    await _client.patch(
+      _uri('/notifications/$id/read'),
+      headers: _authHeaders,
+    );
+  }
+
+  static Future<void> markAllNotificationsRead() async {
+    await _client.patch(
+      _uri('/notifications/read-all'),
+      headers: _authHeaders,
+    );
+  }
+
+  static Future<int> getUnreadNotificationCount() async {
+    final res = await _client.get(
+      _uri('/notifications/unread-count'),
+      headers: _authHeaders,
+    );
+    if (res.statusCode != 200) return 0;
+    return (jsonDecode(res.body) as Map<String, dynamic>)['count'] as int? ?? 0;
+  }
+
+  // ─── Category Interests ──────────────────────────────────
+
+  static Future<List<String>> getCategoryInterests() async {
+    final res = await _client.get(
+      _uri('/notifications/interests'),
+      headers: _authHeaders,
+    );
+    if (res.statusCode != 200) return [];
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return (data['interests'] as List<dynamic>?)?.cast<String>() ?? [];
+  }
+
+  static Future<List<String>> addCategoryInterest(String categoryId) async {
+    final res = await _client.post(
+      _uri('/notifications/interests'),
+      headers: _authHeaders,
+      body: jsonEncode({'categoryId': categoryId}),
+    );
+    if (res.statusCode != 200) throw Exception('Error adding interest');
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return (data['interests'] as List<dynamic>?)?.cast<String>() ?? [];
+  }
+
+  static Future<List<String>> removeCategoryInterest(String categoryId) async {
+    final res = await _client.delete(
+      _uri('/notifications/interests/$categoryId'),
+      headers: _authHeaders,
+    );
+    if (res.statusCode != 200) throw Exception('Error removing interest');
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return (data['interests'] as List<dynamic>?)?.cast<String>() ?? [];
+  }
+
+  // ─── Chat ────────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> getConversations() async {
+    final res = await _client.get(
+      _uri('/chat/conversations'),
+      headers: _authHeaders,
+    );
+    if (res.statusCode != 200) throw Exception('Error fetching conversations');
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  static Future<List<ChatMessage>> getMessages(String conversationId) async {
+    final res = await _client.get(
+      _uri('/chat/conversations/$conversationId/messages'),
+      headers: _authHeaders,
+    );
+    if (res.statusCode != 200) throw Exception('Error fetching messages');
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return (data['messages'] as List<dynamic>)
+        .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Envía un mensaje. Si no existe conversación, la crea.
+  /// Devuelve { messages, conversationId }
+  static Future<Map<String, dynamic>> sendMessage({
+    required String productId,
+    required String sellerId,
+    required String text,
+  }) async {
+    final res = await _client.post(
+      _uri('/chat/send'),
+      headers: _authHeaders,
+      body: jsonEncode({
+        'productId': productId,
+        'sellerId': sellerId,
+        'text': text,
+      }),
+    );
+    if (res.statusCode != 201) throw Exception('Error sending message');
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 }

@@ -78,11 +78,11 @@ class MarketplaceCategory {
 
   factory MarketplaceCategory.fromJson(Map<String, dynamic> json) {
     return MarketplaceCategory(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      emoji: json['emoji'] as String,
-      icon: _parseIcon(json['icon'] as String),
-      color: _parseColor(json['color'] as String),
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      emoji: json['emoji'] as String? ?? '',
+      icon: _parseIcon(json['icon'] as String? ?? 'category'),
+      color: _parseColor(json['color'] as String? ?? '#607D8B'),
     );
   }
 
@@ -101,6 +101,7 @@ class Seller {
     required this.major,
     this.isBusiness = false,
     this.logoUrl,
+    this.phone,
     required this.rating,
     required this.reviews,
     required this.verified,
@@ -108,15 +109,16 @@ class Seller {
 
   factory Seller.fromJson(Map<String, dynamic> json) {
     return Seller(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      avatarInitials: json['avatarInitials'] as String,
-      major: json['major'] as String,
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      avatarInitials: json['avatarInitials'] as String? ?? '',
+      major: json['major'] as String? ?? '',
       isBusiness: json['isBusiness'] as bool? ?? false,
       logoUrl: json['logoUrl'] as String?,
-      rating: (json['rating'] as num).toDouble(),
-      reviews: json['reviews'] as int,
-      verified: json['verified'] as bool,
+      phone: json['phone'] as String?,
+      rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
+      reviews: (json['reviews'] as num?)?.toInt() ?? 0,
+      verified: json['verified'] as bool? ?? false,
     );
   }
 
@@ -126,6 +128,7 @@ class Seller {
   final String major;
   final bool isBusiness;
   final String? logoUrl;
+  final String? phone;
   final double rating;
   final int reviews;
   final bool verified;
@@ -214,6 +217,10 @@ class Product {
     this.status,
     this.availability,
     this.extras = const [],
+    this.availableDays = const [],
+    this.productRating = 0.0,
+    this.productReviews = 0,
+    this.userRating,
   });
 
   /// Formatea un precio numérico a string con símbolo de moneda.
@@ -262,8 +269,9 @@ class Product {
     }
 
     ListingStatus? parseStatus() {
-      if (json['status'] == null) return null;
-      switch (json['status'] as String) {
+      final statusValue = json['status'] as String?;
+      if (statusValue == null) return null;
+      switch (statusValue) {
         case 'active':
           return ListingStatus.active;
         case 'featured':
@@ -317,12 +325,12 @@ class Product {
     }
 
     return Product(
-      id: json['id'] as String,
-      title: json['title'] as String,
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? '',
       price: priceVal,
       category: parseCategory(),
-      description: json['description'] as String,
-      publishedAgo: json['publishedAgo'] as String,
+      description: json['description'] as String? ?? '',
+      publishedAgo: json['publishedAgo'] as String? ?? '',
       seller: parseSeller(),
       images: parsedImages,
       imageIcon: _parseIcon(json['imageIcon'] as String? ?? 'inventory_2'),
@@ -336,6 +344,13 @@ class Product {
       availability:
           ProductAvailability.fromString(json['status'] as String?),
       extras: parseExtras(),
+      availableDays: (json['availableDays'] as List<dynamic>?)
+              ?.map((e) => e as int)
+              .toList() ??
+          const [],
+      productRating: (json['productRating'] as num?)?.toDouble() ?? 0.0,
+      productReviews: (json['productReviews'] as num?)?.toInt() ?? 0,
+      userRating: (json['userRating'] as num?)?.toInt(),
     );
   }
 
@@ -357,6 +372,10 @@ class Product {
   final ListingStatus? status;
   final ProductAvailability? availability;
   final List<ProductExtra> extras;
+  final List<int> availableDays; // 0=Mon, 1=Tue ... 6=Sun
+  final double productRating;
+  final int productReviews;
+  final int? userRating; // null = no ha calificado, 1-5 = su calificación
 }
 
 class CartItem {
@@ -371,8 +390,8 @@ class CartItem {
     return CartItem(
       id: json['id'] as String? ?? '',
       product: Product.fromJson(json['product'] as Map<String, dynamic>),
-      quantity: json['quantity'] as int,
-      meetingPoint: json['meetingPoint'] as String,
+      quantity: json['quantity'] as int? ?? 1,
+      meetingPoint: json['meetingPoint'] as String? ?? 'Por definir',
     );
   }
 
@@ -393,11 +412,11 @@ class HighlightPlan {
 
   factory HighlightPlan.fromJson(Map<String, dynamic> json) {
     return HighlightPlan(
-      id: json['id'] as String,
-      title: json['title'] as String,
-      price: json['price'] as String,
-      description: json['description'] as String,
-      days: json['days'] as int,
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      price: json['price'] as String? ?? '\$0',
+      description: json['description'] as String? ?? '',
+      days: json['days'] as int? ?? 0,
     );
   }
 
@@ -429,4 +448,167 @@ class ProductExtra {
 
   final String name;
   final double extraPrice;
+}
+
+class NotificationItem {
+  const NotificationItem({
+    required this.id,
+    required this.userId,
+    required this.type,
+    required this.title,
+    required this.body,
+    this.data = const {},
+    this.read = false,
+    required this.createdAt,
+  });
+
+  factory NotificationItem.fromJson(Map<String, dynamic> json) {
+    return NotificationItem(
+      id: json['id'] as String? ?? '',
+      userId: json['userId'] as String? ?? '',
+      type: json['type'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      body: json['body'] as String? ?? '',
+      data: json['data'] as Map<String, dynamic>? ?? {},
+      read: json['read'] as bool? ?? false,
+      createdAt: json['createdAt'] as String? ?? '',
+    );
+  }
+
+  final String id;
+  final String userId;
+  final String type;
+  final String title;
+  final String body;
+  final Map<String, dynamic> data;
+  final bool read;
+  final String createdAt;
+}
+
+class Conversation {
+  const Conversation({
+    required this.id,
+    required this.productId,
+    required this.buyerId,
+    required this.sellerId,
+    required this.createdAt,
+    this.lastMessageAt,
+    this.lastMessagePreview = '',
+    this.product,
+    this.otherUser,
+    this.lastMessage,
+  });
+
+  factory Conversation.fromJson(Map<String, dynamic> json) {
+    return Conversation(
+      id: json['id'] as String? ?? '',
+      productId: json['productId'] as String? ?? '',
+      buyerId: json['buyerId'] as String? ?? '',
+      sellerId: json['sellerId'] as String? ?? '',
+      createdAt: json['createdAt'] as String? ?? '',
+      lastMessageAt: json['lastMessageAt'] as String?,
+      lastMessagePreview: json['lastMessagePreview'] as String? ?? '',
+      product: json['product'] != null
+          ? ChatProduct.fromJson(json['product'] as Map<String, dynamic>)
+          : null,
+      otherUser: json['otherUser'] != null
+          ? ChatUser.fromJson(json['otherUser'] as Map<String, dynamic>)
+          : null,
+      lastMessage: json['lastMessage'] != null
+          ? ChatMessage.fromJson(json['lastMessage'] as Map<String, dynamic>)
+          : null,
+    );
+  }
+
+  final String id;
+  final String productId;
+  final String buyerId;
+  final String sellerId;
+  final String createdAt;
+  final String? lastMessageAt;
+  final String lastMessagePreview;
+  final ChatProduct? product;
+  final ChatUser? otherUser;
+  final ChatMessage? lastMessage;
+}
+
+class ChatProduct {
+  const ChatProduct({
+    required this.id,
+    required this.title,
+    this.price = 0,
+    this.images = const [],
+    this.imageIcon,
+    this.imageColor,
+  });
+
+  factory ChatProduct.fromJson(Map<String, dynamic> json) {
+    return ChatProduct(
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      price: (json['price'] as num?)?.toDouble() ?? 0,
+      images: (json['images'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
+      imageIcon: json['imageIcon'] as String?,
+      imageColor: json['imageColor'] as String?,
+    );
+  }
+
+  final String id;
+  final String title;
+  final double price;
+  final List<String> images;
+  final String? imageIcon;
+  final String? imageColor;
+}
+
+class ChatUser {
+  const ChatUser({
+    required this.id,
+    required this.name,
+    this.avatarInitials = '',
+  });
+
+  factory ChatUser.fromJson(Map<String, dynamic> json) {
+    return ChatUser(
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      avatarInitials: json['avatarInitials'] as String? ?? '',
+    );
+  }
+
+  final String id;
+  final String name;
+  final String avatarInitials;
+}
+
+class ChatMessage {
+  const ChatMessage({
+    required this.id,
+    required this.conversationId,
+    required this.senderId,
+    required this.text,
+    required this.createdAt,
+    this.read = false,
+  });
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    return ChatMessage(
+      id: json['id'] as String? ?? '',
+      conversationId: json['conversationId'] as String? ?? '',
+      senderId: json['senderId'] as String? ?? '',
+      text: json['text'] as String? ?? '',
+      createdAt: json['createdAt'] as String? ?? '',
+      read: json['read'] as bool? ?? false,
+    );
+  }
+
+  final String id;
+  final String conversationId;
+  final String senderId;
+  final String text;
+  final String createdAt;
+  final bool read;
 }

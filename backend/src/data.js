@@ -31,10 +31,12 @@ let ownListings = db.getAllListings().map(row => ({
 function registerSeller(sellerData) {
   // Insertar en SQLite
   db.getDb().prepare(`
-    INSERT OR IGNORE INTO sellers (id, name, avatarInitials, major, isBusiness, logoUrl, rating, reviews, verified)
-    VALUES (@id, @name, @avatarInitials, @major, @isBusiness, @logoUrl, @rating, @reviews, @verified)
+    INSERT OR IGNORE INTO sellers (id, name, email, phone, avatarInitials, major, isBusiness, logoUrl, rating, reviews, verified)
+    VALUES (@id, @name, @email, @phone, @avatarInitials, @major, @isBusiness, @logoUrl, @rating, @reviews, @verified)
   `).run({
     ...sellerData,
+    email: sellerData.email || null,
+    phone: sellerData.phone || null,
     isBusiness: sellerData.isBusiness ? 1 : 0,
     verified: sellerData.verified ? 1 : 0,
     rating: sellerData.rating ?? 0,
@@ -70,4 +72,13 @@ function saveData() {
   })();
 }
 
-module.exports = { categories, sellers, products, cart, ownListings, highlightPlans, saveData, registerSeller };
+function updateSellerField(sellerId, field, value) {
+  db.getDb().prepare(
+    `UPDATE sellers SET ${field} = ? WHERE id = ?`
+  ).run(value, sellerId);
+  // Refrescar la lista en memoria desde DB
+  sellers.length = 0;
+  sellers.push(...db.getSellers());
+}
+
+module.exports = { categories, sellers, products, cart, ownListings, highlightPlans, saveData, registerSeller, updateSellerField };

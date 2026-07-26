@@ -44,4 +44,4 @@ function requireAuth(req, res, next) {
   }
 }
 
-module.exports = { generateToken, requireAuth };
+module.exports = { generateToken, requireAuth, JWT_SECRET };

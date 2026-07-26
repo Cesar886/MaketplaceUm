@@ -24,6 +24,8 @@ function initDatabase() {
     CREATE TABLE IF NOT EXISTS sellers (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
+      email TEXT,
+      phone TEXT,
       avatarInitials TEXT,
       major TEXT,
       isBusiness INTEGER DEFAULT 0,
@@ -86,6 +88,64 @@ function initDatabase() {
       description TEXT,
       days INTEGER
     );
+
+    CREATE TABLE IF NOT EXISTS category_interests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      category_id TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, category_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      data TEXT DEFAULT '{}',
+      read INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS conversations (
+      id TEXT PRIMARY KEY,
+      product_id TEXT NOT NULL,
+      buyer_id TEXT NOT NULL,
+      seller_id TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_message_at TEXT,
+      last_message_preview TEXT DEFAULT ''
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_conversations_buyer ON conversations(buyer_id, last_message_at);
+    CREATE INDEX IF NOT EXISTS idx_conversations_seller ON conversations(seller_id, last_message_at);
+
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      sender_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      read INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS product_ratings (
+      product_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      stars INTEGER NOT NULL CHECK(stars >= 1 AND stars <= 5),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (product_id, user_id),
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_product_ratings_product ON product_ratings(product_id);
   `);
 
   // ─── Migración desde schema legacy ─────────────────────────
@@ -424,6 +484,200 @@ function expireStaleOffers() {
   `).run(now);
 }
 
+// ─── Product Ratings ──────────────────────────────────────────
+
+function upsertProductRating(productId, userId, stars) {
+  const existing = db.prepare(
+    'SELECT * FROM product_ratings WHERE product_id = ? AND user_id = ?'
+  ).get(productId, userId);
+
+  if (existing) {
+    db.prepare(`
+      UPDATE product_ratings SET stars = ?, updated_at = datetime('now')
+      WHERE product_id = ? AND user_id = ?
+    `).run(stars, productId, userId);
+  } else {
+    db.prepare(`
+      INSERT INTO product_ratings (product_id, user_id, stars, created_at, updated_at)
+      VALUES (?, ?, ?, datetime('now'), datetime('now'))
+    `).run(productId, userId, stars);
+  }
+}
+
+function getProductRatingStats(productId) {
+  const row = db.prepare(`
+    SELECT
+      COALESCE(AVG(CAST(stars AS REAL)), 0) as average,
+      COUNT(*) as count
+    FROM product_ratings
+    WHERE product_id = ?
+  `).get(productId);
+  return { average: Math.round((row.average || 0) * 10) / 10, count: row.count || 0 };
+}
+
+function getUserProductRating(productId, userId) {
+  const row = db.prepare(
+    'SELECT stars FROM product_ratings WHERE product_id = ? AND user_id = ?'
+  ).get(productId, userId);
+  return row ? row.stars : null;
+}
+
+function getSellerRatingStats(sellerId) {
+  const row = db.prepare(`
+    SELECT
+      COALESCE(AVG(CAST(pr.stars AS REAL)), 0) as average,
+      COUNT(*) as count
+    FROM product_ratings pr
+    JOIN products p ON p.id = pr.product_id
+    WHERE p.seller = ?
+  `).get(sellerId);
+  return {
+    rating: Math.round((row.average || 0) * 10) / 10,
+    reviews: row.count || 0,
+  };
+}
+
+// ─── Category Interests ─────────────────────────────────────────
+
+function addCategoryInterest(userId, categoryId) {
+  db.prepare(
+    'INSERT OR IGNORE INTO category_interests (user_id, category_id) VALUES (?, ?)'
+  ).run(userId, categoryId);
+}
+
+function removeCategoryInterest(userId, categoryId) {
+  db.prepare(
+    'DELETE FROM category_interests WHERE user_id = ? AND category_id = ?'
+  ).run(userId, categoryId);
+}
+
+function getCategoryInterests(userId) {
+  return db.prepare(
+    'SELECT category_id FROM category_interests WHERE user_id = ?'
+  ).all(userId).map(r => r.category_id);
+}
+
+function getUsersInterestedInCategory(categoryId) {
+  return db.prepare(
+    'SELECT user_id FROM category_interests WHERE category_id = ?'
+  ).all(categoryId).map(r => r.user_id);
+}
+
+// ─── Notifications ──────────────────────────────────────────────
+
+function createNotification(id, userId, type, title, body, data) {
+  db.prepare(`
+    INSERT INTO notifications (id, user_id, type, title, body, data, read, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, 0, datetime('now'))
+  `).run(id, userId, type, title, body, JSON.stringify(data || {}));
+}
+
+function getNotifications(userId) {
+  return db.prepare(
+    'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50'
+  ).all(userId).map(row => ({
+    id: row.id,
+    userId: row.user_id,
+    type: row.type,
+    title: row.title,
+    body: row.body,
+    data: JSON.parse(row.data || '{}'),
+    read: !!row.read,
+    createdAt: row.created_at,
+  }));
+}
+
+function markNotificationRead(notificationId) {
+  db.prepare('UPDATE notifications SET read = 1 WHERE id = ?').run(notificationId);
+}
+
+function markAllNotificationsRead(userId) {
+  db.prepare('UPDATE notifications SET read = 1 WHERE user_id = ? AND read = 0').run(userId);
+}
+
+function getUnreadNotificationCount(userId) {
+  const row = db.prepare(
+    'SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND read = 0'
+  ).get(userId);
+  return row?.count ?? 0;
+}
+
+// ─── Conversations ──────────────────────────────────────────────
+
+function createConversation(id, productId, buyerId, sellerId) {
+  db.prepare(`
+    INSERT INTO conversations (id, product_id, buyer_id, seller_id, created_at, last_message_at, last_message_preview)
+    VALUES (?, ?, ?, ?, datetime('now'), datetime('now'), '')
+  `).run(id, productId, buyerId, sellerId);
+}
+
+function findConversation(productId, buyerId, sellerId) {
+  return db.prepare(
+    'SELECT * FROM conversations WHERE product_id = ? AND buyer_id = ? AND seller_id = ?'
+  ).get(productId, buyerId, sellerId);
+}
+
+function getConversationsForUser(userId) {
+  return db.prepare(`
+    SELECT * FROM conversations
+    WHERE buyer_id = ? OR seller_id = ?
+    ORDER BY last_message_at DESC
+  `).all(userId, userId).map(row => ({
+    id: row.id,
+    productId: row.product_id,
+    buyerId: row.buyer_id,
+    sellerId: row.seller_id,
+    createdAt: row.created_at,
+    lastMessageAt: row.last_message_at,
+    lastMessagePreview: row.last_message_preview || '',
+  }));
+}
+
+function updateConversationPreview(conversationId, previewText) {
+  db.prepare(`
+    UPDATE conversations SET last_message_at = datetime('now'), last_message_preview = ? WHERE id = ?
+  `).run(previewText, conversationId);
+}
+
+function getUnreadMessageCount(userId) {
+  const row = db.prepare(`
+    SELECT COUNT(*) as count FROM messages m
+    JOIN conversations c ON c.id = m.conversation_id
+    WHERE (c.buyer_id = ? OR c.seller_id = ?) AND m.sender_id != ? AND m.read = 0
+  `).get(userId, userId, userId);
+  return row?.count ?? 0;
+}
+
+// ─── Messages ───────────────────────────────────────────────────
+
+function createMessage(id, conversationId, senderId, text) {
+  db.prepare(`
+    INSERT INTO messages (id, conversation_id, sender_id, text, created_at, read)
+    VALUES (?, ?, ?, ?, datetime('now'), 0)
+  `).run(id, conversationId, senderId, text);
+  updateConversationPreview(conversationId, text);
+}
+
+function getMessages(conversationId) {
+  return db.prepare(
+    'SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC'
+  ).all(conversationId).map(row => ({
+    id: row.id,
+    conversationId: row.conversation_id,
+    senderId: row.sender_id,
+    text: row.text,
+    createdAt: row.created_at,
+    read: !!row.read,
+  }));
+}
+
+function markConversationMessagesRead(conversationId, userId) {
+  db.prepare(`
+    UPDATE messages SET read = 1
+    WHERE conversation_id = ? AND sender_id != ? AND read = 0
+  `).run(conversationId, userId);
+}
+
 module.exports = {
   initDatabase,
   getDb,
@@ -448,4 +702,29 @@ module.exports = {
   countPriceEditsLastHour,
   insertPriceHistory,
   expireStaleOffers,
+  // Product ratings
+  upsertProductRating,
+  getProductRatingStats,
+  getUserProductRating,
+  getSellerRatingStats,
+  // Category Interests
+  addCategoryInterest,
+  removeCategoryInterest,
+  getCategoryInterests,
+  getUsersInterestedInCategory,
+  // Notifications
+  createNotification,
+  getNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+  getUnreadNotificationCount,
+  // Conversations
+  createConversation,
+  findConversation,
+  getConversationsForUser,
+  getUnreadMessageCount,
+  // Messages
+  createMessage,
+  getMessages,
+  markConversationMessagesRead,
 };

@@ -94,6 +94,7 @@ class AuthProvider extends ChangeNotifier {
         name: _currentUser!['name'] as String,
         email: _currentUser!['email'] as String,
         userType: _currentUser!['user_type'] as String,
+        phone: _currentUser!['phone'] as String?,
       );
       _backendToken = result['token'] as String;
       _backendSellerId = result['seller']['id'] as String;
@@ -270,6 +271,10 @@ class AuthProvider extends ChangeNotifier {
     }
 
     notifyListeners();
+
+    // Sincronizar teléfono (y otros datos) con el backend en segundo plano
+    _syncBackend();
+
     return true;
   }
 
