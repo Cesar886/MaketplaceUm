@@ -6,11 +6,12 @@ import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../services/favorite_products_service.dart';
 import '../services/recent_products_service.dart';
 import '../widgets/badges.dart';
 import '../widgets/mock_product_image.dart';
 import 'auth/login_screen.dart';
-import 'cart_screen.dart';
+import 'main_shell.dart';
 import 'chat_screen.dart';
 import 'home_screen.dart';
 
@@ -36,6 +37,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     _product = widget.product;
     // Registrar el producto como visto recientemente
     RecentProductsService.addRecent(widget.product.id);
+    // Cargar estado de favorito desde el servicio local (usuario exclusivo)
+    FavoriteProductsService.isFavorite(widget.product.id).then((isFav) {
+      if (mounted) setState(() => _favorite = isFav);
+    });
   }
 
   /// Refresca el producto desde la API y actualiza el estado local.
@@ -45,7 +50,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       if (!mounted) return;
       setState(() {
         _product = fresh;
-        _favorite = fresh.isFavorite;
       });
     } catch (_) {
       // Si falla, mantenemos los datos locales
@@ -70,11 +74,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             actions: [
               IconButton.filledTonal(
                 onPressed: () => _requireAuth(context, () async {
-                  try {
-                    await ApiService.toggleFavorite(widget.product.id);
-                    if (!mounted) return;
-                    setState(() => _favorite = !_favorite);
-                  } catch (_) {}
+                  final nowFav =
+                      await FavoriteProductsService.toggleFavorite(widget.product.id);
+                  if (!mounted) return;
+                  setState(() => _favorite = nowFav);
                 }),
                 icon: Icon(
                   _favorite
@@ -102,10 +105,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: IconButton.filledTonal(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(builder: (_) => const CartScreen()),
-                  ),
-                  icon: const Icon(Icons.shopping_bag_rounded),
+                  onPressed: () {
+                    // Navegar al tab de Favoritos (índice 3 en MainShell)
+                    final shell = context.findAncestorStateOfType<MainShellState>();
+                    if (shell != null) {
+                      Navigator.of(context).pop();
+                      shell.selectTab(3);
+                    }
+                  },
+                  icon: const Icon(Icons.favorite_rounded),
                 ),
               ),
             ],
@@ -435,11 +443,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             children: [
               IconButton.outlined(
                 onPressed: () => _requireAuth(context, () async {
-                  try {
-                    await ApiService.toggleFavorite(widget.product.id);
-                    if (!mounted) return;
-                    setState(() => _favorite = !_favorite);
-                  } catch (_) {}
+                  final nowFav =
+                      await FavoriteProductsService.toggleFavorite(widget.product.id);
+                  if (!mounted) return;
+                  setState(() => _favorite = nowFav);
                 }),
                 icon: Icon(
                   _favorite

@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
+import '../mock_data.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
@@ -65,7 +66,15 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      // Fallback a datos mock si el API falla
+      setState(() {
+        _categories = mockCategories;
+        _plans = highlightPlans;
+        if (_categories.isNotEmpty) {
+          _selectedCategoryId = _categories.first.id;
+        }
+        _loading = false;
+      });
     }
   }
 
@@ -551,7 +560,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: DropdownButtonFormField<String>(
-                  initialValue: _selectedCategoryId,
+                  value: _selectedCategoryId,
                   decoration: const InputDecoration(labelText: 'Categoría'),
                   items: [
                     for (final category in _categories)
@@ -578,15 +587,17 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           _buildDaySelector(),
           const SizedBox(height: 12),
           _buildExtrasSection(),
-          const SizedBox(height: 24),
-          _HighlightSection(
-            plans: _plans,
-            selectedPlanId: _selectedPlanId,
-            onSelectPlan: (planId) => setState(
-              () => _selectedPlanId =
-                  _selectedPlanId == planId ? null : planId,
+          if (_plans.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            _HighlightSection(
+              plans: _plans,
+              selectedPlanId: _selectedPlanId,
+              onSelectPlan: (planId) => setState(
+                () => _selectedPlanId =
+                    _selectedPlanId == planId ? null : planId,
+              ),
             ),
-          ),
+          ],
           const SizedBox(height: 24),
           ElevatedButton.icon(
             onPressed: _publishing ? null : _publish,

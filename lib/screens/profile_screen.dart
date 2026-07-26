@@ -8,7 +8,6 @@ import '../providers/theme_provider.dart';
 import '../services/api_service.dart';
 import '../widgets/badges.dart';
 import 'auth/login_screen.dart';
-import 'cart_screen.dart';
 import 'legal/cookies_screen.dart';
 import 'legal/privacy_screen.dart';
 import 'legal/terms_screen.dart';
@@ -204,20 +203,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 MaterialPageRoute<void>(
                     builder: (_) => const MyListingsScreen()),
               ),
-            ),
-            _ProfileOption(
-              icon: Icons.shopping_bag_rounded,
-              title: 'Carrito',
-              subtitle: 'Productos guardados para coordinar compra',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                    builder: (_) => const CartScreen()),
-              ),
-            ),
-            _ProfileOption(
-              icon: Icons.favorite_rounded,
-              title: 'Favoritos guardados',
-              subtitle: 'Productos que quieres revisar después',
             ),
             _ProfileOption(
               icon: Icons.shield_rounded,

@@ -23,7 +23,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('WhatsApp'), findsOneWidget);
+      expect(find.text('Chat'), findsOneWidget);
       expect(find.text('Carrito'), findsWidgets);
       expect(find.text('Vendedor'), findsOneWidget);
     },

@@ -5,6 +5,7 @@ import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../services/favorite_products_service.dart';
 import '../services/recent_products_service.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/auto_refresh.dart';
@@ -26,7 +27,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin {
   List<Product> _products = [];
   List<MarketplaceCategory> _categories = [];
-  List<CartItem> _cart = [];
   List<HighlightPlan> _highlightPlans = [];
   List<Seller> _sellers = [];
   bool _loading = true;
@@ -34,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin {
   String? _error;
   String? _selectedCategoryId;
   List<String> _recentIds = [];
+  int _favoriteCount = 0;
 
   @override
   void initState() {
@@ -50,7 +51,6 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin {
       final results = await Future.wait([
         ApiService.getProducts(),
         ApiService.getCategories(),
-        ApiService.getCart(),
         ApiService.getHighlightPlans(),
       ]);
       if (!mounted) return;
@@ -78,8 +78,7 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin {
       setState(() {
         _products = results[0] as List<Product>;
         _categories = results[1] as List<MarketplaceCategory>;
-        _cart = results[2] as List<CartItem>;
-        _highlightPlans = results[3] as List<HighlightPlan>;
+        _highlightPlans = results[2] as List<HighlightPlan>;
         _sellers = loadedSellers;
         _hasPublished = hasPublished;
         _loading = false;
@@ -87,6 +86,8 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin {
       });
       // Cargar IDs de recientes (no bloqueante)
       _loadRecentIds();
+      // Cargar contador de favoritos (no bloqueante)
+      _loadFavoriteCount();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -94,6 +95,14 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin {
         _error = e.toString();
       });
     }
+  }
+
+  Future<void> _loadFavoriteCount() async {
+    try {
+      final ids = await FavoriteProductsService.getFavoriteIds();
+      if (!mounted) return;
+      setState(() => _favoriteCount = ids.length);
+    } catch (_) {}
   }
 
   Future<void> _loadRecentIds() async {
@@ -104,8 +113,7 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin {
     } catch (_) {}
   }
 
-  int get _cartCount =>
-      _cart.fold<int>(0, (sum, item) => sum + item.quantity);
+  int get _favoriteCountValue => _favoriteCount;
 
   /// Agrupa productos por vendedor.
   /// Solo incluye vendedores marcados como negocio (isBusiness = true).
@@ -202,10 +210,12 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin {
                           },
                         ),
                         const SizedBox(width: 4),
-                        _CartHeaderButton(
-                          itemCount: _cartCount,
-                          onTap: () =>
-                              _openCart(context).then((_) => _loadData()),
+                        _FavHeaderButton(
+                          itemCount: _favoriteCountValue,
+                          onTap: () {
+                            final shell = context.findAncestorStateOfType<MainShellState>();
+                            shell?.selectTab(3);
+                          },
                         ),
                       ],
                     ),
@@ -357,13 +367,6 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin {
         .push(MaterialPageRoute<void>(builder: (_) => const SearchScreen()));
   }
 
-  Future<void> _openCart(BuildContext context) {
-    // Switch to cart tab (index 3) in MainShell
-    final shell = context.findAncestorStateOfType<MainShellState>();
-    shell?.selectTab(3);
-    return Future.value();
-  }
-
   void _showMockMessage(BuildContext context, String message) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
@@ -470,10 +473,8 @@ class _HighlightPlanChip extends StatelessWidget {
   }
 }
 
-
-
-class _CartHeaderButton extends StatelessWidget {
-  const _CartHeaderButton({required this.itemCount, required this.onTap});
+class _FavHeaderButton extends StatelessWidget {
+  const _FavHeaderButton({required this.itemCount, required this.onTap});
 
   final int itemCount;
   final VoidCallback onTap;
@@ -484,8 +485,9 @@ class _CartHeaderButton extends StatelessWidget {
       onPressed: onTap,
       icon: Badge.count(
         count: itemCount,
-        backgroundColor: AppColors.primary,
-        child: const Icon(Icons.shopping_bag_outlined),
+        isLabelVisible: itemCount > 0,
+        backgroundColor: AppColors.danger,
+        child: const Icon(Icons.favorite_outline_rounded),
       ),
     );
   }

@@ -128,9 +128,9 @@ class MainShellState extends State<MainShell> {
                 label: 'Publicar',
               ),
               const NavigationDestination(
-                icon: Icon(Icons.shopping_bag_outlined),
-                selectedIcon: Icon(Icons.shopping_bag_rounded),
-                label: 'Carrito',
+                icon: Icon(Icons.favorite_outline_rounded),
+                selectedIcon: Icon(Icons.favorite_rounded),
+                label: 'Favoritos',
               ),
               NavigationDestination(
                 icon: Badge.count(
