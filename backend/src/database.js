@@ -123,6 +123,17 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_conversations_buyer ON conversations(buyer_id, last_message_at);
     CREATE INDEX IF NOT EXISTS idx_conversations_seller ON conversations(seller_id, last_message_at);
 
+    CREATE TABLE IF NOT EXISTS push_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      player_id TEXT NOT NULL,
+      platform TEXT DEFAULT 'unknown',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, player_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_push_tokens_user ON push_tokens(user_id);
+
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY,
       conversation_id TEXT NOT NULL,
@@ -648,6 +659,31 @@ function getUnreadMessageCount(userId) {
   return row?.count ?? 0;
 }
 
+// ─── Push Tokens (FCM) ────────────────────────────────────────────
+
+function registerPushToken(userId, playerId, platform) {
+  db.prepare(`
+    INSERT OR IGNORE INTO push_tokens (user_id, player_id, platform, created_at)
+    VALUES (?, ?, ?, datetime('now'))
+  `).run(userId, playerId, platform || 'unknown');
+}
+
+function unregisterPushToken(userId, playerId) {
+  db.prepare(
+    'DELETE FROM push_tokens WHERE user_id = ? AND player_id = ?'
+  ).run(userId, playerId);
+}
+
+function getPushTokensForUser(userId) {
+  return db.prepare(
+    'SELECT player_id FROM push_tokens WHERE user_id = ?'
+  ).all(userId).map(r => r.player_id);
+}
+
+function unregisterAllPushTokensForUser(userId) {
+  db.prepare('DELETE FROM push_tokens WHERE user_id = ?').run(userId);
+}
+
 // ─── Messages ───────────────────────────────────────────────────
 
 function createMessage(id, conversationId, senderId, text) {
@@ -734,6 +770,11 @@ module.exports = {
   findConversation,
   getConversationsForUser,
   getUnreadMessageCount,
+  // Push Tokens
+  registerPushToken,
+  unregisterPushToken,
+  getPushTokensForUser,
+  unregisterAllPushTokensForUser,
   // Messages
   createMessage,
   getMessages,

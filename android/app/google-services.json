@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "483335034495",
+    "project_id": "mercadoum",
+    "storage_bucket": "mercadoum.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:483335034495:android:eae1e78cc4590c6b0e514a",
+        "android_client_info": {
+          "package_name": "com.example.mercadito_um"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBion3KxdjeGPqhD7Utc75tTCnvbyVkbxY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

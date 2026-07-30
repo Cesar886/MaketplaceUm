@@ -1,16 +1,18 @@
 const db = require('../database');
-const { requireAuth } = require('../auth');
+const { sendPush } = require('../push');
 
 function register(app) {
-  // GET /api/chat/conversations - listar conversaciones del usuario autenticado
-  app.get('/api/chat/conversations', requireAuth, (req, res) => {
-    const conversations = db.getConversationsForUser(req.user.id);
-    const unreadCount = db.getUnreadMessageCount(req.user.id);
+  // GET /api/chat/conversations - listar conversaciones de un usuario (anónimo o no)
+  app.get('/api/chat/conversations', (req, res) => {
+    const userId = req.query.userId;
+    if (!userId) return res.status(400).json({ error: 'userId (query param) es requerido' });
+    const conversations = db.getConversationsForUser(userId);
+    const unreadCount = db.getUnreadMessageCount(userId);
 
     // Adjuntar datos del producto y del otro usuario
     const enriched = conversations.map(conv => {
       const product = db.getProductById(conv.productId);
-      const otherUserId = conv.buyerId === req.user.id ? conv.sellerId : conv.buyerId;
+      const otherUserId = conv.buyerId === userId ? conv.sellerId : conv.buyerId;
       const otherUser = db.getDb().prepare('SELECT * FROM sellers WHERE id = ?').get(otherUserId);
       const lastMessage = db.getDb().prepare(
         'SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1'
@@ -45,27 +47,28 @@ function register(app) {
   });
 
   // GET /api/chat/conversations/:id/messages - obtener mensajes de una conversación
-  app.get('/api/chat/conversations/:id/messages', requireAuth, (req, res) => {
+  app.get('/api/chat/conversations/:id/messages', (req, res) => {
     const conv = db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(req.params.id);
     if (!conv) return res.status(404).json({ error: 'Conversación no encontrada' });
 
-    // Verificar que el usuario pertenece a la conversación
-    if (conv.buyer_id !== req.user.id && conv.seller_id !== req.user.id) {
-      return res.status(403).json({ error: 'No tienes acceso a esta conversación' });
-    }
-
     const messages = db.getMessages(req.params.id);
-    // Marcar mensajes como leídos
-    db.markConversationMessagesRead(req.params.id, req.user.id);
+    // Marcar mensajes como leídos si el sender es distinto al que pide
+    const userId = req.query.userId;
+    if (userId && (conv.buyer_id === userId || conv.seller_id === userId)) {
+      db.markConversationMessagesRead(req.params.id, userId);
+    }
 
     res.json({ messages });
   });
 
-  // POST /api/chat/send - enviar un mensaje (crea conversación si no existe)
-  app.post('/api/chat/send', requireAuth, (req, res) => {
+  // POST /api/chat/send - enviar un mensaje (anónimo, no requiere auth)
+  app.post('/api/chat/send', (req, res) => {
     const { productId, sellerId, text, conversationId } = req.body;
-    const userId = req.user.id;
+    const userId = req.body.senderId;
 
+    if (!userId) {
+      return res.status(400).json({ error: 'senderId es requerido' });
+    }
     if (!text || !text.trim()) {
       return res.status(400).json({ error: 'El mensaje no puede estar vacío' });
     }
@@ -123,16 +126,64 @@ function register(app) {
       { conversationId: conversation.id, productId: conversation.product_id, senderId: userId }
     );
 
+    // Enviar push notification via OneSignal
+    const senderName = sender?.name || 'Alguien';
+    const pushTitle = isFirst && isFirst.c <= 1 ? 'Nuevo chat' : 'Nuevo mensaje';
+    const pushBody = `${senderName}: ${text.trim().slice(0, 100)}`;
+    sendPush(
+      [otherUserId],
+      pushTitle,
+      pushBody,
+      { conversationId: conversation.id, productId: conversation.product_id, type: isFirst && isFirst.c <= 1 ? 'new_chat' : 'new_message' }
+    );
+
     const messages = db.getMessages(conversation.id);
+
+    // ── Emitir evento en tiempo real via Socket.IO ──
+    const io = app.get('io');
+    if (io) {
+      // Notificar a los usuarios en la sala de la conversación
+      const newMsg = messages[messages.length - 1];
+      io.to(`conv:${conversation.id}`).emit('new:message', {
+        message: {
+          id: newMsg.id,
+          conversationId: newMsg.conversationId,
+          senderId: newMsg.senderId,
+          text: newMsg.text,
+          createdAt: newMsg.createdAt,
+          read: false,
+        },
+        conversationId: conversation.id,
+      });
+
+      // Notificar al otro usuario (si no está en la sala) para que refresque su lista
+      io.to(`user:${otherUserId}`).emit('conversation:updated', {
+        conversationId: conversation.id,
+      });
+    }
+
     res.status(201).json({ messages, conversationId: conversation.id });
   });
 
-  // DELETE /api/chat/messages/:id - eliminar un mensaje propio
-  app.delete('/api/chat/messages/:id', requireAuth, (req, res) => {
-    const deleted = db.deleteMessage(req.params.id, req.user.id);
+  // DELETE /api/chat/messages/:id - eliminar un mensaje propio (el senderId debe coincidir)
+  app.delete('/api/chat/messages/:id', (req, res) => {
+    const senderId = req.query.senderId;
+    if (!senderId) return res.status(400).json({ error: 'senderId (query param) requerido' });
+    const msg = db.getDb().prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id);
+    const deleted = db.deleteMessage(req.params.id, senderId);
     if (!deleted) {
       return res.status(404).json({ error: 'Mensaje no encontrado o no tienes permiso para eliminarlo' });
     }
+
+    // Emitir evento de eliminación via Socket.IO
+    const io = app.get('io');
+    if (io && msg) {
+      io.to(`conv:${msg.conversation_id}`).emit('message:deleted', {
+        messageId: req.params.id,
+        conversationId: msg.conversation_id,
+      });
+    }
+
     res.json({ success: true });
   });
 }

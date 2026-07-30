@@ -1,11 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
+import '../services/anonymous_id.dart';
 import '../services/api_service.dart';
-import 'auth/login_screen.dart';
+import '../services/chat_socket_service.dart';
 import 'chat_screen.dart';
 
 class ChatListScreen extends StatefulWidget {
@@ -19,21 +22,63 @@ class _ChatListScreenState extends State<ChatListScreen> {
   List<Conversation> _conversations = [];
   bool _loading = true;
   int _unreadCount = 0;
+  String _userId = '';
+
+  StreamSubscription<String>? _convSub;
+  StreamSubscription<Map<String, dynamic>>? _msgSub;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _initAsync();
+  }
+
+  Future<void> _initAsync() async {
+    _userId = await _getChatUserId();
+
+    // Conectar socket y registrarse para recibir notificaciones
+    final socket = ChatSocketService.instance;
+    socket.connect();
+    if (_userId.isNotEmpty) {
+      socket.registerUser(_userId);
+    }
+
+    // Escuchar actualizaciones de conversaciones
+    _convSub = socket.onConversationUpdated.listen((_) {
+      if (mounted) _load();
+    });
+
+    // Escuchar mensajes nuevos para recargar la lista (por si estamos en la lista y llega un msg)
+    _msgSub = socket.onNewMessage.listen((_) {
+      if (mounted) _load();
+    });
+
+    if (mounted) _load();
+  }
+
+  @override
+  void dispose() {
+    _convSub?.cancel();
+    _msgSub?.cancel();
+    super.dispose();
+  }
+
+  /// Retorna el userId a usar en las peticiones de chat:
+  /// - Si el usuario inició sesión → usa su backendSellerId
+  /// - Si no → usa su ID anónimo (persistido en SharedPreferences)
+  Future<String> _getChatUserId() async {
+    final auth = context.read<AuthProvider>();
+    if (auth.isLoggedIn && auth.backendSellerId != null) {
+      return auth.backendSellerId!;
+    }
+    return AnonymousId.get();
   }
 
   Future<void> _load() async {
-    final auth = context.read<AuthProvider>();
-    if (!auth.isLoggedIn) {
-      setState(() => _loading = false);
-      return;
-    }
     try {
-      final data = await ApiService.getConversations();
+      // Refrescar userId por si cambió
+      _userId = await _getChatUserId();
+      final data = await ApiService.getConversations(userId: _userId);
       if (!mounted) return;
       setState(() {
         _conversations = (data['conversations'] as List<dynamic>)
@@ -50,35 +95,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
-
-    if (!auth.isLoggedIn) {
-      return SafeArea(
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.chat_outlined,
-                  size: 64, color: AppColors.muted),
-              const SizedBox(height: 16),
-              const Text(
-                'Inicia sesión para ver tus mensajes',
-                style: TextStyle(color: AppColors.muted),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                      builder: (_) => const LoginScreen()),
-                ),
-                child: const Text('Iniciar sesión'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -146,9 +162,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     separatorBuilder: (_, _) => const SizedBox(height: 6),
                     itemBuilder: (context, index) {
                       final conv = _conversations[index];
+                      final auth = context.read<AuthProvider>();
+                      final isOwn = auth.isLoggedIn && auth.backendSellerId == conv.sellerId;
                       return _ConversationTile(
                         conversation: conv,
-                        isOwn: conv.sellerId == auth.backendSellerId,
+                        isOwn: isOwn,
                         onTap: () async {
                           await Navigator.of(context).push(
                             MaterialPageRoute<void>(
@@ -206,7 +224,6 @@ class _ConversationTile extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // Avatar del otro usuario
               CircleAvatar(
                 radius: 24,
                 backgroundColor: AppColors.primary.withValues(alpha: 0.12),

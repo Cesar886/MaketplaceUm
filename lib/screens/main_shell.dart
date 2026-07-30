@@ -3,12 +3,16 @@ import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
 import '../providers/auth_provider.dart';
+import '../services/anonymous_id.dart';
 import '../services/api_service.dart';
+import '../services/push_service.dart';
 import 'cart_screen.dart';
 import 'chat_list_screen.dart';
+import 'chat_screen.dart';
 import 'home_screen.dart';
 import 'notifications_screen.dart';
 import 'offers_screen.dart';
+import 'product_detail_screen.dart';
 import 'profile_screen.dart';
 import 'publish_product_screen.dart';
 
@@ -37,14 +41,59 @@ class MainShellState extends State<MainShell> {
   void initState() {
     super.initState();
     _loadUnreadCounts();
+
+    // Manejar taps en notificaciones push
+    PushService.instance.onNotificationTap = (data) {
+      _handleNotificationTap(data);
+    };
+  }
+
+  /// Navega a la pantalla correspondiente según los datos de la notificación push.
+  void _handleNotificationTap(Map<String, dynamic> data) {
+    if (!mounted) return;
+    final type = data['type'] as String?;
+    final convId = data['conversationId'] as String?;
+    final productId = data['productId'] as String?;
+
+    if ((type == 'new_chat' || type == 'new_message') && convId != null) {
+      // Navegar al chat
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ChatScreen(
+            conversationId: convId,
+            productId: productId ?? '',
+          ),
+        ),
+      );
+    } else if (type == 'new_product' && productId != null) {
+      // Navegar al detalle del producto
+      _openProduct(productId);
+    }
+  }
+
+  Future<void> _openProduct(String productId) async {
+    try {
+      final product = await ApiService.getProduct(productId);
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ProductDetailScreen(product: product),
+        ),
+      );
+    } catch (_) {}
   }
 
   Future<void> _loadUnreadCounts() async {
-    final auth = context.read<AuthProvider>();
-    if (!auth.isLoggedIn) return;
     try {
+      String userId;
+      final auth = context.read<AuthProvider>();
+      if (auth.isLoggedIn && auth.backendSellerId != null) {
+        userId = auth.backendSellerId!;
+      } else {
+        userId = await AnonymousId.get();
+      }
       final results = await Future.wait([
-        ApiService.getConversations(),
+        ApiService.getConversations(userId: userId),
         ApiService.getUnreadNotificationCount(),
       ]);
       if (!mounted) return;
@@ -59,6 +108,15 @@ class MainShellState extends State<MainShell> {
     setState(() => _currentIndex = index);
     // Recargar contadores al navegar a chats o notificaciones
     if (index == 4 || index == 0) _loadUnreadCounts();
+  }
+
+  @override
+  void dispose() {
+    // Limpiar callback para evitar memory leaks
+    if (PushService.instance.onNotificationTap != null) {
+      PushService.instance.onNotificationTap = null;
+    }
+    super.dispose();
   }
 
   void openNotifications() {

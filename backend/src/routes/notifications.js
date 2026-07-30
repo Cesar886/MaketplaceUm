@@ -1,5 +1,6 @@
 const db = require('../database');
 const { requireAuth } = require('../auth');
+const { sendPush } = require('../push');
 
 function register(app) {
   // GET /api/notifications - obtener notificaciones del usuario autenticado
@@ -49,6 +50,30 @@ function register(app) {
     db.removeCategoryInterest(req.user.id, req.params.categoryId);
     const interests = db.getCategoryInterests(req.user.id);
     res.json({ interests });
+  });
+
+  // ─── Push Tokens (FCM) ───────────────────────────────────────────
+
+  // POST /api/notifications/register-push - registrar un FCM device token
+  app.post('/api/notifications/register-push', requireAuth, (req, res) => {
+    const { playerId } = req.body;
+    if (!playerId) return res.status(400).json({ error: 'playerId es requerido' });
+    db.registerPushToken(req.user.id, playerId, req.body.platform || 'unknown');
+    res.json({ success: true });
+  });
+
+  // DELETE /api/notifications/register-push - desregistrar un FCM device token
+  app.delete('/api/notifications/register-push', requireAuth, (req, res) => {
+    const { playerId } = req.body;
+    if (!playerId) return res.status(400).json({ error: 'playerId es requerido' });
+    db.unregisterPushToken(req.user.id, playerId);
+    res.json({ success: true });
+  });
+
+  // DELETE /api/notifications/register-push/all - desregistrar todos los tokens del usuario
+  app.delete('/api/notifications/register-push/all', requireAuth, (req, res) => {
+    db.unregisterAllPushTokensForUser(req.user.id);
+    res.json({ success: true });
   });
 }
 

@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
+import '../services/anonymous_id.dart';
 import '../services/api_service.dart';
 import '../services/favorite_products_service.dart';
 import '../services/recent_products_service.dart';
@@ -14,6 +15,7 @@ import 'auth/login_screen.dart';
 import 'main_shell.dart';
 import 'chat_screen.dart';
 import 'home_screen.dart';
+import 'qr_display_screen.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({super.key, required this.product});
@@ -309,6 +311,25 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     ),
                     const SizedBox(height: 26),
                   ],
+                  // ─── Calificaciones del producto ─────────────────
+                  _ProductRatingSection(
+                    product: product,
+                    isOwner: context.read<AuthProvider>().backendSellerId ==
+                        product.seller.id,
+                    onRated: (updatedProduct) {
+                      setState(() {
+                        _product = updatedProduct;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 26),
+                  Text(
+                    'Vendedor',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 10),
+                  _SellerCard(seller: product.seller),
+                  const SizedBox(height: 26),
                   // ─── Código QR + Compartir ─────────────────────────
                   Text(
                     'Compartir',
@@ -366,42 +387,35 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: AppColors.border),
                           ),
-                          child: QrImageView(
-                            data: _qrData,
-                            version: QrVersions.auto,
-                            size: 100,
-                            eyeStyle: QrEyeStyle(
-                              eyeShape: QrEyeShape.square,
-                              color: AppColors.primaryDark,
-                            ),
-                            dataModuleStyle: const QrDataModuleStyle(
-                              dataModuleShape: QrDataModuleShape.square,
-                              color: AppColors.primaryDark,
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => QrDisplayScreen(
+                                    data: _qrData,
+                                    title: product.title,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: QrImageView(
+                              data: _qrData,
+                              version: QrVersions.auto,
+                              size: 100,
+                              eyeStyle: QrEyeStyle(
+                                eyeShape: QrEyeShape.square,
+                                color: AppColors.primaryDark,
+                              ),
+                              dataModuleStyle: const QrDataModuleStyle(
+                                dataModuleShape: QrDataModuleShape.square,
+                                color: AppColors.primaryDark,
+                              ),
                             ),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 26),
-                  // ─── Calificaciones del producto ─────────────────
-                  _ProductRatingSection(
-                    product: product,
-                    isOwner: context.read<AuthProvider>().backendSellerId ==
-                        product.seller.id,
-                    onRated: (updatedProduct) {
-                      setState(() {
-                        _product = updatedProduct;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 26),
-                  Text(
-                    'Vendedor',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 10),
-                  _SellerCard(seller: product.seller),
                   const SizedBox(height: 18),
                   OutlinedButton.icon(
                     onPressed: () {
@@ -485,14 +499,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   Future<void> _openChat(BuildContext context) async {
+    // Verificar que no sea su propio producto (solo si tiene sesión)
     final auth = context.read<AuthProvider>();
-    if (!auth.isLoggedIn) {
-      _requireAuth(context, () => _openChat(context));
-      return;
-    }
-
-    // Verificar que no sea su propio producto
-    if (auth.backendSellerId == product.seller.id) {
+    if (auth.isLoggedIn && auth.backendSellerId == product.seller.id) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No puedes enviarte un mensaje a ti mismo')),
       );
@@ -1124,7 +1133,19 @@ class _InteractiveStarRatingState extends State<_InteractiveStarRating> {
     setState(() => _sending = true);
 
     try {
-      final updated = await ApiService.rateProduct(widget.product.id, stars);
+      // Obtener userId (anónimo o de sesión)
+      final auth = context.read<AuthProvider>();
+      String userId;
+      if (auth.isLoggedIn && auth.backendSellerId != null) {
+        userId = auth.backendSellerId!;
+      } else {
+        userId = await AnonymousId.get();
+      }
+
+      final updated = await ApiService.rateProduct(
+        widget.product.id, stars,
+        userId: userId,
+      );
       if (!mounted) return;
       setState(() {
         _selectedStars = stars;

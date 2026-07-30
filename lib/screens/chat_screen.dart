@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
+import '../services/anonymous_id.dart';
 import '../services/api_service.dart';
+import '../services/chat_socket_service.dart';
 import 'product_detail_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -28,29 +32,148 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final ChatSocketService _socket = ChatSocketService.instance;
   List<ChatMessage> _messages = [];
   String? _currentConvId;
   bool _sending = false;
   bool _loading = true;
+  String _userId = '';
+  bool _otherTyping = false;
+
+  // Para debounce del evento typing:stop
+  Timer? _typingTimer;
+  static const _typingDebounce = Duration(seconds: 2);
+
+  StreamSubscription<Map<String, dynamic>>? _msgSub;
+  StreamSubscription<String>? _delSub;
+  StreamSubscription<Map<String, dynamic>>? _typingSub;
 
   @override
   void initState() {
     super.initState();
     _currentConvId = widget.conversationId;
-    _loadMessages();
+    _initAsync();
+  }
+
+  /// Inicialización asíncrona: obtiene el userId y luego carga mensajes.
+  Future<void> _initAsync() async {
+    _userId = await _getUserId();
+
+    // Conectar socket y unirse a la sala
+    _socket.connect();
+    if (_currentConvId != null && _currentConvId!.isNotEmpty) {
+      _socket.joinConversation(_currentConvId!);
+    }
+
+    _setupSocketListeners();
+    if (mounted) _loadMessages();
+  }
+
+  void _setupSocketListeners() {
+    _msgSub = _socket.onNewMessage.listen((data) {
+      if (!mounted) return;
+      final msgConvId = data['conversationId'] as String?;
+      // Solo aceptar mensajes de la conversación actual
+      if (msgConvId != _currentConvId) return;
+
+      final messageData = data['message'] as Map<String, dynamic>?;
+      if (messageData == null) return;
+
+      final msg = ChatMessage.fromJson(messageData);
+      // No duplicar si ya está en la lista (lo acabamos de enviar nosotros)
+      setState(() {
+        final exists = _messages.any((m) => m.id == msg.id);
+        if (!exists) {
+          _messages.add(msg);
+        }
+      });
+      _scrollToBottom();
+    });
+
+    _delSub = _socket.onMessageDeleted.listen((messageId) {
+      if (!mounted) return;
+      setState(() {
+        final idx = _messages.indexWhere((m) => m.id == messageId);
+        if (idx >= 0) {
+          _messages[idx] = ChatMessage(
+            id: _messages[idx].id,
+            conversationId: _messages[idx].conversationId,
+            senderId: _messages[idx].senderId,
+            text: '[Mensaje eliminado]',
+            createdAt: _messages[idx].createdAt,
+            read: _messages[idx].read,
+          );
+        }
+      });
+    });
+
+    _typingSub = _socket.onTyping.listen((data) {
+      if (!mounted) return;
+      // Solo para la conversación actual
+      final dataConvId = data['conversationId'] as String?;
+      if (dataConvId != null && dataConvId != _currentConvId) return;
+
+      final typingUserId = data['userId'] as String?;
+      // Ignorar si es el mismo usuario
+      if (typingUserId == _userId) return;
+
+      setState(() {
+        _otherTyping = data['typing'] == true;
+      });
+    });
+  }
+
+  @override
+  void didUpdateWidget(ChatScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.conversationId != widget.conversationId) {
+      // Cambió la conversación: salir de la anterior y unirse a la nueva
+      if (oldWidget.conversationId.isNotEmpty) {
+        _socket.leaveConversation(oldWidget.conversationId);
+      }
+      _currentConvId = widget.conversationId;
+      if (_currentConvId != null && _currentConvId!.isNotEmpty) {
+        _socket.joinConversation(_currentConvId!);
+      }
+      _messages = [];
+      _loading = true;
+      setState(() {});
+      _loadMessages();
+    }
   }
 
   @override
   void dispose() {
+    _typingTimer?.cancel();
+    _msgSub?.cancel();
+    _delSub?.cancel();
+    _typingSub?.cancel();
+    // Salir de la sala
+    if (_currentConvId != null && _currentConvId!.isNotEmpty) {
+      _socket.leaveConversation(_currentConvId!);
+    }
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
+  /// Retorna el userId actual: si hay sesión usa el ID del backend,
+  /// si no, usa el ID anónimo de SharedPreferences.
+  Future<String> _getUserId() async {
+    final auth = context.read<AuthProvider>();
+    if (auth.isLoggedIn && auth.backendSellerId != null) {
+      return auth.backendSellerId!;
+    }
+    return AnonymousId.get();
+  }
+
   Future<void> _loadMessages() async {
-    if (_currentConvId == null || _currentConvId!.isEmpty) return;
+    if (_currentConvId == null || _currentConvId!.isEmpty) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
     try {
-      final messages = await ApiService.getMessages(_currentConvId!);
+      final messages = await ApiService.getMessages(_currentConvId!, userId: _userId);
       if (!mounted) return;
       setState(() {
         _messages = messages;
@@ -75,6 +198,19 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  void _onTextChanged(String value) {
+    if (_currentConvId == null || _currentConvId!.isEmpty) return;
+
+    // Emitir typing:start
+    _socket.emitTypingStart(_currentConvId!, _userId);
+
+    // Reiniciar timer de typing:stop
+    _typingTimer?.cancel();
+    _typingTimer = Timer(_typingDebounce, () {
+      _socket.emitTypingStop(_currentConvId!, _userId);
+    });
+  }
+
   Future<void> _sendMessage() async {
     final text = _textController.text.trim();
     if (text.isEmpty || _sending) return;
@@ -82,28 +218,45 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() => _sending = true);
     _textController.clear();
 
+    // Asegurar que se envía typing:stop
+    _typingTimer?.cancel();
+    if (_currentConvId != null && _currentConvId!.isNotEmpty) {
+      _socket.emitTypingStop(_currentConvId!, _userId);
+    }
+
     try {
+      final senderId = _userId;
+
       if (widget.sellerId != null && _currentConvId == widget.conversationId) {
         // Primera vez: enviar y crear conversación
         final result = await ApiService.sendMessage(
           productId: widget.productId ?? '',
           sellerId: widget.sellerId!,
           text: text,
+          senderId: senderId,
         );
         if (!mounted) return;
         setState(() {
           _messages = (result['messages'] as List<dynamic>)
               .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
               .toList();
-          _currentConvId = result['conversationId'] as String?;
+          final newConvId = result['conversationId'] as String?;
+          if (newConvId != null && newConvId != _currentConvId) {
+            // Unirse a la nueva sala de conversación
+            if (_currentConvId != null && _currentConvId!.isNotEmpty) {
+              _socket.leaveConversation(_currentConvId!);
+            }
+            _currentConvId = newConvId;
+            _socket.joinConversation(_currentConvId!);
+          }
         });
       } else if (_currentConvId != null && _currentConvId!.isNotEmpty) {
-        // Enviar en conversación existente: pasamos el conversationId para que
-        // el backend lo use (tanto si envía el comprador como el vendedor)
+        // Enviar en conversación existente
         final result = await ApiService.sendMessage(
           productId: widget.productId ?? '',
           sellerId: widget.sellerId ?? '',
           text: text,
+          senderId: senderId,
           conversationId: _currentConvId,
         );
         if (!mounted) return;
@@ -146,10 +299,9 @@ class _ChatScreenState extends State<ChatScreen> {
     if (confirmed != true || !mounted) return;
 
     try {
-      await ApiService.deleteMessage(msg.id);
+      await ApiService.deleteMessage(msg.id, senderId: _userId);
       if (!mounted) return;
       setState(() {
-        // Soft-delete local: marcamos el texto como eliminado
         final idx = _messages.indexOf(msg);
         if (idx >= 0) {
           _messages[idx] = ChatMessage(
@@ -193,7 +345,6 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
         ],
       ),
-      // Barra con info del producto
       body: Column(
         children: [
           if (widget.product != null)
@@ -201,7 +352,7 @@ class _ChatScreenState extends State<ChatScreen> {
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
-                : _messages.isEmpty
+                : _messages.isEmpty && !_otherTyping
                     ? const Center(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
@@ -222,23 +373,29 @@ class _ChatScreenState extends State<ChatScreen> {
                     : ListView.builder(
                         controller: _scrollController,
                         padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
-                        itemCount: _messages.length,
+                        itemCount:
+                            _messages.length + (_otherTyping ? 1 : 0),
                         itemBuilder: (context, index) {
+                          if (_otherTyping &&
+                              index == _messages.length) {
+                            return _TypingIndicator();
+                          }
                           final msg = _messages[index];
                           final isMine = msg.senderId == currentUserId;
-                          final canDelete = isMine && msg.text != '[Mensaje eliminado]';
+                          final canDelete = isMine &&
+                              msg.text != '[Mensaje eliminado]';
                           return _MessageBubble(
                             message: msg,
                             isMine: isMine,
                             showSender: index == 0 ||
                                 _messages[index - 1].senderId !=
                                     msg.senderId,
-                            onDelete: canDelete ? () => _deleteMessage(msg) : null,
+                            onDelete:
+                                canDelete ? () => _deleteMessage(msg) : null,
                           );
                         },
                       ),
           ),
-          // Input
           Container(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
             decoration: const BoxDecoration(
@@ -252,6 +409,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     controller: _textController,
                     textInputAction: TextInputAction.send,
                     onSubmitted: (_) => _sendMessage(),
+                    onChanged: _onTextChanged,
                     minLines: 1,
                     maxLines: 4,
                     decoration: const InputDecoration(
@@ -283,6 +441,99 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Indicador visual de "escribiendo..." como el de WhatsApp
+class _TypingIndicator extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+                bottomLeft: Radius.circular(4),
+                bottomRight: Radius.circular(16),
+              ),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _Dot(delay: 0),
+                const SizedBox(width: 4),
+                _Dot(delay: 300),
+                const SizedBox(width: 4),
+                _Dot(delay: 600),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Dot extends StatefulWidget {
+  final int delay;
+  const _Dot({required this.delay});
+
+  @override
+  State<_Dot> createState() => _DotState();
+}
+
+class _DotState extends State<_Dot>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+    _animation = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+    Future.delayed(Duration(milliseconds: widget.delay), () {
+      _controller.repeat(reverse: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Opacity(
+          opacity: _animation.value,
+          child: Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: AppColors.muted,
+              shape: BoxShape.circle,
+            ),
+          ),
+        );
+      },
     );
   }
 }

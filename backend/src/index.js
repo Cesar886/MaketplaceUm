@@ -1,4 +1,6 @@
 const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
 const { generateToken, requireAuth } = require('./auth');
@@ -16,12 +18,59 @@ const routes = [
 ];
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
+});
+
 const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+
+// ─── Socket.IO ──────────────────────────────────────────────
+// Compartir la instancia io para que las rutas puedan emitir eventos
+app.set('io', io);
+
+io.on('connection', (socket) => {
+  console.log(`🟢 Cliente Socket.IO conectado: ${socket.id}`);
+
+  // Unirse a una sala de conversación
+  socket.on('join:conversation', (conversationId) => {
+    socket.join(`conv:${conversationId}`);
+    console.log(`  → ${socket.id} se unió a conv:${conversationId}`);
+  });
+
+  // Salir de una sala de conversación
+  socket.on('leave:conversation', (conversationId) => {
+    socket.leave(`conv:${conversationId}`);
+    console.log(`  → ${socket.id} salió de conv:${conversationId}`);
+  });
+
+  // Indicador de escritura
+  socket.on('typing:start', ({ conversationId, userId }) => {
+    socket.to(`conv:${conversationId}`).emit('typing:start', { userId });
+  });
+
+  socket.on('typing:stop', ({ conversationId, userId }) => {
+    socket.to(`conv:${conversationId}`).emit('typing:stop', { userId });
+  });
+
+  // Unirse a una sala personal para recibir notificaciones de nuevas conversaciones
+  socket.on('register:user', (userId) => {
+    socket.join(`user:${userId}`);
+    console.log(`  → ${socket.id} registrado como user:${userId}`);
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`🔴 Cliente Socket.IO desconectado: ${socket.id}`);
+  });
+});
 
 // Registrar rutas
 for (const route of routes) {
@@ -119,6 +168,6 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Mercadito UM API corriendo en http://localhost:${PORT}`);
 });

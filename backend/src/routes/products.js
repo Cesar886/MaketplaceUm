@@ -4,6 +4,7 @@ const sharp = require('sharp');
 const { products, sellers, categories, saveData } = require('../data');
 const { requireAuth } = require('../auth');
 const db = require('../database');
+const { sendPush } = require('../push');
 
 // ─── Helper para subir imágenes: usa multer directamente ────
 const multer = require('multer');
@@ -144,6 +145,36 @@ function register(app) {
 
           products.unshift(newProduct);
           saveData();
+
+          // ─── Notificar a usuarios interesados en esta categoría ──
+          const interestedUsers = db.getUsersInterestedInCategory(category);
+          if (interestedUsers.length > 0) {
+            // Filtrar al propio vendedor
+            const notifyUsers = interestedUsers.filter(u => u !== sellerId);
+            const categoryObj = categories.find(c => c.id === category);
+            const catName = categoryObj?.name || category;
+
+            for (const targetUserId of notifyUsers) {
+              const notifId = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+              db.createNotification(
+                notifId,
+                targetUserId,
+                'new_product',
+                `Nuevo producto en ${catName}`,
+                `${title} — $${priceNum}`,
+                { productId, category }
+              );
+            }
+
+            // Enviar push masivo a todos los interesados
+            sendPush(
+              notifyUsers,
+              `Nuevo producto en ${catName}`,
+              `${title} — $${priceNum}`,
+              { productId, category, type: 'new_product' }
+            );
+          }
+
           res.status(201).json(attachRelations([newProduct])[0]);
         })
         .catch((err) => {
@@ -334,6 +365,51 @@ function register(app) {
       res.json(attachRelations([product])[0]);
     } catch (err) {
       console.error('Error en PATCH /api/products/:id:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/products/:id/rate – calificar un producto (anónimo o con sesión)
+  app.post('/api/products/:id/rate', (req, res) => {
+    try {
+      const productId = req.params.id;
+      const product = products.find(p => p.id === productId);
+      if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+
+      const { stars, userId } = req.body;
+      if (!userId) return res.status(400).json({ error: 'userId es requerido' });
+      if (!stars || stars < 1 || stars > 5) {
+        return res.status(400).json({ error: 'stars debe ser un número entre 1 y 5' });
+      }
+
+      // No puedes calificar tu propio producto
+      if (product.seller === userId) {
+        return res.status(403).json({ error: 'No puedes calificar tu propio producto' });
+      }
+
+      db.upsertProductRating(productId, userId, stars);
+
+      // Obtener stats actualizadas
+      const stats = db.getProductRatingStats(productId);
+      const userRating = db.getUserProductRating(productId, userId);
+
+      // Actualizar rating del vendedor
+      const sellerStats = db.getSellerRatingStats(product.seller);
+      const sellerIndex = sellers.findIndex(s => s.id === product.seller);
+      if (sellerIndex !== -1) {
+        sellers[sellerIndex].rating = sellerStats.rating;
+        sellers[sellerIndex].reviews = sellerStats.reviews;
+      }
+
+      const enriched = attachRelations([product])[0];
+      enriched.productRating = stats.average;
+      enriched.productReviews = stats.count;
+      enriched.userRating = userRating;
+
+      saveData();
+      res.json(enriched);
+    } catch (err) {
+      console.error('Error en POST /api/products/:id/rate:', err);
       res.status(500).json({ error: err.message });
     }
   });

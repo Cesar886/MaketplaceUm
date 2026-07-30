@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../services/db_helper.dart';
+import '../services/push_service.dart';
 
 enum AccountType { estudiante, particular, negocio }
 
@@ -106,6 +107,9 @@ class AuthProvider extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('backend_token', _backendToken!);
       await prefs.setString('backend_seller_id', _backendSellerId!);
+
+      // Registrar FCM token en el backend
+      await _registerPushDevice();
     } catch (_) {
       // Si falla la sincronización, el usuario aún puede usar la app offline
       // pero deberá sincronizar después para publicar productos
@@ -273,7 +277,12 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     // Sincronizar teléfono (y otros datos) con el backend en segundo plano
-    _syncBackend();
+    _syncBackend().then((_) {
+      // Registrar push device si hay sesión restaurada
+      if (_backendSellerId != null) {
+        _registerPushDevice();
+      }
+    });
 
     return true;
   }
@@ -308,6 +317,13 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    // Desregistrar solo el token de ESTE dispositivo en el backend
+    // (No usa unregisterAllDevices para no apagar push en otros dispositivos
+    //  donde el usuario tenga sesión activa)
+    try {
+      await PushService.instance.unregisterDevice();
+    } catch (_) {}
+
     _currentUser = null;
     _backendToken = null;
     _backendSellerId = null;
@@ -328,6 +344,20 @@ class AuthProvider extends ChangeNotifier {
   Future<Map<String, dynamic>?> getBusinessProfile() async {
     if (accountType != AccountType.negocio) return null;
     return await _db.getBusinessProfile(userId);
+  }
+
+  /// Registra el dispositivo para notificaciones push.
+  /// Envía el FCM token actual al backend para que el usuario reciba notificaciones.
+  /// No necesita "login" como en OneSignal — FCM identifica por token.
+  Future<void> _registerPushDevice() async {
+    if (_backendSellerId == null) return;
+
+    try {
+      // Registrar el FCM token en el backend
+      await PushService.instance.registerDevice();
+    } catch (_) {
+      // Si falla, no es crítico — el usuario igual puede usar la app
+    }
   }
 
   /// Asegura que exista un token de backend válido.

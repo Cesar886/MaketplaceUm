@@ -57,8 +57,9 @@ class ApiService {
   static String get _backendHost {
     try {
       if (Platform.isAndroid) {
-        // Intentar con localhost primero (funciona con adb reverse)
-        return 'localhost';
+        // En emulador Android: 10.0.2.2 rutea al localhost del host
+        // En dispositivo físico con adb reverse: usar localhost
+        return '10.0.2.2';
       }
     } catch (_) {}
     return 'localhost';
@@ -252,13 +253,12 @@ class ApiService {
     }
   }
 
-  /// Califica un producto con 1-5 estrellas (requiere auth).
-  /// Crea o actualiza la calificación del usuario actual.
-  static Future<Product> rateProduct(String productId, int stars) async {
+  /// Califica un producto con 1-5 estrellas (requiere userId, anónimo o real).
+  static Future<Product> rateProduct(String productId, int stars, {required String userId}) async {
     final res = await _client.post(
       _uri('/products/$productId/rate'),
-      headers: _authHeaders,
-      body: jsonEncode({'stars': stars}),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'stars': stars, 'userId': userId}),
     );
     if (res.statusCode == 403) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
@@ -425,6 +425,34 @@ class ApiService {
     );
   }
 
+  // ─── Push Tokens (FCM) ─────────────────────────────────────────
+
+  static Future<void> registerPushToken(String fcmToken) async {
+    final res = await _client.post(
+      _uri('/notifications/register-push'),
+      headers: _authHeaders,
+      body: jsonEncode({'playerId': fcmToken}),
+    );
+    if (res.statusCode != 200) throw Exception('Error registering push token');
+  }
+
+  static Future<void> unregisterPushToken(String playerId) async {
+    final res = await _client.delete(
+      _uri('/notifications/register-push'),
+      headers: _authHeaders,
+      body: jsonEncode({'playerId': playerId}),
+    );
+    if (res.statusCode != 200) throw Exception('Error unregistering push token');
+  }
+
+  static Future<void> unregisterAllPushTokens() async {
+    final res = await _client.delete(
+      _uri('/notifications/register-push/all'),
+      headers: _authHeaders,
+    );
+    if (res.statusCode != 200) throw Exception('Error unregistering all push tokens');
+  }
+
   static Future<int> getUnreadNotificationCount() async {
     final res = await _client.get(
       _uri('/notifications/unread-count'),
@@ -469,20 +497,19 @@ class ApiService {
 
   // ─── Chat ────────────────────────────────────────────────
 
-  static Future<Map<String, dynamic>> getConversations() async {
-    final res = await _client.get(
-      _uri('/chat/conversations'),
-      headers: _authHeaders,
-    );
+  /// Obtiene conversaciones — no requiere auth, usa [userId] (anónimo o real).
+  static Future<Map<String, dynamic>> getConversations({String? userId}) async {
+    final query = <String, String>{};
+    if (userId != null) query['userId'] = userId;
+    final res = await _client.get(_uri('/chat/conversations', query));
     if (res.statusCode != 200) throw Exception('Error fetching conversations');
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
-  static Future<List<ChatMessage>> getMessages(String conversationId) async {
-    final res = await _client.get(
-      _uri('/chat/conversations/$conversationId/messages'),
-      headers: _authHeaders,
-    );
+  static Future<List<ChatMessage>> getMessages(String conversationId, {String? userId}) async {
+    final query = <String, String>{};
+    if (userId != null) query['userId'] = userId;
+    final res = await _client.get(_uri('/chat/conversations/$conversationId/messages', query));
     if (res.statusCode != 200) throw Exception('Error fetching messages');
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     return (data['messages'] as List<dynamic>)
@@ -492,24 +519,27 @@ class ApiService {
 
   /// Envía un mensaje. Si no existe conversación, la crea.
   /// Si se provee [conversationId], lo envía a la conversación existente.
+  /// [senderId] es requerido (puede ser anónimo o el backendSellerId).
   /// Devuelve { messages, conversationId }
   static Future<Map<String, dynamic>> sendMessage({
     required String productId,
     required String sellerId,
     required String text,
+    required String senderId,
     String? conversationId,
   }) async {
     final body = <String, dynamic>{
       'productId': productId,
       'sellerId': sellerId,
       'text': text,
+      'senderId': senderId,
     };
     if (conversationId != null && conversationId.isNotEmpty) {
       body['conversationId'] = conversationId;
     }
     final res = await _client.post(
       _uri('/chat/send'),
-      headers: _authHeaders,
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode(body),
     );
     if (res.statusCode != 201) throw Exception('Error sending message');
@@ -517,10 +547,10 @@ class ApiService {
   }
 
   /// Elimina un mensaje propio (soft-delete: reemplaza el texto).
-  static Future<void> deleteMessage(String messageId) async {
+  /// [senderId] debe coincidir con el dueño del mensaje.
+  static Future<void> deleteMessage(String messageId, {required String senderId}) async {
     final res = await _client.delete(
-      _uri('/chat/messages/$messageId'),
-      headers: _authHeaders,
+      _uri('/chat/messages/$messageId', {'senderId': senderId}),
     );
     if (res.statusCode != 200) throw Exception('Error deleting message');
   }
