@@ -60,9 +60,7 @@ function initDatabase() {
     CREATE TABLE IF NOT EXISTS price_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       product_id TEXT NOT NULL,
-      old_price REAL NOT NULL,
-      new_price REAL NOT NULL,
-      changed_by TEXT NOT NULL,
+      price REAL NOT NULL,
       changed_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
     );
@@ -228,7 +226,16 @@ function runMigrations() {
     db.exec(`ALTER TABLE products ADD COLUMN offerExpiresAt TEXT DEFAULT NULL`);
   }
 
-  // 4. price_history ya se crea con CREATE TABLE IF NOT EXISTS arriba
+  // 4. Migración para price_history: asegurar columna price
+  const phCols = db.prepare("PRAGMA table_info('price_history')").all();
+  const hasPriceCol = phCols.some(c => c.name === 'price');
+  if (!hasPriceCol) {
+    db.exec(`ALTER TABLE price_history ADD COLUMN price REAL`);
+    const hasOldPrice = phCols.some(c => c.name === 'old_price');
+    if (hasOldPrice) {
+      db.exec(`UPDATE price_history SET price = old_price WHERE price IS NULL OR price = 0`);
+    }
+  }
 
   // 5. Migrar sellers: agregar isBusiness y logoUrl si no existen
   const sellerCols = db.prepare("PRAGMA table_info('sellers')").all();
@@ -439,20 +446,59 @@ function getDb() {
 
 /**
  * Obtiene el precio más alto de un producto en los últimos [days] días
- * según su historial de precios (old_price y new_price).
+ * según su historial de precios.
  */
 function getHighestPriceInLastDays(productId, days = 30) {
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   const row = db.prepare(`
-    SELECT MAX(max_price) as highest FROM (
-      SELECT old_price as max_price FROM price_history
+    SELECT MAX(price) as highest FROM price_history
+    WHERE product_id = ? AND changed_at >= ?
+  `).get(productId, cutoff);
+  return row?.highest ?? null;
+}
+
+/**
+ * Obtiene el precio más bajo registrado para un producto en los últimos [days] días,
+ * considerando el precio actual y todo el historial.
+ */
+function getLowestPriceInLastDays(productId, currentPrice, days = 30) {
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const row = db.prepare(`
+    SELECT MIN(min_price) as lowest FROM (
+      SELECT price as min_price FROM price_history
         WHERE product_id = ? AND changed_at >= ?
       UNION ALL
-      SELECT new_price FROM price_history
-        WHERE product_id = ? AND changed_at >= ?
+      SELECT ? as min_price
     )
-  `).get(productId, cutoff, productId, cutoff);
-  return row?.highest ?? null;
+  `).get(productId, cutoff, currentPrice ?? 0);
+
+  const lowest = row?.lowest;
+  return typeof lowest === 'number' && lowest > 0 ? lowest : (currentPrice ?? 0);
+}
+
+/**
+ * Obtiene el cambio de precio más reciente para verificar el cooldown de 72h.
+ */
+function getLastPriceChange(productId) {
+  return db.prepare(`
+    SELECT * FROM price_history
+    WHERE product_id = ?
+    ORDER BY changed_at DESC
+    LIMIT 1
+  `).get(productId);
+}
+
+/**
+ * Obtiene el listado de historial de precios de los últimos [days] días.
+ */
+function getPriceHistoryList(productId, days = 30) {
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  return db.prepare(`
+    SELECT price, changed_at
+    FROM price_history
+    WHERE product_id = ? AND changed_at >= ?
+    ORDER BY changed_at ASC
+  `).all(productId, cutoff);
 }
 
 /**
@@ -468,13 +514,13 @@ function countPriceEditsLastHour(productId) {
 }
 
 /**
- * Inserta un registro en price_history.
+ * Inserta un registro en price_history con el precio anterior.
  */
-function insertPriceHistory(productId, oldPrice, newPrice, changedBy) {
+function insertPriceHistory(productId, price) {
   db.prepare(`
-    INSERT INTO price_history (product_id, old_price, new_price, changed_by, changed_at)
-    VALUES (?, ?, ?, ?, datetime('now'))
-  `).run(productId, oldPrice, newPrice, changedBy);
+    INSERT INTO price_history (product_id, price, changed_at)
+    VALUES (?, ?, datetime('now'))
+  `).run(productId, price);
 }
 
 /**
@@ -746,6 +792,9 @@ module.exports = {
   addListing,
   // Price history
   getHighestPriceInLastDays,
+  getLowestPriceInLastDays,
+  getLastPriceChange,
+  getPriceHistoryList,
   countPriceEditsLastHour,
   insertPriceHistory,
   expireStaleOffers,

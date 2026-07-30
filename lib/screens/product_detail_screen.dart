@@ -30,6 +30,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   int _photoIndex = 0;
   late bool _favorite = widget.product.isFavorite;
   late Product _product;
+  double? _lowest30d;
 
   Product get product => _product;
 
@@ -43,6 +44,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     FavoriteProductsService.isFavorite(widget.product.id).then((isFav) {
       if (mounted) setState(() => _favorite = isFav);
     });
+    _fetchPriceHistory();
+  }
+
+  Future<void> _fetchPriceHistory() async {
+    try {
+      final history = await ApiService.getPriceHistory(widget.product.id);
+      final lowest = history['lowest_30d'];
+      if (lowest != null && mounted) {
+        setState(() {
+          _lowest30d = (lowest as num).toDouble();
+        });
+      }
+    } catch (_) {}
   }
 
   /// Refresca el producto desde la API y actualiza el estado local.
@@ -53,6 +67,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       setState(() {
         _product = fresh;
       });
+      _fetchPriceHistory();
     } catch (_) {
       // Si falla, mantenemos los datos locales
     }
@@ -202,6 +217,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         ),
                     ],
                   ),
+                  if (product.isOffer &&
+                      _lowest30d != null &&
+                      product.price > _lowest30d!) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Precio más bajo en los últimos 30 días: ${Product.formatPrice(_lowest30d!)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.muted,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 14),
                   Wrap(
                     spacing: 8,

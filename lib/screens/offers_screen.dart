@@ -28,9 +28,10 @@ class _OffersScreenState extends State<OffersScreen> with AutoRefreshMixin {
   }
 
   @override
-  Future<void> onAutoRefresh() => _loadData();
+  Future<void> onAutoRefresh() => _loadData(silent: true);
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({bool silent = false}) async {
+    if (!silent && _offers.isEmpty) setState(() => _loading = true);
     try {
       final results = await Future.wait([
         ApiService.getProducts(offer: true),
@@ -127,7 +128,7 @@ class _OffersScreenState extends State<OffersScreen> with AutoRefreshMixin {
       MaterialPageRoute<void>(
         builder: (_) => ProductDetailScreen(product: product),
       ),
-    );
+    ).then((_) => _loadData(silent: true));
   }
 }
 

@@ -46,7 +46,7 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin {
   Future<void> onAutoRefresh() => _loadData(silent: true);
 
   Future<void> _loadData({bool silent = false}) async {
-    if (!silent) setState(() => _loading = true);
+    if (!silent && _products.isEmpty) setState(() => _loading = true);
     try {
       final results = await Future.wait([
         ApiService.getProducts(),
@@ -349,7 +349,7 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin {
       MaterialPageRoute<void>(
         builder: (_) => ProductDetailScreen(product: product),
       ),
-    ).then((_) => _loadData());
+    ).then((_) => _loadData(silent: true));
   }
 
   Future<void> _openSellerProducts(BuildContext context, Seller seller, List<Product> products) async {

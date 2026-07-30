@@ -11,38 +11,23 @@
 // irán en un archivo separado (ios_notification_channel.dart).
 // ---------------------------------------------------------------------------
 
+import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart' show debugPrint;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import '../push_service.dart';
+
 /// Instancia global del plugin de notificaciones locales.
-///
-/// Se usa tanto para crear el canal Android como para mostrar
-/// notificaciones locales cuando la app está en foreground.
 final FlutterLocalNotificationsPlugin localNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
-/// ID del canal de notificación principal de Mercadito UM.
-///
-/// Debe coincidir con el `channelId` que el backend envía en
-/// el payload FCM android.notification.channelId.
 const String kNotificationChannelId = 'mercadito_um_default';
-
-/// Nombre visible del canal en la configuración del sistema Android.
 const String kNotificationChannelName = 'Mercadito UM';
-
-/// Descripción del canal en la configuración del sistema Android.
 const String kNotificationChannelDescription =
     'Notificaciones de Mercadito UM';
 
-/// Crea el canal de notificación principal para Android e inicializa
-/// el plugin de notificaciones locales.
-///
-/// Debe llamarse antes de que FCM intente mostrar una notificación
-/// (idealmente en el [initialize] de [PushService]).
-///
-/// Si no es Android, la función es no-op.
 Future<void> createAndroidNotificationChannel() async {
   if (!Platform.isAndroid) return;
 
@@ -58,6 +43,16 @@ Future<void> createAndroidNotificationChannel() async {
       android: androidSettings,
       iOS: iosSettings,
     ),
+    onDidReceiveNotificationResponse: (NotificationResponse response) {
+      if (response.payload != null && response.payload!.isNotEmpty) {
+        try {
+          final data = jsonDecode(response.payload!) as Map<String, dynamic>;
+          PushService.instance.onNotificationTap?.call(data);
+        } catch (e) {
+          debugPrint('Error parseando payload de notificación: $e');
+        }
+      }
+    },
   );
 
   // Crear el canal de notificación Android explícitamente.

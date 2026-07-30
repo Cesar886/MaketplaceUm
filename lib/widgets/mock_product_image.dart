@@ -37,6 +37,7 @@ class MockProductImage extends StatelessWidget {
               height: height,
               width: double.infinity,
               fit: BoxFit.cover,
+              gaplessPlayback: true,
               errorBuilder: (_, _, _) => _buildMockIcon(),
               loadingBuilder: (_, child, progress) {
                 if (progress == null) return child;

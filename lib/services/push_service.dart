@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:firebase_core/firebase_core.dart';
@@ -117,27 +118,24 @@ class PushService {
     });
 
     // ─── Mensajes en foreground ──────────────────────────────────
-    // Cuando la app está visible, FCM NO muestra automáticamente
-    // una notificación del sistema. Hay que mostrarla manualmente
-    // con flutter_local_notifications.
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint('📩 Mensaje FCM en foreground: ${message.messageId}');
 
-      final notification = message.notification;
-      if (notification == null) return;
+      final title = message.notification?.title ?? message.data['title'];
+      final body = message.notification?.body ?? message.data['body'];
+
+      if (title == null && body == null) return;
 
       localNotificationsPlugin.show(
-        // Usar hashCode del mensaje como ID único para evitar
-        // que se sobrescriban notificaciones distintas.
         message.hashCode,
-        notification.title,
-        notification.body,
+        title ?? 'Mercadito UM',
+        body ?? '',
         const NotificationDetails(
           android: AndroidNotificationDetails(
             kNotificationChannelId,
             kNotificationChannelName,
             channelDescription: kNotificationChannelDescription,
-            importance: Importance.high,
+            importance: Importance.max,
             priority: Priority.high,
             playSound: true,
             enableVibration: true,
@@ -148,7 +146,7 @@ class PushService {
             presentSound: true,
           ),
         ),
-        payload: message.data.isNotEmpty ? message.data.toString() : null,
+        payload: message.data.isNotEmpty ? jsonEncode(message.data) : null,
       );
     });
 

@@ -19,9 +19,17 @@ let initialized = false;
 function ensureInitialized() {
   if (initialized) return;
 
-  const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+  let serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   const projectId = process.env.FIREBASE_PROJECT_ID;
+
+  // Fallback automático al archivo service account en la raíz si no hay env var
+  if (!serviceAccountPath && !serviceAccountJson) {
+    const rootPath = path.resolve(__dirname, '..', '..', 'mercadoum-firebase-adminsdk-fbsvc-6c500851ae.json');
+    if (fs.existsSync(rootPath)) {
+      serviceAccountPath = rootPath;
+    }
+  }
 
   if (!serviceAccountPath && !serviceAccountJson && !projectId) {
     console.warn('⚠️  Firebase no configurado. Define FIREBASE_SERVICE_ACCOUNT_PATH o FIREBASE_SERVICE_ACCOUNT_JSON');
@@ -32,12 +40,10 @@ function ensureInitialized() {
     let serviceAccount;
 
     if (serviceAccountPath) {
-      // Opción A: ruta a archivo (absoluta o relativa al CWD, ej. backend/)
       const resolvedPath = path.resolve(serviceAccountPath);
       const raw = fs.readFileSync(resolvedPath, 'utf-8');
       serviceAccount = JSON.parse(raw);
     } else if (serviceAccountJson) {
-      // Opción B: JSON inline
       serviceAccount = JSON.parse(serviceAccountJson);
     }
 

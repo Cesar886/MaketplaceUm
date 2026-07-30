@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io' show Platform;
 
 import 'package:http/http.dart' as http;
 
@@ -41,30 +40,12 @@ class ApiService {
   }
 
   /// ─── CONFIGURACIÓN DEL BACKEND ─────────────────────────────
-  ///
-  /// En EMULADOR Android: se usa 10.0.2.2 automáticamente.
-  /// En DISPOSITIVO FÍSICO o WEB: usa localhost (cambiar si es necesario).
-  /// Para override manual, usa [customBaseUrl].
+  /// Servidor backend remoto en producción.
+  static const String _defaultBackendHost = '157.245.247.45';
   static const int _backendPort = 3000;
 
-  /// Retorna la IP/host correcto según la plataforma.
-  ///
-  /// En EMULADOR Android:  10.0.2.2 (rutea al localhost del host).
-  /// En DISPOSITIVO FÍSICO: usa 'localhost' + adb reverse.
-  ///
-  /// Si tu dispositivo físico no usa adb reverse,
-  /// asigna [customBaseUrl] con la IP local del host (ej: 'http://192.168.x.x:3000').
-  static String get _backendHost {
-    try {
-      if (Platform.isAndroid) {
-        // En emulador Android: 10.0.2.2 rutea al localhost del host
-        // En dispositivo físico con adb reverse: usar localhost
-        return '10.0.2.2';
-      }
-    } catch (_) {}
-    return 'localhost';
-  }
-
+  /// Retorna la IP/host del servidor backend.
+  static String get _backendHost => _defaultBackendHost;
 
   /// URL base del backend. Usa [_backendHost] siempre.
   static String get baseUrl {
@@ -156,6 +137,12 @@ class ApiService {
     final res = await _client.get(_uri('/products/$id'));
     if (res.statusCode != 200) throw Exception('Product not found');
     return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  static Future<Map<String, dynamic>> getPriceHistory(String id) async {
+    final res = await _client.get(_uri('/products/$id/price-history'));
+    if (res.statusCode != 200) throw Exception('Error fetching price history');
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   static Future<Product> createProduct({

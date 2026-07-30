@@ -6,6 +6,9 @@ const { requireAuth } = require('../auth');
 const db = require('../database');
 const { sendPush } = require('../push');
 
+// Configuración anti-abuso de ofertas
+const COOLDOWN_HOURS = 72;
+
 // ─── Helper para subir imágenes: usa multer directamente ────
 const multer = require('multer');
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
@@ -324,34 +327,43 @@ function register(app) {
         ? product.price
         : parseFloat(String(product.price || '0').replace(/[^0-9.]/g, '')) || 0;
 
-      // ─── Registrar en price_history ────────────────────────
-      db.insertPriceHistory(product.id, oldPrice, newPrice, req.user.id);
+      // ─── Cooldown anti-abuso (72 horas) ──────────────────────
+      // Revisar cuánto tiempo estuvo activo el precio anterior
+      const lastChange = db.getLastPriceChange(product.id);
+      let previousActiveHours = Infinity; // Si es el precio inicial sin historial previo
+
+      if (lastChange && lastChange.changed_at) {
+        const lastTime = new Date(lastChange.changed_at).getTime();
+        previousActiveHours = (Date.now() - lastTime) / (1000 * 60 * 60);
+      }
+
+      const isCooldownPassed = previousActiveHours >= COOLDOWN_HOURS;
+
+      // ─── Registrar en price_history el precio anterior ANTES de aplicar el nuevo ───
+      db.insertPriceHistory(product.id, oldPrice);
 
       // ─── Calcular descuento contra el precio más alto de los últimos 30 días ──
       const highestIn30d = db.getHighestPriceInLastDays(product.id, 30);
-      // También considerar el precio actual si es mayor que cualquier histórico
       const referencePrice = Math.max(oldPrice, highestIn30d || 0);
 
-      if (newPrice < referencePrice && referencePrice > 0) {
+      if (isCooldownPassed && newPrice < referencePrice && referencePrice > 0) {
         const discountPercent = Math.round((1 - newPrice / referencePrice) * 100);
 
         if (discountPercent >= 5) {
-          // ✅ Activar oferta
+          // ✅ Activar oferta (cooldown cumplido)
           product.isOffer = true;
           product.previousPrice = referencePrice;
           product.discountLabel = `-${discountPercent}%`;
-          // Expira en 30 días sin nueva edición
           const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
           product.offerExpiresAt = expiresAt;
         } else {
-          // Descuento menor a 5% → no se marca como oferta
           product.isOffer = false;
           product.previousPrice = null;
           product.discountLabel = null;
           product.offerExpiresAt = null;
         }
       } else {
-        // Precio igual o mayor → quitar oferta
+        // Cooldown NO cumplido o precio mayor/igual → no se marca como oferta
         product.isOffer = false;
         product.previousPrice = null;
         product.discountLabel = null;
@@ -362,6 +374,22 @@ function register(app) {
       product.price = newPrice;
       product.publishedAgo = 'Editado ahora';
       saveData();
+
+      // ─── Notificar push si el producto se marcó como oferta / bajada de precio ───
+      if (product.isOffer) {
+        const interestedUsers = db.getUsersInterestedInCategory(product.category);
+        const notifyUsers = interestedUsers.filter(u => u !== req.user.id);
+        if (notifyUsers.length > 0) {
+          const notifTitle = `🔥 Bajó de precio: ${product.title}`;
+          const notifBody = `¡Ahora a solo $${newPrice}! ${product.discountLabel || ''}`;
+          for (const targetUserId of notifyUsers) {
+            const notifId = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+            db.createNotification(notifId, targetUserId, 'price_drop', notifTitle, notifBody, { productId: product.id });
+          }
+          sendPush(notifyUsers, notifTitle, notifBody, { productId: product.id, type: 'price_drop' });
+        }
+      }
+
       res.json(attachRelations([product])[0]);
     } catch (err) {
       console.error('Error en PATCH /api/products/:id:', err);
@@ -401,6 +429,15 @@ function register(app) {
         sellers[sellerIndex].reviews = sellerStats.reviews;
       }
 
+      // Notificar al vendedor de la nueva calificación por push
+      if (product.seller && product.seller !== userId) {
+        const notifTitle = `⭐ Nueva calificación`;
+        const notifBody = `Calificaron tu producto "${product.title}" con ${stars} estrella${stars > 1 ? 's' : ''}`;
+        const notifId = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        db.createNotification(notifId, product.seller, 'rating', notifTitle, notifBody, { productId: product.id });
+        sendPush([product.seller], notifTitle, notifBody, { productId: product.id, type: 'rating' });
+      }
+
       const enriched = attachRelations([product])[0];
       enriched.productRating = stats.average;
       enriched.productReviews = stats.count;
@@ -410,6 +447,34 @@ function register(app) {
       res.json(enriched);
     } catch (err) {
       console.error('Error en POST /api/products/:id/rate:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/products/:id/price-history – consultar historial y precio más bajo de 30 días
+  app.get('/api/products/:id/price-history', (req, res) => {
+    try {
+      const productId = req.params.id;
+      const product = products.find(p => p.id === productId);
+      if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+
+      const currentPrice = typeof product.price === 'number'
+        ? product.price
+        : parseFloat(String(product.price || '0').replace(/[^0-9.]/g, '')) || 0;
+
+      const lowest30d = db.getLowestPriceInLastDays(productId, currentPrice, 30);
+      const rawHistory = db.getPriceHistoryList(productId, 30);
+
+      res.json({
+        lowest_30d: lowest30d,
+        current_price: currentPrice,
+        history: rawHistory.map(h => ({
+          price: h.price,
+          changed_at: h.changed_at,
+        })),
+      });
+    } catch (err) {
+      console.error('Error en GET /api/products/:id/price-history:', err);
       res.status(500).json({ error: err.message });
     }
   });
