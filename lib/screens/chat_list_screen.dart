@@ -203,7 +203,7 @@ class _ConversationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final otherUser = conversation.otherUser;
     final product = conversation.product;
-    final productName = product?.title ?? 'Producto';
+    final productName = product?.title ?? conversation.wantedPostTitle ?? 'Producto';
     final unread = conversation.lastMessage != null &&
         conversation.lastMessage!.senderId !=
             (isOwn ? conversation.sellerId : conversation.buyerId) &&
