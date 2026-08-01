@@ -216,6 +216,10 @@ class Product {
     this.isFavorite = false,
     this.status,
     this.availability,
+    this.stockQuantity,
+    this.stockResetDaily = false,
+    this.stockInitial,
+    this.isAvailable = true,
     this.extras = const [],
     this.availableDays = const [],
     this.productRating = 0.0,
@@ -343,6 +347,10 @@ class Product {
       status: parseStatus(),
       availability:
           ProductAvailability.fromString(json['status'] as String?),
+      stockQuantity: json['stock_quantity'] as int?,
+      stockResetDaily: json['stock_reset_daily'] as bool? ?? false,
+      stockInitial: json['stock_initial'] as int?,
+      isAvailable: json['is_available'] as bool? ?? true,
       extras: parseExtras(),
       availableDays: (json['availableDays'] as List<dynamic>?)
               ?.map((e) => e as int)
@@ -371,6 +379,10 @@ class Product {
   final bool isFavorite;
   final ListingStatus? status;
   final ProductAvailability? availability;
+  final int? stockQuantity;
+  final bool stockResetDaily;
+  final int? stockInitial;
+  final bool isAvailable;
   final List<ProductExtra> extras;
   final List<int> availableDays; // 0=Mon, 1=Tue ... 6=Sun
   final double productRating;

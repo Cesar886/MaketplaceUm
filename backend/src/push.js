@@ -126,7 +126,7 @@ async function sendPush(userIds, title, body, data = {}) {
       priority: 'high',
       notification: {
         channelId: 'mercadito_um_default',
-        priority: 'high',
+        notificationPriority: 'PRIORITY_HIGH',
         defaultSound: true,
       },
     },
@@ -140,8 +140,10 @@ async function sendPush(userIds, title, body, data = {}) {
           token,
           ...messageBase,
         });
+        console.log(`[Push Debug] Éxito al enviar a token ${token.slice(0, 10)}... Response ID:`, response);
         return { token, success: true, response };
       } catch (err) {
+        console.log(`[Push Debug] Fallo al enviar a token ${token.slice(0, 10)}... Error:`, err.message);
         return { token, success: false, error: err };
       }
     })

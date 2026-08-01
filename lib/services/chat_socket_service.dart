@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import 'api_service.dart';
+import '../config/app_config.dart';
 
 /// Servicio para manejar la conexión Socket.IO en tiempo real para el chat.
 ///
@@ -47,7 +48,7 @@ class ChatSocketService {
   void connect() {
     if (_socket != null && _connected) return;
 
-    final uri = Uri.parse(ApiService.baseUrl);
+    final uri = Uri.parse(AppConfig.socketUrl);
     _socket = io.io(
       '${uri.scheme}://${uri.host}:${uri.port}',
       <String, dynamic>{

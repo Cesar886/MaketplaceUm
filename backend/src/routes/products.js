@@ -46,23 +46,46 @@ async function convertToWebp(filePath) {
 }
 
 function attachRelations(productsList) {
-  return productsList.map(p => ({
-    ...p,
-    sellerObj: sellers.find(s => s.id === p.seller) || (
-      p.seller ? {
-        id: p.seller,
-        name: p.seller,
-        avatarInitials: p.seller.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
-        major: '',
-        isBusiness: false,
-        logoUrl: null,
-        rating: 0,
-        reviews: 0,
-        verified: false,
-      } : null
-    ),
-    categoryObj: categories.find(c => c.id === p.category) || null,
-  }));
+  let modified = false;
+  const todayStr = new Date().toDateString();
+
+  const mapped = productsList.map(p => {
+    // 1. Reset diario de stock si aplica
+    if (p.stock_reset_daily && p.stock_updated_at && p.stock_initial !== null) {
+      const lastUpdateStr = new Date(p.stock_updated_at).toDateString();
+      if (lastUpdateStr !== todayStr) {
+        p.stock_quantity = p.stock_initial;
+        p.stock_updated_at = new Date().toISOString();
+        modified = true;
+      }
+    }
+
+    // 2. Campo calculado is_available
+    const is_available = p.stock_quantity === null || p.stock_quantity > 0;
+
+    return {
+      ...p,
+      is_available,
+      sellerObj: sellers.find(s => s.id === p.seller) || (
+        p.seller ? {
+          id: p.seller,
+          name: p.seller,
+          avatarInitials: p.seller.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
+          major: '',
+          isBusiness: false,
+          logoUrl: null,
+          rating: 0,
+          reviews: 0,
+          verified: false,
+        } : null
+      ),
+      categoryObj: categories.find(c => c.id === p.category) || null,
+    };
+  });
+
+  if (modified) saveData();
+
+  return mapped;
 }
 
 function register(app) {
@@ -144,6 +167,10 @@ function register(app) {
             isFeatured: false,
             isOffer: false,
             isFavorite: false,
+            stock_quantity: req.body?.stock_quantity !== undefined ? Number(req.body.stock_quantity) : null,
+            stock_reset_daily: req.body?.stock_reset_daily === 'true' || req.body?.stock_reset_daily === true,
+            stock_initial: req.body?.stock_initial !== undefined ? Number(req.body.stock_initial) : null,
+            stock_updated_at: new Date().toISOString(),
           };
 
           products.unshift(newProduct);
@@ -259,6 +286,58 @@ function register(app) {
     }
   });
 
+  // PATCH /api/products/:id/stock – ajustar inventario manualmente
+  app.patch('/api/products/:id/stock', requireAuth, (req, res) => {
+    try {
+      const product = products.find(p => p.id === req.params.id);
+      if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+
+      if (product.seller !== req.user.id) {
+        return res.status(403).json({ error: 'No tienes permiso para cambiar el stock de este producto' });
+      }
+
+      const { decrement, set } = req.body;
+
+      if (product.stock_quantity === null) {
+         // Si era ilimitado pero mandan 'set', lo convertimos a limitado
+         if (set !== undefined) {
+           product.stock_quantity = Math.max(0, Number(set));
+         } else {
+           return res.status(400).json({ error: 'El producto no tiene límite de stock (es NULL)' });
+         }
+      } else {
+        if (set !== undefined) {
+          product.stock_quantity = Math.max(0, Number(set));
+        } else if (decrement !== undefined) {
+          product.stock_quantity = Math.max(0, product.stock_quantity - Number(decrement));
+        } else {
+          return res.status(400).json({ error: 'Debes enviar "decrement" o "set" en el body' });
+        }
+      }
+
+      product.stock_updated_at = new Date().toISOString();
+      
+      // Auto-agotar si llega a 0
+      if (product.stock_quantity === 0 && product.status === 'available') {
+        product.status = 'sold';
+        if (product.isOffer) {
+          product.isOffer = false;
+          product.previousPrice = null;
+          product.discountLabel = null;
+          product.offerExpiresAt = null;
+        }
+      } else if (product.stock_quantity > 0 && product.status === 'sold') {
+        product.status = 'available'; // Restaurar si se agrega stock
+      }
+
+      saveData();
+      res.json(attachRelations([product])[0]);
+    } catch (err) {
+      console.error('Error en PATCH /api/products/:id/stock:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // PATCH /api/products/:id/favorite – toggle favorito
   app.patch('/api/products/:id/favorite', (req, res) => {
     const product = products.find(p => p.id === req.params.id);
@@ -370,9 +449,17 @@ function register(app) {
         product.offerExpiresAt = null;
       }
 
-      // ─── Actualizar precio y guardar ───────────────────────
+      // ─── Actualizar precio y stock (si aplica) ─────────────
       product.price = newPrice;
       product.publishedAgo = 'Editado ahora';
+      
+      if (req.body.stock_quantity !== undefined) {
+        product.stock_quantity = Number(req.body.stock_quantity);
+        product.stock_reset_daily = req.body.stock_reset_daily === 'true' || req.body.stock_reset_daily === true;
+        product.stock_initial = req.body.stock_initial !== undefined ? Number(req.body.stock_initial) : null;
+        product.stock_updated_at = new Date().toISOString();
+      }
+
       saveData();
 
       // ─── Notificar push si el producto se marcó como oferta / bajada de precio ───

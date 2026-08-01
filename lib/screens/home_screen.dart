@@ -24,7 +24,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin {
+class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerProviderStateMixin {
   List<Product> _products = [];
   List<MarketplaceCategory> _categories = [];
   List<HighlightPlan> _highlightPlans = [];
@@ -36,10 +36,32 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin {
   List<String> _recentIds = [];
   int _favoriteCount = 0;
 
+  late final AnimationController _staggerController;
+
   @override
   void initState() {
     super.initState();
+    _staggerController = AnimationController(
+      vsync: this,
+      duration: AppAnimations.slow + AppAnimations.staggerDelay * 14,
+    );
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _staggerController.dispose();
+    super.dispose();
+  }
+
+  double _cardAnimValue(int index) {
+    final total = _staggerController.duration!.inMilliseconds.toDouble();
+    final start = (AppAnimations.staggerDelay.inMilliseconds * index) / total;
+    final end = (start + AppAnimations.slow.inMilliseconds / total).clamp(0.0, 1.0);
+    return CurvedAnimation(
+      parent: _staggerController,
+      curve: Interval(start.clamp(0.0, 1.0), end, curve: AppAnimations.spring),
+    ).value;
   }
 
   @override
@@ -84,6 +106,7 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin {
         _loading = false;
         _error = null;
       });
+      _staggerController.forward(from: 0);
       // Cargar IDs de recientes (no bloqueante)
       _loadRecentIds();
       // Cargar contador de favoritos (no bloqueante)
@@ -293,19 +316,25 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin {
                 builder: (context, constraints) {
                   final width = constraints.crossAxisExtent;
                   final columns = width >= 720 ? 3 : 2;
-                  return SliverGrid.builder(
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: columns,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: columns == 3 ? 0.72 : 0.64,
-                    ),
-                    itemCount: recent.length,
-                    itemBuilder: (context, index) {
-                      final product = recent[index];
-                      return ProductCard(
-                        product: product,
-                        onTap: () => _openDetail(context, product),
+                  return AnimatedBuilder(
+                    animation: _staggerController,
+                    builder: (context, _) {
+                      return SliverGrid.builder(
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: columns,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          childAspectRatio: columns == 3 ? 0.72 : 0.64,
+                        ),
+                        itemCount: recent.length,
+                        itemBuilder: (context, index) {
+                          final product = recent[index];
+                          return ProductCard(
+                            product: product,
+                            onTap: () => _openDetail(context, product),
+                            animationValue: _cardAnimValue(index),
+                          );
+                        },
                       );
                     },
                   );
@@ -345,11 +374,9 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin {
   }
 
   Future<void> _openDetail(BuildContext context, Product product) {
-    return Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => ProductDetailScreen(product: product),
-      ),
-    ).then((_) => _loadData(silent: true));
+    return Navigator.of(context)
+        .push(springDetailRoute(ProductDetailScreen(product: product)))
+        .then((_) => _loadData(silent: true));
   }
 
   Future<void> _openSellerProducts(BuildContext context, Seller seller, List<Product> products) async {

@@ -142,75 +142,158 @@ class MainShellState extends State<MainShell> {
         child: DecoratedBox(
           decoration: const BoxDecoration(
             color: AppColors.surface,
-            border: Border(top: BorderSide(color: AppColors.border)),
+            border: Border(top: BorderSide(color: AppColors.border, width: 0.8)),
           ),
-          child: NavigationBar(
-            selectedIndex: _currentIndex,
-            onDestinationSelected: selectTab,
-            height: 68,
-            elevation: 0,
-            backgroundColor: AppColors.surface,
-            indicatorColor: AppColors.primary.withValues(alpha: 0.10),
-            labelTextStyle: WidgetStateProperty.resolveWith((states) {
-              final selected = states.contains(WidgetState.selected);
-              return TextStyle(
-                color: selected ? AppColors.primary : AppColors.muted,
-                fontSize: 11,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              );
-            }),
-            destinations: [
-              NavigationDestination(
-                icon: Badge.count(
-                  count: _unreadNotifCount,
-                  isLabelVisible: _unreadNotifCount > 0,
-                  backgroundColor: AppColors.primary,
-                  child: const Icon(Icons.home_outlined),
+          child: SizedBox(
+            height: 66,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _NavItem(
+                  icon: Icons.home_outlined,
+                  selectedIcon: Icons.home_rounded,
+                  label: 'Inicio',
+                  index: 0,
+                  currentIndex: _currentIndex,
+                  onTap: selectTab,
+                  badge: _unreadNotifCount > 0 ? _unreadNotifCount : null,
                 ),
-                selectedIcon: Badge.count(
-                  count: _unreadNotifCount,
-                  isLabelVisible: _unreadNotifCount > 0,
-                  backgroundColor: AppColors.primary,
-                  child: const Icon(Icons.home_rounded),
+                _NavItem(
+                  icon: Icons.local_offer_outlined,
+                  selectedIcon: Icons.local_offer_rounded,
+                  label: 'Ofertas',
+                  index: 1,
+                  currentIndex: _currentIndex,
+                  onTap: selectTab,
                 ),
-                label: 'Inicio',
-              ),
-              const NavigationDestination(
-                icon: Icon(Icons.local_offer_outlined),
-                selectedIcon: Icon(Icons.local_offer_rounded),
-                label: 'Ofertas',
-              ),
-              const NavigationDestination(
-                icon: Icon(Icons.add_circle_outline_rounded),
-                selectedIcon: Icon(Icons.add_circle_rounded),
-                label: 'Publicar',
-              ),
-              const NavigationDestination(
-                icon: Icon(Icons.favorite_outline_rounded),
-                selectedIcon: Icon(Icons.favorite_rounded),
-                label: 'Favoritos',
-              ),
-              NavigationDestination(
-                icon: Badge.count(
-                  count: _unreadChatCount,
-                  isLabelVisible: _unreadChatCount > 0,
-                  backgroundColor: AppColors.primary,
-                  child: const Icon(Icons.chat_outlined),
+                _PublishFab(onTap: () => selectTab(2)),
+                _NavItem(
+                  icon: Icons.favorite_outline_rounded,
+                  selectedIcon: Icons.favorite_rounded,
+                  label: 'Favs',
+                  index: 3,
+                  currentIndex: _currentIndex,
+                  onTap: selectTab,
                 ),
-                selectedIcon: Badge.count(
-                  count: _unreadChatCount,
-                  isLabelVisible: _unreadChatCount > 0,
-                  backgroundColor: AppColors.primary,
-                  child: const Icon(Icons.chat_rounded),
+                _NavItem(
+                  icon: Icons.chat_outlined,
+                  selectedIcon: Icons.chat_rounded,
+                  label: 'Chat',
+                  index: 4,
+                  currentIndex: _currentIndex,
+                  onTap: selectTab,
+                  badge: _unreadChatCount > 0 ? _unreadChatCount : null,
                 ),
-                label: 'Mensajes',
+                _NavItem(
+                  icon: Icons.person_outline_rounded,
+                  selectedIcon: Icons.person_rounded,
+                  label: 'Perfil',
+                  index: 5,
+                  currentIndex: _currentIndex,
+                  onTap: selectTab,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  const _NavItem({
+    required this.icon,
+    required this.selectedIcon,
+    required this.label,
+    required this.index,
+    required this.currentIndex,
+    required this.onTap,
+    this.badge,
+  });
+
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+  final int index;
+  final int currentIndex;
+  final ValueChanged<int> onTap;
+  final int? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = index == currentIndex;
+    final color = selected ? AppColors.primary : AppColors.muted;
+
+    Widget iconWidget = Icon(
+      selected ? selectedIcon : icon,
+      size: 24,
+      color: color,
+    );
+
+    if (badge != null && badge! > 0) {
+      iconWidget = Badge.count(
+        count: badge!,
+        backgroundColor: AppColors.primary,
+        child: iconWidget,
+      );
+    }
+
+    return Expanded(
+      child: InkWell(
+        onTap: () => onTap(index),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedScale(
+                scale: selected ? 1.14 : 1.0,
+                duration: AppAnimations.fast,
+                curve: AppAnimations.spring,
+                child: iconWidget,
               ),
-              const NavigationDestination(
-                icon: Icon(Icons.person_outline_rounded),
-                selectedIcon: Icon(Icons.person_rounded),
-                label: 'Perfil',
+              const SizedBox(height: 3),
+              AnimatedDefaultTextStyle(
+                duration: AppAnimations.fast,
+                curve: AppAnimations.spring,
+                style: AppTypography.label(
+                  10,
+                  weight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: color,
+                ),
+                child: Text(label),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PublishFab extends StatelessWidget {
+  const _PublishFab({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: GestureDetector(
+        onTap: onTap,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.amber,
+            shape: BoxShape.circle,
+            boxShadow: AppShadows.amber,
+          ),
+          child: const SizedBox(
+            width: 52,
+            height: 52,
+            child: Icon(Icons.add_rounded, color: AppColors.amberDark, size: 28),
           ),
         ),
       ),

@@ -54,15 +54,18 @@ function initDatabase() {
       status TEXT DEFAULT NULL,
       priceNum REAL DEFAULT 0,
       offerExpiresAt TEXT DEFAULT NULL,
-      extras TEXT DEFAULT '[]'
+      extras TEXT DEFAULT '[]',
+      stock_quantity INTEGER,
+      stock_reset_daily INTEGER DEFAULT 0,
+      stock_initial INTEGER,
+      stock_updated_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS price_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       product_id TEXT NOT NULL,
       price REAL NOT NULL,
-      changed_at TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+      changed_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
     CREATE INDEX IF NOT EXISTS idx_price_history_product ON price_history(product_id, changed_at);
@@ -258,6 +261,17 @@ function runMigrations() {
     db.exec(`ALTER TABLE products ADD COLUMN extras TEXT DEFAULT '[]'`);
   }
 
+  // 7. Migrar productos: agregar columnas de stock si no existen
+  const hasStockQuantity = cols.some(c => c.name === 'stock_quantity');
+  if (!hasStockQuantity) {
+    db.exec(`
+      ALTER TABLE products ADD COLUMN stock_quantity INTEGER;
+      ALTER TABLE products ADD COLUMN stock_reset_daily INTEGER DEFAULT 0;
+      ALTER TABLE products ADD COLUMN stock_initial INTEGER;
+      ALTER TABLE products ADD COLUMN stock_updated_at TEXT;
+    `);
+  }
+
   console.log('🔄 Migración de schema completada');
 }
 
@@ -288,6 +302,10 @@ function rowToProduct(row) {
     status: row.status || null,
     offerExpiresAt: row.offerExpiresAt || null,
     extras: JSON.parse(row.extras || '[]'),
+    stock_quantity: row.stock_quantity ?? null,
+    stock_reset_daily: !!row.stock_reset_daily,
+    stock_initial: row.stock_initial ?? null,
+    stock_updated_at: row.stock_updated_at || null,
   };
 }
 
@@ -316,6 +334,10 @@ function productToRow(product) {
     status: product.status || null,
     offerExpiresAt: product.offerExpiresAt || null,
     extras: JSON.stringify(product.extras || []),
+    stock_quantity: product.stock_quantity ?? null,
+    stock_reset_daily: product.stock_reset_daily ? 1 : 0,
+    stock_initial: product.stock_initial ?? null,
+    stock_updated_at: product.stock_updated_at || null,
   };
 }
 
@@ -381,10 +403,12 @@ function insertProduct(product) {
   db.prepare(`
     INSERT OR REPLACE INTO products (id, title, price, priceNum, category, description, publishedAgo, seller,
       images, imageIcon, imageColor, previousPrice, discountLabel,
-      isFeatured, isOffer, isFavorite, status, offerExpiresAt, extras)
+      isFeatured, isOffer, isFavorite, status, offerExpiresAt, extras,
+      stock_quantity, stock_reset_daily, stock_initial, stock_updated_at)
     VALUES (@id, @title, @price, @priceNum, @category, @description, @publishedAgo, @seller,
       @images, @imageIcon, @imageColor, @previousPrice, @discountLabel,
-      @isFeatured, @isOffer, @isFavorite, @status, @offerExpiresAt, @extras)
+      @isFeatured, @isOffer, @isFavorite, @status, @offerExpiresAt, @extras,
+      @stock_quantity, @stock_reset_daily, @stock_initial, @stock_updated_at)
   `).run(row);
 }
 
@@ -400,7 +424,9 @@ function updateProduct(id, updates) {
       images = @images, imageIcon = @imageIcon, imageColor = @imageColor,
       previousPrice = @previousPrice, discountLabel = @discountLabel,
       isFeatured = @isFeatured, isOffer = @isOffer, isFavorite = @isFavorite,
-      status = @status, offerExpiresAt = @offerExpiresAt, extras = @extras
+      status = @status, offerExpiresAt = @offerExpiresAt, extras = @extras,
+      stock_quantity = @stock_quantity, stock_reset_daily = @stock_reset_daily,
+      stock_initial = @stock_initial, stock_updated_at = @stock_updated_at
     WHERE id = ?
   `).run(row, id);
   return getProductById(id);
@@ -516,7 +542,7 @@ function countPriceEditsLastHour(productId) {
 /**
  * Inserta un registro en price_history con el precio anterior.
  */
-function insertPriceHistory(productId, price) {
+function insertPriceHistory(productId, price) { console.log("INSERTING PRICE HISTORY:", productId, price);
   db.prepare(`
     INSERT INTO price_history (product_id, price, changed_at)
     VALUES (?, ?, datetime('now'))

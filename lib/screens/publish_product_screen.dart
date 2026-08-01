@@ -43,6 +43,11 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   final _extraNameController = TextEditingController();
   final _extraPriceController = TextEditingController();
 
+  // ─── Stock ─────────────────────────────────────────────
+  bool _isStockLimited = false;
+  bool _autoResetStock = false;
+  final _stockController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -124,6 +129,21 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       return;
     }
 
+    int? stockQuantity;
+    int? stockInitial;
+    bool stockResetDaily = false;
+
+    if (_isStockLimited) {
+      final parsedStock = int.tryParse(_stockController.text.trim());
+      if (parsedStock == null || parsedStock < 0) {
+        _showError('Ingresa una cantidad válida para el stock');
+        return;
+      }
+      stockQuantity = parsedStock;
+      stockInitial = parsedStock;
+      stockResetDaily = _autoResetStock;
+    }
+
     setState(() => _publishing = true);
     try {
       // Asegurar que tenemos un token JWT del backend antes de publicar
@@ -145,6 +165,9 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
         availableDays: _selectedDays.toList()..sort(),
         extras: _extras.map((e) => e.toJson()).toList(),
         imagePaths: _selectedImages.map((xf) => xf.path).toList(),
+        stockQuantity: stockQuantity,
+        stockResetDaily: stockResetDaily,
+        stockInitial: stockInitial,
       );
       if (!mounted) return;
       _titleController.clear();
@@ -216,7 +239,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text('Días disponibles',
-                    style: Theme.of(context).textTheme.titleMedium),
+                    style: AppTypography.heading(15)),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -289,6 +312,69 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     );
   }
 
+  Widget _buildStockSection() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceMuted,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.inventory_2_rounded, color: AppColors.primary),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('Inventario',
+                    style: AppTypography.heading(15)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('¿Tiene cantidad limitada?', style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: const Text('Útil si tienes un número fijo de unidades.', style: TextStyle(fontSize: 12)),
+            value: _isStockLimited,
+            onChanged: (val) => setState(() => _isStockLimited = val),
+            activeColor: AppColors.primary,
+          ),
+          if (_isStockLimited) ...[
+            const SizedBox(height: 10),
+            TextField(
+              controller: _stockController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Cantidad disponible hoy',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 10),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('¿Se reinicia automáticamente cada día?', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: const Text('El stock volverá a esta cantidad a medianoche.', style: TextStyle(fontSize: 12)),
+              value: _autoResetStock,
+              onChanged: (val) => setState(() => _autoResetStock = val),
+              activeColor: AppColors.primary,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildExtrasSection() {
     return Container(
       padding: const EdgeInsets.all(14),
@@ -313,7 +399,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text('Extras opcionales',
-                    style: Theme.of(context).textTheme.titleMedium),
+                    style: AppTypography.heading(15)),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -437,6 +523,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     _priceController.dispose();
     _extraNameController.dispose();
     _extraPriceController.dispose();
+    _stockController.dispose();
     super.dispose();
   }
 
@@ -461,7 +548,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                   size: 64, color: AppColors.muted),
               const SizedBox(height: 20),
               Text('Publica tus productos',
-                  style: Theme.of(context).textTheme.titleLarge),
+                  style: AppTypography.heading(18)),
               const SizedBox(height: 10),
               const Text(
                 'Inicia sesión o crea una cuenta para empezar a vender en el campus.',
@@ -490,18 +577,16 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
         children: [
-          Text('Publicar producto',
-              style: Theme.of(context).textTheme.headlineSmall),
+          Text('Publicar producto', style: AppTypography.heading(22)),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Completa la información básica para publicar tu producto en el marketplace.',
-            style: TextStyle(
-                color: AppColors.muted, fontWeight: FontWeight.w600),
+            style: AppTypography.body(14, color: AppColors.muted),
           ),
           const SizedBox(height: 20),
 
           // ─── Fotos ──────────────────────────────────────
-          Text('Fotos', style: Theme.of(context).textTheme.titleMedium),
+          Text('Fotos', style: AppTypography.heading(15)),
           const SizedBox(height: 10),
           SizedBox(
             height: 110,
@@ -585,6 +670,8 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           ),
           const SizedBox(height: 12),
           _buildDaySelector(),
+          const SizedBox(height: 12),
+          _buildStockSection(),
           const SizedBox(height: 12),
           _buildExtrasSection(),
           if (_plans.isNotEmpty) ...[
@@ -772,7 +859,7 @@ class _HighlightSection extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text('Destaca tu publicación',
-                    style: Theme.of(context).textTheme.titleMedium),
+                    style: AppTypography.heading(15)),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),

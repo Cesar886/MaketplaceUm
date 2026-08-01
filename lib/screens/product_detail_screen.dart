@@ -11,6 +11,7 @@ import '../services/favorite_products_service.dart';
 import '../services/recent_products_service.dart';
 import '../widgets/badges.dart';
 import '../widgets/mock_product_image.dart';
+import '../widgets/price_tag.dart';
 import 'auth/login_screen.dart';
 import 'main_shell.dart';
 import 'chat_screen.dart';
@@ -26,11 +27,13 @@ class ProductDetailScreen extends StatefulWidget {
   State<ProductDetailScreen> createState() => _ProductDetailScreenState();
 }
 
-class _ProductDetailScreenState extends State<ProductDetailScreen> {
+class _ProductDetailScreenState extends State<ProductDetailScreen>
+    with SingleTickerProviderStateMixin {
   int _photoIndex = 0;
   late bool _favorite = widget.product.isFavorite;
   late Product _product;
   double? _lowest30d;
+  late final AnimationController _priceTagController;
 
   Product get product => _product;
 
@@ -38,6 +41,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   void initState() {
     super.initState();
     _product = widget.product;
+    _priceTagController = AnimationController(
+      vsync: this,
+      duration: AppAnimations.medium,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _priceTagController.forward();
+    });
     // Registrar el producto como visto recientemente
     RecentProductsService.addRecent(widget.product.id);
     // Cargar estado de favorito desde el servicio local (usuario exclusivo)
@@ -45,6 +55,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       if (mounted) setState(() => _favorite = isFav);
     });
     _fetchPriceHistory();
+  }
+
+  @override
+  void dispose() {
+    _priceTagController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchPriceHistory() async {
@@ -119,20 +135,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   icon: const Icon(Icons.share_rounded),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: IconButton.filledTonal(
-                  onPressed: () {
-                    // Navegar al tab de Favoritos (índice 3 en MainShell)
-                    final shell = context.findAncestorStateOfType<MainShellState>();
-                    if (shell != null) {
-                      Navigator.of(context).pop();
-                      shell.selectTab(3);
-                    }
-                  },
-                  icon: const Icon(Icons.favorite_rounded),
-                ),
-              ),
             ],
             flexibleSpace: FlexibleSpaceBar(
               background: Hero(
@@ -163,7 +165,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       Expanded(
                         child: Text(
                           product.title,
-                          style: Theme.of(context).textTheme.headlineSmall,
+                          style: AppTypography.heading(20),
                         ),
                       ),
                       if (product.isFeatured)
@@ -173,61 +175,50 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 10,
-                    runSpacing: 6,
+                  const SizedBox(height: 12),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(
-                        Product.formatPrice(product.price),
-                        style: Theme.of(context).textTheme.headlineMedium
-                            ?.copyWith(color: AppColors.primaryDark),
+                      AnimatedPriceTag(
+                        product: product,
+                        animation: _priceTagController,
+                        large: true,
                       ),
-                      if (product.previousPrice != null)
-                        Text(
-                          Product.formatPrice(product.previousPrice!),
-                          style: const TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            decoration: TextDecoration.lineThrough,
-                          ),
-                        ),
-                      if (product.isOffer)
-                        OfferBadge(label: product.discountLabel),
                       // Botón editar precio (solo dueño)
                       if (context.read<AuthProvider>().backendSellerId ==
                           product.seller.id)
-                        InkWell(
-                          onTap: () => _showEditPriceDialog(context),
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: const Icon(
-                              Icons.edit_rounded,
-                              size: 18,
-                              color: AppColors.primary,
+                        Padding(
+                          padding: const EdgeInsets.only(left: 10),
+                          child: InkWell(
+                            onTap: () => _showEditPriceDialog(context),
+                            borderRadius: BorderRadius.circular(20),
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Icon(
+                                Icons.edit_rounded,
+                                size: 18,
+                                color: AppColors.primary,
+                              ),
                             ),
                           ),
                         ),
                     ],
                   ),
-                  if (product.isOffer &&
-                      _lowest30d != null &&
-                      product.price > _lowest30d!) ...[
+                  if (_lowest30d != null && product.price > _lowest30d!) ...[
                     const SizedBox(height: 6),
-                    Text(
-                      'Precio más bajo en los últimos 30 días: ${Product.formatPrice(_lowest30d!)}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.muted,
-                        fontWeight: FontWeight.w500,
-                      ),
+                    Row(
+                      children: [
+                        Icon(Icons.trending_down_rounded, size: 14, color: AppColors.success),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Mínimo en 30 días: ${Product.formatPrice(_lowest30d!)}',
+                          style: AppTypography.label(12, color: AppColors.success),
+                        ),
+                      ],
                     ),
                   ],
                   const SizedBox(height: 14),
@@ -246,23 +237,38 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         color: AppColors.muted,
                       ),
                       // Badge de disponibilidad
-                      if (product.availability != null)
+                      if (!product.isAvailable)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFC62828).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFC62828).withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Icon(Icons.block_rounded, size: 16, color: Color(0xFFC62828)),
+                              SizedBox(width: 6),
+                              Text('Agotado', style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFFC62828))),
+                            ],
+                          ),
+                        )
+                      else if (product.availability != null)
                         _StatusBadge(availability: product.availability!),
+                      if (product.isAvailable && product.stockQuantity != null && product.stockQuantity! > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4, top: 5),
+                          child: Text('Quedan ${product.stockQuantity} porciones', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary)),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 24),
-                  Text(
-                    'Descripcion',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
+                  Text('Descripción', style: AppTypography.heading(15)),
                   const SizedBox(height: 8),
                   Text(
                     product.description,
-                    style: const TextStyle(
-                      fontSize: 15.5,
-                      height: 1.45,
-                      color: AppColors.ink,
-                    ),
+                    style: AppTypography.body(15.5, color: AppColors.muted),
                   ),
                   const SizedBox(height: 26),
                   // ─── Extras opcionales ────────────────────────────
@@ -500,9 +506,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () => _openChat(context),
+                  onPressed: product.isAvailable ? () => _openChat(context) : null,
                   icon: const Icon(Icons.chat_rounded),
-                  label: const Text('Chat'),
+                  label: Text(product.isAvailable ? 'Chat' : 'Agotado por hoy'),
                 ),
               ),
             ],
@@ -1253,4 +1259,32 @@ class _InteractiveStarRatingState extends State<_InteractiveStarRating> {
       ],
     );
   }
+}
+
+
+/// Transición premium para abrir pantalla de detalle: slide-up + fade con spring easing.
+Route<T> springDetailRoute<T>(Widget page) {
+  return PageRouteBuilder<T>(
+    pageBuilder: (context, animation, secondaryAnimation) => page,
+    transitionDuration: AppAnimations.slow,
+    reverseTransitionDuration: AppAnimations.medium,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final slide = Tween<Offset>(
+        begin: const Offset(0, 0.06),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(parent: animation, curve: AppAnimations.spring));
+
+      final fade = Tween<double>(begin: 0.0, end: 1.0).animate(
+        CurvedAnimation(
+          parent: animation,
+          curve: const Interval(0, 0.6, curve: Curves.easeOut),
+        ),
+      );
+
+      return FadeTransition(
+        opacity: fade,
+        child: SlideTransition(position: slide, child: child),
+      );
+    },
+  );
 }

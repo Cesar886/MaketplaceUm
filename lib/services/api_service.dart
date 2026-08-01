@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models.dart';
+import '../config/app_config.dart';
 
 /// Servicio centralizado para consumir la API REST de Mercadito UM.
 ///
@@ -40,17 +41,10 @@ class ApiService {
   }
 
   /// ─── CONFIGURACIÓN DEL BACKEND ─────────────────────────────
-  /// Servidor backend remoto en producción.
-  static const String _defaultBackendHost = '157.245.247.45';
-  static const int _backendPort = 3000;
-
-  /// Retorna la IP/host del servidor backend.
-  static String get _backendHost => _defaultBackendHost;
-
-  /// URL base del backend. Usa [_backendHost] siempre.
+  /// URL base del backend. Usa AppConfig siempre, a menos que haya override.
   static String get baseUrl {
     if (_customBaseUrl != null) return _customBaseUrl!;
-    return 'http://$_backendHost:$_backendPort';
+    return AppConfig.apiBaseUrl;
   }
 
   /// Override programático de la URL (alternativa a _backendHost).
@@ -154,6 +148,9 @@ class ApiService {
     List<int> availableDays = const [],
     List<Map<String, dynamic>> extras = const [],
     List<String>? imagePaths,
+    int? stockQuantity,
+    bool stockResetDaily = false,
+    int? stockInitial,
   }) async {
     // Si hay imágenes, usar multipart
     if (imagePaths != null && imagePaths.isNotEmpty) {
@@ -164,6 +161,13 @@ class ApiService {
       request.fields['description'] = description;
       request.fields['status'] = status;
       request.fields['extras'] = jsonEncode(extras);
+      if (stockQuantity != null) {
+        request.fields['stock_quantity'] = stockQuantity.toString();
+      }
+      request.fields['stock_reset_daily'] = stockResetDaily.toString();
+      if (stockInitial != null) {
+        request.fields['stock_initial'] = stockInitial.toString();
+      }
       if (availableDays.isNotEmpty) {
         request.fields['availableDays'] = jsonEncode(availableDays);
       }
@@ -192,6 +196,9 @@ class ApiService {
       'description': description,
       'status': status,
       'extras': extras,
+      if (stockQuantity != null) 'stock_quantity': stockQuantity,
+      'stock_reset_daily': stockResetDaily,
+      if (stockInitial != null) 'stock_initial': stockInitial,
       if (availableDays.isNotEmpty) 'availableDays': availableDays,
     };
     final res = await _client.post(
