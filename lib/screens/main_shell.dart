@@ -173,57 +173,57 @@ class MainShellState extends State<MainShell> {
       bottomNavigationBar: SafeArea(
         top: false,
         child: DecoratedBox(
-          decoration: const BoxDecoration(color: AppColors.primaryDark),
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            border: Border(top: BorderSide(color: AppColors.border, width: 0.8)),
+          ),
           child: SizedBox(
-            height: 68,
-            child: Stack(
-              clipBehavior: Clip.none,
-              alignment: Alignment.topCenter,
+            height: 66,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _NavItem(
-                      icon: Icons.home_outlined,
-                      selectedIcon: Icons.home_rounded,
-                      label: 'Inicio',
-                      index: 0,
-                      currentIndex: _currentIndex,
-                      onTap: selectTab,
-                      badge: _unreadNotifCount > 0 ? _unreadNotifCount : null,
-                    ),
-                    _NavItem(
-                      icon: Icons.local_offer_outlined,
-                      selectedIcon: Icons.local_offer_rounded,
-                      label: 'Ofertas',
-                      index: 1,
-                      currentIndex: _currentIndex,
-                      onTap: selectTab,
-                    ),
-                    // Espacio reservado para el FAB central, que flota encima.
-                    const SizedBox(width: 56),
-                    _NavItem(
-                      icon: Icons.chat_outlined,
-                      selectedIcon: Icons.chat_rounded,
-                      label: 'Chat',
-                      index: 4,
-                      currentIndex: _currentIndex,
-                      onTap: selectTab,
-                      badge: _unreadChatCount > 0 ? _unreadChatCount : null,
-                    ),
-                    _NavItem(
-                      icon: Icons.person_outline_rounded,
-                      selectedIcon: Icons.person_rounded,
-                      label: 'Perfil',
-                      index: 5,
-                      currentIndex: _currentIndex,
-                      onTap: selectTab,
-                    ),
-                  ],
+                _NavItem(
+                  icon: Icons.home_outlined,
+                  selectedIcon: Icons.home_rounded,
+                  label: 'Inicio',
+                  index: 0,
+                  currentIndex: _currentIndex,
+                  onTap: selectTab,
+                  badge: _unreadNotifCount > 0 ? _unreadNotifCount : null,
                 ),
-                Positioned(
-                  top: -14,
-                  child: _PublishFab(onTap: () => _showPublishMenu(context)),
+                _NavItem(
+                  icon: Icons.local_offer_outlined,
+                  selectedIcon: Icons.local_offer_rounded,
+                  label: 'Ofertas',
+                  index: 1,
+                  currentIndex: _currentIndex,
+                  onTap: selectTab,
+                ),
+                _PublishFab(onTap: () => _showPublishMenu(context)),
+                _NavItem(
+                  icon: Icons.favorite_outline_rounded,
+                  selectedIcon: Icons.favorite_rounded,
+                  label: 'Favs',
+                  index: 3,
+                  currentIndex: _currentIndex,
+                  onTap: selectTab,
+                ),
+                _NavItem(
+                  icon: Icons.chat_outlined,
+                  selectedIcon: Icons.chat_rounded,
+                  label: 'Chat',
+                  index: 4,
+                  currentIndex: _currentIndex,
+                  onTap: selectTab,
+                  badge: _unreadChatCount > 0 ? _unreadChatCount : null,
+                ),
+                _NavItem(
+                  icon: Icons.person_outline_rounded,
+                  selectedIcon: Icons.person_rounded,
+                  label: 'Perfil',
+                  index: 5,
+                  currentIndex: _currentIndex,
+                  onTap: selectTab,
                 ),
               ],
             ),
@@ -256,7 +256,7 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selected = index == currentIndex;
-    final color = selected ? AppColors.amber : AppColors.background.withValues(alpha: 0.55);
+    final color = selected ? AppColors.primary : AppColors.muted;
 
     Widget iconWidget = Icon(
       selected ? selectedIcon : icon,
@@ -267,8 +267,7 @@ class _NavItem extends StatelessWidget {
     if (badge != null && badge! > 0) {
       iconWidget = Badge.count(
         count: badge!,
-        backgroundColor: AppColors.amber,
-        textColor: AppColors.amberDark,
+        backgroundColor: AppColors.primary,
         child: iconWidget,
       );
     }
@@ -314,23 +313,21 @@ class _PublishFab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 56,
-        height: 56,
-        padding: const EdgeInsets.all(3),
-        decoration: const BoxDecoration(
-          color: AppColors.primaryDark, // anillo que lo separa de la barra
-          shape: BoxShape.circle,
-        ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: GestureDetector(
+        onTap: onTap,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: AppColors.background,
+            color: AppColors.amber,
             shape: BoxShape.circle,
-            boxShadow: AppShadows.lifted,
+            boxShadow: AppShadows.amber,
           ),
-          child: const Icon(Icons.add_rounded, color: AppColors.primary, size: 28),
+          child: const SizedBox(
+            width: 52,
+            height: 52,
+            child: Icon(Icons.add_rounded, color: AppColors.amberDark, size: 28),
+          ),
         ),
       ),
     );
