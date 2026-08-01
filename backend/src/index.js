@@ -15,6 +15,7 @@ const routes = [
   require('./routes/highlightPlans'),
   require('./routes/notifications'),
   require('./routes/chat'),
+  require('./routes/wanted'),
 ];
 
 const app = express();
