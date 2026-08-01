@@ -15,6 +15,7 @@ import 'offers_screen.dart';
 import 'product_detail_screen.dart';
 import 'profile_screen.dart';
 import 'publish_product_screen.dart';
+import 'wanted_feed_screen.dart';
 import 'wanted_post_screen.dart';
 
 class MainShell extends StatefulWidget {
@@ -95,6 +96,17 @@ class MainShellState extends State<MainShell> {
                 Navigator.of(sheetContext).pop();
                 Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => const WantedPostScreen()),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.list_alt_rounded, color: AppColors.primary),
+              title: const Text('Ver búsquedas'),
+              subtitle: const Text('Mira qué está buscando la comunidad'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const WantedFeedScreen()),
                 );
               },
             ),
