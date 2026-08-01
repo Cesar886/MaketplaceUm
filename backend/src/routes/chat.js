@@ -12,6 +12,7 @@ function register(app) {
     // Adjuntar datos del producto y del otro usuario
     const enriched = conversations.map(conv => {
       const product = db.getProductById(conv.productId);
+      const wantedPost = conv.productId ? null : db.getWantedPostById(conv.wantedPostId);
       const otherUserId = conv.buyerId === userId ? conv.sellerId : conv.buyerId;
       const otherUser = db.getDb().prepare('SELECT * FROM sellers WHERE id = ?').get(otherUserId);
       const lastMessage = db.getDb().prepare(
@@ -28,6 +29,7 @@ function register(app) {
           imageIcon: product.imageIcon,
           imageColor: product.imageColor,
         } : null,
+        wantedPost: wantedPost ? { id: wantedPost.id, title: wantedPost.title } : null,
         otherUser: otherUser ? {
           id: otherUser.id,
           name: otherUser.name,

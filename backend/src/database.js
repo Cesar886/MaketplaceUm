@@ -795,6 +795,7 @@ function getConversationsForUser(userId) {
   `).all(userId, userId).map(row => ({
     id: row.id,
     productId: row.product_id,
+    wantedPostId: row.wanted_post_id,
     buyerId: row.buyer_id,
     sellerId: row.seller_id,
     createdAt: row.created_at,
