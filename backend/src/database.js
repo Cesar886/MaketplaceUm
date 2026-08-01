@@ -124,6 +124,24 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_conversations_buyer ON conversations(buyer_id, last_message_at);
     CREATE INDEX IF NOT EXISTS idx_conversations_seller ON conversations(seller_id, last_message_at);
 
+    CREATE TABLE IF NOT EXISTS wanted_posts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      category_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      price_min REAL,
+      price_max REAL,
+      status TEXT NOT NULL DEFAULT 'abierta',
+      resolved_with_user_id TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      resolved_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_wanted_posts_category ON wanted_posts(category_id, status);
+    CREATE INDEX IF NOT EXISTS idx_wanted_posts_user ON wanted_posts(user_id, created_at);
+
     CREATE TABLE IF NOT EXISTS push_tokens (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id TEXT NOT NULL,
@@ -272,6 +290,57 @@ function runMigrations() {
     `);
   }
 
+  // 8. Migrar conversations: permitir wanted_post_id y relajar product_id a NULL
+  //    (SQLite no permite quitar NOT NULL con ALTER TABLE, así que se recrea la
+  //    tabla preservando los datos existentes). También se recrea messages para
+  //    arreglar la FK que SQLite reescribe al renombrar conversations.
+  const convCols = db.prepare("PRAGMA table_info('conversations')").all();
+  const hasWantedPostId = convCols.some(c => c.name === 'wanted_post_id');
+  if (!hasWantedPostId) {
+    db.pragma('foreign_keys = OFF');
+    db.exec(`
+      ALTER TABLE messages RENAME TO messages_legacy;
+      ALTER TABLE conversations RENAME TO conversations_legacy;
+
+      CREATE TABLE conversations (
+        id TEXT PRIMARY KEY,
+        product_id TEXT,
+        wanted_post_id TEXT,
+        buyer_id TEXT NOT NULL,
+        seller_id TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        last_message_at TEXT,
+        last_message_preview TEXT DEFAULT ''
+      );
+
+      INSERT INTO conversations (id, product_id, wanted_post_id, buyer_id, seller_id, created_at, last_message_at, last_message_preview)
+        SELECT id, product_id, NULL, buyer_id, seller_id, created_at, last_message_at, last_message_preview
+        FROM conversations_legacy;
+
+      CREATE TABLE messages (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        sender_id TEXT NOT NULL,
+        text TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        read INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+      );
+
+      INSERT INTO messages (id, conversation_id, sender_id, text, created_at, read)
+        SELECT id, conversation_id, sender_id, text, created_at, read
+        FROM messages_legacy;
+
+      DROP TABLE messages_legacy;
+      DROP TABLE conversations_legacy;
+
+      CREATE INDEX IF NOT EXISTS idx_conversations_buyer ON conversations(buyer_id, last_message_at);
+      CREATE INDEX IF NOT EXISTS idx_conversations_seller ON conversations(seller_id, last_message_at);
+      CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
+    `);
+    db.pragma('foreign_keys = ON');
+  }
+
   console.log('🔄 Migración de schema completada');
 }
 
@@ -338,6 +407,24 @@ function productToRow(product) {
     stock_reset_daily: product.stock_reset_daily ? 1 : 0,
     stock_initial: product.stock_initial ?? null,
     stock_updated_at: product.stock_updated_at || null,
+  };
+}
+
+function rowToWantedPost(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    userId: row.user_id,
+    title: row.title,
+    description: row.description || null,
+    categoryId: row.category_id,
+    type: row.type,
+    priceMin: row.price_min ?? null,
+    priceMax: row.price_max ?? null,
+    status: row.status,
+    resolvedWithUserId: row.resolved_with_user_id || null,
+    createdAt: row.created_at,
+    resolvedAt: row.resolved_at || null,
   };
 }
 
@@ -731,6 +818,75 @@ function getUnreadMessageCount(userId) {
   return row?.count ?? 0;
 }
 
+// ─── Wanted Posts ───────────────────────────────────────────────
+
+function createWantedPost(post) {
+  db.prepare(`
+    INSERT INTO wanted_posts (id, user_id, title, description, category_id, type, price_min, price_max, status, created_at)
+    VALUES (@id, @userId, @title, @description, @categoryId, @type, @priceMin, @priceMax, 'abierta', datetime('now'))
+  `).run({
+    id: post.id,
+    userId: post.userId,
+    title: post.title,
+    description: post.description || null,
+    categoryId: post.categoryId,
+    type: post.type,
+    priceMin: post.priceMin ?? null,
+    priceMax: post.priceMax ?? null,
+  });
+  return getWantedPostById(post.id);
+}
+
+function getWantedPostById(id) {
+  const row = db.prepare('SELECT * FROM wanted_posts WHERE id = ?').get(id);
+  return rowToWantedPost(row);
+}
+
+function listWantedPosts({ categoryId, status, type } = {}) {
+  let query = 'SELECT * FROM wanted_posts WHERE 1=1';
+  const params = [];
+  if (categoryId) {
+    query += ' AND category_id = ?';
+    params.push(categoryId);
+  }
+  query += ' AND status = ?';
+  params.push(status || 'abierta');
+  if (type) {
+    query += ' AND type = ?';
+    params.push(type);
+  }
+  query += ' ORDER BY created_at DESC';
+  return db.prepare(query).all(...params).map(rowToWantedPost);
+}
+
+function resolveWantedPost(id, resolvedWithUserId) {
+  db.prepare(`
+    UPDATE wanted_posts SET status = 'resuelta', resolved_with_user_id = ?, resolved_at = datetime('now')
+    WHERE id = ?
+  `).run(resolvedWithUserId || null, id);
+  return getWantedPostById(id);
+}
+
+function countWantedPostsSince(userId, isoTimestamp) {
+  const row = db.prepare(
+    'SELECT COUNT(*) as count FROM wanted_posts WHERE user_id = ? AND created_at >= ?'
+  ).get(userId, isoTimestamp);
+  return row?.count ?? 0;
+}
+
+function createWantedConversation(id, wantedPostId, buyerId, sellerId) {
+  db.prepare(`
+    INSERT INTO conversations (id, product_id, wanted_post_id, buyer_id, seller_id, created_at, last_message_at, last_message_preview)
+    VALUES (?, NULL, ?, ?, ?, datetime('now'), datetime('now'), '')
+  `).run(id, wantedPostId, buyerId, sellerId);
+}
+
+function findWantedConversation(wantedPostId, buyerId, sellerId) {
+  return db.prepare(
+    'SELECT * FROM conversations WHERE wanted_post_id = ? AND buyer_id = ? AND seller_id = ?'
+  ).get(wantedPostId, buyerId, sellerId);
+}
+
 // ─── Push Tokens (FCM) ────────────────────────────────────────────
 
 function registerPushToken(userId, playerId, platform) {
@@ -845,6 +1001,14 @@ module.exports = {
   findConversation,
   getConversationsForUser,
   getUnreadMessageCount,
+  // Wanted Posts
+  createWantedPost,
+  getWantedPostById,
+  listWantedPosts,
+  resolveWantedPost,
+  countWantedPostsSince,
+  createWantedConversation,
+  findWantedConversation,
   // Push Tokens
   registerPushToken,
   unregisterPushToken,
