@@ -192,13 +192,25 @@ class PushService {
   // para identificar el dispositivo. El endpoint del backend es el mismo.
 
   /// Registra el dispositivo en el backend asociándolo al usuario autenticado.
-  ///
-  /// Envía el token FCM actual al endpoint POST /api/notifications/register-push.
-  /// Si el token es null (permiso denegado o error), falla silenciosamente.
   Future<bool> registerDevice() async {
     if (_fcmToken == null) return false;
     try {
       await ApiService.registerPushToken(_fcmToken!);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Registra el dispositivo usando el ID anónimo del usuario (sin login).
+  Future<bool> registerAnonymousDevice(String anonymousId) async {
+    if (_fcmToken == null) return false;
+    try {
+      await ApiService.registerPushTokenAnonymous(
+        _fcmToken!,
+        anonymousId,
+        platform: Platform.isAndroid ? 'android' : 'ios',
+      );
       return true;
     } catch (_) {
       return false;

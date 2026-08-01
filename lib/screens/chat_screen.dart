@@ -37,6 +37,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _currentConvId;
   bool _sending = false;
   bool _loading = true;
+  bool _loadError = false;
   String _userId = '';
   bool _otherTyping = false;
 
@@ -169,20 +170,26 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _loadMessages() async {
     if (_currentConvId == null || _currentConvId!.isEmpty) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() { _loading = false; _loadError = false; });
       return;
     }
+    if (mounted) setState(() { _loading = true; _loadError = false; });
     try {
       final messages = await ApiService.getMessages(_currentConvId!, userId: _userId);
       if (!mounted) return;
       setState(() {
         _messages = messages;
         _loading = false;
+        _loadError = false;
       });
       _scrollToBottom();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('❌ Error cargando mensajes del chat: $e');
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _loadError = true;
+      });
     }
   }
 
@@ -352,49 +359,72 @@ class _ChatScreenState extends State<ChatScreen> {
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
-                : _messages.isEmpty && !_otherTyping
-                    ? const Center(
+                : _loadError
+                    ? Center(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.chat_bubble_outline_rounded,
+                            const Icon(Icons.wifi_off_rounded,
                                 size: 48, color: AppColors.muted),
-                            SizedBox(height: 12),
-                            Text(
-                              'Envía un mensaje para empezar',
+                            const SizedBox(height: 12),
+                            const Text(
+                              'No se pudieron cargar los mensajes',
                               style: TextStyle(
                                 color: AppColors.muted,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
+                            const SizedBox(height: 12),
+                            TextButton.icon(
+                              onPressed: _loadMessages,
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text('Reintentar'),
+                            ),
                           ],
                         ),
                       )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
-                        itemCount:
-                            _messages.length + (_otherTyping ? 1 : 0),
-                        itemBuilder: (context, index) {
-                          if (_otherTyping &&
-                              index == _messages.length) {
-                            return _TypingIndicator();
-                          }
-                          final msg = _messages[index];
-                          final isMine = msg.senderId == currentUserId;
-                          final canDelete = isMine &&
-                              msg.text != '[Mensaje eliminado]';
-                          return _MessageBubble(
-                            message: msg,
-                            isMine: isMine,
-                            showSender: index == 0 ||
-                                _messages[index - 1].senderId !=
-                                    msg.senderId,
-                            onDelete:
-                                canDelete ? () => _deleteMessage(msg) : null,
-                          );
-                        },
-                      ),
+                    : _messages.isEmpty && !_otherTyping
+                        ? const Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.chat_bubble_outline_rounded,
+                                    size: 48, color: AppColors.muted),
+                                SizedBox(height: 12),
+                                Text(
+                                  'Envía un mensaje para empezar',
+                                  style: TextStyle(
+                                    color: AppColors.muted,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            controller: _scrollController,
+                            padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
+                            itemCount: _messages.length + (_otherTyping ? 1 : 0),
+                            itemBuilder: (context, index) {
+                              if (_otherTyping && index == _messages.length) {
+                                return _TypingIndicator();
+                              }
+                              final msg = _messages[index];
+                              final isMine = msg.senderId == currentUserId;
+                              final canDelete =
+                                  isMine && msg.text != '[Mensaje eliminado]';
+                              return _MessageBubble(
+                                message: msg,
+                                isMine: isMine,
+                                showSender: index == 0 ||
+                                    _messages[index - 1].senderId !=
+                                        msg.senderId,
+                                onDelete: canDelete
+                                    ? () => _deleteMessage(msg)
+                                    : null,
+                              );
+                            },
+                          ),
           ),
           Container(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),

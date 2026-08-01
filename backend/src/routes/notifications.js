@@ -75,6 +75,30 @@ function register(app) {
     db.unregisterAllPushTokensForUser(req.user.id);
     res.json({ success: true });
   });
+
+  // POST /api/notifications/register-push-anon - FCM token para usuarios anónimos (sin auth)
+  // El userId debe tener el prefijo 'anon_' (formato generado por AnonymousId en Flutter)
+  // y NO puede coincidir con un usuario autenticado, para evitar hijacking de notificaciones.
+  app.post('/api/notifications/register-push-anon', (req, res) => {
+    const { playerId, userId, platform } = req.body;
+    if (!playerId || !userId) {
+      return res.status(400).json({ error: 'playerId y userId son requeridos' });
+    }
+
+    // Solo se aceptan IDs anónimos (prefijo 'anon_')
+    if (!userId.startsWith('anon_')) {
+      return res.status(400).json({ error: 'userId inválido para registro anónimo' });
+    }
+
+    // Rechazar si el ID corresponde a un usuario autenticado en la base de datos
+    const existingSeller = db.getDb().prepare('SELECT id FROM sellers WHERE id = ?').get(userId);
+    if (existingSeller) {
+      return res.status(403).json({ error: 'userId no permitido' });
+    }
+
+    db.registerPushToken(userId, playerId, platform || 'android');
+    res.json({ success: true });
+  });
 }
 
 module.exports = { register };

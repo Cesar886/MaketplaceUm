@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/anonymous_id.dart';
 import '../services/api_service.dart';
 import '../services/db_helper.dart';
 import '../services/push_service.dart';
@@ -256,7 +257,11 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> tryAutoLogin() async {
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getInt(_sessionKey);
-    if (userId == null) return false;
+    if (userId == null) {
+      // Usuario anónimo: registrar su token FCM para poder recibir pushes sin login
+      _registerAnonymousPushDevice();
+      return false;
+    }
 
     final user = await _db.getUserById(userId);
     if (user == null) {
@@ -348,16 +353,21 @@ class AuthProvider extends ChangeNotifier {
 
   /// Registra el dispositivo para notificaciones push.
   /// Envía el FCM token actual al backend para que el usuario reciba notificaciones.
-  /// No necesita "login" como en OneSignal — FCM identifica por token.
   Future<void> _registerPushDevice() async {
     if (_backendSellerId == null) return;
-
     try {
-      // Registrar el FCM token en el backend
       await PushService.instance.registerDevice();
-    } catch (_) {
-      // Si falla, no es crítico — el usuario igual puede usar la app
-    }
+    } catch (_) {}
+  }
+
+  /// Registra el token FCM usando el ID anónimo del dispositivo (sin login).
+  Future<void> _registerAnonymousPushDevice() async {
+    try {
+      final anonymousId = await AnonymousId.get();
+      if (anonymousId.isNotEmpty) {
+        await PushService.instance.registerAnonymousDevice(anonymousId);
+      }
+    } catch (_) {}
   }
 
   /// Asegura que exista un token de backend válido.

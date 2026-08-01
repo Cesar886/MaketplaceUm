@@ -173,7 +173,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
                               builder: (_) => ChatScreen(
                                 conversationId: conv.id,
                                 productId: conv.productId,
-                                sellerId: conv.sellerId,
+                                // No se pasa sellerId — la conversación ya existe.
+                                // ChatScreen solo necesita sellerId para crear una nueva.
                               ),
                             ),
                           );

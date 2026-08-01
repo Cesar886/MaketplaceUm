@@ -25,6 +25,13 @@ class AnonymousId {
     return id;
   }
 
+  /// Resuelve el ID a usar para identificar al usuario actual ante el backend:
+  /// su ID de vendedor si tiene sesión, o su ID anónimo persistido si no.
+  static Future<String> resolve({required bool isLoggedIn, String? backendSellerId}) async {
+    if (isLoggedIn && backendSellerId != null) return backendSellerId;
+    return get();
+  }
+
   /// Limpia el ID anónimo (útil si el usuario se registra después).
   static Future<void> reset() async {
     _cached = null;

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
+import '../services/anonymous_id.dart';
 import '../services/api_service.dart';
 import '../services/favorite_products_service.dart';
 import '../services/recent_products_service.dart';
@@ -70,8 +71,14 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
   Future<void> _loadData({bool silent = false}) async {
     if (!silent && _products.isEmpty) setState(() => _loading = true);
     try {
+      final auth = context.read<AuthProvider>();
+      final userId = await AnonymousId.resolve(
+        isLoggedIn: auth.isLoggedIn,
+        backendSellerId: auth.backendSellerId,
+      );
+      if (!mounted) return;
       final results = await Future.wait([
-        ApiService.getProducts(),
+        ApiService.getProducts(userId: userId),
         ApiService.getCategories(),
         ApiService.getHighlightPlans(),
       ]);
@@ -86,7 +93,6 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
       }
 
       // Verificar si el usuario ha publicado artículos
-      final auth = context.read<AuthProvider>();
       bool hasPublished = false;
       if (auth.isLoggedIn) {
         try {

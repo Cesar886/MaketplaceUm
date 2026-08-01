@@ -45,7 +45,7 @@ async function convertToWebp(filePath) {
   return publicPath;
 }
 
-function attachRelations(productsList) {
+function attachRelations(productsList, userId) {
   let modified = false;
   const todayStr = new Date().toDateString();
 
@@ -63,9 +63,17 @@ function attachRelations(productsList) {
     // 2. Campo calculado is_available
     const is_available = p.stock_quantity === null || p.stock_quantity > 0;
 
+    // 3. Calificaciones — persisten en product_ratings, no en el propio producto,
+    //    así que hay que unirlas aquí para que sobrevivan a un refresh/GET.
+    const ratingStats = db.getProductRatingStats(p.id);
+    const userRating = userId ? db.getUserProductRating(p.id, userId) : null;
+
     return {
       ...p,
       is_available,
+      productRating: ratingStats.average,
+      productReviews: ratingStats.count,
+      userRating,
       sellerObj: sellers.find(s => s.id === p.seller) || (
         p.seller ? {
           id: p.seller,
@@ -103,14 +111,14 @@ function register(app) {
       filtered = filtered.filter(p =>
         p.title.toLowerCase().includes(q) || p.description.toLowerCase().includes(q));
     }
-    res.json(attachRelations(filtered));
+    res.json(attachRelations(filtered, req.query.userId));
   });
 
   // GET /api/products/:id – detalle
   app.get('/api/products/:id', (req, res) => {
     const product = products.find(p => p.id === req.params.id);
     if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
-    res.json(attachRelations([product])[0]);
+    res.json(attachRelations([product], req.query.userId)[0]);
   });
 
   // POST /api/products – crear nuevo producto (con imágenes opcionales)
@@ -148,6 +156,16 @@ function register(app) {
           const validStatuses = ['available', 'reserved', 'sold', 'negotiating', 'paused', 'unavailable'];
           const status = req.body?.status || 'available';
 
+          // multipart/form-data manda los extras como JSON string, no como array
+          let extrasInput = req.body?.extras;
+          if (typeof extrasInput === 'string') {
+            try {
+              extrasInput = JSON.parse(extrasInput);
+            } catch {
+              extrasInput = [];
+            }
+          }
+
           const newProduct = {
             id: productId,
             title,
@@ -160,7 +178,7 @@ function register(app) {
             imageIcon: images.length > 0 ? null : 'inventory_2',
             imageColor: '#607D8B',
             status: validStatuses.includes(status) ? status : 'available',
-            extras: Array.isArray(req.body?.extras) ? req.body.extras.map(e => ({
+            extras: Array.isArray(extrasInput) ? extrasInput.map(e => ({
               name: String(e.name || ''),
               extraPrice: Number(e.extraPrice) || 0,
             })).filter(e => e.name) : [],
@@ -242,6 +260,7 @@ function register(app) {
       }
 
       products.splice(productIndex, 1);
+      db.deleteProduct(productId);
       saveData();
       res.json({ success: true, message: 'Producto eliminado' });
     } catch (err) {
@@ -419,7 +438,13 @@ function register(app) {
       const isCooldownPassed = previousActiveHours >= COOLDOWN_HOURS;
 
       // ─── Registrar en price_history el precio anterior ANTES de aplicar el nuevo ───
-      db.insertPriceHistory(product.id, oldPrice);
+      // Si por algún motivo no tenemos un precio anterior numérico válido, omitimos
+      // el registro de historial en vez de arriesgar un insert inválido.
+      if (Number.isFinite(oldPrice)) {
+        db.insertPriceHistory(product.id, oldPrice);
+      } else {
+        console.warn(`Omitiendo price_history para ${product.id}: oldPrice no es un número válido (${oldPrice})`);
+      }
 
       // ─── Calcular descuento contra el precio más alto de los últimos 30 días ──
       const highestIn30d = db.getHighestPriceInLastDays(product.id, 30);
@@ -480,7 +505,7 @@ function register(app) {
       res.json(attachRelations([product])[0]);
     } catch (err) {
       console.error('Error en PATCH /api/products/:id:', err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: 'No se pudo actualizar el producto. Intenta de nuevo en unos minutos.' });
     }
   });
 
@@ -504,10 +529,6 @@ function register(app) {
 
       db.upsertProductRating(productId, userId, stars);
 
-      // Obtener stats actualizadas
-      const stats = db.getProductRatingStats(productId);
-      const userRating = db.getUserProductRating(productId, userId);
-
       // Actualizar rating del vendedor
       const sellerStats = db.getSellerRatingStats(product.seller);
       const sellerIndex = sellers.findIndex(s => s.id === product.seller);
@@ -525,10 +546,7 @@ function register(app) {
         sendPush([product.seller], notifTitle, notifBody, { productId: product.id, type: 'rating' });
       }
 
-      const enriched = attachRelations([product])[0];
-      enriched.productRating = stats.average;
-      enriched.productReviews = stats.count;
-      enriched.userRating = userRating;
+      const enriched = attachRelations([product], userId)[0];
 
       saveData();
       res.json(enriched);
@@ -562,7 +580,7 @@ function register(app) {
       });
     } catch (err) {
       console.error('Error en GET /api/products/:id/price-history:', err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: 'No se pudo cargar el historial de precios.' });
     }
   });
 }

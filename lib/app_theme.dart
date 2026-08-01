@@ -1,61 +1,65 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+/// Sistema "Puesto de Barrio": verde profundo como ancla premium, fondo
+/// neutro casi blanco (sin tinte arenoso), cempasúchil como único acento
+/// de firma. Ver docs de diseño para justificación de cada valor.
 class AppColors {
   // ─── Paleta principal ────────────────────────────────────
-  static const primary = Color(0xFF1F6357);       // Verde Mercado
-  static const primaryDark = Color(0xFF122E28);   // Verde noche (sombras, overlays)
-  static const amber = Color(0xFFE8A614);          // Ámbar Maíz — signature accent
-  static const amberDark = Color(0xFFB37E0A);      // Ámbar oscuro para texto sobre amber
-  static const gold = Color(0xFFC79A3B);           // Dorado — featured/premium
-  static const champagne = Color(0xFFFBF6EA);      // Fondo premium badge
-  static const orange = Color(0xFFC7653E);         // Naranja — reservado/negociando
-  static const teal = Color(0xFF2B7C73);           // Teal secundario
+  static const primary = Color(0xFF1B5A4C);       // Verde Puesto — ancla de marca
+  static const primaryDark = Color(0xFF0F231D);   // Verde Noche — headers, nav, overlays
+  static const amber = Color(0xFFE3A008);          // Cempasúchil — signature accent
+  static const amberDark = Color(0xFF3D2600);      // Texto sobre cempasúchil
+  static const gold = Color(0xFFB8863B);           // Dorado — featured/premium
+  static const champagne = Color(0xFFFAF3E0);      // Fondo premium badge
+  static const orange = Color(0xFFA84B37);         // Terracota — reservado/negociando
+  static const teal = Color(0xFF1F6B62);           // Teal secundario
 
   // ─── Base ────────────────────────────────────────────────
-  static const background = Color(0xFFF5F2EB);    // Hueso Cálido
+  static const background = Color(0xFFFAFAF8);    // Papel — neutro, casi blanco
   static const surface = Color(0xFFFFFFFF);        // Blanco limpio
-  static const surfaceMuted = Color(0xFFF0EDE6);  // Surface muted (tono cálido)
-  static const ink = Color(0xFF1A2B27);            // Tinta Profunda
-  static const muted = Color(0xFF6B716E);          // Texto secundario
-  static const border = Color(0xFFE3E0D8);         // Border (tono cálido)
-  static const premiumBorder = Color(0xFFE4D4A7);
+  static const surfaceMuted = Color(0xFFF1F1EE);  // Surface muted (neutro)
+  static const ink = Color(0xFF1B1A16);            // Tinta
+  static const muted = Color(0xFF6E6B64);          // Texto secundario
+  static const border = Color(0xFFE4E2DC);         // Border (neutro sutil)
+  static const premiumBorder = Color(0xFFD9C68A);
 
   // ─── Estados ─────────────────────────────────────────────
-  static const danger = Color(0xFFC8433A);
-  static const success = Color(0xFF2D7D55);
+  static const danger = Color(0xFFB23A2E);
+  static const success = Color(0xFF2F7D5C);
 
   // ─── Oscuro ──────────────────────────────────────────────
-  static const darkBackground = Color(0xFF121212);
-  static const darkSurface = Color(0xFF1E1E1E);
-  static const darkSurfaceMuted = Color(0xFF2A2A2A);
-  static const darkInk = Color(0xFFE8EAE6);
-  static const darkMuted = Color(0xFF9A9F9C);
-  static const darkBorder = Color(0xFF333533);
+  static const darkBackground = Color(0xFF10201A); // teñido de verde, no gris genérico
+  static const darkSurface = Color(0xFF17281F);
+  static const darkSurfaceMuted = Color(0xFF1E332A);
+  static const darkInk = Color(0xFFEDEAE2);
+  static const darkMuted = Color(0xFF9CA79E);
+  static const darkBorder = Color(0xFF2B3D33);
 }
 
 class AppTypography {
-  // Sora: para precios y números — carácter, sin frialdad corporativa
+  // Baloo 2: para precios — redondeada, con carácter de etiqueta de puesto,
+  // usada con moderación (solo precios y headlines grandes).
   static TextStyle price(double size, {FontWeight weight = FontWeight.w800, Color? color}) =>
-      GoogleFonts.sora(
+      GoogleFonts.baloo2(
         fontSize: size,
         fontWeight: weight,
         color: color ?? AppColors.ink,
         height: 1.1,
       );
 
-  // Sora medium: para headings de sección
+  // Baloo 2: headings de sección
   static TextStyle heading(double size, {FontWeight weight = FontWeight.w700, Color? color}) =>
-      GoogleFonts.sora(
+      GoogleFonts.baloo2(
         fontSize: size,
         fontWeight: weight,
         color: color ?? AppColors.ink,
         height: 1.2,
       );
 
-  // Nunito: cuerpo, descripción, labels
+  // Work Sans: cuerpo, descripción, labels
   static TextStyle body(double size, {FontWeight weight = FontWeight.w400, Color? color}) =>
-      GoogleFonts.nunito(
+      GoogleFonts.workSans(
         fontSize: size,
         fontWeight: weight,
         color: color ?? AppColors.ink,
@@ -63,7 +67,7 @@ class AppTypography {
       );
 
   static TextStyle label(double size, {FontWeight weight = FontWeight.w600, Color? color}) =>
-      GoogleFonts.nunito(
+      GoogleFonts.workSans(
         fontSize: size,
         fontWeight: weight,
         color: color ?? AppColors.ink,
@@ -112,7 +116,7 @@ class AppShadows {
 
 class AppTheme {
   static ThemeData get light {
-    final base = GoogleFonts.nunitoTextTheme();
+    final base = GoogleFonts.workSansTextTheme();
     final scheme = ColorScheme.fromSeed(seedColor: AppColors.primary).copyWith(
       primary: AppColors.primary,
       secondary: AppColors.teal,
@@ -136,12 +140,20 @@ class AppTheme {
         bodyMedium: base.bodyMedium?.copyWith(color: AppColors.ink),
         labelSmall: base.labelSmall?.copyWith(color: AppColors.muted),
       ),
-      appBarTheme: const AppBarTheme(
+      appBarTheme: AppBarTheme(
         centerTitle: false,
         elevation: 0,
         scrolledUnderElevation: 0,
-        backgroundColor: AppColors.background,
-        foregroundColor: AppColors.ink,
+        backgroundColor: AppColors.primaryDark,
+        foregroundColor: AppColors.background,
+        surfaceTintColor: Colors.transparent,
+        titleTextStyle: GoogleFonts.baloo2(
+          fontSize: 19,
+          fontWeight: FontWeight.w700,
+          color: AppColors.background,
+        ),
+        iconTheme: const IconThemeData(color: AppColors.background),
+        actionsIconTheme: const IconThemeData(color: AppColors.background),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -167,7 +179,7 @@ class AppTheme {
           elevation: 0,
           minimumSize: const Size.fromHeight(52),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w700),
+          textStyle: GoogleFonts.workSans(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -176,7 +188,7 @@ class AppTheme {
           side: const BorderSide(color: AppColors.border),
           minimumSize: const Size.fromHeight(48),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+          textStyle: GoogleFonts.workSans(fontWeight: FontWeight.w700),
         ),
       ),
       chipTheme: ChipThemeData(
@@ -184,14 +196,14 @@ class AppTheme {
         selectedColor: AppColors.primary.withValues(alpha: 0.10),
         side: const BorderSide(color: AppColors.border),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        labelStyle: GoogleFonts.nunito(fontWeight: FontWeight.w700, color: AppColors.ink),
+        labelStyle: GoogleFonts.workSans(fontWeight: FontWeight.w700, color: AppColors.ink),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: AppColors.primaryDark,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        contentTextStyle: GoogleFonts.nunito(color: Colors.white, fontWeight: FontWeight.w600),
+        contentTextStyle: GoogleFonts.workSans(color: Colors.white, fontWeight: FontWeight.w600),
       ),
       dividerColor: AppColors.border,
       visualDensity: VisualDensity.standard,
@@ -199,7 +211,7 @@ class AppTheme {
   }
 
   static ThemeData get dark {
-    final base = GoogleFonts.nunitoTextTheme(ThemeData.dark().textTheme);
+    final base = GoogleFonts.workSansTextTheme(ThemeData.dark().textTheme);
     final scheme = ColorScheme.fromSeed(
       seedColor: AppColors.primary,
       brightness: Brightness.dark,
@@ -256,7 +268,7 @@ class AppTheme {
           elevation: 0,
           minimumSize: const Size.fromHeight(52),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w700),
+          textStyle: GoogleFonts.workSans(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -265,7 +277,7 @@ class AppTheme {
           side: const BorderSide(color: AppColors.darkBorder),
           minimumSize: const Size.fromHeight(48),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+          textStyle: GoogleFonts.workSans(fontWeight: FontWeight.w700),
         ),
       ),
       chipTheme: ChipThemeData(
@@ -273,13 +285,13 @@ class AppTheme {
         selectedColor: AppColors.primary.withValues(alpha: 0.20),
         side: const BorderSide(color: AppColors.darkBorder),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        labelStyle: GoogleFonts.nunito(fontWeight: FontWeight.w700, color: AppColors.darkInk),
+        labelStyle: GoogleFonts.workSans(fontWeight: FontWeight.w700, color: AppColors.darkInk),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: AppColors.darkSurface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        contentTextStyle: GoogleFonts.nunito(color: AppColors.darkInk, fontWeight: FontWeight.w600),
+        contentTextStyle: GoogleFonts.workSans(color: AppColors.darkInk, fontWeight: FontWeight.w600),
       ),
       dividerColor: AppColors.darkBorder,
       visualDensity: VisualDensity.standard,

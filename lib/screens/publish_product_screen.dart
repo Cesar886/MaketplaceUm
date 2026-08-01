@@ -217,7 +217,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
 
   Widget _buildDaySelector() {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(8),
@@ -228,53 +228,31 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceMuted,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.calendar_month_rounded, color: AppColors.primary),
+              const Icon(Icons.calendar_month_rounded, size: 16, color: AppColors.muted),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text('Días disponibles', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text('Días disponibles',
-                    style: AppTypography.heading(15)),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: AppColors.background,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  _selectedDays.isEmpty ? 'Obligatorio' : '${_selectedDays.length}/7',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: _selectedDays.isEmpty ? AppColors.danger : AppColors.primary),
-                ),
+              Text(
+                _selectedDays.isEmpty ? 'Opcional · todos los días' : '${_selectedDays.length}/7',
+                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.muted),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          const Text(
-            'Selecciona los días de la semana en que este producto estará disponible. Los días no seleccionados se marcarán automáticamente como "No disponible".',
-            style: TextStyle(
-                color: AppColors.muted,
-                fontWeight: FontWeight.w600,
-                height: 1.35),
-          ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: 6,
+            runSpacing: 6,
             children: List.generate(7, (i) {
               final selected = _selectedDays.contains(i);
               return FilterChip(
-                label: Text(_dayNames[i]),
+                label: Text(_dayNames[i], style: const TextStyle(fontSize: 12)),
                 selected: selected,
-                selectedColor: AppColors.primary.withValues(alpha: 0.15),
-                checkmarkColor: AppColors.primary,
+                showCheckmark: false,
+                selectedColor: AppColors.primary.withValues(alpha: 0.12),
+                labelStyle: TextStyle(color: selected ? AppColors.primary : AppColors.ink),
+                side: BorderSide(color: selected ? AppColors.primary.withValues(alpha: 0.4) : AppColors.border),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
                 onSelected: (value) {
                   setState(() {
                     if (value) {
@@ -289,24 +267,6 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
               );
             }),
           ),
-          if (_selectedDays.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Row(
-                children: [
-                  const Icon(Icons.info_rounded, size: 14, color: AppColors.danger),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Selecciona al menos un día para que tu producto sea visible',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.danger.withValues(alpha: 0.8),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
         ],
       ),
     );

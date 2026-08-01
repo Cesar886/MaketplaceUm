@@ -16,7 +16,6 @@ class FeaturedBadge extends StatelessWidget {
       label: 'Destacado',
       foreground: AppColors.gold,
       background: AppColors.champagne,
-      border: AppColors.premiumBorder,
       compact: compact,
     );
   }
@@ -35,7 +34,6 @@ class OfferBadge extends StatelessWidget {
       label: label ?? 'Oferta',
       foreground: AppColors.orange,
       background: AppColors.orange.withValues(alpha: 0.08),
-      border: AppColors.orange.withValues(alpha: 0.18),
       compact: compact,
     );
   }
@@ -55,18 +53,17 @@ class StatusBadge extends StatelessWidget {
     };
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withValues(alpha: 0.22)),
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         status.label,
         style: TextStyle(
           color: color,
-          fontWeight: FontWeight.w700,
-          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          fontSize: 11,
         ),
       ),
     );
@@ -85,7 +82,6 @@ class VerifiedBadge extends StatelessWidget {
       label: 'Verificado',
       foreground: AppColors.teal,
       background: AppColors.teal.withValues(alpha: 0.08),
-      border: AppColors.teal.withValues(alpha: 0.18),
       compact: compact,
     );
   }
@@ -98,53 +94,45 @@ class AvailabilityBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (Color foreground, Color background, Color border) =
-        switch (availability) {
+    final (Color foreground, Color background) = switch (availability) {
       ProductAvailability.available => (
         AppColors.success,
         AppColors.success.withValues(alpha: 0.08),
-        AppColors.success.withValues(alpha: 0.18),
       ),
       ProductAvailability.reserved => (
         AppColors.orange,
         AppColors.orange.withValues(alpha: 0.08),
-        AppColors.orange.withValues(alpha: 0.18),
       ),
       ProductAvailability.sold => (
         AppColors.danger,
         AppColors.danger.withValues(alpha: 0.08),
-        AppColors.danger.withValues(alpha: 0.18),
       ),
       ProductAvailability.negotiating => (
         AppColors.primary,
         AppColors.primary.withValues(alpha: 0.08),
-        AppColors.primary.withValues(alpha: 0.18),
       ),
       ProductAvailability.paused => (
         AppColors.muted,
         AppColors.muted.withValues(alpha: 0.08),
-        AppColors.muted.withValues(alpha: 0.18),
       ),
       ProductAvailability.unavailable => (
         AppColors.muted,
         AppColors.muted.withValues(alpha: 0.08),
-        AppColors.muted.withValues(alpha: 0.18),
       ),
     };
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: border),
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         availability.label,
         style: TextStyle(
           color: foreground,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -178,7 +166,6 @@ class VerificationStatusBadge extends StatelessWidget {
         label: 'En revisión',
         foreground: AppColors.gold,
         background: AppColors.gold.withValues(alpha: 0.10),
-        border: AppColors.gold.withValues(alpha: 0.22),
         compact: compact,
       );
     }
@@ -189,7 +176,6 @@ class VerificationStatusBadge extends StatelessWidget {
         label: 'Rechazada',
         foreground: AppColors.danger,
         background: AppColors.danger.withValues(alpha: 0.08),
-        border: AppColors.danger.withValues(alpha: 0.18),
         compact: compact,
       );
     }
@@ -202,7 +188,6 @@ class VerificationStatusBadge extends StatelessWidget {
           label: 'Verificado UM',
           foreground: AppColors.teal,
           background: AppColors.teal.withValues(alpha: 0.10),
-          border: AppColors.teal.withValues(alpha: 0.22),
           compact: compact,
         );
       case AccountType.particular:
@@ -211,7 +196,6 @@ class VerificationStatusBadge extends StatelessWidget {
           label: 'Identidad verificada',
           foreground: AppColors.primary,
           background: AppColors.primary.withValues(alpha: 0.10),
-          border: AppColors.primary.withValues(alpha: 0.22),
           compact: compact,
         );
       case AccountType.negocio:
@@ -220,7 +204,6 @@ class VerificationStatusBadge extends StatelessWidget {
           label: 'Negocio confirmado',
           foreground: AppColors.gold,
           background: AppColors.champagne,
-          border: AppColors.premiumBorder,
           compact: compact,
         );
     }
@@ -233,7 +216,6 @@ class _Badge extends StatelessWidget {
     required this.label,
     required this.foreground,
     required this.background,
-    required this.border,
     required this.compact,
   });
 
@@ -241,32 +223,30 @@ class _Badge extends StatelessWidget {
   final String label;
   final Color foreground;
   final Color background;
-  final Color border;
   final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: compact ? 7 : 9,
-        vertical: compact ? 4 : 6,
+        horizontal: compact ? 6 : 8,
+        vertical: compact ? 3 : 4,
       ),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: border),
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: compact ? 13 : 15, color: foreground),
-          const SizedBox(width: 4),
+          Icon(icon, size: compact ? 11 : 12, color: foreground),
+          const SizedBox(width: 3),
           Text(
             label,
             style: TextStyle(
               color: foreground,
-              fontSize: compact ? 11 : 12,
-              fontWeight: FontWeight.w700,
+              fontSize: compact ? 10 : 10.5,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],

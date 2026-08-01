@@ -50,10 +50,14 @@ function registerSeller(sellerData) {
 
 // ─── Persistencia ─────────────────────────────────────────────
 function saveData() {
-  // products → SQLite (reescribir todos)
+  // products → SQLite (upsert, NUNCA borrar-y-reinsertar).
+  // product_ratings tiene ON DELETE CASCADE hacia products: un DELETE FROM
+  // products aquí (aunque se reinserten los mismos IDs después) borra
+  // permanentemente TODAS las calificaciones de TODOS los productos en cada
+  // guardado. insertProduct ya hace INSERT OR REPLACE, así que un upsert por
+  // fila logra lo mismo sin ese efecto secundario. Los productos eliminados
+  // de verdad se borran explícitamente en su propio endpoint (db.deleteProduct).
   db.getDb().transaction(() => {
-    // Eliminar todos los products y re-insertarlos
-    db.getDb().prepare('DELETE FROM products').run();
     for (const p of products) {
       db.insertProduct(p);
     }
