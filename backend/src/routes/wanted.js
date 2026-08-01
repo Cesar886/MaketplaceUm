@@ -22,6 +22,16 @@ function register(app) {
       return res.status(429).json({ error: `Ya publicaste el máximo de ${DAILY_LIMIT} búsquedas hoy` });
     }
 
+    // Validate priceMin and priceMax if provided
+    const parsedPriceMin = priceMin !== undefined ? Number(priceMin) : null;
+    const parsedPriceMax = priceMax !== undefined ? Number(priceMax) : null;
+    if (priceMin !== undefined && Number.isNaN(parsedPriceMin)) {
+      return res.status(400).json({ error: 'priceMin debe ser un número válido' });
+    }
+    if (priceMax !== undefined && Number.isNaN(parsedPriceMax)) {
+      return res.status(400).json({ error: 'priceMax debe ser un número válido' });
+    }
+
     const id = `wanted_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const post = db.createWantedPost({
       id,
@@ -30,8 +40,8 @@ function register(app) {
       description: description || null,
       categoryId,
       type,
-      priceMin: priceMin !== undefined ? Number(priceMin) : null,
-      priceMax: priceMax !== undefined ? Number(priceMax) : null,
+      priceMin: parsedPriceMin,
+      priceMax: parsedPriceMax,
     });
 
     // Notificar a los interesados en esta categoría (mismo patrón que products.js)
