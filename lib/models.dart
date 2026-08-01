@@ -462,6 +462,55 @@ class ProductExtra {
   final double extraPrice;
 }
 
+/// Publicación de demanda: alguien busca un producto o servicio que
+/// todavía no existe en el catálogo, y espera que un vendedor le responda.
+class WantedPost {
+  const WantedPost({
+    required this.id,
+    required this.userId,
+    required this.title,
+    this.description,
+    required this.categoryId,
+    required this.type,
+    this.priceMin,
+    this.priceMax,
+    required this.status,
+    this.resolvedWithUserId,
+    required this.createdAt,
+  });
+
+  factory WantedPost.fromJson(Map<String, dynamic> json) {
+    return WantedPost(
+      id: json['id'] as String? ?? '',
+      userId: json['userId'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      description: json['description'] as String?,
+      categoryId: json['categoryId'] as String? ?? '',
+      type: json['type'] as String? ?? 'producto',
+      priceMin: (json['priceMin'] as num?)?.toDouble(),
+      priceMax: (json['priceMax'] as num?)?.toDouble(),
+      status: json['status'] as String? ?? 'abierta',
+      resolvedWithUserId: json['resolvedWithUserId'] as String?,
+      createdAt: json['createdAt'] as String? ?? '',
+    );
+  }
+
+  final String id;
+  final String userId;
+  final String title;
+  final String? description;
+  final String categoryId;
+  final String type; // 'producto' | 'servicio'
+  final double? priceMin;
+  final double? priceMax;
+  final String status; // 'abierta' | 'resuelta'
+  final String? resolvedWithUserId;
+  final String createdAt;
+
+  bool get isService => type == 'servicio';
+  bool get isResolved => status == 'resuelta';
+}
+
 class NotificationItem {
   const NotificationItem({
     required this.id,
@@ -509,6 +558,8 @@ class Conversation {
     this.product,
     this.otherUser,
     this.lastMessage,
+    this.wantedPostId,
+    this.wantedPostTitle,
   });
 
   factory Conversation.fromJson(Map<String, dynamic> json) {
@@ -529,6 +580,10 @@ class Conversation {
       lastMessage: json['lastMessage'] != null
           ? ChatMessage.fromJson(json['lastMessage'] as Map<String, dynamic>)
           : null,
+      wantedPostId: json['wantedPostId'] as String?,
+      wantedPostTitle: json['wantedPost'] != null
+          ? (json['wantedPost'] as Map<String, dynamic>)['title'] as String?
+          : null,
     );
   }
 
@@ -542,6 +597,8 @@ class Conversation {
   final ChatProduct? product;
   final ChatUser? otherUser;
   final ChatMessage? lastMessage;
+  final String? wantedPostId;
+  final String? wantedPostTitle;
 }
 
 class ChatProduct {

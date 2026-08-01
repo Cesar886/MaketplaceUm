@@ -111,6 +111,7 @@ class ApiService {
     bool? offer,
     String? search,
     String? seller,
+    String? userId,
   }) async {
     final query = <String, String>{};
     if (category != null) query['category'] = category;
@@ -118,6 +119,7 @@ class ApiService {
     if (offer == true) query['offer'] = 'true';
     if (search != null && search.isNotEmpty) query['search'] = search;
     if (seller != null) query['seller'] = seller;
+    if (userId != null) query['userId'] = userId;
 
     final res = await _client.get(_uri('/products', query.isNotEmpty ? query : null));
     if (res.statusCode != 200) throw Exception('Error fetching products');
@@ -127,10 +129,87 @@ class ApiService {
         .toList();
   }
 
-  static Future<Product> getProduct(String id) async {
-    final res = await _client.get(_uri('/products/$id'));
+  static Future<Product> getProduct(String id, {String? userId}) async {
+    final query = userId != null ? {'userId': userId} : null;
+    final res = await _client.get(_uri('/products/$id', query));
     if (res.statusCode != 200) throw Exception('Product not found');
     return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  static Future<WantedPost> createWantedPost({
+    required String userId,
+    required String title,
+    String? description,
+    required String categoryId,
+    required String type,
+    double? priceMin,
+    double? priceMax,
+  }) async {
+    final res = await _client.post(
+      _uri('/wanted'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'userId': userId,
+        'title': title,
+        'description': description,
+        'categoryId': categoryId,
+        'type': type,
+        if (priceMin != null) 'priceMin': priceMin,
+        if (priceMax != null) 'priceMax': priceMax,
+      }),
+    );
+    if (res.statusCode != 201) throw Exception('${res.statusCode}: ${res.body}');
+    return WantedPost.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  static Future<List<WantedPost>> getWantedPosts({
+    String? category,
+    String? status,
+    String? type,
+  }) async {
+    final query = <String, String>{
+      if (category != null) 'category': category,
+      if (status != null) 'status': status,
+      if (type != null) 'type': type,
+    };
+    final res = await _client.get(_uri('/wanted', query.isNotEmpty ? query : null));
+    if (res.statusCode != 200) throw Exception('Error fetching wanted posts');
+    final List<dynamic> data = jsonDecode(res.body) as List<dynamic>;
+    return data.map((e) => WantedPost.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  static Future<WantedPost> getWantedPost(String id) async {
+    final res = await _client.get(_uri('/wanted/$id'));
+    if (res.statusCode != 200) throw Exception('Wanted post not found');
+    return WantedPost.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  static Future<WantedPost> resolveWantedPost(
+    String id, {
+    required String userId,
+    String? resolvedWithUserId,
+  }) async {
+    final res = await _client.patch(
+      _uri('/wanted/$id/resolve'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'userId': userId,
+        if (resolvedWithUserId != null) 'resolvedWithUserId': resolvedWithUserId,
+      }),
+    );
+    if (res.statusCode != 200) throw Exception('${res.statusCode}: ${res.body}');
+    return WantedPost.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  static Future<String> respondToWantedPost(String id, {required String userId}) async {
+    final res = await _client.post(
+      _uri('/wanted/$id/respond'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'userId': userId}),
+    );
+    if (res.statusCode != 200) throw Exception('${res.statusCode}: ${res.body}');
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return data['conversationId'] as String;
   }
 
   static Future<Map<String, dynamic>> getPriceHistory(String id) async {
@@ -428,6 +507,19 @@ class ApiService {
       body: jsonEncode({'playerId': fcmToken}),
     );
     if (res.statusCode != 200) throw Exception('Error registering push token');
+  }
+
+  static Future<void> registerPushTokenAnonymous(
+    String fcmToken,
+    String userId, {
+    String platform = 'android',
+  }) async {
+    final res = await _client.post(
+      _uri('/notifications/register-push-anon'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'playerId': fcmToken, 'userId': userId, 'platform': platform}),
+    );
+    if (res.statusCode != 200) throw Exception('Error registering anonymous push token');
   }
 
   static Future<void> unregisterPushToken(String playerId) async {
