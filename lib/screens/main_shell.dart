@@ -15,6 +15,7 @@ import 'offers_screen.dart';
 import 'product_detail_screen.dart';
 import 'profile_screen.dart';
 import 'publish_product_screen.dart';
+import 'wanted_post_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -69,6 +70,38 @@ class MainShellState extends State<MainShell> {
       // Navegar al detalle del producto
       _openProduct(productId);
     }
+  }
+
+  void _showPublishMenu(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.sell_outlined, color: AppColors.primary),
+              title: const Text('Publicar producto'),
+              subtitle: const Text('Vende algo que ya tienes'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                selectTab(2);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.search_rounded, color: AppColors.primary),
+              title: const Text('Publicar búsqueda'),
+              subtitle: const Text('Di qué estás buscando y te notificamos'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const WantedPostScreen()),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _openProduct(String productId) async {
@@ -140,57 +173,57 @@ class MainShellState extends State<MainShell> {
       bottomNavigationBar: SafeArea(
         top: false,
         child: DecoratedBox(
-          decoration: const BoxDecoration(
-            color: AppColors.surface,
-            border: Border(top: BorderSide(color: AppColors.border, width: 0.8)),
-          ),
+          decoration: const BoxDecoration(color: AppColors.primaryDark),
           child: SizedBox(
-            height: 66,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+            height: 68,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.topCenter,
               children: [
-                _NavItem(
-                  icon: Icons.home_outlined,
-                  selectedIcon: Icons.home_rounded,
-                  label: 'Inicio',
-                  index: 0,
-                  currentIndex: _currentIndex,
-                  onTap: selectTab,
-                  badge: _unreadNotifCount > 0 ? _unreadNotifCount : null,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _NavItem(
+                      icon: Icons.home_outlined,
+                      selectedIcon: Icons.home_rounded,
+                      label: 'Inicio',
+                      index: 0,
+                      currentIndex: _currentIndex,
+                      onTap: selectTab,
+                      badge: _unreadNotifCount > 0 ? _unreadNotifCount : null,
+                    ),
+                    _NavItem(
+                      icon: Icons.local_offer_outlined,
+                      selectedIcon: Icons.local_offer_rounded,
+                      label: 'Ofertas',
+                      index: 1,
+                      currentIndex: _currentIndex,
+                      onTap: selectTab,
+                    ),
+                    // Espacio reservado para el FAB central, que flota encima.
+                    const SizedBox(width: 56),
+                    _NavItem(
+                      icon: Icons.chat_outlined,
+                      selectedIcon: Icons.chat_rounded,
+                      label: 'Chat',
+                      index: 4,
+                      currentIndex: _currentIndex,
+                      onTap: selectTab,
+                      badge: _unreadChatCount > 0 ? _unreadChatCount : null,
+                    ),
+                    _NavItem(
+                      icon: Icons.person_outline_rounded,
+                      selectedIcon: Icons.person_rounded,
+                      label: 'Perfil',
+                      index: 5,
+                      currentIndex: _currentIndex,
+                      onTap: selectTab,
+                    ),
+                  ],
                 ),
-                _NavItem(
-                  icon: Icons.local_offer_outlined,
-                  selectedIcon: Icons.local_offer_rounded,
-                  label: 'Ofertas',
-                  index: 1,
-                  currentIndex: _currentIndex,
-                  onTap: selectTab,
-                ),
-                _PublishFab(onTap: () => selectTab(2)),
-                _NavItem(
-                  icon: Icons.favorite_outline_rounded,
-                  selectedIcon: Icons.favorite_rounded,
-                  label: 'Favs',
-                  index: 3,
-                  currentIndex: _currentIndex,
-                  onTap: selectTab,
-                ),
-                _NavItem(
-                  icon: Icons.chat_outlined,
-                  selectedIcon: Icons.chat_rounded,
-                  label: 'Chat',
-                  index: 4,
-                  currentIndex: _currentIndex,
-                  onTap: selectTab,
-                  badge: _unreadChatCount > 0 ? _unreadChatCount : null,
-                ),
-                _NavItem(
-                  icon: Icons.person_outline_rounded,
-                  selectedIcon: Icons.person_rounded,
-                  label: 'Perfil',
-                  index: 5,
-                  currentIndex: _currentIndex,
-                  onTap: selectTab,
+                Positioned(
+                  top: -14,
+                  child: _PublishFab(onTap: () => _showPublishMenu(context)),
                 ),
               ],
             ),
@@ -223,7 +256,7 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selected = index == currentIndex;
-    final color = selected ? AppColors.primary : AppColors.muted;
+    final color = selected ? AppColors.amber : AppColors.background.withValues(alpha: 0.55);
 
     Widget iconWidget = Icon(
       selected ? selectedIcon : icon,
@@ -234,7 +267,8 @@ class _NavItem extends StatelessWidget {
     if (badge != null && badge! > 0) {
       iconWidget = Badge.count(
         count: badge!,
-        backgroundColor: AppColors.primary,
+        backgroundColor: AppColors.amber,
+        textColor: AppColors.amberDark,
         child: iconWidget,
       );
     }
@@ -280,21 +314,23 @@ class _PublishFab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: GestureDetector(
-        onTap: onTap,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 56,
+        height: 56,
+        padding: const EdgeInsets.all(3),
+        decoration: const BoxDecoration(
+          color: AppColors.primaryDark, // anillo que lo separa de la barra
+          shape: BoxShape.circle,
+        ),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: AppColors.amber,
+            color: AppColors.background,
             shape: BoxShape.circle,
-            boxShadow: AppShadows.amber,
+            boxShadow: AppShadows.lifted,
           ),
-          child: const SizedBox(
-            width: 52,
-            height: 52,
-            child: Icon(Icons.add_rounded, color: AppColors.amberDark, size: 28),
-          ),
+          child: const Icon(Icons.add_rounded, color: AppColors.primary, size: 28),
         ),
       ),
     );
