@@ -111,7 +111,6 @@ class ApiService {
     bool? offer,
     String? search,
     String? seller,
-    String? userId,
   }) async {
     final query = <String, String>{};
     if (category != null) query['category'] = category;
@@ -119,7 +118,6 @@ class ApiService {
     if (offer == true) query['offer'] = 'true';
     if (search != null && search.isNotEmpty) query['search'] = search;
     if (seller != null) query['seller'] = seller;
-    if (userId != null) query['userId'] = userId;
 
     final res = await _client.get(_uri('/products', query.isNotEmpty ? query : null));
     if (res.statusCode != 200) throw Exception('Error fetching products');
@@ -129,9 +127,8 @@ class ApiService {
         .toList();
   }
 
-  static Future<Product> getProduct(String id, {String? userId}) async {
-    final query = userId != null ? {'userId': userId} : null;
-    final res = await _client.get(_uri('/products/$id', query));
+  static Future<Product> getProduct(String id) async {
+    final res = await _client.get(_uri('/products/$id'));
     if (res.statusCode != 200) throw Exception('Product not found');
     return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
@@ -507,19 +504,6 @@ class ApiService {
       body: jsonEncode({'playerId': fcmToken}),
     );
     if (res.statusCode != 200) throw Exception('Error registering push token');
-  }
-
-  static Future<void> registerPushTokenAnonymous(
-    String fcmToken,
-    String userId, {
-    String platform = 'android',
-  }) async {
-    final res = await _client.post(
-      _uri('/notifications/register-push-anon'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'playerId': fcmToken, 'userId': userId, 'platform': platform}),
-    );
-    if (res.statusCode != 200) throw Exception('Error registering anonymous push token');
   }
 
   static Future<void> unregisterPushToken(String playerId) async {
