@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
 import '../models.dart';
+import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../widgets/auto_refresh.dart';
 import '../widgets/badges.dart';
@@ -28,8 +30,14 @@ class _MyListingsScreenState extends State<MyListingsScreen> with AutoRefreshMix
   Future<void> onAutoRefresh() => _loadListings();
 
   Future<void> _loadListings() async {
+    final sellerId = context.read<AuthProvider>().backendSellerId;
+    if (sellerId == null) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      return;
+    }
     try {
-      final listings = await ApiService.getListings();
+      final listings = await ApiService.getProducts(seller: sellerId);
       if (!mounted) return;
       setState(() {
         _listings = listings;
