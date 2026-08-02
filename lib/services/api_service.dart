@@ -390,6 +390,23 @@ class ApiService {
     return Seller.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  static Future<Seller> updateSellerProfile({
+    required String sellerId,
+    String? name,
+    String? phone,
+  }) async {
+    final body = <String, dynamic>{};
+    if (name != null) body['name'] = name;
+    if (phone != null) body['phone'] = phone;
+    final res = await _client.patch(
+      _uri('/sellers/$sellerId'),
+      headers: _authHeaders,
+      body: jsonEncode(body),
+    );
+    if (res.statusCode != 200) throw Exception('Error al actualizar perfil');
+    return Seller.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
   /// Sube el logo de un negocio al servidor.
   /// [sellerId] es el ID del vendedor en el backend.
   /// [imagePath] es la ruta local del archivo.
