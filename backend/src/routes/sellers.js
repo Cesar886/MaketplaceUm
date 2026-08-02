@@ -4,6 +4,7 @@ const sharp = require('sharp');
 const multer = require('multer');
 const { sellers, saveData, updateSellerField } = require('../data');
 const { requireAuth } = require('../auth');
+const db = require('../database');
 
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
 
@@ -50,7 +51,9 @@ function register(app) {
       updateSellerField(seller.id, 'phone', phone.trim());
     }
 
-    res.json(sellers.find(s => s.id === req.params.id));
+    const updated = sellers.find(s => s.id === req.params.id);
+    const rawRow = db.getDb().prepare('SELECT phone, email FROM sellers WHERE id = ?').get(req.params.id);
+    res.json({ ...updated, phone: rawRow.phone || null, email: rawRow.email || null });
   });
 
   // POST /api/sellers/:id/logo – subir logo del negocio (multipart)

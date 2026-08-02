@@ -451,8 +451,6 @@ function rowToSeller(row) {
   return {
     id: row.id,
     name: row.name,
-    email: row.email || null,
-    phone: row.phone || null,
     avatarInitials: row.avatarInitials || '',
     major: row.major || '',
     isBusiness: !!row.isBusiness,
