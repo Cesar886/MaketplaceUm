@@ -45,5 +45,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Release signing (never commit these)
+/android/key.properties
+/android/*.jks
+/android/*.keystore
 nombre-del-archivo.json
 .superpowers/

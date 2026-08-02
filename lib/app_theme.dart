@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Sistema "Puesto de Barrio": verde profundo como ancla premium, fondo
+/// Sistema "Puesto de Barrio": azul piedra pastel como ancla premium, fondo
 /// neutro casi blanco (sin tinte arenoso), cempasúchil como único acento
 /// de firma. Ver docs de diseño para justificación de cada valor.
 class AppColors {
   // ─── Paleta principal ────────────────────────────────────
-  static const primary = Color(0xFF1B5A4C);       // Verde Puesto — ancla de marca
-  static const primaryDark = Color(0xFF0F231D);   // Verde Noche — headers, nav, overlays
+  static const primary = Color(0xFF3D5C70);       // Azul Piedra — ancla de marca
+  static const primaryDark = Color(0xFF1E313C);   // Azul Noche — headers, nav, overlays
   static const amber = Color(0xFFE3A008);          // Cempasúchil — signature accent
   static const amberDark = Color(0xFF3D2600);      // Texto sobre cempasúchil
   static const gold = Color(0xFFB8863B);           // Dorado — featured/premium
@@ -29,12 +30,12 @@ class AppColors {
   static const success = Color(0xFF2F7D5C);
 
   // ─── Oscuro ──────────────────────────────────────────────
-  static const darkBackground = Color(0xFF10201A); // teñido de verde, no gris genérico
-  static const darkSurface = Color(0xFF17281F);
-  static const darkSurfaceMuted = Color(0xFF1E332A);
-  static const darkInk = Color(0xFFEDEAE2);
-  static const darkMuted = Color(0xFF9CA79E);
-  static const darkBorder = Color(0xFF2B3D33);
+  static const darkBackground = Color(0xFF10181D); // teñido de azul, no gris genérico
+  static const darkSurface = Color(0xFF17242B);
+  static const darkSurfaceMuted = Color(0xFF1E2E36);
+  static const darkInk = Color(0xFFE9ECEE);
+  static const darkMuted = Color(0xFF9CA8B0);
+  static const darkBorder = Color(0xFF2B3F48);
 }
 
 class AppTypography {

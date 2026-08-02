@@ -539,11 +539,21 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: product.isAvailable ? () => _openChat(context) : null,
-                  icon: const Icon(Icons.chat_rounded),
-                  label: Text(product.isAvailable ? 'Chat' : 'Agotado por hoy'),
-                ),
+                child: context.read<AuthProvider>().backendSellerId ==
+                        product.seller.id
+                    // Es tu propio producto: no tiene sentido chatear contigo
+                    // mismo, así que el CTA principal pasa a ser compartirlo.
+                    ? ElevatedButton.icon(
+                        onPressed: () => _shareProduct(context),
+                        icon: const Icon(Icons.ios_share_rounded),
+                        label: const Text('Compartir producto'),
+                      )
+                    : ElevatedButton.icon(
+                        onPressed:
+                            product.isAvailable ? () => _openChat(context) : null,
+                        icon: const Icon(Icons.chat_rounded),
+                        label: Text(product.isAvailable ? 'Chat' : 'Agotado por hoy'),
+                      ),
               ),
             ],
           ),

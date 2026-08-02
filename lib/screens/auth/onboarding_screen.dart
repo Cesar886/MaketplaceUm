@@ -27,17 +27,6 @@ class OnboardingScreen extends StatelessWidget {
                     ?.copyWith(fontSize: 34),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 12),
-              const Text(
-                'Compra y vende entre estudiantes\nde la Universidad de Montemorelos',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  height: 1.4,
-                ),
-              ),
               const SizedBox(height: 30),
               Container(
                 padding:

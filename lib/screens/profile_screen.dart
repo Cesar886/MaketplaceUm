@@ -6,12 +6,16 @@ import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/api_service.dart';
+import '../services/recent_products_service.dart';
 import '../widgets/badges.dart';
+import '../widgets/product_card.dart';
 import 'auth/login_screen.dart';
 import 'legal/cookies_screen.dart';
 import 'legal/privacy_screen.dart';
 import 'legal/terms_screen.dart';
 import 'my_listings_screen.dart';
+import 'product_detail_screen.dart';
+import 'recent_products_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -22,26 +26,61 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   List<Product> _listings = [];
+  List<Product> _recentProducts = [];
+  double _sellerRating = 0.0;
+  int _sellerReviews = 0;
 
   @override
   void initState() {
     super.initState();
     _loadListings();
+    _loadRecentProducts();
   }
 
   Future<void> _loadListings() async {
+    final sellerId = context.read<AuthProvider>().backendSellerId;
+    if (sellerId == null) return;
     try {
       final results = await Future.wait([
-        ApiService.getSellers(),
-        ApiService.getListings(),
+        ApiService.getProducts(seller: sellerId),
+        ApiService.getSeller(sellerId),
       ]);
       if (!mounted) return;
+      final seller = results[1] as Seller;
       setState(() {
-        _listings = results[1] as List<Product>;
+        _listings = results[0] as List<Product>;
+        _sellerRating = seller.rating;
+        _sellerReviews = seller.reviews;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {});
+    }
+  }
+
+  /// Carga (no bloqueante) los productos vistos recientemente, para la
+  /// sección "Vistos recientemente" del perfil.
+  Future<void> _loadRecentProducts() async {
+    try {
+      final ids = await RecentProductsService.getRecentIds();
+      if (ids.isEmpty) return;
+
+      final all = await ApiService.getProducts();
+      final Map<String, Product> productMap = {
+        for (final p in all) p.id: p,
+      };
+
+      final recent = <Product>[];
+      for (final id in ids) {
+        if (recent.length >= 6) break;
+        final p = productMap[id];
+        if (p != null) recent.add(p);
+      }
+
+      if (!mounted) return;
+      setState(() => _recentProducts = recent);
+    } catch (_) {
+      // Sin conexión o error: la sección simplemente no aparece.
     }
   }
 
@@ -88,7 +127,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return SafeArea(
       child: RefreshIndicator(
-        onRefresh: _loadListings,
+        onRefresh: () => Future.wait([_loadListings(), _loadRecentProducts()]),
         child: ListView(
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
           children: [
@@ -164,14 +203,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     children: [
                       Expanded(
                         child: _ProfileMetric(
-                          value: user['rating']?.toStringAsFixed(1) ?? '0.0',
+                          value: _sellerRating.toStringAsFixed(1),
                           label: 'Calificación',
                           icon: Icons.star_rounded,
                         ),
                       ),
                       Expanded(
                         child: _ProfileMetric(
-                          value: '${user['total_ratings'] ?? 0}',
+                          value: '$_sellerReviews',
                           label: 'Opiniones',
                           icon: Icons.reviews_rounded,
                         ),
@@ -219,6 +258,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
               title: 'Ayuda',
               subtitle: 'Preguntas frecuentes',
             ),
+
+            // ─── Vistos recientemente ───────────────────────────
+            if (_recentProducts.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              const Padding(
+                padding: EdgeInsets.only(bottom: 10),
+                child: Text(
+                  'Vistos recientemente',
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+              _RecentlyViewedSection(
+                products: _recentProducts,
+                onProductTap: (p) => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => ProductDetailScreen(product: p),
+                  ),
+                ),
+                onViewAll: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const RecentProductsScreen(),
+                  ),
+                ),
+              ),
+            ],
 
             // ─── Modo oscuro ────────────────────────────────────
             const Padding(
@@ -525,6 +594,53 @@ class _ProfileVerificationRedirect extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Fila horizontal con los últimos productos vistos por el usuario,
+/// con acceso al historial completo — vive como sección propia del perfil.
+class _RecentlyViewedSection extends StatelessWidget {
+  const _RecentlyViewedSection({
+    required this.products,
+    required this.onProductTap,
+    required this.onViewAll,
+  });
+
+  final List<Product> products;
+  final void Function(Product) onProductTap;
+  final VoidCallback onViewAll;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: 136,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: products.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              final product = products[index];
+              return ProductCard(
+                product: product,
+                width: 140,
+                onTap: () => onProductTap(product),
+                heroEnabled: false,
+              );
+            },
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: onViewAll,
+            child: const Text('Ver todos'),
+          ),
+        ),
+      ],
     );
   }
 }

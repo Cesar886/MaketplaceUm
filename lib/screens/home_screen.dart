@@ -7,7 +7,6 @@ import '../providers/auth_provider.dart';
 import '../services/anonymous_id.dart';
 import '../services/api_service.dart';
 import '../services/favorite_products_service.dart';
-import '../services/recent_products_service.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/auto_refresh.dart';
 import '../widgets/product_card.dart';
@@ -15,7 +14,6 @@ import '../widgets/section_header.dart';
 import 'main_shell.dart';
 import 'product_detail_screen.dart';
 import 'qr_scanner_screen.dart';
-import 'recent_products_screen.dart';
 import 'search_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -34,7 +32,6 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
   bool _hasPublished = false;
   String? _error;
   String? _selectedCategoryId;
-  List<String> _recentIds = [];
   int _favoriteCount = 0;
 
   late final AnimationController _staggerController;
@@ -113,8 +110,6 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
         _error = null;
       });
       _staggerController.forward(from: 0);
-      // Cargar IDs de recientes (no bloqueante)
-      _loadRecentIds();
       // Cargar contador de favoritos (no bloqueante)
       _loadFavoriteCount();
     } catch (e) {
@@ -131,14 +126,6 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
       final ids = await FavoriteProductsService.getFavoriteIds();
       if (!mounted) return;
       setState(() => _favoriteCount = ids.length);
-    } catch (_) {}
-  }
-
-  Future<void> _loadRecentIds() async {
-    try {
-      final ids = await RecentProductsService.getRecentIds();
-      if (!mounted) return;
-      setState(() => _recentIds = ids);
     } catch (_) {}
   }
 
@@ -284,24 +271,6 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
                   child: _HighlightPlansBanner(plans: _highlightPlans),
-                ),
-              ),
-
-            // ─── Vistos recientemente ────────────────────────────
-            if (_recentIds.isNotEmpty)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
-                  child: _RecentSection(
-                    recentIds: _recentIds,
-                    allProducts: _products,
-                    onProductTap: (p) => _openDetail(context, p),
-                    onViewAll: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const RecentProductsScreen(),
-                      ),
-                    ),
-                  ),
                 ),
               ),
 
@@ -1071,74 +1040,3 @@ class _ScanQrButton extends StatelessWidget {
   }
 }
 
-/// Sección horizontal de productos vistos recientemente.
-class _RecentSection extends StatelessWidget {
-  const _RecentSection({
-    required this.recentIds,
-    required this.allProducts,
-    required this.onProductTap,
-    required this.onViewAll,
-  });
-
-  final List<String> recentIds;
-  final List<Product> allProducts;
-  final void Function(Product) onProductTap;
-  final VoidCallback onViewAll;
-
-  @override
-  Widget build(BuildContext context) {
-    final Map<String, Product> productMap = {};
-    for (final p in allProducts) {
-      productMap[p.id] = p;
-    }
-
-    final recent = <Product>[];
-    for (final id in recentIds) {
-      if (recent.length >= 6) break;
-      final p = productMap[id];
-      if (p != null) recent.add(p);
-    }
-
-    if (recent.isEmpty) return const SizedBox.shrink();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Icon(Icons.history_rounded,
-                size: 18, color: AppColors.primary),
-            const SizedBox(width: 6),
-            Text(
-              'Vistos recientemente',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const Spacer(),
-            TextButton(
-              onPressed: onViewAll,
-              child: const Text('Ver todos'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: 136,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: recent.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 10),
-            itemBuilder: (context, index) {
-              final product = recent[index];
-              return ProductCard(
-                product: product,
-                width: 140,
-                onTap: () => onProductTap(product),
-                heroEnabled: false,
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
