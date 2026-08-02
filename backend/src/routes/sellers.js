@@ -2,7 +2,8 @@ const path = require('path');
 const fs = require('fs');
 const sharp = require('sharp');
 const multer = require('multer');
-const { sellers, saveData } = require('../data');
+const { sellers, saveData, updateSellerField } = require('../data');
+const { requireAuth } = require('../auth');
 
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
 
@@ -29,6 +30,27 @@ function register(app) {
     const seller = sellers.find(s => s.id === req.params.id);
     if (!seller) return res.status(404).json({ error: 'Vendedor no encontrado' });
     res.json(seller);
+  });
+
+  // PATCH /api/sellers/:id — editar nombre/teléfono del propio perfil
+  app.patch('/api/sellers/:id', requireAuth, (req, res) => {
+    if (req.user.id !== req.params.id) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+    const seller = sellers.find(s => s.id === req.params.id);
+    if (!seller) return res.status(404).json({ error: 'Vendedor no encontrado' });
+
+    const { name, phone } = req.body;
+    if (typeof name === 'string' && name.trim()) {
+      updateSellerField(seller.id, 'name', name.trim());
+      const initials = name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+      updateSellerField(seller.id, 'avatarInitials', initials);
+    }
+    if (typeof phone === 'string') {
+      updateSellerField(seller.id, 'phone', phone.trim());
+    }
+
+    res.json(sellers.find(s => s.id === req.params.id));
   });
 
   // POST /api/sellers/:id/logo – subir logo del negocio (multipart)
