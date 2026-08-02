@@ -297,48 +297,60 @@ function runMigrations() {
   const convCols = db.prepare("PRAGMA table_info('conversations')").all();
   const hasWantedPostId = convCols.some(c => c.name === 'wanted_post_id');
   if (!hasWantedPostId) {
+    // foreign_keys es una pragma global de la conexión y no puede alternarse
+    // dentro de una transacción, así que se conmuta fuera de db.transaction().
+    // El bloque DDL/DML en sí se envuelve en una transacción para que, si el
+    // proceso se cae a medio camino (p. ej. justo después de renombrar
+    // conversations a conversations_legacy), todo el rename/create/copy/drop
+    // se revierta atómicamente en vez de dejar el esquema a medio migrar.
     db.pragma('foreign_keys = OFF');
-    db.exec(`
-      ALTER TABLE messages RENAME TO messages_legacy;
-      ALTER TABLE conversations RENAME TO conversations_legacy;
+    try {
+      const migrateConversations = db.transaction(() => {
+        db.exec(`
+          ALTER TABLE messages RENAME TO messages_legacy;
+          ALTER TABLE conversations RENAME TO conversations_legacy;
 
-      CREATE TABLE conversations (
-        id TEXT PRIMARY KEY,
-        product_id TEXT,
-        wanted_post_id TEXT,
-        buyer_id TEXT NOT NULL,
-        seller_id TEXT NOT NULL,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        last_message_at TEXT,
-        last_message_preview TEXT DEFAULT ''
-      );
+          CREATE TABLE conversations (
+            id TEXT PRIMARY KEY,
+            product_id TEXT,
+            wanted_post_id TEXT,
+            buyer_id TEXT NOT NULL,
+            seller_id TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            last_message_at TEXT,
+            last_message_preview TEXT DEFAULT ''
+          );
 
-      INSERT INTO conversations (id, product_id, wanted_post_id, buyer_id, seller_id, created_at, last_message_at, last_message_preview)
-        SELECT id, product_id, NULL, buyer_id, seller_id, created_at, last_message_at, last_message_preview
-        FROM conversations_legacy;
+          INSERT INTO conversations (id, product_id, wanted_post_id, buyer_id, seller_id, created_at, last_message_at, last_message_preview)
+            SELECT id, product_id, NULL, buyer_id, seller_id, created_at, last_message_at, last_message_preview
+            FROM conversations_legacy;
 
-      CREATE TABLE messages (
-        id TEXT PRIMARY KEY,
-        conversation_id TEXT NOT NULL,
-        sender_id TEXT NOT NULL,
-        text TEXT NOT NULL,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        read INTEGER NOT NULL DEFAULT 0,
-        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-      );
+          CREATE TABLE messages (
+            id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL,
+            sender_id TEXT NOT NULL,
+            text TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            read INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+          );
 
-      INSERT INTO messages (id, conversation_id, sender_id, text, created_at, read)
-        SELECT id, conversation_id, sender_id, text, created_at, read
-        FROM messages_legacy;
+          INSERT INTO messages (id, conversation_id, sender_id, text, created_at, read)
+            SELECT id, conversation_id, sender_id, text, created_at, read
+            FROM messages_legacy;
 
-      DROP TABLE messages_legacy;
-      DROP TABLE conversations_legacy;
+          DROP TABLE messages_legacy;
+          DROP TABLE conversations_legacy;
 
-      CREATE INDEX IF NOT EXISTS idx_conversations_buyer ON conversations(buyer_id, last_message_at);
-      CREATE INDEX IF NOT EXISTS idx_conversations_seller ON conversations(seller_id, last_message_at);
-      CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
-    `);
-    db.pragma('foreign_keys = ON');
+          CREATE INDEX IF NOT EXISTS idx_conversations_buyer ON conversations(buyer_id, last_message_at);
+          CREATE INDEX IF NOT EXISTS idx_conversations_seller ON conversations(seller_id, last_message_at);
+          CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
+        `);
+      });
+      migrateConversations();
+    } finally {
+      db.pragma('foreign_keys = ON');
+    }
   }
 
   console.log('🔄 Migración de schema completada');
