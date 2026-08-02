@@ -345,6 +345,38 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Edita nombre, teléfono y/o foto de perfil, sincronizando backend y DB local.
+  Future<void> updateProfile({
+    String? name,
+    String? phone,
+    String? logoPath,
+    String? businessDescription,
+    String? businessCategory,
+  }) async {
+    if (logoPath != null && _backendSellerId != null) {
+      await ApiService.uploadBusinessLogo(sellerId: _backendSellerId!, imagePath: logoPath);
+    }
+    final hasProfileFields = name != null ||
+        phone != null ||
+        businessDescription != null ||
+        businessCategory != null;
+    if (hasProfileFields && _backendSellerId != null) {
+      await ApiService.updateSellerProfile(
+        sellerId: _backendSellerId!,
+        name: name,
+        phone: phone,
+        businessDescription: businessDescription,
+        businessCategory: businessCategory,
+      );
+    }
+    if (name != null || phone != null) {
+      await _db.updateUserFields(userId, name: name, phone: phone);
+      if (name != null) _currentUser!['name'] = name;
+      if (phone != null) _currentUser!['phone'] = phone;
+    }
+    notifyListeners();
+  }
+
   /// Obtiene el perfil de negocio si aplica
   Future<Map<String, dynamic>?> getBusinessProfile() async {
     if (accountType != AccountType.negocio) return null;

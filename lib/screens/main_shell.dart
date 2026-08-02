@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
@@ -15,7 +16,6 @@ import 'offers_screen.dart';
 import 'product_detail_screen.dart';
 import 'profile_screen.dart';
 import 'publish_product_screen.dart';
-import 'wanted_feed_screen.dart';
 import 'wanted_post_screen.dart';
 
 class MainShell extends StatefulWidget {
@@ -61,10 +61,8 @@ class MainShellState extends State<MainShell> {
       // Navegar al chat
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => ChatScreen(
-            conversationId: convId,
-            productId: productId ?? '',
-          ),
+          builder: (_) =>
+              ChatScreen(conversationId: convId, productId: productId ?? ''),
         ),
       );
     } else if (type == 'new_product' && productId != null) {
@@ -80,7 +78,10 @@ class MainShellState extends State<MainShell> {
         child: Wrap(
           children: [
             ListTile(
-              leading: const Icon(Icons.sell_outlined, color: AppColors.primary),
+              leading: const Icon(
+                Icons.sell_outlined,
+                color: AppColors.primary,
+              ),
               title: const Text('Publicar producto'),
               subtitle: const Text('Vende algo que ya tienes'),
               onTap: () {
@@ -89,24 +90,18 @@ class MainShellState extends State<MainShell> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.search_rounded, color: AppColors.primary),
+              leading: const Icon(
+                Icons.search_rounded,
+                color: AppColors.primary,
+              ),
               title: const Text('Publicar búsqueda'),
               subtitle: const Text('Di qué estás buscando y te notificamos'),
               onTap: () {
                 Navigator.of(sheetContext).pop();
                 Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => const WantedPostScreen()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.list_alt_rounded, color: AppColors.primary),
-              title: const Text('Ver búsquedas'),
-              subtitle: const Text('Mira qué está buscando la comunidad'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => const WantedFeedScreen()),
+                  MaterialPageRoute<void>(
+                    builder: (_) => const WantedPostScreen(),
+                  ),
                 );
               },
             ),
@@ -143,7 +138,8 @@ class MainShellState extends State<MainShell> {
       ]);
       if (!mounted) return;
       setState(() {
-        _unreadChatCount = (results[0] as Map<String, dynamic>)['unreadCount'] as int? ?? 0;
+        _unreadChatCount =
+            (results[0] as Map<String, dynamic>)['unreadCount'] as int? ?? 0;
         _unreadNotifCount = results[1] as int;
       });
     } catch (_) {}
@@ -165,79 +161,80 @@ class MainShellState extends State<MainShell> {
   }
 
   void openNotifications() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const NotificationsScreen(),
-      ),
-    ).then((_) => _loadUnreadCounts());
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()),
+        )
+        .then((_) => _loadUnreadCounts());
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: [
-          for (var i = 0; i < _pages.length; i++)
-            HeroMode(enabled: i == _currentIndex, child: _pages[i]),
-        ],
-      ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: DecoratedBox(
-          decoration: const BoxDecoration(
-            color: AppColors.surface,
-            border: Border(top: BorderSide(color: AppColors.border, width: 0.8)),
-          ),
-          child: SizedBox(
-            height: 66,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _NavItem(
-                  icon: Icons.home_outlined,
-                  selectedIcon: Icons.home_rounded,
-                  label: 'Inicio',
-                  index: 0,
-                  currentIndex: _currentIndex,
-                  onTap: selectTab,
-                  badge: _unreadNotifCount > 0 ? _unreadNotifCount : null,
-                ),
-                _NavItem(
-                  icon: Icons.local_offer_outlined,
-                  selectedIcon: Icons.local_offer_rounded,
-                  label: 'Ofertas',
-                  index: 1,
-                  currentIndex: _currentIndex,
-                  onTap: selectTab,
-                ),
-                _PublishFab(onTap: () => _showPublishMenu(context)),
-                _NavItem(
-                  icon: Icons.favorite_outline_rounded,
-                  selectedIcon: Icons.favorite_rounded,
-                  label: 'Favs',
-                  index: 3,
-                  currentIndex: _currentIndex,
-                  onTap: selectTab,
-                ),
-                _NavItem(
-                  icon: Icons.chat_outlined,
-                  selectedIcon: Icons.chat_rounded,
-                  label: 'Chat',
-                  index: 4,
-                  currentIndex: _currentIndex,
-                  onTap: selectTab,
-                  badge: _unreadChatCount > 0 ? _unreadChatCount : null,
-                ),
-                _NavItem(
-                  icon: Icons.person_outline_rounded,
-                  selectedIcon: Icons.person_rounded,
-                  label: 'Perfil',
-                  index: 5,
-                  currentIndex: _currentIndex,
-                  onTap: selectTab,
-                ),
-              ],
+    // Fondo claro detrás de las pestañas (Inicio, Ofertas, Chat, Perfil no
+    // tienen su propio AppBar) → íconos oscuros en la barra de estado.
+    // Explícito porque, sin AppBar propio, Flutter no lo recalcula solo
+    // al volver aquí desde una pantalla con header oscuro.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        body: IndexedStack(
+          index: _currentIndex,
+          children: [
+            for (var i = 0; i < _pages.length; i++)
+              HeroMode(enabled: i == _currentIndex, child: _pages[i]),
+          ],
+        ),
+        bottomNavigationBar: SafeArea(
+          top: false,
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              color: AppColors.surface,
+              border: Border(
+                top: BorderSide(color: AppColors.border, width: 0.8),
+              ),
+            ),
+            child: SizedBox(
+              height: 66,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _NavItem(
+                    icon: Icons.home_outlined,
+                    selectedIcon: Icons.home_rounded,
+                    label: 'Inicio',
+                    index: 0,
+                    currentIndex: _currentIndex,
+                    onTap: selectTab,
+                    badge: _unreadNotifCount > 0 ? _unreadNotifCount : null,
+                  ),
+                  _NavItem(
+                    icon: Icons.local_offer_outlined,
+                    selectedIcon: Icons.local_offer_rounded,
+                    label: 'Ofertas',
+                    index: 1,
+                    currentIndex: _currentIndex,
+                    onTap: selectTab,
+                  ),
+                  _PublishFab(onTap: () => _showPublishMenu(context)),
+                  _NavItem(
+                    icon: Icons.chat_outlined,
+                    selectedIcon: Icons.chat_rounded,
+                    label: 'Chat',
+                    index: 4,
+                    currentIndex: _currentIndex,
+                    onTap: selectTab,
+                    badge: _unreadChatCount > 0 ? _unreadChatCount : null,
+                  ),
+                  _NavItem(
+                    icon: Icons.person_outline_rounded,
+                    selectedIcon: Icons.person_rounded,
+                    label: 'Perfil',
+                    index: 5,
+                    currentIndex: _currentIndex,
+                    onTap: selectTab,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -338,7 +335,11 @@ class _PublishFab extends StatelessWidget {
           child: const SizedBox(
             width: 52,
             height: 52,
-            child: Icon(Icons.add_rounded, color: AppColors.amberDark, size: 28),
+            child: Icon(
+              Icons.add_rounded,
+              color: AppColors.amberDark,
+              size: 28,
+            ),
           ),
         ),
       ),

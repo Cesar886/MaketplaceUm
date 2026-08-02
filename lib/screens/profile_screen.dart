@@ -15,6 +15,10 @@ import 'legal/privacy_screen.dart';
 import 'legal/terms_screen.dart';
 import 'my_listings_screen.dart';
 import 'product_detail_screen.dart';
+import 'profile/edit_profile_screen.dart';
+import 'profile/help_screen.dart';
+import 'profile/highlight_plans_screen.dart';
+import 'profile/safety_tips_screen.dart';
 import 'recent_products_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -29,6 +33,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<Product> _recentProducts = [];
   double _sellerRating = 0.0;
   int _sellerReviews = 0;
+  Seller? _seller;
 
   @override
   void initState() {
@@ -51,6 +56,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _listings = results[0] as List<Product>;
         _sellerRating = seller.rating;
         _sellerReviews = seller.reviews;
+        _seller = seller;
       });
     } catch (_) {
       if (!mounted) return;
@@ -146,18 +152,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   Row(
                     children: [
-                      CircleAvatar(
-                        radius: 38,
-                        backgroundColor:
-                            AppColors.primary.withValues(alpha: 0.12),
-                        child: Text(
-                          initials,
-                          style: const TextStyle(
-                            fontSize: 22,
-                            color: AppColors.primaryDark,
-                            fontWeight: FontWeight.w700,
+                      Stack(
+                        children: [
+                          CircleAvatar(
+                            radius: 38,
+                            backgroundColor:
+                                AppColors.primary.withValues(alpha: 0.12),
+                            child: _seller?.logoUrl != null &&
+                                    _seller!.logoUrl!.isNotEmpty
+                                ? ClipOval(
+                                    child: Image.network(
+                                      '${ApiService.baseUrl}${_seller!.logoUrl}',
+                                      width: 76,
+                                      height: 76,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) => Text(
+                                        initials,
+                                        style: const TextStyle(
+                                          fontSize: 22,
+                                          color: AppColors.primaryDark,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : Text(
+                                    initials,
+                                    style: const TextStyle(
+                                      fontSize: 22,
+                                      color: AppColors.primaryDark,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
                           ),
-                        ),
+                          Positioned(
+                            right: 0,
+                            bottom: 0,
+                            child: InkWell(
+                              onTap: () async {
+                                if (_seller == null) return;
+                                final result = await Navigator.of(context)
+                                    .push<bool>(
+                                  MaterialPageRoute<bool>(
+                                    builder: (_) =>
+                                        EditProfileScreen(seller: _seller!),
+                                  ),
+                                );
+                                if (result == true) _loadListings();
+                              },
+                              customBorder: const CircleBorder(),
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: const BoxDecoration(
+                                  color: AppColors.primary,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.edit_rounded,
+                                  color: Colors.white,
+                                  size: 14,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(width: 14),
                       Expanded(
@@ -247,16 +305,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
               icon: Icons.shield_rounded,
               title: 'Confianza y seguridad',
               subtitle: 'Recomendaciones para comprar en campus',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                    builder: (_) => const SafetyTipsScreen()),
+              ),
             ),
             _ProfileOption(
               icon: Icons.payments_rounded,
               title: 'Planes para destacar',
               subtitle: 'Consulta opciones de visibilidad pagada',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                    builder: (_) => const HighlightPlansScreen()),
+              ),
             ),
             _ProfileOption(
               icon: Icons.help_rounded,
               title: 'Ayuda',
               subtitle: 'Preguntas frecuentes',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const HelpScreen()),
+              ),
             ),
 
             // ─── Vistos recientemente ───────────────────────────

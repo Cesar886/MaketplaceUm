@@ -5,6 +5,7 @@ const cors = require('cors');
 const path = require('path');
 const { generateToken, requireAuth } = require('./auth');
 const { sellers, saveData, registerSeller, updateSellerField } = require('./data');
+const { validateName, validatePhone } = require('./validation/sellerProfile');
 
 const routes = [
   require('./routes/categories'),
@@ -16,6 +17,7 @@ const routes = [
   require('./routes/notifications'),
   require('./routes/chat'),
   require('./routes/wanted'),
+  require('./routes/feed'),
 ];
 
 const app = express();
@@ -111,9 +113,13 @@ app.post('/api/auth/login', (req, res) => {
 app.post('/api/auth/register', (req, res) => {
   const { name, email, phone, userType } = req.body;
 
-  if (!name || !email) {
-    return res.status(400).json({ error: 'name y email son requeridos' });
+  if (!email) {
+    return res.status(400).json({ error: 'email es requerido' });
   }
+  const nameError = validateName(name);
+  if (nameError) return res.status(400).json({ error: nameError });
+  const phoneError = validatePhone(phone);
+  if (phoneError) return res.status(400).json({ error: phoneError });
 
   // Generar un ID único basado en el email (parte local + hash corto)
   const emailSlug = email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
@@ -172,3 +178,10 @@ app.get('/api/health', (_req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Mercadito UM API corriendo en http://localhost:${PORT}`);
 });
+
+// Política de limpieza de interacciones_dispositivo: al arrancar y luego
+// una vez al día, para no acumular filas indefinidamente por dispositivos
+// que abrieron la app una sola vez.
+const db = require('./database');
+db.limpiarInteraccionesAntiguas();
+setInterval(() => db.limpiarInteraccionesAntiguas(), 24 * 60 * 60 * 1000);

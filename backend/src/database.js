@@ -32,7 +32,9 @@ function initDatabase() {
       logoUrl TEXT,
       rating REAL DEFAULT 0,
       reviews INTEGER DEFAULT 0,
-      verified INTEGER DEFAULT 0
+      verified INTEGER DEFAULT 0,
+      businessDescription TEXT,
+      businessCategory TEXT
     );
 
     CREATE TABLE IF NOT EXISTS products (
@@ -58,7 +60,8 @@ function initDatabase() {
       stock_quantity INTEGER,
       stock_reset_daily INTEGER DEFAULT 0,
       stock_initial INTEGER,
-      stock_updated_at TEXT
+      stock_updated_at TEXT,
+      availableDays TEXT DEFAULT '[]'
     );
 
     CREATE TABLE IF NOT EXISTS price_history (
@@ -176,6 +179,30 @@ function initDatabase() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_product_ratings_product ON product_ratings(product_id);
+
+    -- Interacciones de feed: registra vistas/favoritos/contactos por device_id
+    -- (siempre presente) y opcionalmente por user_id (si hay sesión). Es la
+    -- única fuente tanto para la popularidad de un producto (Fase 1) como
+    -- para la afinidad por categoría de cada dispositivo/usuario (Fase 2).
+    CREATE TABLE IF NOT EXISTS interacciones_dispositivo (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      device_id TEXT NOT NULL,
+      user_id TEXT,
+      product_id TEXT NOT NULL,
+      category TEXT NOT NULL,
+      tipo TEXT NOT NULL CHECK(tipo IN ('vista', 'favorito', 'contacto')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_interacciones_device ON interacciones_dispositivo(device_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_interacciones_user ON interacciones_dispositivo(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_interacciones_producto_tipo ON interacciones_dispositivo(product_id, tipo);
+    CREATE INDEX IF NOT EXISTS idx_interacciones_device_categoria ON interacciones_dispositivo(device_id, category, created_at);
+    CREATE INDEX IF NOT EXISTS idx_interacciones_user_categoria ON interacciones_dispositivo(user_id, category, created_at);
+
+    CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
+    CREATE INDEX IF NOT EXISTS idx_products_seller ON products(seller);
   `);
 
   // ─── Migración desde schema legacy ─────────────────────────
@@ -290,7 +317,26 @@ function runMigrations() {
     `);
   }
 
-  // 8. Migrar conversations: permitir wanted_post_id y relajar product_id a NULL
+  // 8. Migrar productos: agregar created_at para poder calcular recencia real
+  //    en el feed ranking. Los productos existentes no tienen fecha original
+  //    confiable, así que se backfillean a 'now' (entran al feed como si
+  //    fueran nuevos en vez de quedar penalizados por antigüedad falsa).
+  const hasCreatedAt = cols.some(c => c.name === 'created_at');
+  if (!hasCreatedAt) {
+    db.exec(`ALTER TABLE products ADD COLUMN created_at TEXT`);
+    db.prepare(
+      "UPDATE products SET created_at = datetime('now') WHERE created_at IS NULL"
+    ).run();
+  }
+
+  // 9. Migrar sellers: agregar avg_response_minutes (calidad del vendedor)
+  const sellerColsResp = db.prepare("PRAGMA table_info('sellers')").all();
+  const hasAvgResponse = sellerColsResp.some(c => c.name === 'avg_response_minutes');
+  if (!hasAvgResponse) {
+    db.exec(`ALTER TABLE sellers ADD COLUMN avg_response_minutes INTEGER`);
+  }
+
+  // 10. Migrar conversations: permitir wanted_post_id y relajar product_id a NULL
   //    (SQLite no permite quitar NOT NULL con ALTER TABLE, así que se recrea la
   //    tabla preservando los datos existentes). También se recrea messages para
   //    arreglar la FK que SQLite reescribe al renombrar conversations.
@@ -353,6 +399,37 @@ function runMigrations() {
     }
   }
 
+  // 11. Migrar productos: agregar availableDays si no existe
+  const hasAvailableDays = cols.some(c => c.name === 'availableDays');
+  if (!hasAvailableDays) {
+    db.exec(`ALTER TABLE products ADD COLUMN availableDays TEXT DEFAULT '[]'`);
+  }
+
+  // 12. Migrar productos: agregar updated_at (marca de "editado" que no
+  //     afecta la recencia del score, esa sigue usando solo created_at).
+  const hasUpdatedAt = cols.some(c => c.name === 'updated_at');
+  if (!hasUpdatedAt) {
+    db.exec(`ALTER TABLE products ADD COLUMN updated_at TEXT`);
+  }
+
+  // 13. Migrar wanted_posts: agregar updated_at con el mismo propósito
+  const wantedCols = db.prepare("PRAGMA table_info('wanted_posts')").all();
+  const hasWantedUpdatedAt = wantedCols.some(c => c.name === 'updated_at');
+  if (!hasWantedUpdatedAt) {
+    db.exec(`ALTER TABLE wanted_posts ADD COLUMN updated_at TEXT`);
+  }
+
+  // 14. Migrar sellers: agregar businessDescription y businessCategory
+  //     (perfil público de negocio: rubro + descripción corta)
+  const sellerColsBiz = db.prepare("PRAGMA table_info('sellers')").all();
+  const hasBusinessDescription = sellerColsBiz.some(c => c.name === 'businessDescription');
+  if (!hasBusinessDescription) {
+    db.exec(`
+      ALTER TABLE sellers ADD COLUMN businessDescription TEXT;
+      ALTER TABLE sellers ADD COLUMN businessCategory TEXT;
+    `);
+  }
+
   console.log('🔄 Migración de schema completada');
 }
 
@@ -387,6 +464,9 @@ function rowToProduct(row) {
     stock_reset_daily: !!row.stock_reset_daily,
     stock_initial: row.stock_initial ?? null,
     stock_updated_at: row.stock_updated_at || null,
+    created_at: row.created_at || null,
+    availableDays: JSON.parse(row.availableDays || '[]'),
+    updated_at: row.updated_at || null,
   };
 }
 
@@ -419,6 +499,9 @@ function productToRow(product) {
     stock_reset_daily: product.stock_reset_daily ? 1 : 0,
     stock_initial: product.stock_initial ?? null,
     stock_updated_at: product.stock_updated_at || null,
+    created_at: product.created_at || new Date().toISOString().replace('T', ' ').slice(0, 19),
+    availableDays: JSON.stringify(product.availableDays || []),
+    updated_at: product.updated_at || null,
   };
 }
 
@@ -437,6 +520,7 @@ function rowToWantedPost(row) {
     resolvedWithUserId: row.resolved_with_user_id || null,
     createdAt: row.created_at,
     resolvedAt: row.resolved_at || null,
+    updatedAt: row.updated_at || null,
   };
 }
 
@@ -458,6 +542,8 @@ function rowToSeller(row) {
     rating: row.rating ?? 0,
     reviews: row.reviews ?? 0,
     verified: !!row.verified,
+    businessDescription: row.businessDescription || null,
+    businessCategory: row.businessCategory || null,
   };
 }
 
@@ -503,11 +589,12 @@ function insertProduct(product) {
     INSERT OR REPLACE INTO products (id, title, price, priceNum, category, description, publishedAgo, seller,
       images, imageIcon, imageColor, previousPrice, discountLabel,
       isFeatured, isOffer, isFavorite, status, offerExpiresAt, extras,
-      stock_quantity, stock_reset_daily, stock_initial, stock_updated_at)
+      stock_quantity, stock_reset_daily, stock_initial, stock_updated_at, created_at, availableDays, updated_at)
     VALUES (@id, @title, @price, @priceNum, @category, @description, @publishedAgo, @seller,
       @images, @imageIcon, @imageColor, @previousPrice, @discountLabel,
       @isFeatured, @isOffer, @isFavorite, @status, @offerExpiresAt, @extras,
-      @stock_quantity, @stock_reset_daily, @stock_initial, @stock_updated_at)
+      @stock_quantity, @stock_reset_daily, @stock_initial, @stock_updated_at,
+      COALESCE((SELECT created_at FROM products WHERE id = @id), @created_at), @availableDays, @updated_at)
   `).run(row);
 }
 
@@ -525,7 +612,8 @@ function updateProduct(id, updates) {
       isFeatured = @isFeatured, isOffer = @isOffer, isFavorite = @isFavorite,
       status = @status, offerExpiresAt = @offerExpiresAt, extras = @extras,
       stock_quantity = @stock_quantity, stock_reset_daily = @stock_reset_daily,
-      stock_initial = @stock_initial, stock_updated_at = @stock_updated_at
+      stock_initial = @stock_initial, stock_updated_at = @stock_updated_at,
+      availableDays = @availableDays, updated_at = @updated_at
     WHERE id = ?
   `).run(row, id);
   return getProductById(id);
@@ -872,6 +960,34 @@ function listWantedPosts({ categoryId, status, type } = {}) {
   return db.prepare(query).all(...params).map(rowToWantedPost);
 }
 
+/**
+ * Edita una publicación "se busca" existente. Solo actualiza los campos
+ * de contenido (title/description/categoryId/type/priceMin/priceMax);
+ * no toca user_id, status, resolved_with_user_id, created_at ni resolved_at.
+ */
+function updateWantedPost(id, updates) {
+  db.prepare(`
+    UPDATE wanted_posts SET
+      title = @title,
+      description = @description,
+      category_id = @categoryId,
+      type = @type,
+      price_min = @priceMin,
+      price_max = @priceMax,
+      updated_at = datetime('now')
+    WHERE id = @id
+  `).run({
+    id,
+    title: updates.title,
+    description: updates.description ?? null,
+    categoryId: updates.categoryId,
+    type: updates.type,
+    priceMin: updates.priceMin ?? null,
+    priceMax: updates.priceMax ?? null,
+  });
+  return getWantedPostById(id);
+}
+
 function resolveWantedPost(id, resolvedWithUserId) {
   db.prepare(`
     UPDATE wanted_posts SET status = 'resuelta', resolved_with_user_id = ?, resolved_at = datetime('now')
@@ -966,6 +1082,170 @@ function deleteMessage(messageId, userId) {
   return true;
 }
 
+// ─── Feed Ranking ───────────────────────────────────────────────
+
+// Pesos y parámetros de la fórmula de score. Viven aquí (no en el SQL crudo
+// de las rutas) para que ajustar el ranking no implique tocar la consulta.
+const FEED_WEIGHTS = {
+  RECENCY_BASE: 100,           // puntos iniciales de un producto recién publicado
+  RECENCY_DECAY_PER_DAY: 2,    // puntos que pierde por cada día de antigüedad
+  W_VIEWS: 0.5,                // peso por vista
+  W_FAVORITOS: 3,              // peso por guardado en favoritos
+  W_CONTACTOS: 6,              // peso por mensaje enviado al vendedor
+  W_ENGAGEMENT: 25,            // peso de (contactos/vistas), calidad del interés
+  W_SELLER_RATING: 15,         // bonus máximo por rating de vendedor (5 estrellas)
+  W_SELLER_PHOTO: 5,           // bonus por tener foto/logo de perfil
+  W_SELLER_FAST_REPLY: 8,      // bonus por responder rápido
+  FAST_REPLY_MAX_MINUTES: 60,  // umbral para considerar "responde rápido"
+  AFFINITY_MULTIPLIER: 1.3,    // multiplicador si la categoría es top-3 del device/usuario
+  NO_STOCK_PENALTY_FACTOR: 0.01, // castigo drástico si no hay stock/está vendido
+  POPULARITY_WINDOW_DAYS: 180, // ventana de interacciones que cuentan para popularidad
+  AFFINITY_WINDOW_DAYS: 90,    // ventana de interacciones que cuentan para afinidad
+  AFFINITY_TOP_N: 3,           // top-N categorías más vistas por device/usuario
+  INTERACTION_RETENTION_DAYS: 180, // política de limpieza: no guardar más de X días
+  INTERACTION_MAX_PER_DEVICE: 500, // ...ni más de N filas por device_id
+};
+
+/**
+ * Registra una interacción (vista/favorito/contacto) de un device_id
+ * (siempre) y, si hay sesión, también del user_id. No requiere cuenta.
+ */
+function registrarInteraccion({ deviceId, userId, productId, category, tipo }) {
+  db.prepare(`
+    INSERT INTO interacciones_dispositivo (device_id, user_id, product_id, category, tipo, created_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
+  `).run(deviceId, userId || null, productId, category, tipo);
+}
+
+/**
+ * Poda interacciones_dispositivo para no acumular indefinidamente:
+ * borra lo más viejo que INTERACTION_RETENTION_DAYS y, por device_id,
+ * conserva solo las INTERACTION_MAX_PER_DEVICE filas más recientes.
+ * Pensado para llamarse periódicamente (cron/arranque), no en cada request.
+ */
+function limpiarInteraccionesAntiguas({
+  retentionDays = FEED_WEIGHTS.INTERACTION_RETENTION_DAYS,
+  maxPerDevice = FEED_WEIGHTS.INTERACTION_MAX_PER_DEVICE,
+} = {}) {
+  db.prepare(`
+    DELETE FROM interacciones_dispositivo
+    WHERE created_at < datetime('now', '-' || ? || ' days')
+  `).run(retentionDays);
+
+  db.prepare(`
+    DELETE FROM interacciones_dispositivo
+    WHERE id IN (
+      SELECT id FROM (
+        SELECT id, ROW_NUMBER() OVER (
+          PARTITION BY device_id ORDER BY created_at DESC
+        ) AS rn
+        FROM interacciones_dispositivo
+      ) WHERE rn > ?
+    )
+  `).run(maxPerDevice);
+}
+
+/**
+ * Calcula el feed rankeado (Fase 1: score base + Fase 2: afinidad por
+ * device_id/user_id). device_id es obligatorio, user_id opcional. Usa
+ * LEFT JOIN en todas las agregaciones para que un device_id sin historial
+ * (cold start) reciba el feed base sin errores ni penalización.
+ */
+function getFeedRanked({ deviceId, userId, limit = 60, offset = 0 }) {
+  const w = FEED_WEIGHTS;
+  const rows = db.prepare(`
+    WITH product_stats AS (
+      SELECT
+        product_id,
+        SUM(CASE WHEN tipo = 'vista' THEN 1 ELSE 0 END) AS vistas,
+        SUM(CASE WHEN tipo = 'favorito' THEN 1 ELSE 0 END) AS favoritos,
+        SUM(CASE WHEN tipo = 'contacto' THEN 1 ELSE 0 END) AS contactos
+      FROM interacciones_dispositivo
+      WHERE created_at >= datetime('now', '-' || @popularityWindowDays || ' days')
+      GROUP BY product_id
+    ),
+    device_top_categories AS (
+      SELECT category
+      FROM (
+        SELECT category, COUNT(*) AS cnt,
+          ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC) AS rn
+        FROM interacciones_dispositivo
+        WHERE created_at >= datetime('now', '-' || @affinityWindowDays || ' days')
+          AND (device_id = @deviceId OR (@userId IS NOT NULL AND user_id = @userId))
+        GROUP BY category
+      )
+      WHERE rn <= @affinityTopN
+    )
+    SELECT
+      p.*,
+      COALESCE(ps.vistas, 0) AS vistas,
+      COALESCE(ps.favoritos, 0) AS favoritos,
+      COALESCE(ps.contactos, 0) AS contactos,
+      CASE WHEN dtc.category IS NOT NULL THEN 1 ELSE 0 END AS es_categoria_afin,
+      (
+        (
+          -- Recencia: decae con los días de antigüedad, sin bajar de 0
+          MAX(0, @recencyBase - @recencyDecayPerDay * (julianday('now') - julianday(p.created_at)))
+          -- Popularidad: vistas, favoritos y contactos, cada uno con su propio peso
+          + @wViews * COALESCE(ps.vistas, 0)
+          + @wFavoritos * COALESCE(ps.favoritos, 0)
+          + @wContactos * COALESCE(ps.contactos, 0)
+          -- Tasa de interacción: qué tan bien conviertes vistas en contactos.
+          -- COALESCE externo porque NULLIF(ps.vistas, 0) es NULL sin vistas,
+          -- lo que sin este COALESCE volvería NULL toda la suma del score.
+          + COALESCE(@wEngagement * (COALESCE(ps.contactos, 0) * 1.0 / NULLIF(ps.vistas, 0)), 0)
+          -- Calidad del vendedor: rating, foto de perfil, tiempo de respuesta
+          + @wSellerRating * (COALESCE(s.rating, 0) / 5.0)
+          + CASE WHEN s.logoUrl IS NOT NULL AND s.logoUrl != '' THEN @wSellerPhoto ELSE 0 END
+          + CASE WHEN s.avg_response_minutes IS NOT NULL
+                  AND s.avg_response_minutes <= @fastReplyMaxMinutes
+                 THEN @wSellerFastReply ELSE 0 END
+        )
+        -- Afinidad: bonus multiplicativo si la categoría es top-N del device/usuario
+        * CASE WHEN dtc.category IS NOT NULL THEN @affinityMultiplier ELSE 1.0 END
+        -- Disponibilidad: castigo drástico si no hay stock o ya se vendió
+        * CASE WHEN p.status = 'sold'
+                 OR (p.stock_quantity IS NOT NULL AND p.stock_quantity <= 0)
+               THEN @noStockPenaltyFactor ELSE 1.0 END
+      ) AS score
+    FROM products p
+    LEFT JOIN product_stats ps ON ps.product_id = p.id
+    LEFT JOIN sellers s ON s.id = p.seller
+    LEFT JOIN device_top_categories dtc ON dtc.category = p.category
+    ORDER BY score DESC
+    LIMIT @limit OFFSET @offset
+  `).all({
+    deviceId,
+    userId: userId || null,
+    limit,
+    offset,
+    popularityWindowDays: w.POPULARITY_WINDOW_DAYS,
+    affinityWindowDays: w.AFFINITY_WINDOW_DAYS,
+    affinityTopN: w.AFFINITY_TOP_N,
+    recencyBase: w.RECENCY_BASE,
+    recencyDecayPerDay: w.RECENCY_DECAY_PER_DAY,
+    wViews: w.W_VIEWS,
+    wFavoritos: w.W_FAVORITOS,
+    wContactos: w.W_CONTACTOS,
+    wEngagement: w.W_ENGAGEMENT,
+    wSellerRating: w.W_SELLER_RATING,
+    wSellerPhoto: w.W_SELLER_PHOTO,
+    wSellerFastReply: w.W_SELLER_FAST_REPLY,
+    fastReplyMaxMinutes: w.FAST_REPLY_MAX_MINUTES,
+    affinityMultiplier: w.AFFINITY_MULTIPLIER,
+    noStockPenaltyFactor: w.NO_STOCK_PENALTY_FACTOR,
+  });
+
+  return rows.map(row => ({
+    ...rowToProduct(row),
+    vistas: row.vistas,
+    favoritos: row.favoritos,
+    contactos: row.contactos,
+    esCategoriaAfin: !!row.es_categoria_afin,
+    score: row.score,
+  }));
+}
+
 module.exports = {
   initDatabase,
   getDb,
@@ -1018,6 +1298,7 @@ module.exports = {
   createWantedPost,
   getWantedPostById,
   listWantedPosts,
+  updateWantedPost,
   resolveWantedPost,
   countWantedPostsSince,
   createWantedConversation,
@@ -1032,4 +1313,9 @@ module.exports = {
   getMessages,
   markConversationMessagesRead,
   deleteMessage,
+  // Feed Ranking
+  FEED_WEIGHTS,
+  registrarInteraccion,
+  limpiarInteraccionesAntiguas,
+  getFeedRanked,
 };

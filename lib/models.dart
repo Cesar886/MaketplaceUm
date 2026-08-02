@@ -105,6 +105,8 @@ class Seller {
     required this.rating,
     required this.reviews,
     required this.verified,
+    this.businessDescription,
+    this.businessCategory,
   });
 
   factory Seller.fromJson(Map<String, dynamic> json) {
@@ -119,6 +121,8 @@ class Seller {
       rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
       reviews: (json['reviews'] as num?)?.toInt() ?? 0,
       verified: json['verified'] as bool? ?? false,
+      businessDescription: json['businessDescription'] as String?,
+      businessCategory: json['businessCategory'] as String?,
     );
   }
 
@@ -132,6 +136,8 @@ class Seller {
   final double rating;
   final int reviews;
   final bool verified;
+  final String? businessDescription;
+  final String? businessCategory;
 }
 
 enum ListingStatus { active, featured, expired }

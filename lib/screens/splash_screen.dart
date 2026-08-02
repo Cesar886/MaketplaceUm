@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
@@ -48,39 +49,41 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            children: [
-              const Spacer(),
-              const AppLogo(size: 78, showText: false),
-              const SizedBox(height: 28),
-              Text(
-                'Mercadito UM',
-                style: Theme.of(context)
-                    .textTheme
-                    .headlineMedium
-                    ?.copyWith(fontSize: 34),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Marketplace seguro para estudiantes universitarios',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              children: [
+                const Spacer(),
+                const AppLogo(size: 78, showText: false),
+                const SizedBox(height: 28),
+                Text(
+                  'Mercadito UM',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.headlineMedium?.copyWith(fontSize: 34),
+                  textAlign: TextAlign.center,
                 ),
-              ),
-              const Spacer(),
-              const LinearProgressIndicator(
-                minHeight: 5,
-                borderRadius: BorderRadius.all(Radius.circular(8)),
-              ),
-            ],
+                const SizedBox(height: 10),
+                const Text(
+                  'Marketplace seguro para estudiantes universitarios',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                const LinearProgressIndicator(
+                  minHeight: 5,
+                  borderRadius: BorderRadius.all(Radius.circular(8)),
+                ),
+              ],
+            ),
           ),
         ),
       ),

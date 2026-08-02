@@ -11,10 +11,12 @@ import '../widgets/app_logo.dart';
 import '../widgets/auto_refresh.dart';
 import '../widgets/product_card.dart';
 import '../widgets/section_header.dart';
+import '../widgets/wanted_post_card.dart';
 import 'main_shell.dart';
 import 'product_detail_screen.dart';
 import 'qr_scanner_screen.dart';
 import 'search_screen.dart';
+import 'wanted_post_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -28,6 +30,7 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
   List<MarketplaceCategory> _categories = [];
   List<HighlightPlan> _highlightPlans = [];
   List<Seller> _sellers = [];
+  List<WantedPost> _wantedPosts = [];
   bool _loading = true;
   bool _hasPublished = false;
   String? _error;
@@ -89,6 +92,14 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
         // Si falla, seguimos con lista vacía
       }
 
+      // Cargar búsquedas abiertas por separado (no debe bloquear el resto)
+      List<WantedPost> loadedWantedPosts = [];
+      try {
+        loadedWantedPosts = await ApiService.getWantedPosts(status: 'abierta');
+      } catch (_) {
+        // Si falla, seguimos con lista vacía
+      }
+
       // Verificar si el usuario ha publicado artículos
       bool hasPublished = false;
       if (auth.isLoggedIn) {
@@ -105,6 +116,7 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
         _categories = results[1] as List<MarketplaceCategory>;
         _highlightPlans = results[2] as List<HighlightPlan>;
         _sellers = loadedSellers;
+        _wantedPosts = loadedWantedPosts;
         _hasPublished = hasPublished;
         _loading = false;
         _error = null;
@@ -316,6 +328,45 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
                 },
               ),
             ),
+            // ─── Se busca ────────────────────────────────────────
+            if (_wantedPosts.isNotEmpty) ...[
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
+                  child: SectionHeader(
+                    title: 'Se busca',
+                    actionLabel: null,
+                    onAction: null,
+                  ),
+                ),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
+                sliver: SliverLayoutBuilder(
+                  builder: (context, constraints) {
+                    final width = constraints.crossAxisExtent;
+                    final columns = width >= 720 ? 3 : 2;
+                    return SliverGrid.builder(
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: columns,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        childAspectRatio: columns == 3 ? 0.72 : 0.64,
+                      ),
+                      itemCount: _wantedPosts.length,
+                      itemBuilder: (context, index) {
+                        final post = _wantedPosts[index];
+                        return WantedPostCard(
+                          post: post,
+                          category: _categoryById(post.categoryId),
+                          onTap: () => _openWantedPost(context, post),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
             // ─── Negocios del campus ────────────────────────────
             if (_businessesWithProducts.isNotEmpty)
               SliverToBoxAdapter(
@@ -346,6 +397,23 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
         ),
       ),
     );
+  }
+
+  MarketplaceCategory? _categoryById(String id) {
+    for (final category in _categories) {
+      if (category.id == id) return category;
+    }
+    return null;
+  }
+
+  Future<void> _openWantedPost(BuildContext context, WantedPost post) {
+    return Navigator.of(context)
+        .push(
+          MaterialPageRoute<void>(
+            builder: (_) => WantedPostDetailScreen(postId: post.id),
+          ),
+        )
+        .then((_) => _loadData(silent: true));
   }
 
   Future<void> _openDetail(BuildContext context, Product product) {

@@ -45,6 +45,43 @@ async function convertToWebp(filePath) {
   return publicPath;
 }
 
+/**
+ * Normaliza el input de extras (crear/editar). Acepta array o JSON string
+ * (multipart/form-data manda arrays como string). Filtra entradas sin nombre.
+ */
+function normalizeExtras(extrasInput) {
+  if (typeof extrasInput === 'string') {
+    try {
+      extrasInput = JSON.parse(extrasInput);
+    } catch {
+      extrasInput = [];
+    }
+  }
+  return Array.isArray(extrasInput) ? extrasInput.map(e => ({
+    name: String(e.name || ''),
+    extraPrice: Number(e.extraPrice) || 0,
+  })).filter(e => e.name) : [];
+}
+
+/**
+ * Normaliza los días de la semana disponibles (0=domingo .. 6=sábado):
+ * dedupe, valida rango entero y ordena. Acepta array o JSON string.
+ */
+function normalizeAvailableDays(daysInput) {
+  if (typeof daysInput === 'string') {
+    try {
+      daysInput = JSON.parse(daysInput);
+    } catch {
+      daysInput = [];
+    }
+  }
+  return Array.isArray(daysInput)
+    ? [...new Set(daysInput
+        .map(d => Number(d))
+        .filter(d => Number.isInteger(d) && d >= 0 && d <= 6))].sort()
+    : [];
+}
+
 function attachRelations(productsList, userId) {
   let modified = false;
   const todayStr = new Date().toDateString();
@@ -156,15 +193,8 @@ function register(app) {
           const validStatuses = ['available', 'reserved', 'sold', 'negotiating', 'paused', 'unavailable'];
           const status = req.body?.status || 'available';
 
-          // multipart/form-data manda los extras como JSON string, no como array
-          let extrasInput = req.body?.extras;
-          if (typeof extrasInput === 'string') {
-            try {
-              extrasInput = JSON.parse(extrasInput);
-            } catch {
-              extrasInput = [];
-            }
-          }
+          const extrasInput = normalizeExtras(req.body?.extras);
+          const availableDays = normalizeAvailableDays(req.body?.availableDays);
 
           const newProduct = {
             id: productId,
@@ -178,10 +208,7 @@ function register(app) {
             imageIcon: images.length > 0 ? null : 'inventory_2',
             imageColor: '#607D8B',
             status: validStatuses.includes(status) ? status : 'available',
-            extras: Array.isArray(extrasInput) ? extrasInput.map(e => ({
-              name: String(e.name || ''),
-              extraPrice: Number(e.extraPrice) || 0,
-            })).filter(e => e.name) : [],
+            extras: extrasInput,
             isFeatured: false,
             isOffer: false,
             isFavorite: false,
@@ -189,6 +216,7 @@ function register(app) {
             stock_reset_daily: req.body?.stock_reset_daily === 'true' || req.body?.stock_reset_daily === true,
             stock_initial: req.body?.stock_initial !== undefined ? Number(req.body.stock_initial) : null,
             stock_updated_at: new Date().toISOString(),
+            availableDays,
           };
 
           products.unshift(newProduct);
@@ -229,6 +257,110 @@ function register(app) {
           console.error('Error en POST /api/products:', err);
           res.status(500).json({ error: err.message });
         });
+    });
+  });
+
+  // PUT /api/products/:id – editar campos generales (solo el dueño)
+  // title, description, category, images, extras, availableDays.
+  // Precio/stock/status/featured siguen editándose por sus propios endpoints,
+  // que ya tienen su lógica especial (anti-fraude, reset diario, etc).
+  app.put('/api/products/:id', requireAuth, (req, res) => {
+    upload.any()(req, res, (err) => {
+      if (err) {
+        return res.status(400).json({ error: 'Error al procesar imágenes: ' + err.message });
+      }
+
+      try {
+        const product = products.find(p => p.id === req.params.id);
+        if (!product) {
+          return res.status(404).json({ error: 'Producto no encontrado' });
+        }
+        if (product.seller !== req.user.id) {
+          return res.status(403).json({ error: 'No tienes permiso para editar este producto' });
+        }
+
+        const title = req.body?.title;
+        const category = req.body?.category;
+        const description = req.body?.description;
+
+        // Misma validación que la creación (POST /api/products), salvo precio:
+        // el precio NO se toca aquí. Tiene su propio flujo con historial,
+        // cooldown de 72h y rate limit en PATCH /api/products/:id, que no
+        // queremos poder saltarnos editando el título/descripción a la vez.
+        if (!title || !category || !description) {
+          return res.status(400).json({ error: 'Faltan campos requeridos (title, category, description)' });
+        }
+        if (!categories.some(c => c.id === category)) {
+          return res.status(400).json({ error: 'Categoría inválida' });
+        }
+
+        // ─── Imágenes: existingImages son las URLs que el usuario decide
+        // conservar; todo lo que estaba en product.images y no aparece ahí
+        // se considera eliminado. Los archivos nuevos vienen en req.files.
+        let existingImagesInput = req.body?.existingImages;
+        if (typeof existingImagesInput === 'string') {
+          try {
+            existingImagesInput = JSON.parse(existingImagesInput);
+          } catch {
+            existingImagesInput = [];
+          }
+        }
+        const keptImages = Array.isArray(existingImagesInput)
+          ? existingImagesInput.filter(url => product.images.includes(url))
+          : product.images; // si no mandan el campo, no se toca ninguna imagen
+
+        const conversionPromises = (req.files || []).map((file) => {
+          return convertToWebp(file.path).catch((convErr) => {
+            console.error('Error convirtiendo a WebP:', convErr);
+            return '/uploads/' + path.basename(file.path);
+          });
+        });
+
+        Promise.all(conversionPromises)
+          .then((newImages) => {
+            const finalImages = [...keptImages, ...newImages];
+            const removedImages = product.images.filter(url => !finalImages.includes(url));
+
+            // Actualizamos primero el producto (única escritura atómica en
+            // SQLite); solo si eso tiene éxito borramos del disco las
+            // imágenes viejas. Así, si algo falla antes de guardar, no se
+            // pierde ninguna imagen todavía referenciada por el producto.
+            product.title = title.trim();
+            product.description = description;
+            product.category = category;
+            product.images = finalImages;
+            product.imageIcon = finalImages.length > 0 ? null : 'inventory_2';
+            if (req.body.extras !== undefined) {
+              product.extras = normalizeExtras(req.body.extras);
+            }
+            if (req.body.availableDays !== undefined) {
+              product.availableDays = normalizeAvailableDays(req.body.availableDays);
+            }
+            product.updated_at = new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+            saveData();
+
+            for (const imgUrl of removedImages) {
+              const filePath = path.join(UPLOADS_DIR, path.basename(imgUrl));
+              if (fs.existsSync(filePath)) {
+                try {
+                  fs.unlinkSync(filePath);
+                } catch (unlinkErr) {
+                  console.error('No se pudo borrar imagen huérfana:', imgUrl, unlinkErr);
+                }
+              }
+            }
+
+            res.json(attachRelations([product])[0]);
+          })
+          .catch((convErr) => {
+            console.error('Error en PUT /api/products/:id (conversión de imágenes):', convErr);
+            res.status(500).json({ error: 'No se pudieron procesar las imágenes nuevas. Intenta de nuevo.' });
+          });
+      } catch (err) {
+        console.error('Error en PUT /api/products/:id:', err);
+        res.status(500).json({ error: 'No se pudo actualizar el producto. Intenta de nuevo en unos minutos.' });
+      }
     });
   });
 
@@ -334,8 +466,17 @@ function register(app) {
         }
       }
 
+      if (req.body.stock_reset_daily !== undefined) {
+        product.stock_reset_daily = req.body.stock_reset_daily === true || req.body.stock_reset_daily === 'true';
+      }
+      if (set !== undefined) {
+        // Al fijar un nuevo stock manualmente (edición), ese valor pasa a
+        // ser también la referencia para el reinicio diario automático.
+        product.stock_initial = product.stock_quantity;
+      }
+
       product.stock_updated_at = new Date().toISOString();
-      
+
       // Auto-agotar si llega a 0
       if (product.stock_quantity === 0 && product.status === 'available') {
         product.status = 'sold';
@@ -380,6 +521,25 @@ function register(app) {
     res.json(attachRelations([product])[0]);
   });
 
+  // PATCH /api/products/:id/days – editar días disponibles (solo el dueño)
+  app.patch('/api/products/:id/days', requireAuth, (req, res) => {
+    const product = products.find(p => p.id === req.params.id);
+    if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+
+    if (product.seller !== req.user.id) {
+      return res.status(403).json({ error: 'No tienes permiso para editar este producto' });
+    }
+
+    const { availableDays } = req.body;
+    if (!Array.isArray(availableDays)) {
+      return res.status(400).json({ error: 'El campo "availableDays" debe ser un arreglo' });
+    }
+
+    product.availableDays = normalizeAvailableDays(availableDays);
+    saveData();
+    res.json(attachRelations([product])[0]);
+  });
+
   // PATCH /api/products/:id – editar precio (solo el dueño)
   // Incluye: historial de precios, umbral mínimo 5%, rate limit, expiración de oferta
   app.patch('/api/products/:id', requireAuth, (req, res) => {
@@ -407,10 +567,7 @@ function register(app) {
 
       // ─── Extras opcionales ─────────────────────────────────
       if (req.body.extras !== undefined) {
-        product.extras = Array.isArray(req.body.extras) ? req.body.extras.map(e => ({
-          name: String(e.name || ''),
-          extraPrice: Number(e.extraPrice) || 0,
-        })).filter(e => e.name) : [];
+        product.extras = normalizeExtras(req.body.extras);
       }
 
       // ─── Rate limit: máximo 3 ediciones por hora ────────────

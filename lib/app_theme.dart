@@ -148,6 +148,10 @@ class AppTheme {
         backgroundColor: AppColors.primaryDark,
         foregroundColor: AppColors.background,
         surfaceTintColor: Colors.transparent,
+        // Fondo oscuro del AppBar → íconos claros en la barra de estado.
+        // Explícito (no auto-detectado) para que sea consistente sin
+        // importar el color exacto de fondo que se use.
+        systemOverlayStyle: SystemUiOverlayStyle.light,
         titleTextStyle: GoogleFonts.baloo2(
           fontSize: 19,
           fontWeight: FontWeight.w700,
@@ -244,6 +248,8 @@ class AppTheme {
         scrolledUnderElevation: 0,
         backgroundColor: AppColors.darkBackground,
         foregroundColor: AppColors.darkInk,
+        // Fondo oscuro del AppBar → íconos claros en la barra de estado.
+        systemOverlayStyle: SystemUiOverlayStyle.light,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,

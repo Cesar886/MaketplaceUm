@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../app_theme.dart';
@@ -35,6 +36,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
         title: const Text('Escanear QR'),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(

@@ -375,6 +375,23 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       ),
                     ),
                   ],
+                  // ─── Días disponibles ────────────────────────────
+                  if (product.availableDays.isNotEmpty) ...[
+                    const SizedBox(height: 22),
+                    const _SectionHeader(icon: Icons.event_available_rounded, label: 'Días disponibles'),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (var day = 0; day < 7; day++)
+                          _DayChip(
+                            label: _dayNames[day],
+                            selected: product.availableDays.contains(day),
+                          ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   const _SectionHeader(icon: Icons.notes_rounded, label: 'Descripción'),
                   const SizedBox(height: 8),
@@ -788,6 +805,40 @@ class _PhotoStrip extends StatelessWidget {
 
 /// Encabezado de sección consistente — ícono + label, usado en toda la
 /// pantalla de detalle para que las secciones se lean como un solo sistema.
+const _dayNames = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
+class _DayChip extends StatelessWidget {
+  const _DayChip({required this.label, required this.selected});
+
+  final String label;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 40,
+      height: 40,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: selected ? AppColors.primary.withValues(alpha: 0.10) : AppColors.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: selected ? AppColors.primary : AppColors.border,
+          width: selected ? 1.5 : 1,
+        ),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12.5,
+          fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+          color: selected ? AppColors.primary : AppColors.muted,
+        ),
+      ),
+    );
+  }
+}
+
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.icon, required this.label});
 

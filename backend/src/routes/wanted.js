@@ -1,20 +1,45 @@
 const db = require('../database');
 const { sendPush } = require('../push');
+const { requireAuth } = require('../auth');
 
 const VALID_TYPES = ['producto', 'servicio'];
 const DAILY_LIMIT = 3;
 
+/**
+ * Valida los campos de contenido de una publicación "se busca". Se usa
+ * tanto en la creación (POST) como en la edición (PUT) para no duplicar
+ * las reglas. Devuelve { error } si algo es inválido, o los valores
+ * normalizados listos para persistir.
+ */
+function validateWantedFields({ title, categoryId, type, priceMin, priceMax }) {
+  if (!title || !title.trim()) return { error: 'title es requerido' };
+  if (!categoryId) return { error: 'categoryId es requerido' };
+  if (!VALID_TYPES.includes(type)) {
+    return { error: `type debe ser uno de: ${VALID_TYPES.join(', ')}` };
+  }
+
+  const parsedPriceMin = priceMin !== undefined && priceMin !== null ? Number(priceMin) : null;
+  const parsedPriceMax = priceMax !== undefined && priceMax !== null ? Number(priceMax) : null;
+  if (parsedPriceMin !== null && Number.isNaN(parsedPriceMin)) {
+    return { error: 'priceMin debe ser un número válido' };
+  }
+  if (parsedPriceMax !== null && Number.isNaN(parsedPriceMax)) {
+    return { error: 'priceMax debe ser un número válido' };
+  }
+
+  return { title: title.trim(), categoryId, type, priceMin: parsedPriceMin, priceMax: parsedPriceMax };
+}
+
 function register(app) {
   // POST /api/wanted - crear una publicación "Se busca"
   app.post('/api/wanted', (req, res) => {
-    const { userId, title, description, categoryId, type, priceMin, priceMax } = req.body;
+    const { userId, description } = req.body;
 
     if (!userId) return res.status(400).json({ error: 'userId es requerido' });
-    if (!title || !title.trim()) return res.status(400).json({ error: 'title es requerido' });
-    if (!categoryId) return res.status(400).json({ error: 'categoryId es requerido' });
-    if (!VALID_TYPES.includes(type)) {
-      return res.status(400).json({ error: `type debe ser uno de: ${VALID_TYPES.join(', ')}` });
-    }
+
+    const validated = validateWantedFields(req.body);
+    if (validated.error) return res.status(400).json({ error: validated.error });
+    const { title, categoryId, type, priceMin: parsedPriceMin, priceMax: parsedPriceMax } = validated;
 
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
     const countToday = db.countWantedPostsSince(userId, since);
@@ -22,21 +47,11 @@ function register(app) {
       return res.status(429).json({ error: `Ya publicaste el máximo de ${DAILY_LIMIT} búsquedas hoy` });
     }
 
-    // Validate priceMin and priceMax if provided
-    const parsedPriceMin = priceMin !== undefined ? Number(priceMin) : null;
-    const parsedPriceMax = priceMax !== undefined ? Number(priceMax) : null;
-    if (priceMin !== undefined && Number.isNaN(parsedPriceMin)) {
-      return res.status(400).json({ error: 'priceMin debe ser un número válido' });
-    }
-    if (priceMax !== undefined && Number.isNaN(parsedPriceMax)) {
-      return res.status(400).json({ error: 'priceMax debe ser un número válido' });
-    }
-
     const id = `wanted_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const post = db.createWantedPost({
       id,
       userId,
-      title: title.trim(),
+      title,
       description: description || null,
       categoryId,
       type,
@@ -81,6 +96,34 @@ function register(app) {
     const post = db.getWantedPostById(req.params.id);
     if (!post) return res.status(404).json({ error: 'Publicación no encontrada' });
     res.json(post);
+  });
+
+  // PUT /api/wanted/:id - editar una publicación "se busca" (solo el dueño)
+  // A diferencia del resto de wanted.js, usa requireAuth (JWT real) en vez
+  // de confiar en un userId de body, para que un no-dueño reciba 403 de
+  // verdad y no pueda spoofear la autoría solo mandando otro userId.
+  app.put('/api/wanted/:id', requireAuth, (req, res) => {
+    const post = db.getWantedPostById(req.params.id);
+    if (!post) return res.status(404).json({ error: 'Publicación no encontrada' });
+    if (post.userId !== req.user.id) {
+      return res.status(403).json({ error: 'No tienes permiso para editar esta publicación' });
+    }
+    if (post.status === 'resuelta') {
+      return res.status(400).json({ error: 'No se puede editar una búsqueda ya resuelta' });
+    }
+
+    const validated = validateWantedFields(req.body);
+    if (validated.error) return res.status(400).json({ error: validated.error });
+
+    const updated = db.updateWantedPost(req.params.id, {
+      title: validated.title,
+      description: req.body.description || null,
+      categoryId: validated.categoryId,
+      type: validated.type,
+      priceMin: validated.priceMin,
+      priceMax: validated.priceMax,
+    });
+    res.json(updated);
   });
 
   // PATCH /api/wanted/:id/resolve - marcar como resuelta (solo el dueño)

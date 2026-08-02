@@ -1,0 +1,152 @@
+import 'package:flutter/material.dart';
+
+import '../app_theme.dart';
+import '../models.dart';
+
+/// Tarjeta de "búsqueda" (WantedPost) — mismo lenguaje visual que
+/// [ProductCard] (radio, sombra, padding) para que ambas convivan en el
+/// mismo feed del home sin desentonar.
+class WantedPostCard extends StatelessWidget {
+  const WantedPostCard({
+    super.key,
+    required this.post,
+    required this.category,
+    this.onTap,
+    this.width,
+  });
+
+  final WantedPost post;
+  final MarketplaceCategory? category;
+  final VoidCallback? onTap;
+  final double? width;
+
+  @override
+  Widget build(BuildContext context) {
+    final card = DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: AppShadows.soft,
+      ),
+      child: Material(
+        color: AppColors.surface,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(
+            color: AppColors.teal.withValues(alpha: 0.35),
+            width: 1.5,
+          ),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          splashColor: AppColors.teal.withValues(alpha: 0.06),
+          highlightColor: AppColors.teal.withValues(alpha: 0.03),
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: AspectRatio(
+                    aspectRatio: 4 / 3.4,
+                    child: Container(
+                      color: (category?.color ?? AppColors.teal)
+                          .withValues(alpha: 0.10),
+                      alignment: Alignment.center,
+                      child: Icon(
+                        post.type == 'servicio'
+                            ? Icons.build_outlined
+                            : Icons.shopping_bag_outlined,
+                        size: 34,
+                        color: category?.color ?? AppColors.teal,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _SeBuscaTag(post: post),
+                const SizedBox(height: 4),
+                Text(
+                  post.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.label(13.5, weight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  post.description ?? 'Sin descripción',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.body(11.5, color: AppColors.muted),
+                ),
+                const Spacer(),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    if (category != null) ...[
+                      Icon(category!.icon, size: 12, color: category!.color),
+                      const SizedBox(width: 4),
+                    ],
+                    Expanded(
+                      child: Text(
+                        _relativeTime(post.createdAt),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.body(11, color: AppColors.muted),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (width == null) return card;
+    return SizedBox(width: width, child: card);
+  }
+
+  static String _relativeTime(String iso) {
+    final parsed = DateTime.tryParse(iso);
+    if (parsed == null) return '';
+    final diff = DateTime.now().difference(parsed);
+    if (diff.inMinutes < 1) return 'Ahora';
+    if (diff.inHours < 1) return 'Hace ${diff.inMinutes} min';
+    if (diff.inDays < 1) return 'Hace ${diff.inHours} h';
+    if (diff.inDays < 7) return 'Hace ${diff.inDays} d';
+    return 'Hace ${(diff.inDays / 7).floor()} sem';
+  }
+}
+
+class _SeBuscaTag extends StatelessWidget {
+  const _SeBuscaTag({required this.post});
+
+  final WantedPost post;
+
+  @override
+  Widget build(BuildContext context) {
+    final priceMin = post.priceMin;
+    final priceMax = post.priceMax;
+    String label = 'Se busca';
+    if (priceMin != null && priceMax != null) {
+      label = '${Product.formatPrice(priceMin)} - ${Product.formatPrice(priceMax)}';
+    } else if (priceMax != null) {
+      label = 'Hasta ${Product.formatPrice(priceMax)}';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.teal.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: AppTypography.label(12, weight: FontWeight.w800, color: AppColors.teal),
+      ),
+    );
+  }
+}

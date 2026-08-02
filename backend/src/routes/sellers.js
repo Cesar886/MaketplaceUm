@@ -2,9 +2,15 @@ const path = require('path');
 const fs = require('fs');
 const sharp = require('sharp');
 const multer = require('multer');
-const { sellers, saveData, updateSellerField } = require('../data');
+const { sellers, categories, updateSellerField } = require('../data');
 const { requireAuth } = require('../auth');
 const db = require('../database');
+const {
+  validateName,
+  validatePhone,
+  validateBusinessDescription,
+  validateBusinessCategory,
+} = require('../validation/sellerProfile');
 
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
 
@@ -33,7 +39,9 @@ function register(app) {
     res.json(seller);
   });
 
-  // PATCH /api/sellers/:id — editar nombre/teléfono del propio perfil
+  // PATCH /api/sellers/:id — editar el propio perfil (usuario o negocio).
+  // Campos de usuario: name, phone. Campos exclusivos de negocio
+  // (businessDescription, businessCategory): solo se aplican si isBusiness.
   app.patch('/api/sellers/:id', requireAuth, (req, res) => {
     if (req.user.id !== req.params.id) {
       return res.status(403).json({ error: 'No autorizado' });
@@ -41,14 +49,41 @@ function register(app) {
     const seller = sellers.find(s => s.id === req.params.id);
     if (!seller) return res.status(404).json({ error: 'Vendedor no encontrado' });
 
-    const { name, phone } = req.body;
-    if (typeof name === 'string' && name.trim()) {
-      updateSellerField(seller.id, 'name', name.trim());
-      const initials = name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+    const { name, phone, businessDescription, businessCategory } = req.body;
+
+    // ─── Validar todo antes de escribir nada (evita estado a medias) ──
+    if (name !== undefined) {
+      const nameError = validateName(name);
+      if (nameError) return res.status(400).json({ error: nameError });
+    }
+    const phoneError = validatePhone(phone);
+    if (phoneError) return res.status(400).json({ error: phoneError });
+
+    if (seller.isBusiness) {
+      const descriptionError = validateBusinessDescription(businessDescription);
+      if (descriptionError) return res.status(400).json({ error: descriptionError });
+      const categoryIds = categories.map(c => c.id);
+      const categoryError = validateBusinessCategory(businessCategory, categoryIds);
+      if (categoryError) return res.status(400).json({ error: categoryError });
+    }
+
+    // ─── Aplicar cambios ────────────────────────────────────────────
+    if (name !== undefined) {
+      const trimmedName = name.trim();
+      updateSellerField(seller.id, 'name', trimmedName);
+      const initials = trimmedName.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
       updateSellerField(seller.id, 'avatarInitials', initials);
     }
-    if (typeof phone === 'string') {
+    if (phone !== undefined) {
       updateSellerField(seller.id, 'phone', phone.trim());
+    }
+    if (seller.isBusiness) {
+      if (businessDescription !== undefined) {
+        updateSellerField(seller.id, 'businessDescription', businessDescription.trim());
+      }
+      if (businessCategory !== undefined) {
+        updateSellerField(seller.id, 'businessCategory', businessCategory);
+      }
     }
 
     const updated = sellers.find(s => s.id === req.params.id);
@@ -56,8 +91,23 @@ function register(app) {
     res.json({ ...updated, phone: rawRow.phone || null, email: rawRow.email || null });
   });
 
-  // POST /api/sellers/:id/logo – subir logo del negocio (multipart)
-  app.post('/api/sellers/:id/logo', (req, res) => {
+  // Borra un archivo de /uploads referenciado por una URL pública tipo
+  // "/uploads/xxx.webp", sin lanzar si ya no existe (best-effort).
+  function deleteUploadedFile(publicUrl) {
+    if (!publicUrl || !publicUrl.startsWith('/uploads/')) return;
+    const filePath = path.join(UPLOADS_DIR, path.basename(publicUrl));
+    fs.unlink(filePath, (err) => {
+      if (err && err.code !== 'ENOENT') {
+        console.error('Error eliminando archivo huérfano:', filePath, err.message);
+      }
+    });
+  }
+
+  // POST /api/sellers/:id/logo – subir logo del negocio (multipart, dueño-only)
+  app.post('/api/sellers/:id/logo', requireAuth, (req, res) => {
+    if (req.user.id !== req.params.id) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
     const seller = sellers.find(s => s.id === req.params.id);
     if (!seller) return res.status(404).json({ error: 'Vendedor no encontrado' });
 
@@ -69,6 +119,8 @@ function register(app) {
         return res.status(400).json({ error: 'No se envió ningún archivo' });
       }
 
+      const previousLogoUrl = seller.logoUrl;
+
       // Convertir a WebP
       const parsed = path.parse(req.file.path);
       const webpPath = path.join(parsed.dir, parsed.name + '.webp');
@@ -79,20 +131,18 @@ function register(app) {
         .webp({ quality: 80 })
         .toFile(webpPath)
         .then(() => {
-          // Eliminar original
           fs.unlinkSync(req.file.path);
-
-          // Actualizar seller
-          seller.logoUrl = publicUrl;
-          saveData();
-          res.json(seller);
+          updateSellerField(seller.id, 'logoUrl', publicUrl);
+          deleteUploadedFile(previousLogoUrl);
+          res.json(sellers.find(s => s.id === seller.id));
         })
         .catch((convErr) => {
           console.error('Error convirtiendo logo a WebP:', convErr);
-          // Fallback: usar ruta original
-          seller.logoUrl = '/uploads/' + path.basename(req.file.path);
-          saveData();
-          res.json(seller);
+          // Fallback: usar la ruta original (el archivo subido sí existe en disco)
+          const fallbackUrl = '/uploads/' + path.basename(req.file.path);
+          updateSellerField(seller.id, 'logoUrl', fallbackUrl);
+          deleteUploadedFile(previousLogoUrl);
+          res.json(sellers.find(s => s.id === seller.id));
         });
     });
   });

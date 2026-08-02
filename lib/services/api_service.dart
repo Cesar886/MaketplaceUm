@@ -178,6 +178,38 @@ class ApiService {
     return data.map((e) => WantedPost.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// Edita una publicación "se busca" existente (solo el dueño). A diferencia
+  /// de [createWantedPost], usa el JWT del usuario (requireAuth en backend)
+  /// en vez de mandar el userId en el body, para que un no-dueño reciba un
+  /// 403 real y no pueda spoofear la autoría.
+  static Future<WantedPost> editWantedPost({
+    required String id,
+    required String title,
+    String? description,
+    required String categoryId,
+    required String type,
+    double? priceMin,
+    double? priceMax,
+  }) async {
+    final res = await _client.put(
+      _uri('/wanted/$id'),
+      headers: _authHeaders,
+      body: jsonEncode({
+        'title': title,
+        'description': description,
+        'categoryId': categoryId,
+        'type': type,
+        if (priceMin != null) 'priceMin': priceMin,
+        if (priceMax != null) 'priceMax': priceMax,
+      }),
+    );
+    if (res.statusCode != 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['error'] ?? 'Error al editar la publicación (${res.statusCode})');
+    }
+    return WantedPost.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
   static Future<WantedPost> getWantedPost(String id) async {
     final res = await _client.get(_uri('/wanted/$id'));
     if (res.statusCode != 200) throw Exception('Wanted post not found');
@@ -289,6 +321,50 @@ class ApiService {
     return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  /// Edita los campos generales de un producto ya existente (solo el dueño):
+  /// título, descripción, categoría, imágenes, extras y días disponibles.
+  /// El precio NO se edita aquí — usa [updateProduct] para eso, que tiene
+  /// su propia lógica de historial/anti-fraude en el backend.
+  ///
+  /// [existingImageUrls] son las URLs (ya subidas antes) que se conservan;
+  /// cualquier URL vieja que no esté en esta lista se borra del storage en
+  /// el backend. [newImagePaths] son archivos locales nuevos a subir.
+  static Future<Product> editProduct({
+    required String productId,
+    required String title,
+    required String category,
+    required String description,
+    List<Map<String, dynamic>> extras = const [],
+    List<int> availableDays = const [],
+    List<String> existingImageUrls = const [],
+    List<String>? newImagePaths,
+  }) async {
+    if (_token == null) {
+      throw Exception('No hay sesión activa en el backend. Vuelve a iniciar sesión.');
+    }
+
+    final request = http.MultipartRequest('PUT', _uri('/products/$productId'));
+    request.fields['title'] = title;
+    request.fields['category'] = category;
+    request.fields['description'] = description;
+    request.fields['extras'] = jsonEncode(extras);
+    request.fields['availableDays'] = jsonEncode(availableDays);
+    request.fields['existingImages'] = jsonEncode(existingImageUrls);
+    request.headers['Authorization'] = 'Bearer $_token';
+
+    for (final path in newImagePaths ?? const <String>[]) {
+      request.files.add(await http.MultipartFile.fromPath('images', path));
+    }
+
+    final streamed = await _client.send(request);
+    final res = await http.Response.fromStream(streamed);
+    if (res.statusCode != 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['error'] ?? 'Error al editar producto (${res.statusCode})');
+    }
+    return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
   static Future<Product> toggleFavorite(String productId) async {
     final res = await _client.patch(
       _uri('/products/$productId/favorite'),
@@ -359,6 +435,25 @@ class ApiService {
     return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  /// Fija el stock de un producto a una cantidad exacta (solo el dueño).
+  /// Usa `set` en vez de `decrement`, útil para la pantalla de edición.
+  static Future<Product> setProductStock(
+    String productId, {
+    required int quantity,
+    required bool resetDaily,
+  }) async {
+    final res = await _client.patch(
+      _uri('/products/$productId/stock'),
+      headers: _authHeaders,
+      body: jsonEncode({'set': quantity, 'stock_reset_daily': resetDaily}),
+    );
+    if (res.statusCode != 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['error'] ?? 'Error al actualizar el stock');
+    }
+    return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
   /// Actualiza los días disponibles de un producto (solo el dueño).
   static Future<Product> updateProductDays(
       String productId, List<int> availableDays) async {
@@ -394,16 +489,23 @@ class ApiService {
     required String sellerId,
     String? name,
     String? phone,
+    String? businessDescription,
+    String? businessCategory,
   }) async {
     final body = <String, dynamic>{};
     if (name != null) body['name'] = name;
     if (phone != null) body['phone'] = phone;
+    if (businessDescription != null) body['businessDescription'] = businessDescription;
+    if (businessCategory != null) body['businessCategory'] = businessCategory;
     final res = await _client.patch(
       _uri('/sellers/$sellerId'),
       headers: _authHeaders,
       body: jsonEncode(body),
     );
-    if (res.statusCode != 200) throw Exception('Error al actualizar perfil');
+    if (res.statusCode != 200) {
+      final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(decoded['error'] ?? 'Error al actualizar perfil');
+    }
     return Seller.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 

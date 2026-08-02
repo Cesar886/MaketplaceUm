@@ -12,7 +12,11 @@ import '../services/api_service.dart';
 import 'auth/login_screen.dart';
 
 class PublishProductScreen extends StatefulWidget {
-  const PublishProductScreen({super.key});
+  const PublishProductScreen({super.key, this.editingProduct});
+
+  /// Si viene no-nulo, la pantalla entra en modo edición: precarga los
+  /// campos de este producto y el botón llama a PUT en vez de POST.
+  final Product? editingProduct;
 
   @override
   State<PublishProductScreen> createState() => _PublishProductScreenState();
@@ -34,7 +38,12 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   bool _loading = true;
   bool _publishing = false;
 
+  bool get _isEditing => widget.editingProduct != null;
+
   // ─── Imágenes reales ─────────────────────────────────────
+  // _existingImageUrls: imágenes ya subidas que se conservan (solo en modo
+  // edición). _selectedImages: archivos locales nuevos por subir.
+  final List<String> _existingImageUrls = [];
   final List<XFile> _selectedImages = [];
   final _picker = ImagePicker();
 
@@ -51,7 +60,32 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   @override
   void initState() {
     super.initState();
+    _prefillFromEditingProduct();
     _loadData();
+  }
+
+  /// Si estamos editando, precarga todos los campos con los valores
+  /// actuales del producto. La categoría se ajusta de nuevo en _loadData
+  /// una vez que la lista de categorías está disponible.
+  void _prefillFromEditingProduct() {
+    final product = widget.editingProduct;
+    if (product == null) return;
+
+    _titleController.text = product.title;
+    _descriptionController.text = product.description;
+    _priceController.text = product.price.toStringAsFixed(
+      product.price == product.price.roundToDouble() ? 0 : 2,
+    );
+    _selectedCategoryId = product.category.id;
+    _selectedDays.addAll(product.availableDays);
+    _existingImageUrls.addAll(product.images);
+    _extras.addAll(product.extras);
+
+    if (product.stockQuantity != null) {
+      _isStockLimited = true;
+      _autoResetStock = product.stockResetDaily;
+      _stockController.text = product.stockQuantity.toString();
+    }
   }
 
   Future<void> _loadData() async {
@@ -64,7 +98,11 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       setState(() {
         _categories = results[0] as List<MarketplaceCategory>;
         _plans = results[1] as List<HighlightPlan>;
-        if (_categories.isNotEmpty) {
+        final editingCategoryId = widget.editingProduct?.category.id;
+        if (editingCategoryId != null &&
+            _categories.any((c) => c.id == editingCategoryId)) {
+          _selectedCategoryId = editingCategoryId;
+        } else if (_categories.isNotEmpty) {
           _selectedCategoryId = _categories.first.id;
         }
         _loading = false;
@@ -83,9 +121,11 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     }
   }
 
+  int get _totalImageCount => _existingImageUrls.length + _selectedImages.length;
+
   Future<void> _pickImages() async {
     final picked = await _picker.pickMultiImage(
-      limit: 5 - _selectedImages.length,
+      limit: 5 - _totalImageCount,
       imageQuality: 80,
     );
     if (picked.isNotEmpty) {
@@ -107,6 +147,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     setState(() => _selectedImages.removeAt(index));
   }
 
+  void _removeExistingImage(int index) {
+    setState(() => _existingImageUrls.removeAt(index));
+  }
+
   Future<void> _publish() async {
     final title = _titleController.text.trim();
     final description = _descriptionController.text.trim();
@@ -124,7 +168,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       _showError('Escribe el precio del producto');
       return;
     }
-    if (_selectedImages.isEmpty) {
+    if (_totalImageCount == 0) {
       _showError('Agrega al menos una foto del producto');
       return;
     }
@@ -146,7 +190,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
 
     setState(() => _publishing = true);
     try {
-      // Asegurar que tenemos un token JWT del backend antes de publicar
+      // Asegurar que tenemos un token JWT del backend antes de publicar/editar
       final auth = context.read<AuthProvider>();
       final synced = await auth.ensureBackendSync();
       if (!synced) {
@@ -154,35 +198,108 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
         return;
       }
 
-      // El vendedor se obtiene del JWT en el backend (requireAuth),
-      // no se envía desde el cliente.
-      await ApiService.createProduct(
-        title: title,
-        price: price,
-        category: _selectedCategoryId,
-        description: description,
-        status: 'available', // El backend deriva de availableDays
-        availableDays: _selectedDays.toList()..sort(),
-        extras: _extras.map((e) => e.toJson()).toList(),
-        imagePaths: _selectedImages.map((xf) => xf.path).toList(),
-        stockQuantity: stockQuantity,
-        stockResetDaily: stockResetDaily,
-        stockInitial: stockInitial,
-      );
-      if (!mounted) return;
-      _titleController.clear();
-      _descriptionController.clear();
-      _priceController.clear();
-      setState(() => _selectedImages.clear());
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Producto publicado exitosamente')),
-      );
+      if (_isEditing) {
+        await _submitEdit(
+          title: title,
+          price: price,
+          description: description,
+          stockQuantity: stockQuantity,
+          stockResetDaily: stockResetDaily,
+        );
+      } else {
+        // El vendedor se obtiene del JWT en el backend (requireAuth),
+        // no se envía desde el cliente.
+        await ApiService.createProduct(
+          title: title,
+          price: price,
+          category: _selectedCategoryId,
+          description: description,
+          status: 'available', // El backend deriva de availableDays
+          availableDays: _selectedDays.toList()..sort(),
+          extras: _extras.map((e) => e.toJson()).toList(),
+          imagePaths: _selectedImages.map((xf) => xf.path).toList(),
+          stockQuantity: stockQuantity,
+          stockResetDaily: stockResetDaily,
+          stockInitial: stockInitial,
+        );
+        if (!mounted) return;
+        _titleController.clear();
+        _descriptionController.clear();
+        _priceController.clear();
+        setState(() => _selectedImages.clear());
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Producto publicado exitosamente')),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
-      _showError('Error al publicar: $e');
+      _showError(_isEditing ? 'Error al guardar los cambios: $e' : 'Error al publicar: $e');
     } finally {
       if (mounted) setState(() => _publishing = false);
     }
+  }
+
+  /// Aplica los cambios de edición. Los campos generales (título,
+  /// descripción, categoría, imágenes, extras, días) van todos en un solo
+  /// PUT. El precio y el stock tienen su propia lógica en el backend
+  /// (anti-fraude / reset diario) así que se mandan por separado, y si
+  /// alguno de esos dos falla, se avisa sin perder el resto de los cambios
+  /// ya guardados.
+  Future<void> _submitEdit({
+    required String title,
+    required String price,
+    required String description,
+    int? stockQuantity,
+    required bool stockResetDaily,
+  }) async {
+    final product = widget.editingProduct!;
+
+    await ApiService.editProduct(
+      productId: product.id,
+      title: title,
+      category: _selectedCategoryId,
+      description: description,
+      extras: _extras.map((e) => e.toJson()).toList(),
+      availableDays: _selectedDays.toList()..sort(),
+      existingImageUrls: _existingImageUrls,
+      newImagePaths: _selectedImages.map((xf) => xf.path).toList(),
+    );
+
+    final warnings = <String>[];
+
+    final newPrice = num.tryParse(price);
+    if (newPrice != null && newPrice != product.price) {
+      try {
+        await ApiService.updateProduct(product.id, newPrice);
+      } catch (e) {
+        warnings.add('El precio no se pudo actualizar: $e');
+      }
+    }
+
+    final stockChanged = _isStockLimited
+        ? (stockQuantity != product.stockQuantity || stockResetDaily != product.stockResetDaily)
+        : product.stockQuantity != null;
+    if (_isStockLimited && stockChanged && stockQuantity != null) {
+      try {
+        await ApiService.setProductStock(
+          product.id,
+          quantity: stockQuantity,
+          resetDaily: stockResetDaily,
+        );
+      } catch (e) {
+        warnings.add('El stock no se pudo actualizar: $e');
+      }
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(warnings.isEmpty
+            ? 'Cambios guardados exitosamente'
+            : 'Producto actualizado, con avisos: ${warnings.join(' · ')}'),
+      ),
+    );
+    Navigator.of(context).pop(true);
   }
 
   void _showError(String msg) {
@@ -537,10 +654,12 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
         children: [
-          Text('Publicar producto', style: AppTypography.heading(22)),
+          Text(_isEditing ? 'Editar producto' : 'Publicar producto', style: AppTypography.heading(22)),
           const SizedBox(height: 6),
           Text(
-            'Completa la información básica para publicar tu producto en el marketplace.',
+            _isEditing
+                ? 'Actualiza la información de tu publicación.'
+                : 'Completa la información básica para publicar tu producto en el marketplace.',
             style: AppTypography.body(14, color: AppColors.muted),
           ),
           const SizedBox(height: 20),
@@ -554,11 +673,18 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
               scrollDirection: Axis.horizontal,
               children: [
                 _AddPhotoTile(
-                  hasImages: _selectedImages.isNotEmpty,
+                  hasImages: _totalImageCount > 0,
                   onPickGallery: _pickImages,
                   onPickCamera: _pickCamera,
                 ),
                 const SizedBox(width: 10),
+                for (var i = 0; i < _existingImageUrls.length; i++) ...[
+                  _ExistingImageThumbnail(
+                    url: '${ApiService.baseUrl}${_existingImageUrls[i]}',
+                    onRemove: () => _removeExistingImage(i),
+                  ),
+                  const SizedBox(width: 10),
+                ],
                 for (var i = 0; i < _selectedImages.length; i++) ...[
                   _ImageThumbnail(
                     file: _selectedImages[i],
@@ -654,7 +780,9 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.publish_rounded),
-            label: Text(_publishing ? 'Publicando...' : 'Publicar ahora'),
+            label: Text(_publishing
+                ? (_isEditing ? 'Guardando...' : 'Publicando...')
+                : (_isEditing ? 'Guardar cambios' : 'Publicar ahora')),
           ),
         ],
       ),
@@ -755,6 +883,59 @@ class _ImageThumbnail extends StatelessWidget {
             borderRadius: BorderRadius.circular(7),
             child: Image.file(
               File(file.path),
+              fit: BoxFit.cover,
+              width: 104,
+              height: 110,
+              errorBuilder: (_, _, _) => const Icon(Icons.broken_image_rounded, color: AppColors.muted),
+            ),
+          ),
+        ),
+        Positioned(
+          right: -6,
+          top: -6,
+          child: GestureDetector(
+            onTap: onRemove,
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: const BoxDecoration(
+                color: AppColors.danger,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.close_rounded, size: 16, color: Colors.white),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Miniatura de una imagen ya subida (modo edición) ─────────
+class _ExistingImageThumbnail extends StatelessWidget {
+  const _ExistingImageThumbnail({
+    required this.url,
+    required this.onRemove,
+  });
+
+  final String url;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: 104,
+          height: 110,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(7),
+            child: Image.network(
+              url,
               fit: BoxFit.cover,
               width: 104,
               height: 110,

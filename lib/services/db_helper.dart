@@ -294,6 +294,21 @@ class DBHelper {
     return result.isEmpty ? null : result.first;
   }
 
+  /// Actualiza nombre y/o teléfono del usuario local, en sync con el backend.
+  Future<void> updateUserFields(int userId, {String? name, String? phone}) async {
+    final db = await database;
+    final values = <String, dynamic>{};
+    if (name != null) values['name'] = name;
+    if (phone != null) values['phone'] = phone;
+    if (values.isEmpty) return;
+    await db.update(
+      'users',
+      values,
+      where: 'id = ?',
+      whereArgs: [userId],
+    );
+  }
+
   Future<List<Map<String, dynamic>>> getPendingVerifications() async {
     final db = await database;
     return await db.query(
