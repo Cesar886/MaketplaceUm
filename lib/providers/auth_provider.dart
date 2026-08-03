@@ -425,6 +425,8 @@ class AuthProvider extends ChangeNotifier {
     String? businessDescription,
     String? businessCategory,
     Map<int, BusinessHoursRange>? businessHours,
+    double? locationLat,
+    double? locationLng,
   }) async {
     if (logoPath != null && _backendSellerId != null) {
       await ApiService.uploadBusinessLogo(
@@ -437,7 +439,8 @@ class AuthProvider extends ChangeNotifier {
         phone != null ||
         businessDescription != null ||
         businessCategory != null ||
-        businessHours != null;
+        businessHours != null ||
+        (locationLat != null && locationLng != null);
     if (hasProfileFields && _backendSellerId != null) {
       await ApiService.updateSellerProfile(
         sellerId: _backendSellerId!,
@@ -446,6 +449,8 @@ class AuthProvider extends ChangeNotifier {
         businessDescription: businessDescription,
         businessCategory: businessCategory,
         businessHours: businessHours,
+        locationLat: locationLat,
+        locationLng: locationLng,
       );
     }
     if (name != null || phone != null) {

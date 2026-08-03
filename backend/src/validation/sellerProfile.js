@@ -111,6 +111,28 @@ function validateBusinessHours(businessHours) {
   return { value: normalized };
 }
 
+// Ubicación geográfica opcional (perfil de negocio o publicación puntual).
+// Debe venir como par completo (ambos presentes) o ambos ausentes/null —
+// no se acepta lat sin lng ni viceversa. Devuelve { error } o
+// { value: { lat, lng } } / { value: null } si no se envió ubicación.
+function validateLocation(lat, lng) {
+  const latMissing = lat === undefined || lat === null || lat === '';
+  const lngMissing = lng === undefined || lng === null || lng === '';
+  if (latMissing && lngMissing) return { value: null };
+  if (latMissing || lngMissing) {
+    return { error: 'Debes enviar latitud y longitud juntas' };
+  }
+  const parsedLat = Number(lat);
+  const parsedLng = Number(lng);
+  if (Number.isNaN(parsedLat) || parsedLat < -90 || parsedLat > 90) {
+    return { error: 'Latitud inválida' };
+  }
+  if (Number.isNaN(parsedLng) || parsedLng < -180 || parsedLng > 180) {
+    return { error: 'Longitud inválida' };
+  }
+  return { value: { lat: parsedLat, lng: parsedLng } };
+}
+
 module.exports = {
   MIN_NAME_LENGTH,
   MAX_NAME_LENGTH,
@@ -123,4 +145,5 @@ module.exports = {
   validateBusinessDescription,
   validateBusinessCategory,
   validateBusinessHours,
+  validateLocation,
 };

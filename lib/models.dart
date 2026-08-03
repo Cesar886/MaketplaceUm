@@ -161,6 +161,8 @@ class Seller {
     this.businessDescription,
     this.businessCategory,
     this.businessHours = const {},
+    this.locationLat,
+    this.locationLng,
   });
 
   factory Seller.fromJson(Map<String, dynamic> json) {
@@ -178,6 +180,8 @@ class Seller {
       businessDescription: json['businessDescription'] as String?,
       businessCategory: json['businessCategory'] as String?,
       businessHours: businessHoursFromJson(json['businessHours']),
+      locationLat: (json['locationLat'] as num?)?.toDouble(),
+      locationLng: (json['locationLng'] as num?)?.toDouble(),
     );
   }
 
@@ -194,6 +198,10 @@ class Seller {
   final String? businessDescription;
   final String? businessCategory;
   final Map<int, BusinessHoursRange> businessHours;
+  final double? locationLat;
+  final double? locationLng;
+
+  bool get hasLocation => locationLat != null && locationLng != null;
 
   /// null = no aplica (no es negocio o no configuró horario, así que no hay
   /// nada que decidir); true/false = abierto/cerrado en este momento según
@@ -310,6 +318,8 @@ class Product {
     this.priceMax,
     this.wantedStatus,
     this.wantedKind,
+    this.locationLat,
+    this.locationLng,
   });
 
   /// Adapta un [WantedPost] a la forma de [Product] para que
@@ -354,6 +364,8 @@ class Product {
       priceMax: post.priceMax,
       wantedStatus: post.status,
       wantedKind: post.type,
+      locationLat: post.locationLat,
+      locationLng: post.locationLng,
     );
   }
 
@@ -493,6 +505,8 @@ class Product {
       productReviews: (json['productReviews'] as num?)?.toInt() ?? 0,
       userRating: (json['userRating'] as num?)?.toInt(),
       postType: json['postType'] as String? ?? 'producto',
+      locationLat: (json['locationLat'] as num?)?.toDouble(),
+      locationLng: (json['locationLng'] as num?)?.toDouble(),
     );
   }
 
@@ -532,7 +546,13 @@ class Product {
   final String? wantedStatus; // 'abierta' | 'resuelta'
   final String? wantedKind; // 'producto' | 'servicio' (lo que se busca)
 
+  // Ubicación puntual de esta publicación (Nivel 2, solo negocios). No
+  // confundir con la ubicación de perfil del vendedor ([Seller.locationLat]).
+  final double? locationLat;
+  final double? locationLng;
+
   bool get isWantedPost => postType == 'se_busca';
+  bool get hasLocation => locationLat != null && locationLng != null;
 }
 
 class CartItem {
@@ -620,6 +640,8 @@ class WantedPost {
     this.resolvedAt,
     this.sellerObj,
     this.categoryObj,
+    this.locationLat,
+    this.locationLng,
   });
 
   factory WantedPost.fromJson(Map<String, dynamic> json) {
@@ -645,6 +667,8 @@ class WantedPost {
               json['categoryObj'] as Map<String, dynamic>,
             )
           : null,
+      locationLat: (json['locationLat'] as num?)?.toDouble(),
+      locationLng: (json['locationLng'] as num?)?.toDouble(),
     );
   }
 
@@ -663,6 +687,8 @@ class WantedPost {
   final String? resolvedAt;
   final Seller? sellerObj;
   final MarketplaceCategory? categoryObj;
+  final double? locationLat;
+  final double? locationLng;
 
   bool get isService => type == 'servicio';
   bool get isResolved => status == 'resuelta';

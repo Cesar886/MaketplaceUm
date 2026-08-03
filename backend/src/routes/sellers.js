@@ -11,6 +11,7 @@ const {
   validateBusinessDescription,
   validateBusinessCategory,
   validateBusinessHours,
+  validateLocation,
 } = require('../validation/sellerProfile');
 
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
@@ -57,7 +58,7 @@ function register(app) {
     const seller = sellers.find(s => s.id === req.params.id);
     if (!seller) return res.status(404).json({ error: 'Vendedor no encontrado' });
 
-    const { name, phone, businessDescription, businessCategory, businessHours } = req.body;
+    const { name, phone, businessDescription, businessCategory, businessHours, locationLat, locationLng } = req.body;
 
     // ─── Validar todo antes de escribir nada (evita estado a medias) ──
     if (name !== undefined) {
@@ -68,6 +69,10 @@ function register(app) {
     if (phoneError) return res.status(400).json({ error: phoneError });
 
     let normalizedHours;
+    let normalizedLocation;
+    // La ubicación de perfil (Nivel 1) es exclusiva de negocios, igual que
+    // horario/descripción/categoría: un usuario normal no puede guardarla
+    // mandando estos campos manualmente al endpoint.
     if (seller.isBusiness) {
       const descriptionError = validateBusinessDescription(businessDescription);
       if (descriptionError) return res.status(400).json({ error: descriptionError });
@@ -78,6 +83,11 @@ function register(app) {
         const hoursResult = validateBusinessHours(businessHours);
         if (hoursResult.error) return res.status(400).json({ error: hoursResult.error });
         normalizedHours = hoursResult.value;
+      }
+      if (locationLat !== undefined || locationLng !== undefined) {
+        const locationResult = validateLocation(locationLat, locationLng);
+        if (locationResult.error) return res.status(400).json({ error: locationResult.error });
+        normalizedLocation = locationResult.value; // { lat, lng } o null (borra la ubicación)
       }
     }
 
@@ -100,6 +110,10 @@ function register(app) {
       }
       if (normalizedHours !== undefined) {
         updateSellerField(seller.id, 'businessHours', JSON.stringify(normalizedHours));
+      }
+      if (normalizedLocation !== undefined) {
+        updateSellerField(seller.id, 'location_lat', normalizedLocation ? normalizedLocation.lat : null);
+        updateSellerField(seller.id, 'location_lng', normalizedLocation ? normalizedLocation.lng : null);
       }
     }
 

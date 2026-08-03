@@ -9,7 +9,14 @@ import '../mock_data.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../widgets/location_picker.dart';
 import '../widgets/publish_auth_gate.dart';
+import '../widgets/static_mini_map.dart';
+
+/// Elección de ubicación para una publicación de negocio (Nivel 2): usar la
+/// ubicación guardada en el perfil, elegir una puntual para esta
+/// publicación, o no agregar ninguna.
+enum _LocationChoice { useSaved, custom, none }
 
 class PublishProductScreen extends StatefulWidget {
   const PublishProductScreen({super.key, this.editingProduct});
@@ -63,6 +70,15 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   bool _autoResetStock = false;
   final _stockController = TextEditingController();
 
+  // ─── Ubicación puntual de la publicación (Nivel 2, solo negocios) ──
+  double? _savedSellerLat;
+  double? _savedSellerLng;
+  bool get _hasSavedSellerLocation =>
+      _savedSellerLat != null && _savedSellerLng != null;
+  _LocationChoice _locationChoice = _LocationChoice.none;
+  double? _customLocationLat;
+  double? _customLocationLng;
+
   @override
   void initState() {
     super.initState();
@@ -96,9 +112,14 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
 
   Future<void> _loadData() async {
     try {
+      final auth = context.read<AuthProvider>();
       final results = await Future.wait([
         ApiService.getCategories(),
         ApiService.getHighlightPlans(),
+        if (!_isEditing &&
+            auth.accountType == AccountType.negocio &&
+            auth.backendSellerId != null)
+          ApiService.getSeller(auth.backendSellerId!),
       ]);
       if (!mounted) return;
       setState(() {
@@ -110,6 +131,14 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           _selectedCategoryId = editingCategoryId;
         } else if (_categories.isNotEmpty) {
           _selectedCategoryId = _categories.first.id;
+        }
+        if (results.length > 2) {
+          final seller = results[2] as Seller;
+          _savedSellerLat = seller.locationLat;
+          _savedSellerLng = seller.locationLng;
+          if (_hasSavedSellerLocation) {
+            _locationChoice = _LocationChoice.useSaved;
+          }
         }
         _loading = false;
       });
@@ -156,6 +185,41 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
 
   void _removeExistingImage(int index) {
     setState(() => _existingImageUrls.removeAt(index));
+  }
+
+  Future<void> _pickCustomLocation() async {
+    final picked = await LocationPickerScreen.open(
+      context,
+      initialLat: _customLocationLat,
+      initialLng: _customLocationLng,
+      title: 'Ubicación de esta publicación',
+    );
+    if (picked != null) {
+      setState(() {
+        _customLocationLat = picked.latitude;
+        _customLocationLng = picked.longitude;
+        _locationChoice = _LocationChoice.custom;
+      });
+    }
+  }
+
+  /// Ubicación final a enviar con la publicación, según la elección del
+  /// usuario (o null si no aplica / no configuró ninguna).
+  (double, double)? get _resolvedLocation {
+    switch (_locationChoice) {
+      case _LocationChoice.useSaved:
+        if (_hasSavedSellerLocation) {
+          return (_savedSellerLat!, _savedSellerLng!);
+        }
+        return null;
+      case _LocationChoice.custom:
+        if (_customLocationLat != null && _customLocationLng != null) {
+          return (_customLocationLat!, _customLocationLng!);
+        }
+        return null;
+      case _LocationChoice.none:
+        return null;
+    }
   }
 
   Future<void> _publish() async {
@@ -216,6 +280,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       } else {
         // El vendedor se obtiene del JWT en el backend (requireAuth),
         // no se envía desde el cliente.
+        final location = _resolvedLocation;
         await ApiService.createProduct(
           title: title,
           price: price,
@@ -228,6 +293,8 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           stockQuantity: stockQuantity,
           stockResetDaily: stockResetDaily,
           stockInitial: stockInitial,
+          locationLat: location?.$1,
+          locationLng: location?.$2,
         );
         if (!mounted) return;
         _titleController.clear();
@@ -755,6 +822,70 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     );
   }
 
+  /// Sección de ubicación puntual de la publicación — solo visible para
+  /// cuentas de negocio (Nivel 2). Estudiantes/usuarios normales no ven
+  /// nada aquí, ni siquiera la opción de agregar ubicación.
+  Widget _buildLocationSection() {
+    final auth = context.watch<AuthProvider>();
+    if (auth.accountType != AccountType.negocio) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Ubicación (opcional)', style: AppTypography.heading(15)),
+        const SizedBox(height: 10),
+        if (_hasSavedSellerLocation) ...[
+          RadioListTile<_LocationChoice>(
+            contentPadding: EdgeInsets.zero,
+            value: _LocationChoice.useSaved,
+            groupValue: _locationChoice,
+            onChanged: (v) => setState(() => _locationChoice = v!),
+            title: const Text('Usar la ubicación de mi negocio'),
+            subtitle: const Text('Recomendado — un solo tap'),
+          ),
+          RadioListTile<_LocationChoice>(
+            contentPadding: EdgeInsets.zero,
+            value: _LocationChoice.custom,
+            groupValue: _locationChoice,
+            // No marca el radio de inmediato: solo cambia a "custom" si el
+            // usuario efectivamente confirma un punto en el selector (ver
+            // _pickCustomLocation). Si cancela, el estado no queda a medias
+            // (radio en "custom" pero sin coordenadas → se perdería la
+            // ubicación silenciosamente al publicar).
+            onChanged: (_) => _pickCustomLocation(),
+            title: const Text('Elegir otra ubicación para esta publicación'),
+          ),
+          RadioListTile<_LocationChoice>(
+            contentPadding: EdgeInsets.zero,
+            value: _LocationChoice.none,
+            groupValue: _locationChoice,
+            onChanged: (v) => setState(() => _locationChoice = v!),
+            title: const Text('No agregar ubicación'),
+          ),
+        ] else
+          OutlinedButton.icon(
+            onPressed: _pickCustomLocation,
+            icon: const Icon(Icons.map_outlined),
+            label: Text(
+              _locationChoice == _LocationChoice.custom
+                  ? 'Cambiar ubicación de esta publicación'
+                  : 'Elegir ubicación en el mapa (opcional)',
+            ),
+          ),
+        if (_locationChoice == _LocationChoice.custom &&
+            _customLocationLat != null) ...[
+          const SizedBox(height: 10),
+          StaticMiniMap(
+            lat: _customLocationLat,
+            lng: _customLocationLng,
+            showOpenInMapsButton: false,
+            height: 120,
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildForm() {
     return ListView(
       padding: EdgeInsets.fromLTRB(18, 18, 18, _isEditing ? 12 : 24),
@@ -867,6 +998,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
         _buildStockSection(),
         const SizedBox(height: 12),
         _buildExtrasSection(),
+        if (!_isEditing) ...[
+          const SizedBox(height: 16),
+          _buildLocationSection(),
+        ],
         if (_plans.isNotEmpty) ...[
           const SizedBox(height: 24),
           _HighlightSection(

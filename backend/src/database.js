@@ -482,6 +482,30 @@ function runMigrations() {
     db.exec(`ALTER TABLE sellers ADD COLUMN businessHours TEXT`);
   }
 
+  // 20. Ubicación geográfica opcional (lat/lng), nullable en las tres tablas:
+  //     sellers (ubicación guardada de perfil de negocio), products y
+  //     wanted_posts (ubicación puntual de una publicación, hoy solo usada
+  //     por cuentas de negocio, pero disponible para todos a futuro).
+  const sellerColsLoc = db.prepare("PRAGMA table_info('sellers')").all();
+  if (!sellerColsLoc.some(c => c.name === 'location_lat')) {
+    db.exec(`
+      ALTER TABLE sellers ADD COLUMN location_lat REAL;
+      ALTER TABLE sellers ADD COLUMN location_lng REAL;
+    `);
+  }
+  if (!cols.some(c => c.name === 'location_lat')) {
+    db.exec(`
+      ALTER TABLE products ADD COLUMN location_lat REAL;
+      ALTER TABLE products ADD COLUMN location_lng REAL;
+    `);
+  }
+  if (!wantedCols.some(c => c.name === 'location_lat')) {
+    db.exec(`
+      ALTER TABLE wanted_posts ADD COLUMN location_lat REAL;
+      ALTER TABLE wanted_posts ADD COLUMN location_lng REAL;
+    `);
+  }
+
   console.log('🔄 Migración de schema completada');
 }
 
@@ -519,6 +543,8 @@ function rowToProduct(row) {
     created_at: row.created_at || null,
     availableDays: JSON.parse(row.availableDays || '[]'),
     updated_at: row.updated_at || null,
+    locationLat: row.location_lat ?? null,
+    locationLng: row.location_lng ?? null,
   };
 }
 
@@ -554,6 +580,8 @@ function productToRow(product) {
     created_at: product.created_at || new Date().toISOString().replace('T', ' ').slice(0, 19),
     availableDays: JSON.stringify(product.availableDays || []),
     updated_at: product.updated_at || null,
+    location_lat: product.locationLat ?? null,
+    location_lng: product.locationLng ?? null,
   };
 }
 
@@ -573,6 +601,8 @@ function rowToWantedPost(row) {
     createdAt: row.created_at,
     resolvedAt: row.resolved_at || null,
     updatedAt: row.updated_at || null,
+    locationLat: row.location_lat ?? null,
+    locationLng: row.location_lng ?? null,
   };
 }
 
@@ -602,6 +632,8 @@ function rowToSeller(row) {
     businessDescription: row.businessDescription || null,
     businessCategory: row.businessCategory || null,
     businessHours: JSON.parse(row.businessHours || '{}'),
+    locationLat: row.location_lat ?? null,
+    locationLng: row.location_lng ?? null,
   };
 }
 
@@ -647,12 +679,14 @@ function insertProduct(product) {
     INSERT OR REPLACE INTO products (id, title, price, priceNum, category, description, publishedAgo, seller,
       images, imageIcon, imageColor, previousPrice, discountLabel,
       isFeatured, isOffer, isFavorite, status, offerExpiresAt, extras,
-      stock_quantity, stock_reset_daily, stock_initial, stock_updated_at, created_at, availableDays, updated_at)
+      stock_quantity, stock_reset_daily, stock_initial, stock_updated_at, created_at, availableDays, updated_at,
+      location_lat, location_lng)
     VALUES (@id, @title, @price, @priceNum, @category, @description, @publishedAgo, @seller,
       @images, @imageIcon, @imageColor, @previousPrice, @discountLabel,
       @isFeatured, @isOffer, @isFavorite, @status, @offerExpiresAt, @extras,
       @stock_quantity, @stock_reset_daily, @stock_initial, @stock_updated_at,
-      COALESCE((SELECT created_at FROM products WHERE id = @id), @created_at), @availableDays, @updated_at)
+      COALESCE((SELECT created_at FROM products WHERE id = @id), @created_at), @availableDays, @updated_at,
+      @location_lat, @location_lng)
   `).run(row);
 }
 
@@ -671,7 +705,8 @@ function updateProduct(id, updates) {
       status = @status, offerExpiresAt = @offerExpiresAt, extras = @extras,
       stock_quantity = @stock_quantity, stock_reset_daily = @stock_reset_daily,
       stock_initial = @stock_initial, stock_updated_at = @stock_updated_at,
-      availableDays = @availableDays, updated_at = @updated_at
+      availableDays = @availableDays, updated_at = @updated_at,
+      location_lat = @location_lat, location_lng = @location_lng
     WHERE id = ?
   `).run(row, id);
   return getProductById(id);
@@ -981,8 +1016,8 @@ function getUnreadMessageCount(userId) {
 
 function createWantedPost(post) {
   db.prepare(`
-    INSERT INTO wanted_posts (id, user_id, title, description, category_id, type, price_min, price_max, status, created_at)
-    VALUES (@id, @userId, @title, @description, @categoryId, @type, @priceMin, @priceMax, 'abierta', datetime('now'))
+    INSERT INTO wanted_posts (id, user_id, title, description, category_id, type, price_min, price_max, status, created_at, location_lat, location_lng)
+    VALUES (@id, @userId, @title, @description, @categoryId, @type, @priceMin, @priceMax, 'abierta', datetime('now'), @location_lat, @location_lng)
   `).run({
     id: post.id,
     userId: post.userId,
@@ -992,6 +1027,8 @@ function createWantedPost(post) {
     type: post.type,
     priceMin: post.priceMin ?? null,
     priceMax: post.priceMax ?? null,
+    location_lat: post.locationLat ?? null,
+    location_lng: post.locationLng ?? null,
   });
   return getWantedPostById(post.id);
 }

@@ -227,6 +227,8 @@ class ApiService {
     required String type,
     double? priceMin,
     double? priceMax,
+    double? locationLat,
+    double? locationLng,
   }) async {
     final res = await _client.post(
       _uri('/wanted'),
@@ -238,6 +240,10 @@ class ApiService {
         'type': type,
         if (priceMin != null) 'priceMin': priceMin,
         if (priceMax != null) 'priceMax': priceMax,
+        if (locationLat != null && locationLng != null) ...{
+          'locationLat': locationLat,
+          'locationLng': locationLng,
+        },
       }),
     );
     if (res.statusCode != 201)
@@ -357,6 +363,8 @@ class ApiService {
     int? stockQuantity,
     bool stockResetDaily = false,
     int? stockInitial,
+    double? locationLat,
+    double? locationLng,
   }) async {
     // Si hay imágenes, usar multipart
     if (imagePaths != null && imagePaths.isNotEmpty) {
@@ -376,6 +384,10 @@ class ApiService {
       }
       if (availableDays.isNotEmpty) {
         request.fields['availableDays'] = jsonEncode(availableDays);
+      }
+      if (locationLat != null && locationLng != null) {
+        request.fields['locationLat'] = locationLat.toString();
+        request.fields['locationLng'] = locationLng.toString();
       }
       // El seller se obtiene del JWT en el backend (requireAuth)
       if (_token == null) {
@@ -409,6 +421,10 @@ class ApiService {
       'stock_reset_daily': stockResetDaily,
       if (stockInitial != null) 'stock_initial': stockInitial,
       if (availableDays.isNotEmpty) 'availableDays': availableDays,
+      if (locationLat != null && locationLng != null) ...{
+        'locationLat': locationLat,
+        'locationLng': locationLng,
+      },
     };
     final res = await _client.post(
       _uri('/products'),
@@ -603,6 +619,8 @@ class ApiService {
     String? businessDescription,
     String? businessCategory,
     Map<int, BusinessHoursRange>? businessHours,
+    double? locationLat,
+    double? locationLng,
   }) async {
     final body = <String, dynamic>{};
     if (name != null) body['name'] = name;
@@ -612,6 +630,10 @@ class ApiService {
     if (businessCategory != null) body['businessCategory'] = businessCategory;
     if (businessHours != null) {
       body['businessHours'] = businessHoursToJson(businessHours);
+    }
+    if (locationLat != null && locationLng != null) {
+      body['locationLat'] = locationLat;
+      body['locationLng'] = locationLng;
     }
     final res = await _client.patch(
       _uri('/sellers/$sellerId'),

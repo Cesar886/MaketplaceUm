@@ -5,7 +5,14 @@ import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../widgets/location_picker.dart';
 import '../widgets/publish_auth_gate.dart';
+import '../widgets/static_mini_map.dart';
+
+/// Elección de ubicación para una publicación de negocio (Nivel 2): usar la
+/// ubicación guardada en el perfil, elegir una puntual para esta
+/// publicación, o no agregar ninguna.
+enum _LocationChoice { useSaved, custom, none }
 
 class WantedPostScreen extends StatefulWidget {
   const WantedPostScreen({super.key, this.editingPost});
@@ -30,6 +37,15 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
   bool _loading = true;
   bool _publishing = false;
 
+  // ─── Ubicación puntual de la publicación (Nivel 2, solo negocios) ──
+  double? _savedSellerLat;
+  double? _savedSellerLng;
+  bool get _hasSavedSellerLocation =>
+      _savedSellerLat != null && _savedSellerLng != null;
+  _LocationChoice _locationChoice = _LocationChoice.none;
+  double? _customLocationLat;
+  double? _customLocationLng;
+
   bool get _isEditing => widget.editingPost != null;
 
   @override
@@ -47,6 +63,63 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
         _priceMaxController.text = post.priceMax.toString();
     }
     _loadCategories();
+    _loadSellerLocation();
+  }
+
+  Future<void> _loadSellerLocation() async {
+    if (_isEditing) return;
+    final auth = context.read<AuthProvider>();
+    if (auth.accountType != AccountType.negocio ||
+        auth.backendSellerId == null) {
+      return;
+    }
+    try {
+      final seller = await ApiService.getSeller(auth.backendSellerId!);
+      if (!mounted) return;
+      setState(() {
+        _savedSellerLat = seller.locationLat;
+        _savedSellerLng = seller.locationLng;
+        if (_hasSavedSellerLocation) {
+          _locationChoice = _LocationChoice.useSaved;
+        }
+      });
+    } catch (_) {
+      // Sin ubicación de negocio: el formulario simplemente no ofrece
+      // "usar la guardada", no bloquea el resto de la publicación.
+    }
+  }
+
+  Future<void> _pickCustomLocation() async {
+    final picked = await LocationPickerScreen.open(
+      context,
+      initialLat: _customLocationLat,
+      initialLng: _customLocationLng,
+      title: 'Ubicación de esta búsqueda',
+    );
+    if (picked != null) {
+      setState(() {
+        _customLocationLat = picked.latitude;
+        _customLocationLng = picked.longitude;
+        _locationChoice = _LocationChoice.custom;
+      });
+    }
+  }
+
+  (double, double)? get _resolvedLocation {
+    switch (_locationChoice) {
+      case _LocationChoice.useSaved:
+        if (_hasSavedSellerLocation) {
+          return (_savedSellerLat!, _savedSellerLng!);
+        }
+        return null;
+      case _LocationChoice.custom:
+        if (_customLocationLat != null && _customLocationLng != null) {
+          return (_customLocationLat!, _customLocationLng!);
+        }
+        return null;
+      case _LocationChoice.none:
+        return null;
+    }
   }
 
   Future<void> _loadCategories() async {
@@ -125,6 +198,7 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
           _showError('Error de autenticación. Vuelve a iniciar sesión.');
           return;
         }
+        final location = _resolvedLocation;
         await ApiService.createWantedPost(
           title: title,
           description: description,
@@ -132,6 +206,8 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
           type: _type,
           priceMin: priceMin,
           priceMax: priceMax,
+          locationLat: location?.$1,
+          locationLng: location?.$2,
         );
         if (!mounted) return;
         Navigator.of(context).pop();
@@ -162,6 +238,70 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
     _priceMinController.dispose();
     _priceMaxController.dispose();
     super.dispose();
+  }
+
+  /// Sección de ubicación puntual de la publicación — solo visible para
+  /// cuentas de negocio (Nivel 2). Estudiantes/usuarios normales no ven
+  /// nada aquí, ni siquiera la opción de agregar ubicación.
+  Widget _buildLocationSection() {
+    final auth = context.watch<AuthProvider>();
+    if (auth.accountType != AccountType.negocio) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Ubicación (opcional)', style: AppTypography.heading(15)),
+        const SizedBox(height: 10),
+        if (_hasSavedSellerLocation) ...[
+          RadioListTile<_LocationChoice>(
+            contentPadding: EdgeInsets.zero,
+            value: _LocationChoice.useSaved,
+            groupValue: _locationChoice,
+            onChanged: (v) => setState(() => _locationChoice = v!),
+            title: const Text('Usar la ubicación de mi negocio'),
+            subtitle: const Text('Recomendado — un solo tap'),
+          ),
+          RadioListTile<_LocationChoice>(
+            contentPadding: EdgeInsets.zero,
+            value: _LocationChoice.custom,
+            groupValue: _locationChoice,
+            // No marca el radio de inmediato: solo cambia a "custom" si el
+            // usuario efectivamente confirma un punto en el selector (ver
+            // _pickCustomLocation). Si cancela, el estado no queda a medias
+            // (radio en "custom" pero sin coordenadas → se perdería la
+            // ubicación silenciosamente al publicar).
+            onChanged: (_) => _pickCustomLocation(),
+            title: const Text('Elegir otra ubicación para esta búsqueda'),
+          ),
+          RadioListTile<_LocationChoice>(
+            contentPadding: EdgeInsets.zero,
+            value: _LocationChoice.none,
+            groupValue: _locationChoice,
+            onChanged: (v) => setState(() => _locationChoice = v!),
+            title: const Text('No agregar ubicación'),
+          ),
+        ] else
+          OutlinedButton.icon(
+            onPressed: _pickCustomLocation,
+            icon: const Icon(Icons.map_outlined),
+            label: Text(
+              _locationChoice == _LocationChoice.custom
+                  ? 'Cambiar ubicación de esta búsqueda'
+                  : 'Elegir ubicación en el mapa (opcional)',
+            ),
+          ),
+        if (_locationChoice == _LocationChoice.custom &&
+            _customLocationLat != null) ...[
+          const SizedBox(height: 10),
+          StaticMiniMap(
+            lat: _customLocationLat,
+            lng: _customLocationLng,
+            showOpenInMapsButton: false,
+            height: 120,
+          ),
+        ],
+      ],
+    );
   }
 
   @override
@@ -264,6 +404,10 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
               ),
             ],
           ),
+          if (!_isEditing) ...[
+            const SizedBox(height: 16),
+            _buildLocationSection(),
+          ],
           const SizedBox(height: 24),
           FilledButton(
             onPressed: _publishing ? null : _publish,

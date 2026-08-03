@@ -5,6 +5,7 @@ import '../app_theme.dart';
 import '../models.dart';
 import '../services/api_service.dart';
 import '../widgets/product_card.dart';
+import '../widgets/seller_schedule_location_row.dart';
 import 'product_detail_screen.dart';
 
 /// Perfil público de un vendedor/negocio: nombre, logo, rating y sus
@@ -101,6 +102,11 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
+        if (seller.isBusiness &&
+            (seller.businessHours.isNotEmpty || seller.hasLocation)) ...[
+          SellerScheduleAndLocationRow(seller: seller),
+          const SizedBox(height: 20),
+        ],
         Center(
           child: Column(
             children: [

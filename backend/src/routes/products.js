@@ -5,6 +5,7 @@ const { products, sellers, categories, saveData } = require('../data');
 const { requireAuth } = require('../auth');
 const db = require('../database');
 const { sendPush } = require('../push');
+const { validateLocation } = require('../validation/sellerProfile');
 
 // Configuración anti-abuso de ofertas
 const COOLDOWN_HOURS = 72;
@@ -179,6 +180,19 @@ function register(app) {
       const sellerId = req.user.id;
       const productId = `p${Date.now()}`;
 
+      // Ubicación puntual de la publicación (Nivel 2): solo cuentas de
+      // negocio pueden asociarla, sin importar lo que mande el cliente —
+      // defensa en profundidad además del control en la UI.
+      const sellerRecord = sellers.find(s => s.id === sellerId);
+      let productLocation = null;
+      if (sellerRecord?.isBusiness) {
+        const locationResult = validateLocation(req.body?.locationLat, req.body?.locationLng);
+        if (locationResult.error) {
+          return res.status(400).json({ error: locationResult.error });
+        }
+        productLocation = locationResult.value;
+      }
+
       // Convertir cada imagen a WebP usando Promise.all
       const conversionPromises = (req.files || []).map((file) => {
         return convertToWebp(file.path).catch((convErr) => {
@@ -219,6 +233,8 @@ function register(app) {
             stock_initial: req.body?.stock_initial !== undefined ? Number(req.body.stock_initial) : null,
             stock_updated_at: new Date().toISOString(),
             availableDays,
+            locationLat: productLocation ? productLocation.lat : null,
+            locationLng: productLocation ? productLocation.lng : null,
           };
 
           products.unshift(newProduct);

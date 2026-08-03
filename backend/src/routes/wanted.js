@@ -2,6 +2,7 @@ const db = require('../database');
 const { sellers, categories } = require('../data');
 const { sendPush } = require('../push');
 const { requireAuth } = require('../auth');
+const { validateLocation } = require('../validation/sellerProfile');
 
 const VALID_TYPES = ['producto', 'servicio'];
 const DAILY_LIMIT = 3;
@@ -71,6 +72,15 @@ function register(app) {
     if (validated.error) return res.status(400).json({ error: validated.error });
     const { title, categoryId, type, priceMin: parsedPriceMin, priceMax: parsedPriceMax } = validated;
 
+    // Ubicación puntual de la búsqueda (Nivel 2): solo cuentas de negocio.
+    const sellerRecord = sellers.find(s => s.id === userId);
+    let postLocation = null;
+    if (sellerRecord?.isBusiness) {
+      const locationResult = validateLocation(req.body?.locationLat, req.body?.locationLng);
+      if (locationResult.error) return res.status(400).json({ error: locationResult.error });
+      postLocation = locationResult.value;
+    }
+
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
     const countToday = db.countWantedPostsSince(userId, since);
     if (countToday >= DAILY_LIMIT) {
@@ -87,6 +97,8 @@ function register(app) {
       type,
       priceMin: parsedPriceMin,
       priceMax: parsedPriceMax,
+      locationLat: postLocation ? postLocation.lat : null,
+      locationLng: postLocation ? postLocation.lng : null,
     });
 
     // Notificar a los interesados en esta categoría (mismo patrón que products.js)

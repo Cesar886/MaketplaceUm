@@ -9,6 +9,8 @@ import '../../models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/business_hours_editor.dart';
+import '../../widgets/location_picker.dart';
+import '../../widgets/static_mini_map.dart';
 
 const _kMaxBusinessDescriptionLength = 280;
 
@@ -31,6 +33,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   XFile? _pickedPhoto;
   bool _saving = false;
   late Map<int, BusinessHoursRange> _businessHours;
+  double? _locationLat;
+  double? _locationLng;
 
   bool get _isBusiness => widget.seller.isBusiness;
 
@@ -44,6 +48,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
     _selectedCategoryId = widget.seller.businessCategory;
     _businessHours = Map.of(widget.seller.businessHours);
+    _locationLat = widget.seller.locationLat;
+    _locationLng = widget.seller.locationLng;
     if (_isBusiness) _loadCategories();
   }
 
@@ -78,6 +84,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  Future<void> _pickLocation() async {
+    final picked = await LocationPickerScreen.open(
+      context,
+      initialLat: _locationLat,
+      initialLng: _locationLng,
+      title: 'Ubicación de tu negocio',
+    );
+    if (picked != null) {
+      setState(() {
+        _locationLat = picked.latitude;
+        _locationLng = picked.longitude;
+      });
+    }
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -93,6 +114,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             : null,
         businessCategory: _isBusiness ? _selectedCategoryId : null,
         businessHours: _isBusiness ? _businessHours : null,
+        locationLat: _isBusiness ? _locationLat : null,
+        locationLng: _isBusiness ? _locationLng : null,
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -247,6 +270,34 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 BusinessHoursEditor(
                   initialHours: _businessHours,
                   onChanged: (hours) => _businessHours = hours,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Ubicación del negocio (opcional)',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: context.colors.muted,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (_locationLat != null && _locationLng != null) ...[
+                  StaticMiniMap(
+                    lat: _locationLat,
+                    lng: _locationLng,
+                    showOpenInMapsButton: false,
+                    height: 120,
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                OutlinedButton.icon(
+                  onPressed: _pickLocation,
+                  icon: const Icon(Icons.map_outlined),
+                  label: Text(
+                    _locationLat != null
+                        ? 'Cambiar ubicación'
+                        : 'Elegir ubicación en el mapa',
+                  ),
                 ),
               ],
               const SizedBox(height: 28),
