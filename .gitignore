@@ -52,3 +52,10 @@ app.*.map.json
 /android/*.keystore
 nombre-del-archivo.json
 .superpowers/
+
+# SQLite database (contiene datos de producción/dev locales — nunca debe
+# viajar por git: un deploy que la sobrescriba corrompe el WAL en vivo del
+# servidor, además de filtrar datos de usuarios).
+*.db
+*.db-shm
+*.db-wal

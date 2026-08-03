@@ -128,6 +128,11 @@ async function sendPush(userIds, title, body, data = {}) {
         channelId: 'mercadito_um_default',
         notificationPriority: 'PRIORITY_HIGH',
         defaultSound: true,
+        // Silueta blanca sobre transparente (android/app/.../drawable-*/ic_notification.png).
+        // Ya está como default en el manifest, pero se declara explícito
+        // acá para que quede claro sin tener que ir a leer el manifest.
+        icon: 'ic_notification',
+        color: '#3D5C70',
       },
     },
   };

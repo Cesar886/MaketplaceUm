@@ -196,6 +196,7 @@ function register(app) {
 
           const extrasInput = normalizeExtras(req.body?.extras);
           const availableDays = normalizeAvailableDays(req.body?.availableDays);
+          const categoryObj = categories.find(c => c.id === category);
 
           const newProduct = {
             id: productId,
@@ -206,8 +207,8 @@ function register(app) {
             publishedAgo: 'Ahora mismo',
             seller: sellerId,
             images,
-            imageIcon: images.length > 0 ? null : 'inventory_2',
-            imageColor: '#607D8B',
+            imageIcon: images.length > 0 ? null : (categoryObj?.icon || 'category'),
+            imageColor: categoryObj?.color || '#607D8B',
             status: validStatuses.includes(status) ? status : 'available',
             extras: extrasInput,
             isFeatured: false,
@@ -228,7 +229,6 @@ function register(app) {
           if (interestedUsers.length > 0) {
             // Filtrar al propio vendedor
             const notifyUsers = interestedUsers.filter(u => u !== sellerId);
-            const categoryObj = categories.find(c => c.id === category);
             const catName = categoryObj?.name || category;
 
             for (const targetUserId of notifyUsers) {
@@ -294,6 +294,7 @@ function register(app) {
         if (!categories.some(c => c.id === category)) {
           return res.status(400).json({ error: 'Categoría inválida' });
         }
+        const categoryObj = categories.find(c => c.id === category);
 
         // ─── Imágenes: existingImages son las URLs que el usuario decide
         // conservar; todo lo que estaba en product.images y no aparece ahí
@@ -330,7 +331,8 @@ function register(app) {
             product.description = description;
             product.category = category;
             product.images = finalImages;
-            product.imageIcon = finalImages.length > 0 ? null : 'inventory_2';
+            product.imageIcon = finalImages.length > 0 ? null : (categoryObj?.icon || 'category');
+            product.imageColor = categoryObj?.color || '#607D8B';
             if (req.body.extras !== undefined) {
               product.extras = normalizeExtras(req.body.extras);
             }
@@ -743,4 +745,4 @@ function register(app) {
   });
 }
 
-module.exports = { register };
+module.exports = { register, attachRelations };

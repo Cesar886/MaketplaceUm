@@ -200,6 +200,7 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
           const SizedBox(height: 16),
           TextField(
             controller: _titleController,
+            textCapitalization: TextCapitalization.sentences,
             decoration: const InputDecoration(
               labelText: 'Qué buscas',
               hintText: 'Ej. Calculadora científica',
@@ -209,6 +210,7 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
           TextField(
             controller: _descriptionController,
             maxLines: 3,
+            textCapitalization: TextCapitalization.sentences,
             decoration: const InputDecoration(
               labelText: 'Descripción (opcional)',
             ),

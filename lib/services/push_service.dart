@@ -6,6 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import '../app_theme.dart';
 import 'api_service.dart';
 import 'fcm/android_notification_channel.dart';
 
@@ -50,6 +51,23 @@ class PushService {
   /// Callback que se dispara cuando el usuario toca una notificación.
   /// Recibe los datos adicionales de la notificación (custom data payload).
   void Function(Map<String, dynamic> data)? onNotificationTap;
+
+  /// Datos de un tap que llegó (cold start vía getInitialMessage) antes de
+  /// que [onNotificationTap] estuviera asignado. `initialize()` corre antes
+  /// de `runApp()`, así que el mensaje inicial puede llegar sin que exista
+  /// todavía ningún Navigator listo para recibirlo — se guarda aquí para
+  /// que la UI lo consuma apenas esté montada.
+  Map<String, dynamic>? _pendingNotificationData;
+
+  /// Devuelve y limpia los datos de notificación pendientes de un cold
+  /// start, si los hay. Debe llamarse una vez montado el widget raíz
+  /// (con Navigator disponible), para no perder el tap que disparó la
+  /// apertura de la app.
+  Map<String, dynamic>? consumePendingNotification() {
+    final data = _pendingNotificationData;
+    _pendingNotificationData = null;
+    return data;
+  }
 
   /// Inicializa Firebase Messaging.
   ///
@@ -139,6 +157,8 @@ class PushService {
             priority: Priority.high,
             playSound: true,
             enableVibration: true,
+            icon: 'ic_notification',
+            color: AppColors.primary,
           ),
           iOS: DarwinNotificationDetails(
             presentAlert: true,
@@ -177,10 +197,15 @@ class PushService {
   }
 
   /// Extrae los datos de la notificación y dispara el callback de navegación.
+  /// Si todavía no hay callback registrado (cold start antes de que la UI
+  /// monte), guarda los datos para que se consuman después.
   void _handleNotificationTap(RemoteMessage message) {
     final data = Map<String, dynamic>.from(message.data);
-    if (data.isNotEmpty && onNotificationTap != null) {
+    if (data.isEmpty) return;
+    if (onNotificationTap != null) {
       onNotificationTap!(data);
+    } else {
+      _pendingNotificationData = data;
     }
   }
 

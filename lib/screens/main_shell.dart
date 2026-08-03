@@ -48,6 +48,17 @@ class MainShellState extends State<MainShell> {
     PushService.instance.onNotificationTap = (data) {
       _handleNotificationTap(data);
     };
+
+    // Si la app se abrió desde cero por un tap en notificación (cold
+    // start), ese mensaje llegó antes de que este callback existiera.
+    // Se procesa ahora que ya hay un Navigator disponible, después del
+    // primer frame para no navegar en medio del build inicial.
+    final pending = PushService.instance.consumePendingNotification();
+    if (pending != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _handleNotificationTap(pending);
+      });
+    }
   }
 
   /// Navega a la pantalla correspondiente según los datos de la notificación push.

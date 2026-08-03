@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#1E313C</color>
+    <!-- Azul Piedra: color de fondo del círculo del ícono de notificación
+         (lib/app_theme.dart AppColors.primary) -->
+    <color name="notification_color">#3D5C70</color>
 </resources>

@@ -292,6 +292,17 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Mercadito UM API corriendo en http://localhost:${PORT}`);
 });
 
+// Node cierra los sockets keep-alive inactivos a los 5s por defecto
+// (server.keepAliveTimeout). La app fija http.Client() por el tiempo de vida
+// del proceso y reutiliza esa conexión al volver a una pantalla tras estar
+// inactiva >5s (ej. leyendo un producto), lo que provoca cierres de conexión
+// a medio camino ("Connection closed before full header was received") de
+// forma intermitente. Se sube a un valor holgado ya que no hay proxy
+// intermedio (el cliente pega directo al puerto 3000) que imponga su propio
+// límite. headersTimeout debe quedar por encima de keepAliveTimeout.
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 66000;
+
 // Política de limpieza de interacciones_dispositivo: al arrancar y luego
 // una vez al día, para no acumular filas indefinidamente por dispositivos
 // que abrieron la app una sola vez.

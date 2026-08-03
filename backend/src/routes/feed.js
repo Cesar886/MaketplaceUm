@@ -1,4 +1,5 @@
 const db = require('../database');
+const { attachRelations } = require('./products');
 
 // Dentro de los primeros DIVERSITY_WINDOW resultados, como máximo
 // DIVERSITY_MAX_PER_SELLER productos pueden ser del mismo vendedor.
@@ -46,12 +47,18 @@ function register(app) {
     // aunque algunos se difieran por cupo de vendedor.
     const ranked = db.getFeedRanked({ deviceId, userId, limit: limit + DIVERSITY_WINDOW, offset });
     const diversified = applyDiversity(ranked).slice(0, limit);
+    // getFeedRanked ya normaliza cada fila vía rowToProduct (images/extras
+    // parseados, camelCase), pero no trae sellerObj/categoryObj/ratings —
+    // eso lo agrega attachRelations, el mismo helper que usa GET /products,
+    // para que el cliente reciba exactamente el mismo shape sin importar
+    // qué endpoint lo sirvió.
+    const enriched = attachRelations(diversified, userId || deviceId);
 
     res.json({
       deviceId,
       userId,
-      count: diversified.length,
-      products: diversified,
+      count: enriched.length,
+      products: enriched,
     });
   });
 

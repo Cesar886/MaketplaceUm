@@ -55,9 +55,7 @@ class WantedPostCard extends StatelessWidget {
                           .withValues(alpha: 0.10),
                       alignment: Alignment.center,
                       child: Icon(
-                        post.type == 'servicio'
-                            ? Icons.build_outlined
-                            : Icons.shopping_bag_outlined,
+                        category?.icon ?? Icons.category_rounded,
                         size: 34,
                         color: category?.color ?? AppColors.teal,
                       ),

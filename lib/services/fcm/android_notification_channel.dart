@@ -31,7 +31,10 @@ const String kNotificationChannelDescription =
 Future<void> createAndroidNotificationChannel() async {
   if (!Platform.isAndroid) return;
 
-  const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+  // Ícono monocromático (silueta blanca sobre transparente) requerido por
+  // Android para la barra de estado -- @mipmap/ic_launcher es a color y
+  // Android lo reemplaza por un blob genérico.
+  const androidSettings = AndroidInitializationSettings('ic_notification');
   const iosSettings = DarwinInitializationSettings(
     requestAlertPermission: false,
     requestBadgePermission: false,

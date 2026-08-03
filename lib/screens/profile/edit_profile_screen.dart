@@ -183,6 +183,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               const SizedBox(height: 28),
               TextFormField(
                 controller: _nameController,
+                textCapitalization: TextCapitalization.words,
                 decoration: const InputDecoration(
                   labelText: 'Nombre',
                   prefixIcon: Icon(Icons.person_outline_rounded),
@@ -222,6 +223,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   minLines: 2,
                   maxLines: 4,
                   maxLength: _kMaxBusinessDescriptionLength,
+                  textCapitalization: TextCapitalization.sentences,
                   decoration: const InputDecoration(
                     labelText: 'Descripción corta del negocio',
                     alignLabelWithHint: true,

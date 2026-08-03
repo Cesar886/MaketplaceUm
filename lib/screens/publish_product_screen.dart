@@ -677,147 +677,205 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
 
+    Widget content;
     if (_loading) {
-      return const SafeArea(child: Center(child: CircularProgressIndicator()));
-    }
-
-    if (!auth.isLoggedIn) {
-      return const PublishAuthGate(
+      content = const Center(child: CircularProgressIndicator());
+    } else if (!auth.isLoggedIn) {
+      content = const PublishAuthGate(
         icon: Icons.add_circle_outline_rounded,
         title: 'Crea tu cuenta para publicar',
         subtitle:
             'Regístrate para publicar tu producto y que otros estudiantes lo vean. Ver el feed y contactar vendedores no requiere cuenta.',
       );
+    } else {
+      content = _buildForm();
     }
 
+    // El modo "publicar" vive embebido en la pestaña de MainShell, que ya
+    // provee su propio Scaffold/fondo. El modo "editar" en cambio se abre
+    // como ruta independiente desde ProductDetailScreen, así que necesita
+    // su propio Scaffold + AppBar (título, botón de regreso) y una barra
+    // de guardado fija para no perderla al final de un formulario largo.
+    if (!_isEditing) {
+      return SafeArea(child: content);
+    }
+
+    final showSaveBar = !_loading && auth.isLoggedIn;
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(title: const Text('Editar producto'), centerTitle: false),
+      body: SafeArea(top: false, child: content),
+      bottomNavigationBar: showSaveBar ? _buildEditSaveBar() : null,
+    );
+  }
+
+  Widget _buildEditSaveBar() {
     return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-        children: [
-          Text(
-            _isEditing ? 'Editar producto' : 'Publicar producto',
-            style: AppTypography.heading(22),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            _isEditing
-                ? 'Actualiza la información de tu publicación.'
-                : 'Completa la información básica para publicar tu producto en el marketplace.',
-            style: AppTypography.body(14, color: AppColors.muted),
-          ),
-          const SizedBox(height: 20),
-
-          // ─── Fotos ──────────────────────────────────────
-          Text('Fotos', style: AppTypography.heading(15)),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 110,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                _AddPhotoTile(
-                  hasImages: _totalImageCount > 0,
-                  onPickGallery: _pickImages,
-                  onPickCamera: _pickCamera,
-                ),
-                const SizedBox(width: 10),
-                for (var i = 0; i < _existingImageUrls.length; i++) ...[
-                  _ExistingImageThumbnail(
-                    url: '${ApiService.baseUrl}${_existingImageUrls[i]}',
-                    onRemove: () => _removeExistingImage(i),
-                  ),
-                  const SizedBox(width: 10),
-                ],
-                for (var i = 0; i < _selectedImages.length; i++) ...[
-                  _ImageThumbnail(
-                    file: _selectedImages[i],
-                    onRemove: () => _removeImage(i),
-                  ),
-                  if (i < _selectedImages.length - 1) const SizedBox(width: 10),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-
-          TextField(
-            controller: _titleController,
-            decoration: const InputDecoration(
-              labelText: 'Título',
-              hintText: 'Ej. Calculadora científica Casio',
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _descriptionController,
-            minLines: 4,
-            maxLines: 5,
-            decoration: const InputDecoration(
-              labelText: 'Descripción',
-              hintText: 'Estado, punto de entrega, detalles importantes...',
-              alignLabelWithHint: true,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _priceController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    prefixText: r'$ ',
-                    labelText: 'Precio',
-                  ),
-                ),
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          border: Border(top: BorderSide(color: AppColors.border, width: 0.8)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _publishing
+                    ? null
+                    : () => Navigator.of(context).pop(),
+                child: const Text('Cancelar'),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  value: _selectedCategoryId,
-                  decoration: const InputDecoration(labelText: 'Categoría'),
-                  items: [
-                    for (final category in _categories)
-                      DropdownMenuItem(
-                        value: category.id,
-                        child: Row(
-                          children: [
-                            Icon(
-                              category.icon,
-                              color: category.color,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 10),
-                            Text(category.name),
-                          ],
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: ElevatedButton.icon(
+                onPressed: _publishing ? null : _publish,
+                icon: _publishing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
                         ),
-                      ),
-                  ],
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() => _selectedCategoryId = value);
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _buildDaySelector(),
-          const SizedBox(height: 12),
-          _buildStockSection(),
-          const SizedBox(height: 12),
-          _buildExtrasSection(),
-          if (_plans.isNotEmpty) ...[
-            const SizedBox(height: 24),
-            _HighlightSection(
-              plans: _plans,
-              selectedPlanId: _selectedPlanId,
-              onSelectPlan: (planId) => setState(
-                () =>
-                    _selectedPlanId = _selectedPlanId == planId ? null : planId,
+                      )
+                    : const Icon(Icons.check_rounded),
+                label: Text(_publishing ? 'Guardando...' : 'Guardar cambios'),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildForm() {
+    return ListView(
+      padding: EdgeInsets.fromLTRB(18, 18, 18, _isEditing ? 12 : 24),
+      children: [
+        if (!_isEditing) ...[
+          Text('Publicar producto', style: AppTypography.heading(22)),
+          const SizedBox(height: 6),
+          Text(
+            'Completa la información básica para publicar tu producto en el marketplace.',
+            style: AppTypography.body(14, color: AppColors.muted),
+          ),
+          const SizedBox(height: 20),
+        ],
+
+        // ─── Fotos ──────────────────────────────────────
+        Text('Fotos', style: AppTypography.heading(15)),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 110,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              _AddPhotoTile(
+                hasImages: _totalImageCount > 0,
+                onPickGallery: _pickImages,
+                onPickCamera: _pickCamera,
+              ),
+              const SizedBox(width: 10),
+              for (var i = 0; i < _existingImageUrls.length; i++) ...[
+                _ExistingImageThumbnail(
+                  url: '${ApiService.baseUrl}${_existingImageUrls[i]}',
+                  onRemove: () => _removeExistingImage(i),
+                ),
+                const SizedBox(width: 10),
+              ],
+              for (var i = 0; i < _selectedImages.length; i++) ...[
+                _ImageThumbnail(
+                  file: _selectedImages[i],
+                  onRemove: () => _removeImage(i),
+                ),
+                if (i < _selectedImages.length - 1) const SizedBox(width: 10),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+
+        TextField(
+          controller: _titleController,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(
+            labelText: 'Título',
+            hintText: 'Ej. Calculadora científica Casio',
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _descriptionController,
+          minLines: 4,
+          maxLines: 5,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(
+            labelText: 'Descripción',
+            hintText: 'Estado, punto de entrega, detalles importantes...',
+            alignLabelWithHint: true,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _priceController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  prefixText: r'$ ',
+                  labelText: 'Precio',
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: _selectedCategoryId,
+                decoration: const InputDecoration(labelText: 'Categoría'),
+                items: [
+                  for (final category in _categories)
+                    DropdownMenuItem(
+                      value: category.id,
+                      child: Row(
+                        children: [
+                          Icon(category.icon, color: category.color, size: 20),
+                          const SizedBox(width: 10),
+                          Text(category.name),
+                        ],
+                      ),
+                    ),
+                ],
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() => _selectedCategoryId = value);
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _buildDaySelector(),
+        const SizedBox(height: 12),
+        _buildStockSection(),
+        const SizedBox(height: 12),
+        _buildExtrasSection(),
+        if (_plans.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          _HighlightSection(
+            plans: _plans,
+            selectedPlanId: _selectedPlanId,
+            onSelectPlan: (planId) => setState(
+              () => _selectedPlanId = _selectedPlanId == planId ? null : planId,
+            ),
+          ),
+        ],
+        if (!_isEditing) ...[
           const SizedBox(height: 24),
           ElevatedButton.icon(
             onPressed: _publishing ? null : _publish,
@@ -828,14 +886,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.publish_rounded),
-            label: Text(
-              _publishing
-                  ? (_isEditing ? 'Guardando...' : 'Publicando...')
-                  : (_isEditing ? 'Guardar cambios' : 'Publicar ahora'),
-            ),
+            label: const Text('Publicar ahora'),
           ),
         ],
-      ),
+      ],
     );
   }
 }

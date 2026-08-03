@@ -133,6 +133,7 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
             controller: _queryController,
             onChanged: (_) => setState(() {}),
             textInputAction: TextInputAction.search,
+            textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.search_rounded),
               hintText: 'Libro, electronico, servicio...',
@@ -244,6 +245,7 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                   TextField(
                     controller: _sellerController,
                     onChanged: (_) => setState(() {}),
+                    textCapitalization: TextCapitalization.words,
                     decoration: const InputDecoration(
                       prefixIcon: Icon(Icons.person_outline_rounded, size: 20),
                       hintText: 'Nombre del vendedor',

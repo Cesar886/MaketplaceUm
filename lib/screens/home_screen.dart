@@ -7,6 +7,7 @@ import '../providers/auth_provider.dart';
 import '../services/anonymous_id.dart';
 import '../services/api_service.dart';
 import '../services/favorite_products_service.dart';
+import '../services/feed_mixer.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/auto_refresh.dart';
 import '../widgets/product_card.dart';
@@ -24,7 +25,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen>
+    with AutoRefreshMixin, TickerProviderStateMixin {
   List<Product> _products = [];
   List<MarketplaceCategory> _categories = [];
   List<HighlightPlan> _highlightPlans = [];
@@ -35,6 +37,12 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
   String? _error;
   String? _selectedCategoryId;
   int _favoriteCount = 0;
+
+  // Semilla del mezclado del feed: se regenera en cada _loadData() (carga
+  // inicial y pull-to-refresh) para que el interleaving sea distinto cada
+  // vez, pero se mantiene fija entre rebuilds (ej. al filtrar por
+  // categoría) para no re-barajar el feed en cada tap.
+  int _feedSeed = 0;
 
   late final AnimationController _staggerController;
 
@@ -57,7 +65,10 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
   double _cardAnimValue(int index) {
     final total = _staggerController.duration!.inMilliseconds.toDouble();
     final start = (AppAnimations.staggerDelay.inMilliseconds * index) / total;
-    final end = (start + AppAnimations.slow.inMilliseconds / total).clamp(0.0, 1.0);
+    final end = (start + AppAnimations.slow.inMilliseconds / total).clamp(
+      0.0,
+      1.0,
+    );
     return CurvedAnimation(
       parent: _staggerController,
       curve: Interval(start.clamp(0.0, 1.0), end, curve: AppAnimations.spring),
@@ -71,17 +82,28 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
     if (!silent && _products.isEmpty) setState(() => _loading = true);
     try {
       final auth = context.read<AuthProvider>();
-      final userId = await AnonymousId.resolve(
-        isLoggedIn: auth.isLoggedIn,
-        backendSellerId: auth.backendSellerId,
-      );
+      // El feed rankeado distingue deviceId (siempre el anónimo persistido,
+      // usado para afinidad por dispositivo) de userId (cuenta real, solo
+      // si hay sesión) — son conceptos distintos en el backend aunque acá
+      // arriba se resuelvan a uno solo para el resto de los endpoints.
+      final deviceId = await AnonymousId.get();
+      final backendUserId = auth.isLoggedIn ? auth.backendSellerId : null;
       if (!mounted) return;
       final results = await Future.wait([
-        ApiService.getProducts(userId: userId),
+        ApiService.getFeed(deviceId: deviceId, userId: backendUserId),
         ApiService.getCategories(),
-        ApiService.getHighlightPlans(),
       ]);
       if (!mounted) return;
+
+      // Highlight plans (banners de "destacar publicación") son contenido
+      // secundario del home: si el request falla, no debe tapar el feed
+      // principal que sí cargó bien — simplemente no se muestran.
+      List<HighlightPlan> loadedHighlightPlans = [];
+      try {
+        loadedHighlightPlans = await ApiService.getHighlightPlans();
+      } catch (_) {
+        // Si falla, seguimos con lista vacía
+      }
 
       // Cargar sellers por separado (no debe bloquear el resto)
       List<Seller> loadedSellers = [];
@@ -113,12 +135,13 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
       setState(() {
         _products = results[0] as List<Product>;
         _categories = results[1] as List<MarketplaceCategory>;
-        _highlightPlans = results[2] as List<HighlightPlan>;
+        _highlightPlans = loadedHighlightPlans;
         _sellers = loadedSellers;
         _wantedPosts = loadedWantedPosts;
         _hasPublished = hasPublished;
         _loading = false;
         _error = null;
+        _feedSeed = DateTime.now().millisecondsSinceEpoch;
       });
       _staggerController.forward(from: 0);
       // Cargar contador de favoritos (no bloqueante)
@@ -127,7 +150,11 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        // Mensaje amigable en vez del texto técnico crudo de la excepción
+        // (ej. "ClientException: Connection closed..."), que ya se
+        // reintentó automáticamente en ApiService antes de llegar aquí.
+        _error = 'No pudimos cargar el inicio. Revisa tu conexión e '
+            'intenta de nuevo.';
       });
     }
   }
@@ -169,9 +196,7 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const SafeArea(
-        child: Center(child: CircularProgressIndicator()),
-      );
+      return const SafeArea(child: Center(child: CircularProgressIndicator()));
     }
 
     if (_error != null) {
@@ -182,14 +207,20 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.cloud_off_rounded,
-                    size: 48, color: AppColors.danger),
+                const Icon(
+                  Icons.cloud_off_rounded,
+                  size: 48,
+                  color: AppColors.danger,
+                ),
                 const SizedBox(height: 16),
-                Text(_error!,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        color: AppColors.muted,
-                        fontWeight: FontWeight.w600)),
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppColors.muted,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const SizedBox(height: 20),
                 ElevatedButton.icon(
                   onPressed: _loadData,
@@ -232,7 +263,8 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
                         const SizedBox(width: 4),
                         _NotificationBell(
                           onTap: () {
-                            final shell = context.findAncestorStateOfType<MainShellState>();
+                            final shell = context
+                                .findAncestorStateOfType<MainShellState>();
                             shell?.openNotifications();
                           },
                         ),
@@ -240,7 +272,8 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
                         _FavHeaderButton(
                           itemCount: _favoriteCountValue,
                           onTap: () {
-                            final shell = context.findAncestorStateOfType<MainShellState>();
+                            final shell = context
+                                .findAncestorStateOfType<MainShellState>();
                             shell?.selectTab(3);
                           },
                         ),
@@ -289,15 +322,72 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
                 child: SectionHeader(
-                  title: 'Publicaciones recientes',
+                  title: 'Para ti',
                   actionLabel: 'Ordenar',
                   onAction: () =>
                       _showMockMessage(context, 'Ordenamiento visual'),
                 ),
               ),
             ),
+            // ─── Feed mixto: productos + búsquedas + negocios ──────
+            // El orden interno de cada tipo respeta el ranking que ya trae
+            // del backend (score de /api/feed, recencia de /api/wanted,
+            // conteo de productos para negocios) — FeedMixer solo decide
+            // cómo se intercalan los BLOQUES entre tipos.
+            //
+            // Se crea una instancia nueva en cada build() y se drena de un
+            // tirón con getAll() porque hoy el home no tiene scroll
+            // infinito: no hay "página 2" que deba continuar un cursor a
+            // medio bloque, así que no hace falta guardar la instancia
+            // entre rebuilds. La semilla (_feedSeed) sí se mantiene fija
+            // entre rebuilds (solo cambia en _loadData) para que filtrar
+            // por categoría recalcule el mismo orden sobre la lista ya
+            // filtrada, en vez de rebarajar en cada tap.
+            //
+            // Cuando se agregue paginación real, este patrón cambia a:
+            // crear el FeedMixer UNA vez en _loadData (semilla nueva ahí),
+            // guardarlo en un campo de estado, y pedirle getNextBatch(n) a
+            // esa misma instancia cada vez que el scroll dispare la
+            // siguiente página — ver el doc de [FeedMixer] para el porqué.
+            ..._buildFeedSlivers(
+              context,
+              groupIntoSegments(
+                FeedMixer(
+                  products: recent,
+                  wantedPosts: _wantedPosts,
+                  businesses: _businessesWithProducts,
+                  seed: _feedSeed,
+                ).getAll(),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Traduce los segmentos ya agrupados por [groupIntoSegments] a slivers:
+  /// grids para productos/búsquedas (respetando el orden interno de cada
+  /// bloque) y una tarjeta por negocio. `productOffset` lleva la cuenta
+  /// global de productos ya renderizados para que la animación de stagger
+  /// siga una progresión continua aunque los productos estén repartidos en
+  /// varios bloques a lo largo del feed.
+  List<Widget> _buildFeedSlivers(
+    BuildContext context,
+    List<FeedSegment> segments,
+  ) {
+    final widgets = <Widget>[];
+    var productOffset = 0;
+
+    for (final segment in segments) {
+      switch (segment.type) {
+        case FeedItemType.product:
+          final items = segment.items.cast<Product>();
+          final offset = productOffset;
+          widgets.add(
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
               sliver: SliverLayoutBuilder(
                 builder: (context, constraints) {
                   final width = constraints.crossAxisExtent;
@@ -312,13 +402,13 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
                           mainAxisSpacing: 12,
                           childAspectRatio: columns == 3 ? 0.72 : 0.64,
                         ),
-                        itemCount: recent.length,
+                        itemCount: items.length,
                         itemBuilder: (context, index) {
-                          final product = recent[index];
+                          final product = items[index];
                           return ProductCard(
                             product: product,
                             onTap: () => _openDetail(context, product),
-                            animationValue: _cardAnimValue(index),
+                            animationValue: _cardAnimValue(offset + index),
                           );
                         },
                       );
@@ -327,75 +417,65 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
                 },
               ),
             ),
-            // ─── Se busca ────────────────────────────────────────
-            if (_wantedPosts.isNotEmpty) ...[
+          );
+          productOffset += items.length;
+          break;
+
+        case FeedItemType.wanted:
+          final items = segment.items.cast<WantedPost>();
+          widgets.add(
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
+              sliver: SliverLayoutBuilder(
+                builder: (context, constraints) {
+                  final width = constraints.crossAxisExtent;
+                  final columns = width >= 720 ? 3 : 2;
+                  return SliverGrid.builder(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: columns,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: columns == 3 ? 0.72 : 0.64,
+                    ),
+                    itemCount: items.length,
+                    itemBuilder: (context, index) {
+                      final post = items[index];
+                      return WantedPostCard(
+                        post: post,
+                        category: _categoryById(post.categoryId),
+                        onTap: () => _openWantedPost(context, post),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          );
+          break;
+
+        case FeedItemType.business:
+          final items = segment.items.cast<MapEntry<Seller, List<Product>>>();
+          for (final entry in items) {
+            widgets.add(
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
-                  child: SectionHeader(
-                    title: 'Se busca',
-                    actionLabel: null,
-                    onAction: null,
-                  ),
-                ),
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
-                sliver: SliverLayoutBuilder(
-                  builder: (context, constraints) {
-                    final width = constraints.crossAxisExtent;
-                    final columns = width >= 720 ? 3 : 2;
-                    return SliverGrid.builder(
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: columns,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                        childAspectRatio: columns == 3 ? 0.72 : 0.64,
-                      ),
-                      itemCount: _wantedPosts.length,
-                      itemBuilder: (context, index) {
-                        final post = _wantedPosts[index];
-                        return WantedPostCard(
-                          post: post,
-                          category: _categoryById(post.categoryId),
-                          onTap: () => _openWantedPost(context, post),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-            // ─── Negocios del campus ────────────────────────────
-            if (_businessesWithProducts.isNotEmpty)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 24, 18, 0),
-                  child: SectionHeader(
-                    title: 'Negocios del campus',
-                    actionLabel: null,
-                    onAction: null,
-                  ),
-                ),
-              ),
-            for (final entry in _businessesWithProducts)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
+                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
                   child: _BusinessCard(
                     seller: entry.key,
                     products: entry.value,
                     onProductTap: (p) => _openDetail(context, p),
-                    onSellerTap: () => _openSellerProducts(context, entry.key, entry.value),
+                    onSellerTap: () =>
+                        _openSellerProducts(context, entry.key, entry.value),
                   ),
                 ),
               ),
-            if (_businessesWithProducts.isNotEmpty)
-              const SliverToBoxAdapter(child: SizedBox(height: 8)),
-          ],
-        ),
-      ),
-    );
+            );
+          }
+          break;
+      }
+    }
+
+    return widgets;
   }
 
   MarketplaceCategory? _categoryById(String id) {
@@ -410,7 +490,11 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
   // como "la misma publicación" al usuario.
   Future<void> _openWantedPost(BuildContext context, WantedPost post) {
     return Navigator.of(context)
-        .push(springDetailRoute(ProductDetailScreen(product: Product.fromWantedPost(post))))
+        .push(
+          springDetailRoute(
+            ProductDetailScreen(product: Product.fromWantedPost(post)),
+          ),
+        )
         .then((_) => _loadData(silent: true));
   }
 
@@ -420,7 +504,11 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
         .then((_) => _loadData(silent: true));
   }
 
-  Future<void> _openSellerProducts(BuildContext context, Seller seller, List<Product> products) async {
+  Future<void> _openSellerProducts(
+    BuildContext context,
+    Seller seller,
+    List<Product> products,
+  ) async {
     final sorted = List<Product>.from(products)
       ..sort((a, b) => b.isFeatured ? 1 : 0 - (a.isFeatured ? 1 : 0));
     await Navigator.of(context).push(
@@ -431,13 +519,15 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
   }
 
   void _openSearch(BuildContext context) {
-    Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => const SearchScreen()));
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const SearchScreen()));
   }
 
   void _showMockMessage(BuildContext context, String message) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -503,10 +593,7 @@ class _HighlightPlansBanner extends StatelessWidget {
             runSpacing: 8,
             children: [
               for (final plan in plans)
-                _HighlightPlanChip(
-                  label: plan.title,
-                  value: plan.price,
-                ),
+                _HighlightPlanChip(label: plan.title, value: plan.price),
             ],
           ),
         ],
@@ -562,10 +649,7 @@ class _FavHeaderButton extends StatelessWidget {
 }
 
 class _CategoryFilterChip extends StatefulWidget {
-  const _CategoryFilterChip({
-    required this.category,
-    required this.onClear,
-  });
+  const _CategoryFilterChip({required this.category, required this.onClear});
 
   final MarketplaceCategory category;
   final VoidCallback onClear;
@@ -622,9 +706,7 @@ class _CategoryFilterChipState extends State<_CategoryFilterChip> {
       decoration: BoxDecoration(
         color: AppColors.primary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: AppColors.primary.withValues(alpha: 0.22),
-        ),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.22)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -748,11 +830,7 @@ class _CategoryScroller extends StatelessWidget {
                         width: selected ? 2 : 1,
                       ),
                     ),
-                    child: Icon(
-                      category.icon,
-                      color: category.color,
-                      size: 22,
-                    ),
+                    child: Icon(category.icon, color: category.color, size: 22),
                   ),
                   const SizedBox(height: 5),
                   Text(
@@ -830,8 +908,11 @@ class _BusinessCard extends StatelessWidget {
                               ),
                             ),
                           )
-                        : const Icon(Icons.store_rounded,
-                            color: AppColors.primaryDark, size: 22),
+                        : const Icon(
+                            Icons.store_rounded,
+                            color: AppColors.primaryDark,
+                            size: 22,
+                          ),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -855,8 +936,11 @@ class _BusinessCard extends StatelessWidget {
                             if (seller.verified)
                               const Padding(
                                 padding: EdgeInsets.only(left: 6),
-                                child: Icon(Icons.verified_rounded,
-                                    size: 18, color: AppColors.teal),
+                                child: Icon(
+                                  Icons.verified_rounded,
+                                  size: 18,
+                                  color: AppColors.teal,
+                                ),
                               ),
                           ],
                         ),
@@ -874,8 +958,11 @@ class _BusinessCard extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 4),
-                            const Icon(Icons.star_rounded,
-                                size: 14, color: AppColors.gold),
+                            const Icon(
+                              Icons.star_rounded,
+                              size: 14,
+                              color: AppColors.gold,
+                            ),
                             const SizedBox(width: 2),
                             Text(
                               seller.reviews > 0
@@ -893,8 +980,11 @@ class _BusinessCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  Icon(Icons.chevron_right_rounded,
-                      color: AppColors.muted.withValues(alpha: 0.4), size: 22),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.muted.withValues(alpha: 0.4),
+                    size: 22,
+                  ),
                 ],
               ),
             ),
@@ -909,8 +999,8 @@ class _BusinessCard extends StatelessWidget {
                   Expanded(
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      itemCount: displayProducts.length +
-                          (remaining > 0 ? 1 : 0),
+                      itemCount:
+                          displayProducts.length + (remaining > 0 ? 1 : 0),
                       separatorBuilder: (_, _) => const SizedBox(width: 10),
                       itemBuilder: (context, index) {
                         if (index < displayProducts.length) {
@@ -933,14 +1023,19 @@ class _BusinessCard extends StatelessWidget {
                               child: Container(
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(12),
-                                  color: AppColors.primary.withValues(alpha: 0.04),
+                                  color: AppColors.primary.withValues(
+                                    alpha: 0.04,
+                                  ),
                                 ),
                                 child: const Center(
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.grid_view_rounded,
-                                          color: AppColors.muted, size: 20),
+                                      Icon(
+                                        Icons.grid_view_rounded,
+                                        color: AppColors.muted,
+                                        size: 20,
+                                      ),
                                       SizedBox(height: 6),
                                       Text(
                                         'Ver todo',
@@ -972,10 +1067,7 @@ class _BusinessCard extends StatelessWidget {
 
 /// Pantalla simple que muestra todos los productos de un negocio.
 class _SellerProductsScreen extends StatelessWidget {
-  const _SellerProductsScreen({
-    required this.seller,
-    required this.products,
-  });
+  const _SellerProductsScreen({required this.seller, required this.products});
 
   final Seller seller;
   final List<Product> products;
@@ -989,8 +1081,11 @@ class _SellerProductsScreen extends StatelessWidget {
             CircleAvatar(
               radius: 16,
               backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-              child: const Icon(Icons.store_rounded,
-                  size: 16, color: AppColors.primaryDark),
+              child: const Icon(
+                Icons.store_rounded,
+                size: 16,
+                color: AppColors.primaryDark,
+              ),
             ),
             const SizedBox(width: 10),
             Text(seller.name),
@@ -1024,8 +1119,9 @@ class _SellerProductsScreen extends StatelessWidget {
                           onTap: () {
                             Navigator.of(context).push(
                               MaterialPageRoute<void>(
-                                builder: (_) =>
-                                    ProductDetailScreen(product: products[index]),
+                                builder: (_) => ProductDetailScreen(
+                                  product: products[index],
+                                ),
                               ),
                             );
                           },
@@ -1105,4 +1201,3 @@ class _ScanQrButton extends StatelessWidget {
     );
   }
 }
-

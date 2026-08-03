@@ -438,6 +438,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: TextField(
                     controller: _textController,
                     textInputAction: TextInputAction.send,
+                    textCapitalization: TextCapitalization.sentences,
                     onSubmitted: (_) => _sendMessage(),
                     onChanged: _onTextChanged,
                     minLines: 1,

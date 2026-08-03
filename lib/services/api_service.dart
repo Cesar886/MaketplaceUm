@@ -56,6 +56,28 @@ class ApiService {
     return Uri.parse('$baseUrl/api$path').replace(queryParameters: query);
   }
 
+  /// GET con reintentos automáticos ante errores de conexión transitorios
+  /// (ej. "Connection closed before full header was received", que ocurre
+  /// de forma intermitente cuando el cliente reutiliza una conexión
+  /// keep-alive que el servidor ya cerró por inactividad). Solo se reintenta
+  /// en fallos de conexión/socket, nunca en respuestas HTTP con error (esas
+  /// las maneja cada método según su propio código de estado). Es seguro
+  /// reintentar GET porque son idempotentes.
+  static Future<http.Response> _getWithRetry(
+    Uri uri, {
+    Map<String, String>? headers,
+    int maxAttempts = 3,
+  }) async {
+    for (var attempt = 1; ; attempt++) {
+      try {
+        return await _client.get(uri, headers: headers);
+      } on http.ClientException {
+        if (attempt >= maxAttempts) rethrow;
+      }
+      await Future.delayed(Duration(milliseconds: 300 * attempt));
+    }
+  }
+
   // ─── Auth / Registro ──────────────────────────────────────
 
   /// Llama a POST /api/auth/register. El backend es la autoridad real de
@@ -84,7 +106,9 @@ class ApiService {
     );
     if (res.statusCode != 200 && res.statusCode != 201) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
-      throw Exception(body['error'] ?? 'Error al sincronizar usuario con el backend');
+      throw Exception(
+        body['error'] ?? 'Error al sincronizar usuario con el backend',
+      );
     }
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -128,7 +152,7 @@ class ApiService {
 
   // ─── Categories ─────────────────────────────────────────
   static Future<List<MarketplaceCategory>> getCategories() async {
-    final res = await _client.get(_uri('/categories'));
+    final res = await _getWithRetry(_uri('/categories'));
     if (res.statusCode != 200) throw Exception('Error fetching categories');
     final List<dynamic> data = jsonDecode(res.body) as List<dynamic>;
     return data
@@ -153,7 +177,7 @@ class ApiService {
     if (seller != null) query['seller'] = seller;
     if (userId != null) query['userId'] = userId;
 
-    final res = await _client.get(
+    final res = await _getWithRetry(
       _uri('/products', query.isNotEmpty ? query : null),
     );
     if (res.statusCode != 200) throw Exception('Error fetching products');
@@ -163,9 +187,30 @@ class ApiService {
         .toList();
   }
 
+  /// Feed de productos rankeado por score (recencia + popularidad +
+  /// afinidad por categoría del device/usuario), con diversidad por
+  /// vendedor ya aplicada en el backend. A diferencia de [getProducts],
+  /// que solo filtra, este es el orden "para ti" real.
+  static Future<List<Product>> getFeed({
+    required String deviceId,
+    String? userId,
+    int limit = 200,
+  }) async {
+    final query = <String, String>{'device_id': deviceId, 'limit': '$limit'};
+    if (userId != null) query['user_id'] = userId;
+
+    final res = await _getWithRetry(_uri('/feed', query));
+    if (res.statusCode != 200) throw Exception('Error fetching feed');
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final List<dynamic> data = body['products'] as List<dynamic>;
+    return data
+        .map((e) => Product.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   static Future<Product> getProduct(String id, {String? userId}) async {
     final query = userId != null ? {'userId': userId} : null;
-    final res = await _client.get(_uri('/products/$id', query));
+    final res = await _getWithRetry(_uri('/products/$id', query));
     if (res.statusCode != 200) throw Exception('Product not found');
     return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
@@ -207,7 +252,7 @@ class ApiService {
       if (status != null) 'status': status,
       if (type != null) 'type': type,
     };
-    final res = await _client.get(
+    final res = await _getWithRetry(
       _uri('/wanted', query.isNotEmpty ? query : null),
     );
     if (res.statusCode != 200) throw Exception('Error fetching wanted posts');
@@ -252,7 +297,7 @@ class ApiService {
   }
 
   static Future<WantedPost> getWantedPost(String id) async {
-    final res = await _client.get(_uri('/wanted/$id'));
+    final res = await _getWithRetry(_uri('/wanted/$id'));
     if (res.statusCode != 200) throw Exception('Wanted post not found');
     return WantedPost.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
@@ -292,7 +337,7 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> getPriceHistory(String id) async {
-    final res = await _client.get(_uri('/products/$id/price-history'));
+    final res = await _getWithRetry(_uri('/products/$id/price-history'));
     if (res.statusCode != 200) throw Exception('Error fetching price history');
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -536,14 +581,14 @@ class ApiService {
 
   // ─── Sellers ────────────────────────────────────────────
   static Future<List<Seller>> getSellers() async {
-    final res = await _client.get(_uri('/sellers'));
+    final res = await _getWithRetry(_uri('/sellers'));
     if (res.statusCode != 200) throw Exception('Error fetching sellers');
     final List<dynamic> data = jsonDecode(res.body) as List<dynamic>;
     return data.map((e) => Seller.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   static Future<Seller> getSeller(String id) async {
-    final res = await _client.get(_uri('/sellers/$id'));
+    final res = await _getWithRetry(_uri('/sellers/$id'));
     if (res.statusCode != 200) throw Exception('Seller not found');
     return Seller.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
@@ -598,7 +643,7 @@ class ApiService {
 
   // ─── Cart ───────────────────────────────────────────────
   static Future<List<CartItem>> getCart() async {
-    final res = await _client.get(_uri('/cart'));
+    final res = await _getWithRetry(_uri('/cart'));
     if (res.statusCode != 200) throw Exception('Error fetching cart');
     final List<dynamic> data = jsonDecode(res.body) as List<dynamic>;
     return data
@@ -645,7 +690,7 @@ class ApiService {
 
   // ─── Listings ───────────────────────────────────────────
   static Future<List<Product>> getListings() async {
-    final res = await _client.get(_uri('/listings'));
+    final res = await _getWithRetry(_uri('/listings'));
     if (res.statusCode != 200) throw Exception('Error fetching listings');
     final List<dynamic> data = jsonDecode(res.body) as List<dynamic>;
     return data
@@ -655,7 +700,7 @@ class ApiService {
 
   // ─── Highlight Plans ────────────────────────────────────
   static Future<List<HighlightPlan>> getHighlightPlans() async {
-    final res = await _client.get(_uri('/highlight-plans'));
+    final res = await _getWithRetry(_uri('/highlight-plans'));
     if (res.statusCode != 200) throw Exception('Error fetching plans');
     final List<dynamic> data = jsonDecode(res.body) as List<dynamic>;
     return data
@@ -666,7 +711,7 @@ class ApiService {
   // ─── Notifications ──────────────────────────────────────
 
   static Future<Map<String, dynamic>> getNotifications() async {
-    final res = await _client.get(
+    final res = await _getWithRetry(
       _uri('/notifications'),
       headers: _authHeaders,
     );
@@ -732,7 +777,7 @@ class ApiService {
   }
 
   static Future<int> getUnreadNotificationCount() async {
-    final res = await _client.get(
+    final res = await _getWithRetry(
       _uri('/notifications/unread-count'),
       headers: _authHeaders,
     );
@@ -743,7 +788,7 @@ class ApiService {
   // ─── Category Interests ──────────────────────────────────
 
   static Future<List<String>> getCategoryInterests() async {
-    final res = await _client.get(
+    final res = await _getWithRetry(
       _uri('/notifications/interests'),
       headers: _authHeaders,
     );
@@ -779,7 +824,7 @@ class ApiService {
   static Future<Map<String, dynamic>> getConversations({String? userId}) async {
     final query = <String, String>{};
     if (userId != null) query['userId'] = userId;
-    final res = await _client.get(_uri('/chat/conversations', query));
+    final res = await _getWithRetry(_uri('/chat/conversations', query));
     if (res.statusCode != 200) throw Exception('Error fetching conversations');
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -790,7 +835,7 @@ class ApiService {
   }) async {
     final query = <String, String>{};
     if (userId != null) query['userId'] = userId;
-    final res = await _client.get(
+    final res = await _getWithRetry(
       _uri('/chat/conversations/$conversationId/messages', query),
     );
     if (res.statusCode != 200) throw Exception('Error fetching messages');

@@ -762,8 +762,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     // código de país; WhatsApp lo requiere para el deep link `wa.me`.
     final phone = rawDigits.length == 10 ? '52$rawDigits' : rawDigits;
     final message = product.isWantedPost
-        ? 'Hola ${product.seller.name}, vi en Mercadito UM que buscas "${product.title}" y quiero platicarte.'
-        : 'Hola ${product.seller.name}, vi tu publicación "${product.title}" en Mercadito UM y me interesa.';
+        ? 'Hola ${product.seller.name}, vi tu busqueda de "${product.title}" ¿Aún la necesitas?.'
+        : 'Hola ${product.seller.name}, me interesa "${product.title}" en Mercadito UM ¿Aún lo tienes?.';
     final uri = Uri.parse(
       'https://wa.me/$phone?text=${Uri.encodeComponent(message)}',
     );

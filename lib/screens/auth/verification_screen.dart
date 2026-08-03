@@ -250,6 +250,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
       children: [
         TextFormField(
           controller: _matriculaController,
+          textCapitalization: TextCapitalization.characters,
           decoration: const InputDecoration(
             labelText: 'Matrícula *',
             prefixIcon: Icon(Icons.badge_rounded),
@@ -258,6 +259,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
         const SizedBox(height: 14),
         TextFormField(
           controller: _carreraController,
+          textCapitalization: TextCapitalization.words,
           decoration: const InputDecoration(
             labelText: 'Carrera (opcional)',
             prefixIcon: Icon(Icons.school_rounded),
@@ -284,6 +286,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
       children: [
         TextFormField(
           controller: _fullNameController,
+          textCapitalization: TextCapitalization.words,
           decoration: const InputDecoration(
             labelText: 'Nombre completo (como aparece en el documento) *',
             prefixIcon: Icon(Icons.badge_rounded),

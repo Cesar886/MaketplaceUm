@@ -284,7 +284,7 @@ class Product {
       description: post.description ?? '',
       publishedAgo: relativeTimeFromIso(post.createdAt),
       seller: seller,
-      imageIcon: post.isService ? Icons.build_outlined : Icons.shopping_bag_outlined,
+      imageIcon: category.icon,
       imageColor: category.color,
       isAvailable: !post.isResolved,
       postType: 'se_busca',
