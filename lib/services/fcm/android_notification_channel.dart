@@ -25,8 +25,7 @@ final FlutterLocalNotificationsPlugin localNotificationsPlugin =
 
 const String kNotificationChannelId = 'mercadito_um_default';
 const String kNotificationChannelName = 'Mercadito UM';
-const String kNotificationChannelDescription =
-    'Notificaciones de Mercadito UM';
+const String kNotificationChannelDescription = 'Notificaciones de Mercadito UM';
 
 Future<void> createAndroidNotificationChannel() async {
   if (!Platform.isAndroid) return;
@@ -42,10 +41,7 @@ Future<void> createAndroidNotificationChannel() async {
   );
 
   await localNotificationsPlugin.initialize(
-    const InitializationSettings(
-      android: androidSettings,
-      iOS: iosSettings,
-    ),
+    const InitializationSettings(android: androidSettings, iOS: iosSettings),
     onDidReceiveNotificationResponse: (NotificationResponse response) {
       if (response.payload != null && response.payload!.isNotEmpty) {
         try {
@@ -73,8 +69,11 @@ Future<void> createAndroidNotificationChannel() async {
 
   await localNotificationsPlugin
       .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>()
+        AndroidFlutterLocalNotificationsPlugin
+      >()
       ?.createNotificationChannel(androidChannel);
 
-  debugPrint('📱 [Android] Canal de notificación "$kNotificationChannelId" creado');
+  debugPrint(
+    '📱 [Android] Canal de notificación "$kNotificationChannelId" creado',
+  );
 }

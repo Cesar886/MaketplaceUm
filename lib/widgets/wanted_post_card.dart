@@ -28,7 +28,7 @@ class WantedPostCard extends StatelessWidget {
         boxShadow: AppShadows.soft,
       ),
       child: Material(
-        color: AppColors.surface,
+        color: context.colors.surface,
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
@@ -51,8 +51,9 @@ class WantedPostCard extends StatelessWidget {
                   child: AspectRatio(
                     aspectRatio: 4 / 3.4,
                     child: Container(
-                      color: (category?.color ?? AppColors.teal)
-                          .withValues(alpha: 0.10),
+                      color: (category?.color ?? AppColors.teal).withValues(
+                        alpha: 0.10,
+                      ),
                       alignment: Alignment.center,
                       child: Icon(
                         category?.icon ?? Icons.category_rounded,
@@ -76,7 +77,7 @@ class WantedPostCard extends StatelessWidget {
                   post.description ?? 'Sin descripción',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTypography.body(11.5, color: AppColors.muted),
+                  style: AppTypography.body(11.5, color: context.colors.muted),
                 ),
                 const Spacer(),
                 const SizedBox(height: 6),
@@ -91,7 +92,10 @@ class WantedPostCard extends StatelessWidget {
                         relativeTimeFromIso(post.createdAt),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: AppTypography.body(11, color: AppColors.muted),
+                        style: AppTypography.body(
+                          11,
+                          color: context.colors.muted,
+                        ),
                       ),
                     ),
                   ],
@@ -119,7 +123,8 @@ class _SeBuscaTag extends StatelessWidget {
     final priceMax = post.priceMax;
     String label = 'Se busca';
     if (priceMin != null && priceMax != null) {
-      label = '${Product.formatPrice(priceMin)} - ${Product.formatPrice(priceMax)}';
+      label =
+          '${Product.formatPrice(priceMin)} - ${Product.formatPrice(priceMax)}';
     } else if (priceMax != null) {
       label = 'Hasta ${Product.formatPrice(priceMax)}';
     }
@@ -132,7 +137,11 @@ class _SeBuscaTag extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: AppTypography.label(12, weight: FontWeight.w800, color: AppColors.teal),
+        style: AppTypography.label(
+          12,
+          weight: FontWeight.w800,
+          color: AppColors.teal,
+        ),
       ),
     );
   }

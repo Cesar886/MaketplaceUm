@@ -36,26 +36,24 @@ class _HighlightPlansScreenState extends State<HighlightPlansScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Planes para destacar')),
-      body: SafeArea(
-        child: _buildBody(),
-      ),
+      body: SafeArea(child: _buildBody()),
     );
   }
 
   Widget _buildBody() {
     if (_error != null) {
       return Center(
-        child: Text(_error!, style: const TextStyle(color: AppColors.muted)),
+        child: Text(_error!, style: TextStyle(color: context.colors.muted)),
       );
     }
     if (_plans == null) {
       return const Center(child: CircularProgressIndicator());
     }
     if (_plans!.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
           'No hay planes disponibles por el momento.',
-          style: TextStyle(color: AppColors.muted),
+          style: TextStyle(color: context.colors.muted),
         ),
       );
     }
@@ -68,9 +66,9 @@ class _HighlightPlansScreenState extends State<HighlightPlansScreen> {
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: context.colors.surface,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: context.colors.border),
           ),
           child: Row(
             children: [
@@ -94,8 +92,8 @@ class _HighlightPlansScreenState extends State<HighlightPlansScreen> {
                     const SizedBox(height: 4),
                     Text(
                       '${plan.days} días · ${plan.description}',
-                      style: const TextStyle(
-                        color: AppColors.muted,
+                      style: TextStyle(
+                        color: context.colors.muted,
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
                       ),
@@ -106,9 +104,9 @@ class _HighlightPlansScreenState extends State<HighlightPlansScreen> {
               const SizedBox(width: 12),
               Text(
                 plan.price,
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  color: AppColors.primaryDark,
+                  color: context.colors.accent,
                 ),
               ),
             ],

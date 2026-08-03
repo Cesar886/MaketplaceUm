@@ -7,11 +7,7 @@ import '../app_theme.dart';
 /// Pantalla dedicada para mostrar un QR en grande.
 /// Al tocar la pantalla o el botón de cerrar, se cierra.
 class QrDisplayScreen extends StatelessWidget {
-  const QrDisplayScreen({
-    super.key,
-    required this.data,
-    this.title,
-  });
+  const QrDisplayScreen({super.key, required this.data, this.title});
 
   /// Datos a codificar en el QR.
   final String data;
@@ -90,7 +86,10 @@ class QrDisplayScreen extends StatelessWidget {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.white,
                   side: const BorderSide(color: Colors.white24),
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 14,
+                  ),
                 ),
                 icon: const Icon(Icons.close_rounded, size: 20),
                 label: const Text('Cerrar'),

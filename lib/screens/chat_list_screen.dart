@@ -125,64 +125,68 @@ class _ChatListScreenState extends State<ChatListScreen> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _conversations.isEmpty
-                ? ListView(
-                    children: const [
-                      SizedBox(height: 120),
-                      Center(
-                        child: Column(
-                          children: [
-                            Icon(Icons.chat_bubble_outline_rounded,
-                                size: 64, color: AppColors.muted),
-                            SizedBox(height: 16),
-                            Text(
-                              'Sin conversaciones',
-                              style: TextStyle(
-                                color: AppColors.muted,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 16,
-                              ),
-                            ),
-                            SizedBox(height: 8),
-                            Text(
-                              'Envía un mensaje desde cualquier\nproducto para iniciar un chat.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: AppColors.muted,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
+            ? ListView(
+                children: [
+                  SizedBox(height: 120),
+                  Center(
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.chat_bubble_outline_rounded,
+                          size: 64,
+                          color: context.colors.muted,
                         ),
-                      ),
-                    ],
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
-                    itemCount: _conversations.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 6),
-                    itemBuilder: (context, index) {
-                      final conv = _conversations[index];
-                      final auth = context.read<AuthProvider>();
-                      final isOwn = auth.isLoggedIn && auth.backendSellerId == conv.sellerId;
-                      return _ConversationTile(
-                        conversation: conv,
-                        isOwn: isOwn,
-                        onTap: () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => ChatScreen(
-                                conversationId: conv.id,
-                                productId: conv.productId,
-                                // No se pasa sellerId — la conversación ya existe.
-                                // ChatScreen solo necesita sellerId para crear una nueva.
-                              ),
-                            ),
-                          );
-                          _load();
-                        },
-                      );
-                    },
+                        SizedBox(height: 16),
+                        Text(
+                          'Sin conversaciones',
+                          style: TextStyle(
+                            color: context.colors.muted,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Envía un mensaje desde cualquier\nproducto para iniciar un chat.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: context.colors.muted,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                ],
+              )
+            : ListView.separated(
+                padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+                itemCount: _conversations.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 6),
+                itemBuilder: (context, index) {
+                  final conv = _conversations[index];
+                  final auth = context.read<AuthProvider>();
+                  final isOwn =
+                      auth.isLoggedIn && auth.backendSellerId == conv.sellerId;
+                  return _ConversationTile(
+                    conversation: conv,
+                    isOwn: isOwn,
+                    onTap: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => ChatScreen(
+                            conversationId: conv.id,
+                            productId: conv.productId,
+                            // No se pasa sellerId — la conversación ya existe.
+                            // ChatScreen solo necesita sellerId para crear una nueva.
+                          ),
+                        ),
+                      );
+                      _load();
+                    },
+                  );
+                },
+              ),
       ),
     );
   }
@@ -203,18 +207,22 @@ class _ConversationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final otherUser = conversation.otherUser;
     final product = conversation.product;
-    final productName = product?.title ?? conversation.wantedPostTitle ?? 'Producto';
-    final unread = conversation.lastMessage != null &&
+    final productName =
+        product?.title ?? conversation.wantedPostTitle ?? 'Producto';
+    final unread =
+        conversation.lastMessage != null &&
         conversation.lastMessage!.senderId !=
             (isOwn ? conversation.sellerId : conversation.buyerId) &&
         !conversation.lastMessage!.read;
 
     return Material(
-      color: AppColors.surface,
+      color: context.colors.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
         side: BorderSide(
-          color: unread ? AppColors.primary.withValues(alpha: 0.3) : AppColors.border,
+          color: unread
+              ? AppColors.primary.withValues(alpha: 0.3)
+              : context.colors.border,
           width: unread ? 1.5 : 1,
         ),
       ),
@@ -230,8 +238,8 @@ class _ConversationTile extends StatelessWidget {
                 backgroundColor: AppColors.primary.withValues(alpha: 0.12),
                 child: Text(
                   otherUser?.avatarInitials ?? '?',
-                  style: const TextStyle(
-                    color: AppColors.primaryDark,
+                  style: TextStyle(
+                    color: context.colors.accent,
                     fontWeight: FontWeight.w700,
                     fontSize: 16,
                   ),
@@ -250,9 +258,10 @@ class _ConversationTile extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontWeight:
-                                  unread ? FontWeight.w700 : FontWeight.w600,
-                              color: AppColors.ink,
+                              fontWeight: unread
+                                  ? FontWeight.w700
+                                  : FontWeight.w600,
+                              color: context.colors.ink,
                               fontSize: 15,
                             ),
                           ),
@@ -273,8 +282,8 @@ class _ConversationTile extends StatelessWidget {
                       'Sobre: $productName',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.muted,
+                      style: TextStyle(
+                        color: context.colors.muted,
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
@@ -287,9 +296,8 @@ class _ConversationTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: AppColors.muted,
-                        fontWeight:
-                            unread ? FontWeight.w600 : FontWeight.w500,
+                        color: context.colors.muted,
+                        fontWeight: unread ? FontWeight.w600 : FontWeight.w500,
                         fontSize: 13,
                       ),
                     ),
@@ -297,8 +305,11 @@ class _ConversationTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              const Icon(Icons.chevron_right_rounded,
-                  color: AppColors.muted, size: 20),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: context.colors.muted,
+                size: 20,
+              ),
             ],
           ),
         ),

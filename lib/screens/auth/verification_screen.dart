@@ -104,9 +104,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
       }
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(
-          builder: (_) => const AccountCreatedScreen(),
-        ),
+        MaterialPageRoute<void>(builder: (_) => const AccountCreatedScreen()),
       );
     } catch (e) {
       if (!mounted) return;
@@ -120,9 +118,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
     // No necesitamos llamar a la DB porque el status inicial ya es ese.
     // Solo navegamos directamente.
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => const AccountCreatedScreen(),
-      ),
+      MaterialPageRoute<void>(builder: (_) => const AccountCreatedScreen()),
     );
   }
 
@@ -149,8 +145,8 @@ class _VerificationScreenState extends State<VerificationScreen> {
               const SizedBox(height: 6),
               Text(
                 _descriptionFor(auth.accountType),
-                style: const TextStyle(
-                  color: AppColors.muted,
+                style: TextStyle(
+                  color: context.colors.muted,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -165,12 +161,16 @@ class _VerificationScreenState extends State<VerificationScreen> {
                     color: AppColors.danger.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                        color: AppColors.danger.withValues(alpha: 0.22)),
+                      color: AppColors.danger.withValues(alpha: 0.22),
+                    ),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.error_outline_rounded,
-                          size: 20, color: AppColors.danger),
+                      const Icon(
+                        Icons.error_outline_rounded,
+                        size: 20,
+                        color: AppColors.danger,
+                      ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
@@ -188,24 +188,25 @@ class _VerificationScreenState extends State<VerificationScreen> {
               ],
 
               // ─── Formulario según tipo ───────────────────
-              Builder(builder: (context) {
-                switch (auth.accountType) {
-                  case AccountType.estudiante:
-                    return _buildStudentForm();
-                  case AccountType.particular:
-                    return _buildParticularForm();
-                  case AccountType.negocio:
-                    return _buildBusinessForm();
-                }
-              }),
+              Builder(
+                builder: (context) {
+                  switch (auth.accountType) {
+                    case AccountType.estudiante:
+                      return _buildStudentForm();
+                    case AccountType.particular:
+                      return _buildParticularForm();
+                    case AccountType.negocio:
+                      return _buildBusinessForm();
+                  }
+                },
+              ),
 
               const SizedBox(height: 28),
 
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed:
-                      _submitting ? null : () => _handleVerify(auth),
+                  onPressed: _submitting ? null : () => _handleVerify(auth),
                   child: _submitting
                       ? const SizedBox(
                           height: 20,
@@ -318,11 +319,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: AppColors.teal.withValues(alpha: 0.22)),
           ),
-          child: const Row(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.check_circle_rounded,
-                  color: AppColors.teal, size: 24),
+              Icon(Icons.check_circle_rounded, color: AppColors.teal, size: 24),
               SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -342,7 +342,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                       'Un administrador revisará y confirmará tu puesto manualmente. '
                       'Te notificaremos cuando sea aprobado.',
                       style: TextStyle(
-                        color: AppColors.primaryDark,
+                        color: context.colors.accent,
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
                         height: 1.4,
@@ -382,17 +382,17 @@ class _PhotoUploadTile extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: context.colors.surface,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: path != null ? AppColors.teal : AppColors.border,
+            color: path != null ? AppColors.teal : context.colors.border,
           ),
         ),
         child: Row(
           children: [
             Icon(
               path != null ? Icons.check_circle_rounded : icon,
-              color: path != null ? AppColors.teal : AppColors.muted,
+              color: path != null ? AppColors.teal : context.colors.muted,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -402,12 +402,12 @@ class _PhotoUploadTile extends StatelessWidget {
                     : label,
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
-                  color: path != null ? AppColors.teal : AppColors.ink,
+                  color: path != null ? AppColors.teal : context.colors.ink,
                 ),
               ),
             ),
             if (path == null)
-              const Icon(Icons.upload_file_rounded, color: AppColors.muted),
+              Icon(Icons.upload_file_rounded, color: context.colors.muted),
           ],
         ),
       ),

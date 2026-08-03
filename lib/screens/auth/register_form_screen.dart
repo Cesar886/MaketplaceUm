@@ -122,7 +122,8 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
     try {
       if (_isBusiness) {
         String displayName = _businessNameController.text.trim();
-        if (displayName.isEmpty) displayName = _responsibleNameController.text.trim();
+        if (displayName.isEmpty)
+          displayName = _responsibleNameController.text.trim();
 
         await auth.registerUser(
           name: displayName,
@@ -135,7 +136,8 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
           responsibleName: _responsibleNameController.text.trim().isEmpty
               ? null
               : _responsibleNameController.text.trim(),
-          businessDescription: _businessDescriptionController.text.trim().isEmpty
+          businessDescription:
+              _businessDescriptionController.text.trim().isEmpty
               ? null
               : _businessDescriptionController.text.trim(),
           logoPath: _logoFile?.path,
@@ -171,15 +173,13 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
       }
 
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(
-          builder: (_) => const VerificationScreen(),
-        ),
+        MaterialPageRoute<void>(builder: (_) => const VerificationScreen()),
       );
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -189,7 +189,11 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
     final typeLabel = _typeLabels[widget.userType] ?? 'Cuenta';
 
     return Scaffold(
-      appBar: AppBar(title: Text(_isBusiness ? 'Registrar negocio' : 'Datos básicos - $typeLabel')),
+      appBar: AppBar(
+        title: Text(
+          _isBusiness ? 'Registrar negocio' : 'Datos básicos - $typeLabel',
+        ),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
@@ -198,13 +202,17 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (_isBusiness) ..._buildBusinessHeader()
-                else ..._buildStandardHeader(),
+                if (_isBusiness)
+                  ..._buildBusinessHeader()
+                else
+                  ..._buildStandardHeader(),
 
                 const SizedBox(height: 22),
 
-                if (_isBusiness) ..._buildBusinessSections()
-                else ..._buildStandardFields(),
+                if (_isBusiness)
+                  ..._buildBusinessSections()
+                else
+                  ..._buildStandardFields(),
 
                 const SizedBox(height: 14),
                 // ─── Aceptación de términos ─────────────────────
@@ -231,10 +239,10 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text(
+                    Text(
                       '¿Ya tienes cuenta? ',
                       style: TextStyle(
-                        color: AppColors.muted,
+                        color: context.colors.muted,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -269,15 +277,12 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
 
   List<Widget> _buildStandardHeader() {
     return [
-      Text(
-        'Tus datos',
-        style: Theme.of(context).textTheme.titleLarge,
-      ),
+      Text('Tus datos', style: Theme.of(context).textTheme.titleLarge),
       const SizedBox(height: 6),
-      const Text(
+      Text(
         'Completa tu información para crear la cuenta.',
         style: TextStyle(
-          color: AppColors.muted,
+          color: context.colors.muted,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -291,10 +296,10 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
         style: Theme.of(context).textTheme.titleLarge,
       ),
       const SizedBox(height: 6),
-      const Text(
+      Text(
         'Completa los datos de tu negocio para aparecer en el campus.',
         style: TextStyle(
-          color: AppColors.muted,
+          color: context.colors.muted,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -341,8 +346,9 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
           prefixIcon: Icon(Icons.store_rounded),
         ),
         textCapitalization: TextCapitalization.words,
-        validator: (v) =>
-            (v == null || v.trim().isEmpty) ? 'Ingresa el nombre del negocio' : null,
+        validator: (v) => (v == null || v.trim().isEmpty)
+            ? 'Ingresa el nombre del negocio'
+            : null,
       ),
       const SizedBox(height: 14),
       _loadingCategories
@@ -378,10 +384,10 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: context.colors.surface,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: _logoFile != null ? AppColors.teal : AppColors.border,
+              color: _logoFile != null ? AppColors.teal : context.colors.border,
             ),
           ),
           child: Row(
@@ -394,7 +400,8 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                     width: 48,
                     height: 48,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => const Icon(Icons.broken_image_rounded),
+                    errorBuilder: (_, _, _) =>
+                        const Icon(Icons.broken_image_rounded),
                   ),
                 )
               else
@@ -405,21 +412,27 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                     color: AppColors.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.add_photo_alternate_rounded,
-                      color: AppColors.primary),
+                  child: const Icon(
+                    Icons.add_photo_alternate_rounded,
+                    color: AppColors.primary,
+                  ),
                 ),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  _logoFile != null ? 'Logo seleccionado ✓' : 'Logo del negocio (opcional)',
+                  _logoFile != null
+                      ? 'Logo seleccionado ✓'
+                      : 'Logo del negocio (opcional)',
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
-                    color: _logoFile != null ? AppColors.teal : AppColors.ink,
+                    color: _logoFile != null
+                        ? AppColors.teal
+                        : context.colors.ink,
                   ),
                 ),
               ),
               if (_logoFile == null)
-                const Icon(Icons.upload_file_rounded, color: AppColors.muted),
+                Icon(Icons.upload_file_rounded, color: context.colors.muted),
             ],
           ),
         ),
@@ -431,7 +444,8 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
         maxLines: 3,
         decoration: const InputDecoration(
           labelText: 'Descripción breve (opcional)',
-          hintText: 'Ej. Vendemos comida casera los martes y jueves en el edificio B',
+          hintText:
+              'Ej. Vendemos comida casera los martes y jueves en el edificio B',
           alignLabelWithHint: true,
           prefixIcon: Padding(
             padding: EdgeInsets.only(bottom: 32),
@@ -453,8 +467,9 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
           prefixIcon: Icon(Icons.person_rounded),
         ),
         textCapitalization: TextCapitalization.words,
-        validator: (v) =>
-            (v == null || v.trim().isEmpty) ? 'Ingresa el nombre del responsable' : null,
+        validator: (v) => (v == null || v.trim().isEmpty)
+            ? 'Ingresa el nombre del responsable'
+            : null,
       ),
       const SizedBox(height: 14),
       _buildEmailField(),
@@ -483,10 +498,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
           child: Icon(icon, size: 20, color: AppColors.primary),
         ),
         const SizedBox(width: 10),
-        Text(
-          title,
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
+        Text(title, style: Theme.of(context).textTheme.titleMedium),
       ],
     );
   }
@@ -517,9 +529,8 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
         prefixIcon: Icon(Icons.phone_rounded),
       ),
       keyboardType: TextInputType.phone,
-      validator: (v) => (v == null || v.trim().isEmpty)
-          ? 'Ingresa tu teléfono'
-          : null,
+      validator: (v) =>
+          (v == null || v.trim().isEmpty) ? 'Ingresa tu teléfono' : null,
     );
   }
 
@@ -530,11 +541,12 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
         labelText: 'Contraseña',
         prefixIcon: const Icon(Icons.lock_rounded),
         suffixIcon: IconButton(
-          icon: Icon(_obscurePassword
-              ? Icons.visibility_off_rounded
-              : Icons.visibility_rounded),
-          onPressed: () =>
-              setState(() => _obscurePassword = !_obscurePassword),
+          icon: Icon(
+            _obscurePassword
+                ? Icons.visibility_off_rounded
+                : Icons.visibility_rounded,
+          ),
+          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
         ),
       ),
       obscureText: _obscurePassword,
@@ -552,11 +564,12 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
         labelText: 'Confirmar contraseña',
         prefixIcon: const Icon(Icons.lock_rounded),
         suffixIcon: IconButton(
-          icon: Icon(_obscureConfirm
-              ? Icons.visibility_off_rounded
-              : Icons.visibility_rounded),
-          onPressed: () =>
-              setState(() => _obscureConfirm = !_obscureConfirm),
+          icon: Icon(
+            _obscureConfirm
+                ? Icons.visibility_off_rounded
+                : Icons.visibility_rounded,
+          ),
+          onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
         ),
       ),
       obscureText: _obscureConfirm,
@@ -575,11 +588,11 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: _acceptedTerms
-              ? AppColors.border
+              ? context.colors.border
               : AppColors.danger.withValues(alpha: 0.3),
         ),
       ),
@@ -588,8 +601,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
         children: [
           Checkbox(
             value: _acceptedTerms,
-            onChanged: (v) =>
-                setState(() => _acceptedTerms = v ?? false),
+            onChanged: (v) => setState(() => _acceptedTerms = v ?? false),
             activeColor: AppColors.primary,
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             visualDensity: VisualDensity.compact,
@@ -598,18 +610,15 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
             child: Padding(
               padding: const EdgeInsets.only(top: 10),
               child: RichText(
-                textScaler:
-                    MediaQuery.of(context).textScaler,
+                textScaler: MediaQuery.of(context).textScaler,
                 text: TextSpan(
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
-                    color: AppColors.ink,
+                    color: context.colors.ink,
                     height: 1.4,
                   ),
                   children: [
-                    const TextSpan(
-                      text: 'Acepto los ',
-                    ),
+                    const TextSpan(text: 'Acepto los '),
                     WidgetSpan(
                       alignment: PlaceholderAlignment.baseline,
                       baseline: TextBaseline.alphabetic,
@@ -624,15 +633,12 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                           style: TextStyle(
                             color: AppColors.primary,
                             fontWeight: FontWeight.w700,
-                            decoration:
-                                TextDecoration.underline,
+                            decoration: TextDecoration.underline,
                           ),
                         ),
                       ),
                     ),
-                    const TextSpan(
-                      text: ' y la ',
-                    ),
+                    const TextSpan(text: ' y la '),
                     WidgetSpan(
                       alignment: PlaceholderAlignment.baseline,
                       baseline: TextBaseline.alphabetic,
@@ -647,8 +653,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                           style: TextStyle(
                             color: AppColors.primary,
                             fontWeight: FontWeight.w700,
-                            decoration:
-                                TextDecoration.underline,
+                            decoration: TextDecoration.underline,
                           ),
                         ),
                       ),

@@ -50,8 +50,8 @@ class ProductCard extends StatelessWidget {
     final borderColor = product.isOffer
         ? AppColors.amber.withValues(alpha: 0.35)
         : product.isFeatured
-            ? AppColors.gold.withValues(alpha: 0.35)
-            : Colors.transparent;
+        ? AppColors.gold.withValues(alpha: 0.35)
+        : Colors.transparent;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -59,7 +59,7 @@ class ProductCard extends StatelessWidget {
         boxShadow: hasAccent ? AppShadows.lifted : AppShadows.soft,
       ),
       child: Material(
-        color: AppColors.surface,
+        color: context.colors.surface,
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
@@ -72,7 +72,10 @@ class ProductCard extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(10),
             child: horizontal
-                ? _HorizontalProductCard(product: product, heroEnabled: heroEnabled)
+                ? _HorizontalProductCard(
+                    product: product,
+                    heroEnabled: heroEnabled,
+                  )
                 : _GridProductCard(product: product, heroEnabled: heroEnabled),
           ),
         ),
@@ -114,7 +117,7 @@ class _GridProductCard extends StatelessWidget {
           product.description,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: AppTypography.body(11.5, color: AppColors.muted),
+          style: AppTypography.body(11.5, color: context.colors.muted),
         ),
         const Spacer(),
         const SizedBox(height: 6),
@@ -125,7 +128,7 @@ class _GridProductCard extends StatelessWidget {
                 product.publishedAgo,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: AppTypography.body(11, color: AppColors.muted),
+                style: AppTypography.body(11, color: context.colors.muted),
               ),
             ),
             if (product.availability != null)
@@ -178,7 +181,7 @@ class _HorizontalProductCard extends StatelessWidget {
                 product.description,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: AppTypography.body(12, color: AppColors.muted),
+                style: AppTypography.body(12, color: context.colors.muted),
               ),
               const Spacer(),
               Row(
@@ -194,12 +197,15 @@ class _HorizontalProductCard extends StatelessWidget {
                       product.category.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTypography.body(11, color: AppColors.muted),
+                      style: AppTypography.body(
+                        11,
+                        color: context.colors.muted,
+                      ),
                     ),
                   ),
                   Text(
                     product.publishedAgo,
-                    style: AppTypography.body(11, color: AppColors.muted),
+                    style: AppTypography.body(11, color: context.colors.muted),
                   ),
                   if (product.availability != null) ...[
                     const SizedBox(width: 6),
@@ -244,7 +250,10 @@ class _HeroProductImage extends StatelessWidget {
                 color: Colors.white.withValues(alpha: 0.65),
                 alignment: Alignment.center,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.danger,
                     borderRadius: BorderRadius.circular(8),
@@ -258,7 +267,11 @@ class _HeroProductImage extends StatelessWidget {
                   ),
                   child: Text(
                     'Agotado',
-                    style: AppTypography.label(13, weight: FontWeight.w800, color: Colors.white),
+                    style: AppTypography.label(
+                      13,
+                      weight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),

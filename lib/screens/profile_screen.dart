@@ -34,6 +34,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   double _sellerRating = 0.0;
   int _sellerReviews = 0;
   Seller? _seller;
+  bool _loadingSellerForEdit = false;
 
   @override
   void initState() {
@@ -64,6 +65,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  /// Abre la pantalla de edición de perfil. Si el seller todavía no se
+  /// cargó (p. ej. el GET inicial falló por una red lenta o inestable),
+  /// reintenta la carga en vez de dejar el botón de editar sin reacción.
+  Future<void> _openEditProfile(BuildContext context) async {
+    var seller = _seller;
+    if (seller == null) {
+      setState(() => _loadingSellerForEdit = true);
+      await _loadListings();
+      seller = _seller;
+      if (!mounted) return;
+      setState(() => _loadingSellerForEdit = false);
+      if (seller == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo cargar tu perfil. Intenta de nuevo.'),
+          ),
+        );
+        return;
+      }
+    }
+
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => EditProfileScreen(seller: seller!),
+      ),
+    );
+    if (result == true) _loadListings();
+  }
+
   /// Carga (no bloqueante) los productos vistos recientemente, para la
   /// sección "Vistos recientemente" del perfil.
   Future<void> _loadRecentProducts() async {
@@ -72,9 +102,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (ids.isEmpty) return;
 
       final all = await ApiService.getProducts();
-      final Map<String, Product> productMap = {
-        for (final p in all) p.id: p,
-      };
+      final Map<String, Product> productMap = {for (final p in all) p.id: p};
 
       final recent = <Product>[];
       for (final id in ids) {
@@ -100,18 +128,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.person_outline_rounded,
-                  size: 64, color: AppColors.muted),
+              Icon(
+                Icons.person_outline_rounded,
+                size: 64,
+                color: context.colors.muted,
+              ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Inicia sesión para ver tu perfil',
-                style: TextStyle(color: AppColors.muted),
+                style: TextStyle(color: context.colors.muted),
               ),
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                      builder: (_) => const LoginScreen()),
+                  MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
                 ),
                 child: const Text('Iniciar sesión'),
               ),
@@ -125,7 +155,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final userName = user['name'] as String;
 
     // Iniciales para el avatar
-    final initials = userName.split(' ').map((w) => w.isNotEmpty ? w[0] : '').take(2).join().toUpperCase();
+    final initials = userName
+        .split(' ')
+        .map((w) => w.isNotEmpty ? w[0] : '')
+        .take(2)
+        .join()
+        .toUpperCase();
 
     final activeCount = _listings
         .where((p) => p.status != ListingStatus.expired)
@@ -144,9 +179,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: context.colors.surface,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: context.colors.border),
               ),
               child: Column(
                 children: [
@@ -156,9 +191,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         children: [
                           CircleAvatar(
                             radius: 38,
-                            backgroundColor:
-                                AppColors.primary.withValues(alpha: 0.12),
-                            child: _seller?.logoUrl != null &&
+                            backgroundColor: AppColors.primary.withValues(
+                              alpha: 0.12,
+                            ),
+                            child:
+                                _seller?.logoUrl != null &&
                                     _seller!.logoUrl!.isNotEmpty
                                 ? ClipOval(
                                     child: Image.network(
@@ -168,9 +205,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       fit: BoxFit.cover,
                                       errorBuilder: (_, _, _) => Text(
                                         initials,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 22,
-                                          color: AppColors.primaryDark,
+                                          color: context.colors.accent,
                                           fontWeight: FontWeight.w700,
                                         ),
                                       ),
@@ -178,9 +215,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   )
                                 : Text(
                                     initials,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 22,
-                                      color: AppColors.primaryDark,
+                                      color: context.colors.accent,
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),
@@ -189,17 +226,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             right: 0,
                             bottom: 0,
                             child: InkWell(
-                              onTap: () async {
-                                if (_seller == null) return;
-                                final result = await Navigator.of(context)
-                                    .push<bool>(
-                                  MaterialPageRoute<bool>(
-                                    builder: (_) =>
-                                        EditProfileScreen(seller: _seller!),
-                                  ),
-                                );
-                                if (result == true) _loadListings();
-                              },
+                              onTap: _loadingSellerForEdit
+                                  ? null
+                                  : () => _openEditProfile(context),
                               customBorder: const CircleBorder(),
                               child: Container(
                                 padding: const EdgeInsets.all(6),
@@ -207,11 +236,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   color: AppColors.primary,
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(
-                                  Icons.edit_rounded,
-                                  color: Colors.white,
-                                  size: 14,
-                                ),
+                                child: _loadingSellerForEdit
+                                    ? const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.edit_rounded,
+                                        color: Colors.white,
+                                        size: 14,
+                                      ),
                               ),
                             ),
                           ),
@@ -232,13 +270,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 Icon(
                                   _typeIcon(auth.accountType),
                                   size: 14,
-                                  color: AppColors.muted,
+                                  color: context.colors.muted,
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
                                   auth.accountTypeLabel,
-                                  style: const TextStyle(
-                                    color: AppColors.muted,
+                                  style: TextStyle(
+                                    color: context.colors.muted,
                                     fontWeight: FontWeight.w600,
                                     fontSize: 13,
                                   ),
@@ -298,7 +336,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               subtitle: 'Activas, destacadas y expiradas',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                    builder: (_) => const MyListingsScreen()),
+                  builder: (_) => const MyListingsScreen(),
+                ),
               ),
             ),
             _ProfileOption(
@@ -307,7 +346,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               subtitle: 'Recomendaciones para comprar en campus',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                    builder: (_) => const SafetyTipsScreen()),
+                  builder: (_) => const SafetyTipsScreen(),
+                ),
               ),
             ),
             _ProfileOption(
@@ -316,7 +356,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               subtitle: 'Consulta opciones de visibilidad pagada',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                    builder: (_) => const HighlightPlansScreen()),
+                  builder: (_) => const HighlightPlansScreen(),
+                ),
               ),
             ),
             _ProfileOption(
@@ -331,12 +372,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             // ─── Vistos recientemente ───────────────────────────
             if (_recentProducts.isNotEmpty) ...[
               const SizedBox(height: 8),
-              const Padding(
-                padding: EdgeInsets.only(bottom: 10),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
                 child: Text(
                   'Vistos recientemente',
                   style: TextStyle(
-                    color: AppColors.muted,
+                    color: context.colors.muted,
                     fontWeight: FontWeight.w700,
                     fontSize: 13,
                     letterSpacing: 0.4,
@@ -359,12 +400,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ],
 
             // ─── Modo oscuro ────────────────────────────────────
-            const Padding(
-              padding: EdgeInsets.only(top: 8, bottom: 10),
+            Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 10),
               child: Text(
                 'Apariencia',
                 style: TextStyle(
-                  color: AppColors.muted,
+                  color: context.colors.muted,
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
                   letterSpacing: 0.4,
@@ -374,12 +415,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _DarkModeToggle(),
 
             // ─── Sección legal ──────────────────────────────────
-            const Padding(
-              padding: EdgeInsets.only(top: 8, bottom: 10),
+            Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 10),
               child: Text(
                 'Legal',
                 style: TextStyle(
-                  color: AppColors.muted,
+                  color: context.colors.muted,
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
                   letterSpacing: 0.4,
@@ -391,9 +432,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               title: 'Términos y Condiciones',
               subtitle: 'Reglas de uso de la plataforma',
               onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const TermsScreen(),
-                ),
+                MaterialPageRoute<void>(builder: (_) => const TermsScreen()),
               ),
             ),
             _ProfileOption(
@@ -401,9 +440,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               title: 'Política de Privacidad',
               subtitle: 'Protección de tus datos personales',
               onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const PrivacyScreen(),
-                ),
+                MaterialPageRoute<void>(builder: (_) => const PrivacyScreen()),
               ),
             ),
             _ProfileOption(
@@ -411,9 +448,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               title: 'Aviso de Cookies',
               subtitle: 'Uso de cookies en la app',
               onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const CookiesScreen(),
-                ),
+                MaterialPageRoute<void>(builder: (_) => const CookiesScreen()),
               ),
             ),
 
@@ -428,7 +463,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   if (!context.mounted) return;
                   Navigator.of(context).pushAndRemoveUntil(
                     MaterialPageRoute<void>(
-                        builder: (_) => const LoginScreen()),
+                      builder: (_) => const LoginScreen(),
+                    ),
                     (_) => false,
                   );
                 },
@@ -436,7 +472,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 label: const Text('Cerrar sesión'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.danger,
-                  side: BorderSide(color: AppColors.danger.withValues(alpha: 0.3)),
+                  side: BorderSide(
+                    color: AppColors.danger.withValues(alpha: 0.3),
+                  ),
                 ),
               ),
             ),
@@ -480,7 +518,7 @@ class _VerificationCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: context.colors.surface,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: VerificationStatusBadge(
@@ -500,8 +538,8 @@ class _VerificationCard extends StatelessWidget {
                   const SizedBox(height: 3),
                   Text(
                     _verifiedSubtitle(auth),
-                    style: const TextStyle(
-                      color: AppColors.muted,
+                    style: TextStyle(
+                      color: context.colors.muted,
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
                     ),
@@ -523,22 +561,27 @@ class _VerificationCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: AppColors.gold.withValues(alpha: 0.22)),
         ),
-        child: const Row(
+        child: Row(
           children: [
-            Icon(Icons.hourglass_bottom_rounded,
-                color: AppColors.gold, size: 28),
-            SizedBox(width: 12),
+            const Icon(
+              Icons.hourglass_bottom_rounded,
+              color: AppColors.gold,
+              size: 28,
+            ),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Verificación en revisión',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
-                  SizedBox(height: 3),
+                  const Text(
+                    'Verificación en revisión',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 3),
                   Text(
                     'Tus documentos están siendo revisados por el equipo.',
                     style: TextStyle(
-                      color: AppColors.muted,
+                      color: context.colors.muted,
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
                     ),
@@ -555,8 +598,7 @@ class _VerificationCard extends StatelessWidget {
     return InkWell(
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) =>
-              const _ProfileVerificationRedirect(),
+          builder: (_) => const _ProfileVerificationRedirect(),
         ),
       ),
       borderRadius: BorderRadius.circular(8),
@@ -572,24 +614,25 @@ class _VerificationCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: context.colors.surface,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.badge_rounded,
-                  color: AppColors.teal),
+              child: const Icon(Icons.badge_rounded, color: AppColors.teal),
             ),
             const SizedBox(width: 12),
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Verifica tu cuenta',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
-                  SizedBox(height: 3),
+                  const Text(
+                    'Verifica tu cuenta',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 3),
                   Text(
                     'Obtén un badge de confianza para tus compradores.',
                     style: TextStyle(
-                      color: AppColors.muted,
+                      color: context.colors.muted,
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
                     ),
@@ -597,8 +640,7 @@ class _VerificationCard extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right_rounded,
-                color: AppColors.muted),
+            Icon(Icons.chevron_right_rounded, color: context.colors.muted),
           ],
         ),
       ),
@@ -643,19 +685,18 @@ class _ProfileVerificationRedirect extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.badge_rounded,
-                  size: 64, color: AppColors.teal),
+              const Icon(Icons.badge_rounded, size: 64, color: AppColors.teal),
               const SizedBox(height: 20),
               Text(
                 'Verificación de cuenta',
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 'Puedes iniciar tu verificación desde el registro o contactar al administrador.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: AppColors.muted,
+                  color: context.colors.muted,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -733,18 +774,18 @@ class _ProfileMetric extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w700,
-            color: AppColors.primaryDark,
+            color: context.colors.accent,
           ),
         ),
         Text(
           label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: AppColors.muted,
+          style: TextStyle(
+            color: context.colors.muted,
             fontSize: 12,
             fontWeight: FontWeight.w700,
           ),
@@ -763,24 +804,42 @@ class _DarkModeToggle extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.colors.surfaceElevated,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.colors.border),
       ),
       child: SwitchListTile(
-        secondary: Icon(
-          theme.darkMode ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-          color: AppColors.primary,
+        secondary: Container(
+          width: 36,
+          height: 36,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Icon(
+            theme.darkMode ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+            color: context.colors.accent,
+            size: 19,
+          ),
         ),
-        title: const Text(
+        title: Text(
           'Modo oscuro',
-          style: TextStyle(fontWeight: FontWeight.w700),
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: context.colors.ink,
+          ),
         ),
-        subtitle: const Text('Cambia el tema de la interfaz'),
+        subtitle: Text(
+          'Cambia el tema de la interfaz',
+          style: TextStyle(color: context.colors.muted),
+        ),
         value: theme.darkMode,
         onChanged: (_) => theme.toggleDarkMode(),
-        activeTrackColor: AppColors.primary.withValues(alpha: 0.5),
-        activeThumbColor: AppColors.primary,
+        activeTrackColor: AppColors.primary,
+        activeThumbColor: Colors.white,
+        inactiveTrackColor: context.colors.surfaceMuted,
+        inactiveThumbColor: context.colors.muted,
       ),
     );
   }
@@ -804,20 +863,29 @@ class _ProfileOption extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.colors.surfaceElevated,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.colors.border),
       ),
       child: ListTile(
         leading: Icon(icon, color: AppColors.primary),
-        title:
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-        subtitle: Text(subtitle),
-        trailing: const Icon(Icons.chevron_right_rounded),
-        onTap: onTap ??
-            () => ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('$title mock')),
-                ),
+        title: Text(
+          title,
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: context.colors.ink,
+          ),
+        ),
+        subtitle: Text(subtitle, style: TextStyle(color: context.colors.muted)),
+        trailing: Icon(
+          Icons.chevron_right_rounded,
+          color: context.colors.muted,
+        ),
+        onTap:
+            onTap ??
+            () => ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text('$title mock'))),
       ),
     );
   }

@@ -21,10 +21,10 @@ class RegisterTypeScreen extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Elige el tipo de cuenta que mejor describa tu rol.',
                 style: TextStyle(
-                  color: AppColors.muted,
+                  color: context.colors.muted,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -109,9 +109,9 @@ class _TypeCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: context.colors.surface,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: context.colors.border),
         ),
         child: Row(
           children: [
@@ -133,17 +133,17 @@ class _TypeCard extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.ink,
+                      color: context.colors.ink,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: const TextStyle(
-                      color: AppColors.muted,
+                    style: TextStyle(
+                      color: context.colors.muted,
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
                     ),
@@ -155,14 +155,17 @@ class _TypeCard extends StatelessWidget {
                       children: [
                         const Padding(
                           padding: EdgeInsets.only(top: 2, right: 6),
-                          child: Icon(Icons.check_rounded,
-                              size: 16, color: AppColors.teal),
+                          child: Icon(
+                            Icons.check_rounded,
+                            size: 16,
+                            color: AppColors.teal,
+                          ),
                         ),
                         Expanded(
                           child: Text(
                             f,
-                            style: const TextStyle(
-                              color: AppColors.muted,
+                            style: TextStyle(
+                              color: context.colors.muted,
                               fontSize: 12,
                             ),
                           ),
@@ -174,7 +177,7 @@ class _TypeCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+            Icon(Icons.chevron_right_rounded, color: context.colors.muted),
           ],
         ),
       ),

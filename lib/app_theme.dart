@@ -7,22 +7,24 @@ import 'package:google_fonts/google_fonts.dart';
 /// de firma. Ver docs de diseño para justificación de cada valor.
 class AppColors {
   // ─── Paleta principal ────────────────────────────────────
-  static const primary = Color(0xFF3D5C70);       // Azul Piedra — ancla de marca
-  static const primaryDark = Color(0xFF1E313C);   // Azul Noche — headers, nav, overlays
-  static const amber = Color(0xFFE3A008);          // Cempasúchil — signature accent
-  static const amberDark = Color(0xFF3D2600);      // Texto sobre cempasúchil
-  static const gold = Color(0xFFB8863B);           // Dorado — featured/premium
-  static const champagne = Color(0xFFFAF3E0);      // Fondo premium badge
-  static const orange = Color(0xFFA84B37);         // Terracota — reservado/negociando
-  static const teal = Color(0xFF1F6B62);           // Teal secundario
+  static const primary = Color(0xFF3D5C70); // Azul Piedra — ancla de marca
+  static const primaryDark = Color(
+    0xFF1E313C,
+  ); // Azul Noche — headers, nav, overlays
+  static const amber = Color(0xFFE3A008); // Cempasúchil — signature accent
+  static const amberDark = Color(0xFF3D2600); // Texto sobre cempasúchil
+  static const gold = Color(0xFFB8863B); // Dorado — featured/premium
+  static const champagne = Color(0xFFFAF3E0); // Fondo premium badge
+  static const orange = Color(0xFFA84B37); // Terracota — reservado/negociando
+  static const teal = Color(0xFF1F6B62); // Teal secundario
 
   // ─── Base ────────────────────────────────────────────────
-  static const background = Color(0xFFFAFAF8);    // Papel — neutro, casi blanco
-  static const surface = Color(0xFFFFFFFF);        // Blanco limpio
-  static const surfaceMuted = Color(0xFFF1F1EE);  // Surface muted (neutro)
-  static const ink = Color(0xFF1B1A16);            // Tinta
-  static const muted = Color(0xFF6E6B64);          // Texto secundario
-  static const border = Color(0xFFE4E2DC);         // Border (neutro sutil)
+  static const background = Color(0xFFFAFAF8); // Papel — neutro, casi blanco
+  static const surface = Color(0xFFFFFFFF); // Blanco limpio
+  static const surfaceMuted = Color(0xFFF1F1EE); // Surface muted (neutro)
+  static const ink = Color(0xFF1B1A16); // Tinta
+  static const muted = Color(0xFF6E6B64); // Texto secundario
+  static const border = Color(0xFFE4E2DC); // Border (neutro sutil)
   static const premiumBorder = Color(0xFFD9C68A);
 
   // ─── Estados ─────────────────────────────────────────────
@@ -30,50 +32,140 @@ class AppColors {
   static const success = Color(0xFF2F7D5C);
 
   // ─── Oscuro ──────────────────────────────────────────────
-  static const darkBackground = Color(0xFF10181D); // teñido de azul, no gris genérico
-  static const darkSurface = Color(0xFF17242B);
-  static const darkSurfaceMuted = Color(0xFF1E2E36);
-  static const darkInk = Color(0xFFE9ECEE);
-  static const darkMuted = Color(0xFF9CA8B0);
-  static const darkBorder = Color(0xFF2B3F48);
+  // Jerarquía por elevación (fondo < surface < surfaceElevated) en vez de
+  // un solo gris plano — así las tarjetas se separan del fondo sin
+  // depender de sombras, que casi no se ven sobre fondo oscuro.
+  static const darkBackground = Color(0xFF0D1317); // teñido de azul, casi negro
+  static const darkSurface = Color(0xFF161F26); // tarjetas estándar
+  static const darkSurfaceElevated = Color(
+    0xFF1E2A32,
+  ); // modales, sheets, banners destacados
+  static const darkSurfaceMuted = Color(0xFF1B262D); // fondos de sección/inputs
+  static const darkInk = Color(0xFFEDEFF2);
+  static const darkMuted = Color(0xFF97A3AC);
+  static const darkBorder = Color(
+    0xFF2B3942,
+  ); // con suficiente presencia para separar tarjetas
+  // Reemplaza a primaryDark cuando se usa como color de ícono/texto sobre
+  // una superficie neutra (no como fondo de AppBar/nav): primaryDark es
+  // casi negro y se pierde sobre fondos ya oscuros.
+  static const primaryAccentDark = Color(0xFF8FB6CB);
+  // Reemplaza a champagne (fondo de badges/banners "premium") en oscuro.
+  static const darkPremiumBg = Color(0xFF2C2412);
+  static const darkPremiumBorder = Color(0xFF4A3C1E);
+}
+
+/// Set de colores neutros que sí cambian según el tema activo (a diferencia
+/// de los colores de marca en [AppColors], que son fijos). Usar
+/// `context.colors.xxx` en vez de `AppColors.background/surface/ink/muted/
+/// border` para que cualquier superficie/texto neutro responda al modo
+/// oscuro.
+class AppColorSet {
+  const AppColorSet({
+    required this.background,
+    required this.surface,
+    required this.surfaceElevated,
+    required this.surfaceMuted,
+    required this.ink,
+    required this.muted,
+    required this.border,
+    required this.accent,
+    required this.premiumBg,
+    required this.premiumBorder,
+  });
+
+  final Color background;
+  final Color surface;
+  final Color surfaceElevated;
+  final Color surfaceMuted;
+  final Color ink;
+  final Color muted;
+  final Color border;
+  final Color accent;
+  final Color premiumBg;
+  final Color premiumBorder;
+
+  static const light = AppColorSet(
+    background: AppColors.background,
+    surface: AppColors.surface,
+    surfaceElevated: AppColors.surface,
+    surfaceMuted: AppColors.surfaceMuted,
+    ink: AppColors.ink,
+    muted: AppColors.muted,
+    border: AppColors.border,
+    accent: AppColors.primaryDark,
+    premiumBg: AppColors.champagne,
+    premiumBorder: AppColors.premiumBorder,
+  );
+
+  static const dark = AppColorSet(
+    background: AppColors.darkBackground,
+    surface: AppColors.darkSurface,
+    surfaceElevated: AppColors.darkSurfaceElevated,
+    surfaceMuted: AppColors.darkSurfaceMuted,
+    ink: AppColors.darkInk,
+    muted: AppColors.darkMuted,
+    border: AppColors.darkBorder,
+    accent: AppColors.primaryAccentDark,
+    premiumBg: AppColors.darkPremiumBg,
+    premiumBorder: AppColors.darkPremiumBorder,
+  );
+}
+
+extension AppColorsContext on BuildContext {
+  AppColorSet get colors => Theme.of(this).brightness == Brightness.dark
+      ? AppColorSet.dark
+      : AppColorSet.light;
 }
 
 class AppTypography {
   // Baloo 2: para precios — redondeada, con carácter de etiqueta de puesto,
   // usada con moderación (solo precios y headlines grandes).
-  static TextStyle price(double size, {FontWeight weight = FontWeight.w800, Color? color}) =>
-      GoogleFonts.baloo2(
-        fontSize: size,
-        fontWeight: weight,
-        color: color ?? AppColors.ink,
-        height: 1.1,
-      );
+  static TextStyle price(
+    double size, {
+    FontWeight weight = FontWeight.w800,
+    Color? color,
+  }) => GoogleFonts.baloo2(
+    fontSize: size,
+    fontWeight: weight,
+    color: color ?? AppColors.ink,
+    height: 1.1,
+  );
 
   // Baloo 2: headings de sección
-  static TextStyle heading(double size, {FontWeight weight = FontWeight.w700, Color? color}) =>
-      GoogleFonts.baloo2(
-        fontSize: size,
-        fontWeight: weight,
-        color: color ?? AppColors.ink,
-        height: 1.2,
-      );
+  static TextStyle heading(
+    double size, {
+    FontWeight weight = FontWeight.w700,
+    Color? color,
+  }) => GoogleFonts.baloo2(
+    fontSize: size,
+    fontWeight: weight,
+    color: color ?? AppColors.ink,
+    height: 1.2,
+  );
 
   // Work Sans: cuerpo, descripción, labels
-  static TextStyle body(double size, {FontWeight weight = FontWeight.w400, Color? color}) =>
-      GoogleFonts.workSans(
-        fontSize: size,
-        fontWeight: weight,
-        color: color ?? AppColors.ink,
-        height: 1.4,
-      );
+  static TextStyle body(
+    double size, {
+    FontWeight weight = FontWeight.w400,
+    Color? color,
+  }) => GoogleFonts.workSans(
+    fontSize: size,
+    fontWeight: weight,
+    color: color ?? AppColors.ink,
+    height: 1.4,
+  );
 
-  static TextStyle label(double size, {FontWeight weight = FontWeight.w600, Color? color}) =>
-      GoogleFonts.workSans(
-        fontSize: size,
-        fontWeight: weight,
-        color: color ?? AppColors.ink,
-        height: 1.3,
-      );
+  static TextStyle label(
+    double size, {
+    FontWeight weight = FontWeight.w600,
+    Color? color,
+  }) => GoogleFonts.workSans(
+    fontSize: size,
+    fontWeight: weight,
+    color: color ?? AppColors.ink,
+    height: 1.3,
+  );
 }
 
 class AppAnimations {
@@ -132,11 +224,26 @@ class AppTheme {
       colorScheme: scheme,
       scaffoldBackgroundColor: AppColors.background,
       textTheme: base.copyWith(
-        headlineLarge: base.headlineLarge?.copyWith(fontWeight: FontWeight.w700, color: AppColors.ink),
-        headlineMedium: base.headlineMedium?.copyWith(fontWeight: FontWeight.w700, color: AppColors.ink),
-        headlineSmall: base.headlineSmall?.copyWith(fontWeight: FontWeight.w700, color: AppColors.ink),
-        titleLarge: base.titleLarge?.copyWith(fontWeight: FontWeight.w700, color: AppColors.ink),
-        titleMedium: base.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: AppColors.ink),
+        headlineLarge: base.headlineLarge?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: AppColors.ink,
+        ),
+        headlineMedium: base.headlineMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: AppColors.ink,
+        ),
+        headlineSmall: base.headlineSmall?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: AppColors.ink,
+        ),
+        titleLarge: base.titleLarge?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: AppColors.ink,
+        ),
+        titleMedium: base.titleMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: AppColors.ink,
+        ),
         bodyLarge: base.bodyLarge?.copyWith(color: AppColors.ink),
         bodyMedium: base.bodyMedium?.copyWith(color: AppColors.ink),
         labelSmall: base.labelSmall?.copyWith(color: AppColors.muted),
@@ -163,7 +270,10 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.surface,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
           borderSide: const BorderSide(color: AppColors.border),
@@ -183,8 +293,13 @@ class AppTheme {
           foregroundColor: Colors.white,
           elevation: 0,
           minimumSize: const Size.fromHeight(52),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: GoogleFonts.workSans(fontSize: 16, fontWeight: FontWeight.w700),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          textStyle: GoogleFonts.workSans(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -192,7 +307,9 @@ class AppTheme {
           foregroundColor: AppColors.primary,
           side: const BorderSide(color: AppColors.border),
           minimumSize: const Size.fromHeight(48),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           textStyle: GoogleFonts.workSans(fontWeight: FontWeight.w700),
         ),
       ),
@@ -201,14 +318,20 @@ class AppTheme {
         selectedColor: AppColors.primary.withValues(alpha: 0.10),
         side: const BorderSide(color: AppColors.border),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        labelStyle: GoogleFonts.workSans(fontWeight: FontWeight.w700, color: AppColors.ink),
+        labelStyle: GoogleFonts.workSans(
+          fontWeight: FontWeight.w700,
+          color: AppColors.ink,
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: AppColors.primaryDark,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        contentTextStyle: GoogleFonts.workSans(color: Colors.white, fontWeight: FontWeight.w600),
+        contentTextStyle: GoogleFonts.workSans(
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
+        ),
       ),
       dividerColor: AppColors.border,
       visualDensity: VisualDensity.standard,
@@ -217,28 +340,44 @@ class AppTheme {
 
   static ThemeData get dark {
     final base = GoogleFonts.workSansTextTheme(ThemeData.dark().textTheme);
-    final scheme = ColorScheme.fromSeed(
-      seedColor: AppColors.primary,
-      brightness: Brightness.dark,
-    ).copyWith(
-      primary: AppColors.primary,
-      secondary: AppColors.teal,
-      tertiary: AppColors.gold,
-      surface: AppColors.darkSurface,
-      surfaceContainerHighest: AppColors.darkSurfaceMuted,
-      outline: AppColors.darkBorder,
-    );
+    final scheme =
+        ColorScheme.fromSeed(
+          seedColor: AppColors.primary,
+          brightness: Brightness.dark,
+        ).copyWith(
+          primary: AppColors.primary,
+          secondary: AppColors.teal,
+          tertiary: AppColors.gold,
+          surface: AppColors.darkSurface,
+          surfaceContainerHighest: AppColors.darkSurfaceMuted,
+          outline: AppColors.darkBorder,
+        );
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: AppColors.darkBackground,
       textTheme: base.copyWith(
-        headlineLarge: base.headlineLarge?.copyWith(fontWeight: FontWeight.w700, color: AppColors.darkInk),
-        headlineMedium: base.headlineMedium?.copyWith(fontWeight: FontWeight.w700, color: AppColors.darkInk),
-        headlineSmall: base.headlineSmall?.copyWith(fontWeight: FontWeight.w700, color: AppColors.darkInk),
-        titleLarge: base.titleLarge?.copyWith(fontWeight: FontWeight.w700, color: AppColors.darkInk),
-        titleMedium: base.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: AppColors.darkInk),
+        headlineLarge: base.headlineLarge?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: AppColors.darkInk,
+        ),
+        headlineMedium: base.headlineMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: AppColors.darkInk,
+        ),
+        headlineSmall: base.headlineSmall?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: AppColors.darkInk,
+        ),
+        titleLarge: base.titleLarge?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: AppColors.darkInk,
+        ),
+        titleMedium: base.titleMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: AppColors.darkInk,
+        ),
         bodyLarge: base.bodyLarge?.copyWith(color: AppColors.darkInk),
         bodyMedium: base.bodyMedium?.copyWith(color: AppColors.darkInk),
       ),
@@ -254,7 +393,10 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.darkSurface,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
           borderSide: const BorderSide(color: AppColors.darkBorder),
@@ -274,8 +416,13 @@ class AppTheme {
           foregroundColor: Colors.white,
           elevation: 0,
           minimumSize: const Size.fromHeight(52),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: GoogleFonts.workSans(fontSize: 16, fontWeight: FontWeight.w700),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          textStyle: GoogleFonts.workSans(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -283,7 +430,9 @@ class AppTheme {
           foregroundColor: AppColors.primary,
           side: const BorderSide(color: AppColors.darkBorder),
           minimumSize: const Size.fromHeight(48),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           textStyle: GoogleFonts.workSans(fontWeight: FontWeight.w700),
         ),
       ),
@@ -292,13 +441,19 @@ class AppTheme {
         selectedColor: AppColors.primary.withValues(alpha: 0.20),
         side: const BorderSide(color: AppColors.darkBorder),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        labelStyle: GoogleFonts.workSans(fontWeight: FontWeight.w700, color: AppColors.darkInk),
+        labelStyle: GoogleFonts.workSans(
+          fontWeight: FontWeight.w700,
+          color: AppColors.darkInk,
+        ),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: AppColors.darkSurface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        contentTextStyle: GoogleFonts.workSans(color: AppColors.darkInk, fontWeight: FontWeight.w600),
+        contentTextStyle: GoogleFonts.workSans(
+          color: AppColors.darkInk,
+          fontWeight: FontWeight.w600,
+        ),
       ),
       dividerColor: AppColors.darkBorder,
       visualDensity: VisualDensity.standard,

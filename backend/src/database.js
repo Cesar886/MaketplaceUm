@@ -464,6 +464,14 @@ function runMigrations() {
     `);
   }
 
+  // 18. Mensajes: agregar image_url para soportar mensajes con imagen
+  //     (además o en vez de texto) en el chat.
+  const msgCols = db.prepare("PRAGMA table_info('messages')").all();
+  const hasImageUrl = msgCols.some(c => c.name === 'image_url');
+  if (!hasImageUrl) {
+    db.exec(`ALTER TABLE messages ADD COLUMN image_url TEXT DEFAULT NULL`);
+  }
+
   console.log('🔄 Migración de schema completada');
 }
 
@@ -1082,12 +1090,12 @@ function unregisterAllPushTokensForUser(userId) {
 
 // ─── Messages ───────────────────────────────────────────────────
 
-function createMessage(id, conversationId, senderId, text) {
+function createMessage(id, conversationId, senderId, text, imageUrl = null) {
   db.prepare(`
-    INSERT INTO messages (id, conversation_id, sender_id, text, created_at, read)
-    VALUES (?, ?, ?, ?, datetime('now'), 0)
-  `).run(id, conversationId, senderId, text);
-  updateConversationPreview(conversationId, text);
+    INSERT INTO messages (id, conversation_id, sender_id, text, image_url, created_at, read)
+    VALUES (?, ?, ?, ?, ?, datetime('now'), 0)
+  `).run(id, conversationId, senderId, text, imageUrl);
+  updateConversationPreview(conversationId, imageUrl ? '📷 Foto' : text);
 }
 
 function getMessages(conversationId) {
@@ -1098,6 +1106,7 @@ function getMessages(conversationId) {
     conversationId: row.conversation_id,
     senderId: row.sender_id,
     text: row.text,
+    imageUrl: row.image_url || null,
     createdAt: row.created_at,
     read: !!row.read,
   }));
@@ -1117,7 +1126,7 @@ function deleteMessage(messageId, userId) {
   const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId);
   if (!msg) return false;
   if (msg.sender_id !== userId) return false; // solo el dueño
-  db.prepare("UPDATE messages SET text = '[Mensaje eliminado]' WHERE id = ?").run(messageId);
+  db.prepare("UPDATE messages SET text = '[Mensaje eliminado]', image_url = NULL WHERE id = ?").run(messageId);
   return true;
 }
 

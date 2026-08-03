@@ -140,8 +140,7 @@ class FeedMixer {
   bool get hasMore => _queues.values.any((q) => q.isNotEmpty);
 
   /// Cuántos ítems quedan sin consumir en total, sumando las 3 colas.
-  int get remainingCount =>
-      _queues.values.fold(0, (sum, q) => sum + q.length);
+  int get remainingCount => _queues.values.fold(0, (sum, q) => sum + q.length);
 
   /// Devuelve hasta [count] ítems siguientes de la secuencia de mezcla ya
   /// decidida, avanzando el cursor de las colas internas. Pensado para
@@ -163,7 +162,10 @@ class FeedMixer {
       }
       final type = _activeType!;
       final queue = _queues[type]!;
-      final take = min(_activeRemaining, min(count - result.length, queue.length));
+      final take = min(
+        _activeRemaining,
+        min(count - result.length, queue.length),
+      );
       for (var i = 0; i < take; i++) {
         result.add(FeedItem(type, queue.removeAt(0)));
       }
@@ -206,7 +208,10 @@ class FeedMixer {
   }
 
   FeedItemType _weightedPick(List<FeedItemType> candidates) {
-    final total = candidates.fold<double>(0, (sum, t) => sum + _baseWeights[t]!);
+    final total = candidates.fold<double>(
+      0,
+      (sum, t) => sum + _baseWeights[t]!,
+    );
     var roll = _random.nextDouble() * total;
     for (final type in candidates) {
       roll -= _baseWeights[type]!;

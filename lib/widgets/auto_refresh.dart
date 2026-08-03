@@ -20,9 +20,7 @@ mixin AutoRefreshMixin<T extends StatefulWidget> on State<T> {
   @override
   void initState() {
     super.initState();
-    _lifecycleListener = AppLifecycleListener(
-      onResume: () => onAutoRefresh(),
-    );
+    _lifecycleListener = AppLifecycleListener(onResume: () => onAutoRefresh());
     _refreshTimer = Timer.periodic(refreshInterval, (_) {
       if (mounted) onAutoRefresh();
     });

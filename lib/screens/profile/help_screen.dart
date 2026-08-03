@@ -49,23 +49,22 @@ class HelpScreen extends StatelessWidget {
             final (question, answer) = _faqs[index];
             return Container(
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: context.colors.surface,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: context.colors.border),
               ),
               child: ExpansionTile(
                 title: Text(
                   question,
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
-                childrenPadding:
-                    const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 expandedCrossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     answer,
-                    style: const TextStyle(
-                      color: AppColors.muted,
+                    style: TextStyle(
+                      color: context.colors.muted,
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
                     ),

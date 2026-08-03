@@ -67,7 +67,7 @@ class _PriceTagContent extends StatelessWidget {
       // Sin oferta: precio plano, sin contenedor
       return Text(
         Product.formatPrice(product.price),
-        style: AppTypography.price(priceSize, color: AppColors.ink),
+        style: AppTypography.price(priceSize, color: context.colors.ink),
       );
     }
 
@@ -97,7 +97,10 @@ class _PriceTagContent extends StatelessWidget {
                 children: [
                   Text(
                     Product.formatPrice(product.price),
-                    style: AppTypography.price(priceSize, color: AppColors.amberDark),
+                    style: AppTypography.price(
+                      priceSize,
+                      color: AppColors.amberDark,
+                    ),
                   ),
                   if (product.previousPrice != null) ...[
                     const SizedBox(width: 6),
@@ -133,7 +136,7 @@ class _PriceTagContent extends StatelessWidget {
                 width: holeSize,
                 height: holeSize,
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: context.colors.surface,
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: AppColors.amberDark.withValues(alpha: 0.35),

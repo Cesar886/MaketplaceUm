@@ -127,9 +127,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       final productId = _parseProductId(raw);
 
       if (productId == null) {
-        _showError(
-          'QR inválido. Escanea un código de Mercadito UM.',
-        );
+        _showError('QR inválido. Escanea un código de Mercadito UM.');
         return;
       }
 

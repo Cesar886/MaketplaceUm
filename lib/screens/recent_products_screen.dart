@@ -89,9 +89,9 @@ class _RecentProductsScreenState extends State<RecentProductsScreen> {
     await RecentProductsService.clearAll();
     if (!mounted) return;
     setState(() => _products = []);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Historial limpiado')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Historial limpiado')));
   }
 
   @override
@@ -111,46 +111,46 @@ class _RecentProductsScreenState extends State<RecentProductsScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _products.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.history_rounded,
-                          size: 64,
-                          color: AppColors.muted.withValues(alpha: 0.4),
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Aún no has visto ningún producto.\n¡Explora el mercado!',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: AppColors.muted,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 15,
-                          ),
-                        ),
-                      ],
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.history_rounded,
+                      size: 64,
+                      color: context.colors.muted.withValues(alpha: 0.4),
                     ),
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadRecentProducts,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
-                    itemCount: _products.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      final product = _products[index];
-                      return _RecentProductTile(
-                        product: product,
-                        onTap: () => _openDetail(context, product),
-                      );
-                    },
-                  ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Aún no has visto ningún producto.\n¡Explora el mercado!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: context.colors.muted,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: _loadRecentProducts,
+              child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+                itemCount: _products.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  final product = _products[index];
+                  return _RecentProductTile(
+                    product: product,
+                    onTap: () => _openDetail(context, product),
+                  );
+                },
+              ),
+            ),
     );
   }
 
@@ -164,10 +164,7 @@ class _RecentProductsScreenState extends State<RecentProductsScreen> {
 }
 
 class _RecentProductTile extends StatelessWidget {
-  const _RecentProductTile({
-    required this.product,
-    required this.onTap,
-  });
+  const _RecentProductTile({required this.product, required this.onTap});
 
   final Product product;
   final VoidCallback onTap;
@@ -175,7 +172,7 @@ class _RecentProductTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.surface,
+      color: context.colors.surface,
       borderRadius: BorderRadius.circular(10),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -212,10 +209,10 @@ class _RecentProductTile extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       Product.formatPrice(product.price),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 16,
-                        color: AppColors.primaryDark,
+                        color: context.colors.accent,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -232,8 +229,8 @@ class _RecentProductTile extends StatelessWidget {
                             product.category.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: AppColors.muted,
+                            style: TextStyle(
+                              color: context.colors.muted,
                               fontWeight: FontWeight.w500,
                               fontSize: 12,
                             ),
@@ -247,7 +244,7 @@ class _RecentProductTile extends StatelessWidget {
               const SizedBox(width: 4),
               Icon(
                 Icons.chevron_right_rounded,
-                color: AppColors.muted.withValues(alpha: 0.3),
+                color: context.colors.muted.withValues(alpha: 0.3),
               ),
             ],
           ),

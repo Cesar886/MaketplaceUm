@@ -38,12 +38,12 @@ class MockProductImage extends StatelessWidget {
               width: double.infinity,
               fit: BoxFit.cover,
               gaplessPlayback: true,
-              errorBuilder: (_, _, _) => _buildMockIcon(),
+              errorBuilder: (_, _, _) => _buildMockIcon(context),
               loadingBuilder: (_, child, progress) {
                 if (progress == null) return child;
                 return Container(
                   height: height,
-                  color: AppColors.surfaceMuted,
+                  color: context.colors.surfaceMuted,
                   child: const Center(
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
@@ -71,18 +71,17 @@ class MockProductImage extends StatelessWidget {
     }
 
     // Sin imágenes reales: mock icon
-    return _buildMockIcon();
+    return _buildMockIcon(context);
   }
 
-  Widget _buildMockIcon() {
+  Widget _buildMockIcon(BuildContext context) {
     final tintAmount = 0.08 + (photoIndex * 0.03).clamp(0, 0.09);
     final background = Color.lerp(
-      AppColors.surface,
+      context.colors.surface,
       product.imageColor,
       tintAmount,
     )!;
-    final accent =
-        Color.lerp(product.imageColor, AppColors.primaryDark, 0.14)!;
+    final accent = Color.lerp(product.imageColor, context.colors.accent, 0.14)!;
 
     return ClipRRect(
       borderRadius: borderRadius,
@@ -108,7 +107,7 @@ class MockProductImage extends StatelessWidget {
                 width: 58,
                 height: 58,
                 decoration: BoxDecoration(
-                  color: AppColors.surface.withValues(alpha: 0.72),
+                  color: context.colors.surface.withValues(alpha: 0.72),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: accent.withValues(alpha: 0.12)),
                 ),

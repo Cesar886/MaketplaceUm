@@ -52,9 +52,9 @@ class SafetyTipsScreen extends StatelessWidget {
             return Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: context.colors.surface,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: context.colors.border),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -79,8 +79,8 @@ class SafetyTipsScreen extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           description,
-                          style: const TextStyle(
-                            color: AppColors.muted,
+                          style: TextStyle(
+                            color: context.colors.muted,
                             fontWeight: FontWeight.w600,
                             fontSize: 13,
                           ),

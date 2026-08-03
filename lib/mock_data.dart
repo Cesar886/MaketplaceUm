@@ -951,7 +951,8 @@ const highlightPlans = <HighlightPlan>[
     id: 'm1',
     title: 'Plan mensual',
     price: r'$180',
-    description: 'Pensado para negocios fijos: aparece arriba en su categoria todo el mes.',
+    description:
+        'Pensado para negocios fijos: aparece arriba en su categoria todo el mes.',
     days: 30,
   ),
 ];

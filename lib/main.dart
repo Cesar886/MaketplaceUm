@@ -50,8 +50,9 @@ class MyApp extends StatelessWidget {
       // en widgets angostos. Se limita el escalado a un rango razonable en
       // vez de dejarlo sin tope.
       builder: (context, child) {
-        final clampedScaler = MediaQuery.textScalerOf(context)
-            .clamp(minScaleFactor: 1.0, maxScaleFactor: 1.3);
+        final clampedScaler = MediaQuery.textScalerOf(
+          context,
+        ).clamp(minScaleFactor: 1.0, maxScaleFactor: 1.3);
         return MediaQuery(
           data: MediaQuery.of(context).copyWith(textScaler: clampedScaler),
           child: child!,

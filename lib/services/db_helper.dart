@@ -101,13 +101,19 @@ class DBHelper {
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       try {
-        await db.execute('ALTER TABLE business_profiles ADD COLUMN responsible_name TEXT');
+        await db.execute(
+          'ALTER TABLE business_profiles ADD COLUMN responsible_name TEXT',
+        );
       } catch (_) {}
       try {
-        await db.execute('ALTER TABLE business_profiles ADD COLUMN business_description TEXT');
+        await db.execute(
+          'ALTER TABLE business_profiles ADD COLUMN business_description TEXT',
+        );
       } catch (_) {}
       try {
-        await db.execute('ALTER TABLE business_profiles ADD COLUMN logo_path TEXT');
+        await db.execute(
+          'ALTER TABLE business_profiles ADD COLUMN logo_path TEXT',
+        );
       } catch (_) {}
     }
   }
@@ -267,7 +273,11 @@ class DBHelper {
 
   Future<Map<String, dynamic>?> getUserById(int userId) async {
     final db = await database;
-    final result = await db.query('users', where: 'id = ?', whereArgs: [userId]);
+    final result = await db.query(
+      'users',
+      where: 'id = ?',
+      whereArgs: [userId],
+    );
     if (result.isEmpty) return null;
     // sqflite devuelve mapas de solo lectura: se clona para permitir mutaciones
     // posteriores (ej. AuthProvider.updateProfile actualizando _currentUser).
@@ -302,18 +312,17 @@ class DBHelper {
   }
 
   /// Actualiza nombre y/o teléfono del usuario local, en sync con el backend.
-  Future<void> updateUserFields(int userId, {String? name, String? phone}) async {
+  Future<void> updateUserFields(
+    int userId, {
+    String? name,
+    String? phone,
+  }) async {
     final db = await database;
     final values = <String, dynamic>{};
     if (name != null) values['name'] = name;
     if (phone != null) values['phone'] = phone;
     if (values.isEmpty) return;
-    await db.update(
-      'users',
-      values,
-      where: 'id = ?',
-      whereArgs: [userId],
-    );
+    await db.update('users', values, where: 'id = ?', whereArgs: [userId]);
   }
 
   Future<List<Map<String, dynamic>>> getPendingVerifications() async {

@@ -66,11 +66,11 @@ class _SplashScreenState extends State<SplashScreen> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 10),
-                const Text(
+                Text(
                   'Marketplace seguro para estudiantes universitarios',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: AppColors.muted,
+                    color: context.colors.muted,
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),

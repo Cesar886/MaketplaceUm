@@ -18,9 +18,9 @@ class CookiesScreen extends StatelessWidget {
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Última actualización: 22 de julio de 2026',
-              style: TextStyle(color: AppColors.muted, fontSize: 13),
+              style: TextStyle(color: context.colors.muted, fontSize: 13),
             ),
             const SizedBox(height: 20),
             const _SectionC(
@@ -91,14 +91,14 @@ class CookiesScreen extends StatelessWidget {
                   'contáctanos en: mercadito@um.edu.mx',
             ),
             const SizedBox(height: 12),
-            const Divider(color: AppColors.border),
+            Divider(color: context.colors.border),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'Al continuar usando Mercadito UM, aceptas el uso de cookies '
               'según lo descrito en este aviso.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: AppColors.muted,
+                color: context.colors.muted,
                 fontWeight: FontWeight.w600,
                 fontSize: 13,
               ),
@@ -125,20 +125,14 @@ class _SectionC extends StatelessWidget {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.w700,
               fontSize: 15,
-              color: AppColors.primaryDark,
+              color: context.colors.accent,
             ),
           ),
           const SizedBox(height: 6),
-          Text(
-            body,
-            style: const TextStyle(
-              height: 1.5,
-              color: AppColors.ink,
-            ),
-          ),
+          Text(body, style: TextStyle(height: 1.5, color: context.colors.ink)),
         ],
       ),
     );

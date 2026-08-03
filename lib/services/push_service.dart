@@ -105,12 +105,12 @@ class PushService {
       provisional: false,
     );
 
-    if (notificationSettings.authorizationStatus == AuthorizationStatus.denied) {
+    if (notificationSettings.authorizationStatus ==
+        AuthorizationStatus.denied) {
       // El usuario denegó permisos (solo posible en iOS).
       // En Android esto no ocurre — los permisos de notificación
       // se conceden por defecto en <13 y se piden automáticamente en 13+.
-      debugPrint(
-          '⚠️  Permisos de notificación denegados (solo aplica en iOS)');
+      debugPrint('⚠️  Permisos de notificación denegados (solo aplica en iOS)');
     }
 
     // ─── Obtener token FCM ───────────────────────────────────────
@@ -186,8 +186,8 @@ class PushService {
   /// Revisa si la app fue abierta desde una notificación cuando estaba terminada.
   Future<void> _checkInitialMessage() async {
     try {
-      final RemoteMessage? initialMessage =
-          await _messaging.getInitialMessage();
+      final RemoteMessage? initialMessage = await _messaging
+          .getInitialMessage();
       if (initialMessage != null) {
         _handleNotificationTap(initialMessage);
       }
@@ -310,6 +310,11 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // (ej. actualizar contador de notificaciones, guardar en DB local),
   // se agrega aquí.
   debugPrint(
-      '📩 [Background] Mensaje FCM recibido: ${message.messageId} '
-      '(${Platform.isAndroid ? "Android" : Platform.isIOS ? "iOS" : "Otro"})');
+    '📩 [Background] Mensaje FCM recibido: ${message.messageId} '
+    '(${Platform.isAndroid
+        ? "Android"
+        : Platform.isIOS
+        ? "iOS"
+        : "Otro"})',
+  );
 }

@@ -258,7 +258,8 @@ class Product {
   /// extras, imágenes, rating) quedan en su valor "vacío" y la pantalla los
   /// oculta según [postType] en vez de mostrarlos vacíos o con error.
   factory Product.fromWantedPost(WantedPost post) {
-    final category = post.categoryObj ??
+    final category =
+        post.categoryObj ??
         const MarketplaceCategory(
           id: 'other',
           name: 'Otros',
@@ -266,7 +267,8 @@ class Product {
           icon: Icons.category_rounded,
           color: Color(0xFF607D8B),
         );
-    final seller = post.sellerObj ??
+    final seller =
+        post.sellerObj ??
         Seller(
           id: post.userId,
           name: post.userId,
@@ -329,7 +331,8 @@ class Product {
     MarketplaceCategory parseCategory() {
       if (json['categoryObj'] != null) {
         return MarketplaceCategory.fromJson(
-            json['categoryObj'] as Map<String, dynamic>);
+          json['categoryObj'] as Map<String, dynamic>,
+        );
       }
       return MarketplaceCategory(
         id: json['category'] as String? ?? 'other',
@@ -372,7 +375,8 @@ class Product {
     if (rawPrice is num) {
       priceVal = rawPrice.toDouble();
     } else if (rawPrice is String) {
-      priceVal = double.tryParse(rawPrice.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0.0;
+      priceVal =
+          double.tryParse(rawPrice.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0.0;
     } else {
       priceVal = 0.0;
     }
@@ -382,7 +386,8 @@ class Product {
     if (rawPrev is num) {
       prevVal = rawPrev.toDouble();
     } else if (rawPrev is String) {
-      prevVal = double.tryParse(rawPrev.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0.0;
+      prevVal =
+          double.tryParse(rawPrev.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0.0;
     } else {
       prevVal = null;
     }
@@ -413,14 +418,14 @@ class Product {
       isOffer: json['isOffer'] as bool? ?? false,
       isFavorite: json['isFavorite'] as bool? ?? false,
       status: parseStatus(),
-      availability:
-          ProductAvailability.fromString(json['status'] as String?),
+      availability: ProductAvailability.fromString(json['status'] as String?),
       stockQuantity: json['stock_quantity'] as int?,
       stockResetDaily: json['stock_reset_daily'] as bool? ?? false,
       stockInitial: json['stock_initial'] as int?,
       isAvailable: json['is_available'] as bool? ?? true,
       extras: parseExtras(),
-      availableDays: (json['availableDays'] as List<dynamic>?)
+      availableDays:
+          (json['availableDays'] as List<dynamic>?)
               ?.map((e) => e as int)
               .toList() ??
           const [],
@@ -521,10 +526,7 @@ class HighlightPlan {
 
 /// Extra opcional que el comprador puede agregar a un producto.
 class ProductExtra {
-  const ProductExtra({
-    required this.name,
-    required this.extraPrice,
-  });
+  const ProductExtra({required this.name, required this.extraPrice});
 
   factory ProductExtra.fromJson(Map<String, dynamic> json) {
     return ProductExtra(
@@ -533,10 +535,7 @@ class ProductExtra {
     );
   }
 
-  Map<String, dynamic> toJson() => {
-    'name': name,
-    'extraPrice': extraPrice,
-  };
+  Map<String, dynamic> toJson() => {'name': name, 'extraPrice': extraPrice};
 
   final String name;
   final double extraPrice;
@@ -582,7 +581,9 @@ class WantedPost {
           ? Seller.fromJson(json['sellerObj'] as Map<String, dynamic>)
           : null,
       categoryObj: json['categoryObj'] != null
-          ? MarketplaceCategory.fromJson(json['categoryObj'] as Map<String, dynamic>)
+          ? MarketplaceCategory.fromJson(
+              json['categoryObj'] as Map<String, dynamic>,
+            )
           : null,
     );
   }
@@ -712,7 +713,8 @@ class ChatProduct {
       id: json['id'] as String? ?? '',
       title: json['title'] as String? ?? '',
       price: (json['price'] as num?)?.toDouble() ?? 0,
-      images: (json['images'] as List<dynamic>?)
+      images:
+          (json['images'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
           [],
@@ -757,6 +759,7 @@ class ChatMessage {
     required this.text,
     required this.createdAt,
     this.read = false,
+    this.imageUrl,
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
@@ -767,6 +770,7 @@ class ChatMessage {
       text: json['text'] as String? ?? '',
       createdAt: json['createdAt'] as String? ?? '',
       read: json['read'] as bool? ?? false,
+      imageUrl: json['imageUrl'] as String?,
     );
   }
 
@@ -776,4 +780,5 @@ class ChatMessage {
   final String text;
   final String createdAt;
   final bool read;
+  final String? imageUrl;
 }

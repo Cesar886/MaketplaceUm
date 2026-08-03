@@ -37,8 +37,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.initState();
     _nameController = TextEditingController(text: widget.seller.name);
     _phoneController = TextEditingController(text: widget.seller.phone ?? '');
-    _descriptionController =
-        TextEditingController(text: widget.seller.businessDescription ?? '');
+    _descriptionController = TextEditingController(
+      text: widget.seller.businessDescription ?? '',
+    );
     _selectedCategoryId = widget.seller.businessCategory;
     if (_isBusiness) _loadCategories();
   }
@@ -84,7 +85,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         name: _nameController.text.trim(),
         phone: _phoneController.text.trim(),
         logoPath: _pickedPhoto?.path,
-        businessDescription: _isBusiness ? _descriptionController.text.trim() : null,
+        businessDescription: _isBusiness
+            ? _descriptionController.text.trim()
+            : null,
         businessCategory: _isBusiness ? _selectedCategoryId : null,
       );
       if (!mounted) return;
@@ -92,9 +95,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al guardar: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error al guardar: $e')));
     }
   }
 
@@ -110,7 +113,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           fit: BoxFit.cover,
         ),
       );
-    } else if (widget.seller.logoUrl != null && widget.seller.logoUrl!.isNotEmpty) {
+    } else if (widget.seller.logoUrl != null &&
+        widget.seller.logoUrl!.isNotEmpty) {
       child = ClipOval(
         child: Image.network(
           '${ApiService.baseUrl}${widget.seller.logoUrl}',
@@ -188,8 +192,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   labelText: 'Nombre',
                   prefixIcon: Icon(Icons.person_outline_rounded),
                 ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Ingresa tu nombre' : null,
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? 'Ingresa tu nombre'
+                    : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -215,7 +220,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         child: Text(category.name),
                       ),
                   ],
-                  onChanged: (value) => setState(() => _selectedCategoryId = value),
+                  onChanged: (value) =>
+                      setState(() => _selectedCategoryId = value),
                 ),
                 const SizedBox(height: 16),
                 TextFormField(

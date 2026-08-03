@@ -57,18 +57,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.notifications_outlined,
-                  size: 64, color: AppColors.muted),
+              Icon(
+                Icons.notifications_outlined,
+                size: 64,
+                color: context.colors.muted,
+              ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Inicia sesión para ver tus notificaciones',
-                style: TextStyle(color: AppColors.muted),
+                style: TextStyle(color: context.colors.muted),
               ),
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                      builder: (_) => const LoginScreen()),
+                  MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
                 ),
                 child: const Text('Iniciar sesión'),
               ),
@@ -114,49 +116,52 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : _notifications.isEmpty
-                  ? ListView(
-                      children: const [
-                        SizedBox(height: 120),
-                        Center(
-                          child: Column(
-                            children: [
-                              Icon(Icons.notifications_off_outlined,
-                                  size: 64, color: AppColors.muted),
-                              SizedBox(height: 16),
-                              Text(
-                                'Sin notificaciones',
-                                style: TextStyle(
-                                  color: AppColors.muted,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              SizedBox(height: 8),
-                              Text(
-                                'Sigue categorías para recibir\navisos de nuevos productos.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: AppColors.muted,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ],
+              ? ListView(
+                  children: [
+                    SizedBox(height: 120),
+                    Center(
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.notifications_off_outlined,
+                            size: 64,
+                            color: context.colors.muted,
                           ),
-                        ),
-                      ],
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
-                      itemCount: _notifications.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 6),
-                      itemBuilder: (context, index) {
-                        final notif = _notifications[index];
-                        return _NotificationTile(
-                          notification: notif,
-                          onTap: () => _openNotification(notif),
-                        );
-                      },
+                          SizedBox(height: 16),
+                          Text(
+                            'Sin notificaciones',
+                            style: TextStyle(
+                              color: context.colors.muted,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Sigue categorías para recibir\navisos de nuevos productos.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: context.colors.muted,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
+                  ],
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+                  itemCount: _notifications.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 6),
+                  itemBuilder: (context, index) {
+                    final notif = _notifications[index];
+                    return _NotificationTile(
+                      notification: notif,
+                      onTap: () => _openNotification(notif),
+                    );
+                  },
+                ),
         ),
       ),
     );
@@ -193,10 +198,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (convId != null && mounted) {
         Navigator.of(context).push(
           MaterialPageRoute<void>(
-            builder: (_) => ChatScreen(
-              conversationId: convId,
-              productId: productId ?? '',
-            ),
+            builder: (_) =>
+                ChatScreen(conversationId: convId, productId: productId ?? ''),
           ),
         );
       }
@@ -218,10 +221,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 }
 
 class _NotificationTile extends StatelessWidget {
-  const _NotificationTile({
-    required this.notification,
-    required this.onTap,
-  });
+  const _NotificationTile({required this.notification, required this.onTap});
 
   final NotificationItem notification;
   final VoidCallback onTap;
@@ -238,7 +238,7 @@ class _NotificationTile extends StatelessWidget {
     }
   }
 
-  Color _colorForType(String type) {
+  Color _colorForType(BuildContext context, String type) {
     switch (type) {
       case 'new_product':
         return AppColors.primary;
@@ -246,18 +246,22 @@ class _NotificationTile extends StatelessWidget {
       case 'new_message':
         return AppColors.teal;
       default:
-        return AppColors.muted;
+        return context.colors.muted;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: notification.read ? AppColors.surface : AppColors.champagne,
+      color: notification.read
+          ? context.colors.surface
+          : context.colors.premiumBg,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
         side: BorderSide(
-          color: notification.read ? AppColors.border : AppColors.premiumBorder,
+          color: notification.read
+              ? context.colors.border
+              : context.colors.premiumBorder,
         ),
       ),
       child: InkWell(
@@ -271,13 +275,15 @@ class _NotificationTile extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: _colorForType(notification.type)
-                      .withValues(alpha: 0.10),
+                  color: _colorForType(
+                    context,
+                    notification.type,
+                  ).withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
                   _iconForType(notification.type),
-                  color: _colorForType(notification.type),
+                  color: _colorForType(context, notification.type),
                   size: 22,
                 ),
               ),
@@ -295,7 +301,7 @@ class _NotificationTile extends StatelessWidget {
                               fontWeight: notification.read
                                   ? FontWeight.w600
                                   : FontWeight.w700,
-                              color: AppColors.ink,
+                              color: context.colors.ink,
                               fontSize: 14,
                             ),
                           ),
@@ -315,7 +321,7 @@ class _NotificationTile extends StatelessWidget {
                     Text(
                       notification.body,
                       style: TextStyle(
-                        color: AppColors.muted,
+                        color: context.colors.muted,
                         fontWeight: FontWeight.w500,
                         fontSize: 13,
                         height: 1.3,
@@ -324,8 +330,8 @@ class _NotificationTile extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       notification.createdAt,
-                      style: const TextStyle(
-                        color: AppColors.muted,
+                      style: TextStyle(
+                        color: context.colors.muted,
                         fontSize: 11,
                         fontWeight: FontWeight.w400,
                       ),

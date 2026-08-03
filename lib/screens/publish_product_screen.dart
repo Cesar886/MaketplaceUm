@@ -348,19 +348,19 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.colors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.calendar_month_rounded,
                 size: 16,
-                color: AppColors.muted,
+                color: context.colors.muted,
               ),
               const SizedBox(width: 6),
               const Expanded(
@@ -373,10 +373,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                 _selectedDays.isEmpty
                     ? 'Opcional · todos los días'
                     : '${_selectedDays.length}/7',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.muted,
+                  color: context.colors.muted,
                 ),
               ),
             ],
@@ -393,12 +393,12 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                 showCheckmark: false,
                 selectedColor: AppColors.primary.withValues(alpha: 0.12),
                 labelStyle: TextStyle(
-                  color: selected ? AppColors.primary : AppColors.ink,
+                  color: selected ? AppColors.primary : context.colors.ink,
                 ),
                 side: BorderSide(
                   color: selected
                       ? AppColors.primary.withValues(alpha: 0.4)
-                      : AppColors.border,
+                      : context.colors.border,
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 onSelected: (value) {
@@ -424,9 +424,9 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.colors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -436,7 +436,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.surfaceMuted,
+                  color: context.colors.surfaceMuted,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
@@ -501,9 +501,9 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.colors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -513,7 +513,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.surfaceMuted,
+                  color: context.colors.surfaceMuted,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
@@ -534,14 +534,14 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                   vertical: 5,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.background,
+                  color: context.colors.background,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Text(
+                child: Text(
                   'Opcional',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
-                    color: AppColors.muted,
+                    color: context.colors.muted,
                   ),
                 ),
               ),
@@ -551,7 +551,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           Text(
             r'Tu producto tiene variantes? Agrega extras como "Con estuche +$25", "Impresion a color +$10"',
             style: TextStyle(
-              color: AppColors.muted,
+              color: context.colors.muted,
               fontWeight: FontWeight.w600,
               height: 1.35,
             ),
@@ -572,9 +572,9 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                   ),
                   Text(
                     '+${Product.formatPrice(extra.extraPrice)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w700,
-                      color: AppColors.primaryDark,
+                      color: context.colors.accent,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -637,7 +637,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
               const SizedBox(width: 8),
               Material(
                 color: _extras.length >= 8
-                    ? AppColors.border
+                    ? context.colors.border
                     : AppColors.primary.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(8),
                 child: InkWell(
@@ -648,7 +648,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                     child: Icon(
                       Icons.add_rounded,
                       color: _extras.length >= 8
-                          ? AppColors.muted
+                          ? context.colors.muted
                           : AppColors.primary,
                       size: 22,
                     ),
@@ -703,7 +703,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     final showSaveBar = !_loading && auth.isLoggedIn;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.colors.background,
       appBar: AppBar(title: const Text('Editar producto'), centerTitle: false),
       body: SafeArea(top: false, child: content),
       bottomNavigationBar: showSaveBar ? _buildEditSaveBar() : null,
@@ -715,9 +715,11 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       top: false,
       child: Container(
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          border: Border(top: BorderSide(color: AppColors.border, width: 0.8)),
+        decoration: BoxDecoration(
+          color: context.colors.surface,
+          border: Border(
+            top: BorderSide(color: context.colors.border, width: 0.8),
+          ),
         ),
         child: Row(
           children: [
@@ -762,7 +764,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           const SizedBox(height: 6),
           Text(
             'Completa la información básica para publicar tu producto en el marketplace.',
-            style: AppTypography.body(14, color: AppColors.muted),
+            style: AppTypography.body(14, color: context.colors.muted),
           ),
           const SizedBox(height: 20),
         ],
@@ -990,7 +992,7 @@ class _ImageThumbnail extends StatelessWidget {
           height: 110,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: context.colors.border),
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(7),
@@ -999,10 +1001,8 @@ class _ImageThumbnail extends StatelessWidget {
               fit: BoxFit.cover,
               width: 104,
               height: 110,
-              errorBuilder: (_, _, _) => const Icon(
-                Icons.broken_image_rounded,
-                color: AppColors.muted,
-              ),
+              errorBuilder: (_, _, _) =>
+                  Icon(Icons.broken_image_rounded, color: context.colors.muted),
             ),
           ),
         ),
@@ -1047,7 +1047,7 @@ class _ExistingImageThumbnail extends StatelessWidget {
           height: 110,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: context.colors.border),
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(7),
@@ -1056,10 +1056,8 @@ class _ExistingImageThumbnail extends StatelessWidget {
               fit: BoxFit.cover,
               width: 104,
               height: 110,
-              errorBuilder: (_, _, _) => const Icon(
-                Icons.broken_image_rounded,
-                color: AppColors.muted,
-              ),
+              errorBuilder: (_, _, _) =>
+                  Icon(Icons.broken_image_rounded, color: context.colors.muted),
             ),
           ),
         ),
@@ -1104,9 +1102,9 @@ class _HighlightSection extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.colors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1116,7 +1114,7 @@ class _HighlightSection extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.surfaceMuted,
+                  color: context.colors.surfaceMuted,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(Icons.star_rounded, color: AppColors.primary),
@@ -1134,24 +1132,24 @@ class _HighlightSection extends StatelessWidget {
                   vertical: 5,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.background,
+                  color: context.colors.background,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Text(
+                child: Text(
                   'Opcional',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
-                    color: AppColors.muted,
+                    color: context.colors.muted,
                   ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Publicar es gratis. Si eliges un plan, tu producto aparece primero en Destacados.',
             style: TextStyle(
-              color: AppColors.muted,
+              color: context.colors.muted,
               fontWeight: FontWeight.w600,
               height: 1.35,
             ),
@@ -1192,10 +1190,10 @@ class _PlanCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected
               ? AppColors.primary.withValues(alpha: 0.08)
-              : AppColors.background,
+              : context.colors.background,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: selected ? AppColors.orange : AppColors.border,
+            color: selected ? AppColors.orange : context.colors.border,
             width: selected ? 1.5 : 1,
           ),
         ),
@@ -1205,7 +1203,7 @@ class _PlanCard extends StatelessWidget {
               selected
                   ? Icons.radio_button_checked_rounded
                   : Icons.radio_button_off_rounded,
-              color: selected ? AppColors.orange : AppColors.muted,
+              color: selected ? AppColors.orange : context.colors.muted,
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -1219,8 +1217,8 @@ class _PlanCard extends StatelessWidget {
                   const SizedBox(height: 3),
                   Text(
                     plan.description,
-                    style: const TextStyle(
-                      color: AppColors.muted,
+                    style: TextStyle(
+                      color: context.colors.muted,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -1230,10 +1228,10 @@ class _PlanCard extends StatelessWidget {
             const SizedBox(width: 8),
             Text(
               plan.price,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
-                color: AppColors.primaryDark,
+                color: context.colors.accent,
               ),
             ),
           ],

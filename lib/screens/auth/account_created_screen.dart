@@ -30,8 +30,8 @@ class AccountCreatedScreen extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 'Bienvenido${user?['name'] != null ? ', ${user!['name']}' : ''}',
-                style: const TextStyle(
-                  color: AppColors.muted,
+                style: TextStyle(
+                  color: context.colors.muted,
                   fontWeight: FontWeight.w600,
                   fontSize: 16,
                 ),
@@ -43,9 +43,9 @@ class AccountCreatedScreen extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: context.colors.surface,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: context.colors.border),
                 ),
                 child: Column(
                   children: [
@@ -59,7 +59,7 @@ class AccountCreatedScreen extends StatelessWidget {
                       value: _verificationLabel(auth),
                     ),
                     const SizedBox(height: 12),
-                    _buildVerificationBadge(auth),
+                    _buildVerificationBadge(context, auth),
                   ],
                 ),
               ),
@@ -71,20 +71,24 @@ class AccountCreatedScreen extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: AppColors.teal.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(8),
-                  border:
-                      Border.all(color: AppColors.teal.withValues(alpha: 0.18)),
+                  border: Border.all(
+                    color: AppColors.teal.withValues(alpha: 0.18),
+                  ),
                 ),
-                child: const Row(
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.lightbulb_rounded,
-                        color: AppColors.teal, size: 20),
-                    SizedBox(width: 10),
+                    const Icon(
+                      Icons.lightbulb_rounded,
+                      color: AppColors.teal,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         'Puedes completar o modificar tu verificación desde tu perfil en cualquier momento.',
                         style: TextStyle(
-                          color: AppColors.primaryDark,
+                          color: context.colors.accent,
                           fontWeight: FontWeight.w600,
                           fontSize: 13,
                         ),
@@ -100,7 +104,8 @@ class AccountCreatedScreen extends StatelessWidget {
                   onPressed: () {
                     Navigator.of(context).pushAndRemoveUntil(
                       MaterialPageRoute<void>(
-                          builder: (_) => const MainShell()),
+                        builder: (_) => const MainShell(),
+                      ),
                       (_) => false,
                     );
                   },
@@ -128,27 +133,31 @@ class AccountCreatedScreen extends StatelessWidget {
     }
   }
 
-  Widget _buildVerificationBadge(AuthProvider auth) {
+  Widget _buildVerificationBadge(BuildContext context, AuthProvider auth) {
     switch (auth.verificationStatus) {
       case VerificationStatus.noIniciada:
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: AppColors.muted.withValues(alpha: 0.08),
+            color: context.colors.muted.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(6),
-            border:
-                Border.all(color: AppColors.muted.withValues(alpha: 0.18)),
+            border: Border.all(
+              color: context.colors.muted.withValues(alpha: 0.18),
+            ),
           ),
-          child: const Row(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.visibility_off_rounded,
-                  size: 16, color: AppColors.muted),
-              SizedBox(width: 6),
+              Icon(
+                Icons.visibility_off_rounded,
+                size: 16,
+                color: context.colors.muted,
+              ),
+              const SizedBox(width: 6),
               Text(
                 'Sin verificar',
                 style: TextStyle(
-                  color: AppColors.muted,
+                  color: context.colors.muted,
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
                 ),
@@ -162,14 +171,16 @@ class AccountCreatedScreen extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppColors.gold.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(6),
-            border:
-                Border.all(color: AppColors.gold.withValues(alpha: 0.22)),
+            border: Border.all(color: AppColors.gold.withValues(alpha: 0.22)),
           ),
           child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.hourglass_bottom_rounded,
-                  size: 16, color: AppColors.gold),
+              Icon(
+                Icons.hourglass_bottom_rounded,
+                size: 16,
+                color: AppColors.gold,
+              ),
               SizedBox(width: 6),
               Text(
                 'En revisión',
@@ -190,14 +201,12 @@ class AccountCreatedScreen extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppColors.danger.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(6),
-            border:
-                Border.all(color: AppColors.danger.withValues(alpha: 0.18)),
+            border: Border.all(color: AppColors.danger.withValues(alpha: 0.18)),
           ),
           child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.gpp_bad_rounded,
-                  size: 16, color: AppColors.danger),
+              Icon(Icons.gpp_bad_rounded, size: 16, color: AppColors.danger),
               SizedBox(width: 6),
               Text(
                 'Rechazada',
@@ -272,16 +281,16 @@ class _SummaryRow extends StatelessWidget {
       children: [
         Text(
           label,
-          style: const TextStyle(
-            color: AppColors.muted,
+          style: TextStyle(
+            color: context.colors.muted,
             fontWeight: FontWeight.w600,
           ),
         ),
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontWeight: FontWeight.w700,
-            color: AppColors.ink,
+            color: context.colors.ink,
           ),
         ),
       ],

@@ -1,5 +1,121 @@
+const path = require('path');
+const fs = require('fs');
+const sharp = require('sharp');
+const multer = require('multer');
 const db = require('../database');
 const { sendPush } = require('../push');
+
+const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname) || '.jpg';
+      cb(null, `chatimg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    cb(null, /\.(jpg|jpeg|png|gif|webp)$/i.test(path.extname(file.originalname)));
+  },
+});
+
+/** Convierte una imagen recién subida a WebP y borra el original. */
+async function convertToWebp(filePath) {
+  const parsed = path.parse(filePath);
+  const webpPath = path.join(parsed.dir, parsed.name + '.webp');
+  const publicPath = '/uploads/' + parsed.name + '.webp';
+
+  await sharp(filePath).webp({ quality: 80 }).toFile(webpPath);
+  fs.unlinkSync(filePath);
+
+  return publicPath;
+}
+
+/**
+ * Busca la conversación indicada por conversationId, o la busca/crea a
+ * partir de (productId, sellerId, senderId). Usado tanto por el envío de
+ * texto como por el envío de imagen para no duplicar esta lógica.
+ * Lanza un objeto { status, error } (no una excepción) para que la ruta
+ * que llama decida cómo responder sin try/catch.
+ */
+function resolveConversation({ conversationId, productId, sellerId, userId }) {
+  if (conversationId) {
+    const conversation = db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(conversationId);
+    if (!conversation) return { error: { status: 404, error: 'Conversación no encontrada' } };
+    if (conversation.buyer_id !== userId && conversation.seller_id !== userId) {
+      return { error: { status: 403, error: 'No tienes acceso a esta conversación' } };
+    }
+    return { conversation };
+  }
+
+  if (!productId || !sellerId) {
+    return { error: { status: 400, error: 'productId y sellerId son requeridos para iniciar una conversación' } };
+  }
+  if (userId === sellerId) {
+    return { error: { status: 400, error: 'No puedes enviarte un mensaje a ti mismo' } };
+  }
+
+  let conversation = db.findConversation(productId, userId, sellerId);
+  if (!conversation) {
+    const convId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    db.createConversation(convId, productId, userId, sellerId);
+    conversation = db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(convId);
+  }
+  return { conversation };
+}
+
+/** Notifica al otro usuario de la conversación (push + notificación in-app + socket). */
+function notifyNewMessage(app, conversation, senderId, previewText) {
+  const otherUserId = conversation.buyer_id === senderId ? conversation.seller_id : conversation.buyer_id;
+  const sender = db.getDb().prepare('SELECT name FROM sellers WHERE id = ?').get(senderId);
+  const notifId = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const isFirst = db.getDb().prepare(
+    'SELECT COUNT(*) as c FROM messages WHERE conversation_id = ?'
+  ).get(conversation.id);
+  const type = isFirst && isFirst.c <= 1 ? 'new_chat' : 'new_message';
+
+  db.createNotification(
+    notifId,
+    otherUserId,
+    type,
+    'Nuevo mensaje',
+    `${sender?.name || 'Alguien'} te escribió: "${previewText}"`,
+    { conversationId: conversation.id, productId: conversation.product_id, senderId }
+  );
+
+  const senderName = sender?.name || 'Alguien';
+  sendPush(
+    [otherUserId],
+    type === 'new_chat' ? 'Nuevo chat' : 'Nuevo mensaje',
+    `${senderName}: ${previewText}`,
+    { conversationId: conversation.id, productId: conversation.product_id, type }
+  );
+
+  const messages = db.getMessages(conversation.id);
+  const io = app.get('io');
+  if (io) {
+    const newMsg = messages[messages.length - 1];
+    io.to(`conv:${conversation.id}`).emit('new:message', {
+      message: {
+        id: newMsg.id,
+        conversationId: newMsg.conversationId,
+        senderId: newMsg.senderId,
+        text: newMsg.text,
+        imageUrl: newMsg.imageUrl,
+        createdAt: newMsg.createdAt,
+        read: false,
+      },
+      conversationId: conversation.id,
+    });
+    io.to(`user:${otherUserId}`).emit('conversation:updated', {
+      conversationId: conversation.id,
+    });
+  }
+
+  return messages;
+}
 
 function register(app) {
   // GET /api/chat/conversations - listar conversaciones de un usuario (anónimo o no)
@@ -63,7 +179,7 @@ function register(app) {
     res.json({ messages });
   });
 
-  // POST /api/chat/send - enviar un mensaje (anónimo, no requiere auth)
+  // POST /api/chat/send - enviar un mensaje de texto (anónimo, no requiere auth)
   app.post('/api/chat/send', (req, res) => {
     const { productId, sellerId, text, conversationId } = req.body;
     const userId = req.body.senderId;
@@ -75,96 +191,58 @@ function register(app) {
       return res.status(400).json({ error: 'El mensaje no puede estar vacío' });
     }
 
-    let conversation;
+    const { conversation, error } = resolveConversation({ conversationId, productId, sellerId, userId });
+    if (error) return res.status(error.status).json({ error: error.error });
 
-    // Si se proporciona conversationId, usarla (útil cuando el vendedor responde)
-    if (conversationId) {
-      conversation = db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(conversationId);
-      if (!conversation) {
-        return res.status(404).json({ error: 'Conversación no encontrada' });
-      }
-      // Verificar que el usuario pertenece a la conversación
-      if (conversation.buyer_id !== userId && conversation.seller_id !== userId) {
-        return res.status(403).json({ error: 'No tienes acceso a esta conversación' });
-      }
-    } else {
-      // Crear nueva conversación (solo el comprador puede iniciar)
-      if (!productId || !sellerId) {
-        return res.status(400).json({ error: 'productId y sellerId son requeridos para iniciar una conversación' });
-      }
-
-      // No puedes enviarte mensaje a ti mismo
-      if (userId === sellerId) {
-        return res.status(400).json({ error: 'No puedes enviarte un mensaje a ti mismo' });
-      }
-
-      // Buscar o crear conversación
-      conversation = db.findConversation(productId, userId, sellerId);
-      if (!conversation) {
-        const convId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        db.createConversation(convId, productId, userId, sellerId);
-        conversation = db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(convId);
-      }
-    }
-
-    // Crear mensaje
+    const trimmedText = text.trim();
     const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    db.createMessage(msgId, conversation.id, userId, text.trim());
+    db.createMessage(msgId, conversation.id, userId, trimmedText);
 
-    // Notificar al otro usuario (seller si el que envía es buyer, buyer si el que envía es seller)
-    const otherUserId = conversation.buyer_id === userId ? conversation.seller_id : conversation.buyer_id;
-    const sender = db.getDb().prepare('SELECT name FROM sellers WHERE id = ?').get(userId);
-    const notifId = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const isFirst = db.getDb().prepare(
-      'SELECT COUNT(*) as c FROM messages WHERE conversation_id = ?'
-    ).get(conversation.id);
-    const product = db.getProductById(conversation.product_id);
-    db.createNotification(
-      notifId,
-      otherUserId,
-      isFirst && isFirst.c <= 1 ? 'new_chat' : 'new_message',
-      'Nuevo mensaje',
-      `${sender?.name || 'Alguien'} te escribió: \"${text.trim().slice(0, 80)}\"`,
-      { conversationId: conversation.id, productId: conversation.product_id, senderId: userId }
-    );
-
-    // Enviar push notification via OneSignal
-    const senderName = sender?.name || 'Alguien';
-    const pushTitle = isFirst && isFirst.c <= 1 ? 'Nuevo chat' : 'Nuevo mensaje';
-    const pushBody = `${senderName}: ${text.trim().slice(0, 100)}`;
-    sendPush(
-      [otherUserId],
-      pushTitle,
-      pushBody,
-      { conversationId: conversation.id, productId: conversation.product_id, type: isFirst && isFirst.c <= 1 ? 'new_chat' : 'new_message' }
-    );
-
-    const messages = db.getMessages(conversation.id);
-
-    // ── Emitir evento en tiempo real via Socket.IO ──
-    const io = app.get('io');
-    if (io) {
-      // Notificar a los usuarios en la sala de la conversación
-      const newMsg = messages[messages.length - 1];
-      io.to(`conv:${conversation.id}`).emit('new:message', {
-        message: {
-          id: newMsg.id,
-          conversationId: newMsg.conversationId,
-          senderId: newMsg.senderId,
-          text: newMsg.text,
-          createdAt: newMsg.createdAt,
-          read: false,
-        },
-        conversationId: conversation.id,
-      });
-
-      // Notificar al otro usuario (si no está en la sala) para que refresque su lista
-      io.to(`user:${otherUserId}`).emit('conversation:updated', {
-        conversationId: conversation.id,
-      });
-    }
-
+    const messages = notifyNewMessage(app, conversation, userId, trimmedText.slice(0, 100));
     res.status(201).json({ messages, conversationId: conversation.id });
+  });
+
+  // POST /api/chat/send-image - enviar un mensaje con una imagen (multipart).
+  // La imagen se convierte a WebP antes de guardarse para que pese menos,
+  // igual que se hace con las fotos de producto y el logo de negocio.
+  app.post('/api/chat/send-image', (req, res) => {
+    upload.single('image')(req, res, async (err) => {
+      if (err) {
+        return res.status(400).json({ error: 'Error al procesar la imagen: ' + err.message });
+      }
+      if (!req.file) {
+        return res.status(400).json({ error: 'No se envió ninguna imagen' });
+      }
+
+      const { productId, sellerId, conversationId } = req.body;
+      const userId = req.body.senderId;
+
+      if (!userId) {
+        fs.unlink(req.file.path, () => {});
+        return res.status(400).json({ error: 'senderId es requerido' });
+      }
+
+      const { conversation, error } = resolveConversation({ conversationId, productId, sellerId, userId });
+      if (error) {
+        fs.unlink(req.file.path, () => {});
+        return res.status(error.status).json({ error: error.error });
+      }
+
+      let imageUrl;
+      try {
+        imageUrl = await convertToWebp(req.file.path);
+      } catch (convErr) {
+        console.error('Error convirtiendo imagen de chat a WebP:', convErr);
+        // Fallback: usar el archivo original (sí existe en disco)
+        imageUrl = '/uploads/' + path.basename(req.file.path);
+      }
+
+      const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      db.createMessage(msgId, conversation.id, userId, '', imageUrl);
+
+      const messages = notifyNewMessage(app, conversation, userId, '📷 Foto');
+      res.status(201).json({ messages, conversationId: conversation.id });
+    });
   });
 
   // DELETE /api/chat/messages/:id - eliminar un mensaje propio (el senderId debe coincidir)

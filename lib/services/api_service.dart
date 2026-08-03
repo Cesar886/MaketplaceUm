@@ -885,4 +885,33 @@ class ApiService {
     );
     if (res.statusCode != 200) throw Exception('Error deleting message');
   }
+
+  /// Envía un mensaje con una imagen. El backend la convierte a WebP antes
+  /// de guardarla. Igual que [sendMessage]: si no existe conversación, la
+  /// crea (requiere productId/sellerId); si se provee [conversationId], la
+  /// usa. Devuelve { messages, conversationId }.
+  static Future<Map<String, dynamic>> sendChatImage({
+    required String imagePath,
+    required String senderId,
+    String? productId,
+    String? sellerId,
+    String? conversationId,
+  }) async {
+    final request = http.MultipartRequest('POST', _uri('/chat/send-image'));
+    request.fields['senderId'] = senderId;
+    if (productId != null) request.fields['productId'] = productId;
+    if (sellerId != null) request.fields['sellerId'] = sellerId;
+    if (conversationId != null && conversationId.isNotEmpty) {
+      request.fields['conversationId'] = conversationId;
+    }
+    request.files.add(await http.MultipartFile.fromPath('image', imagePath));
+
+    final streamed = await request.send();
+    final res = await http.Response.fromStream(streamed);
+    if (res.statusCode != 201) {
+      final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(decoded['error'] ?? 'Error al enviar la imagen');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
 }

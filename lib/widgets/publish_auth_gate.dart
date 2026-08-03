@@ -38,8 +38,8 @@ class PublishAuthGate extends StatelessWidget {
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppColors.muted,
+              style: TextStyle(
+                color: context.colors.muted,
                 fontWeight: FontWeight.w600,
               ),
             ),

@@ -51,10 +51,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  Text(
                     'Ingresa tu correo y contraseña para continuar.',
                     style: TextStyle(
-                      color: AppColors.muted,
+                      color: context.colors.muted,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -140,10 +140,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text(
+                      Text(
                         '¿No tienes cuenta? ',
                         style: TextStyle(
-                          color: AppColors.muted,
+                          color: context.colors.muted,
                           fontWeight: FontWeight.w600,
                         ),
                       ),

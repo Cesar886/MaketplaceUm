@@ -15,7 +15,7 @@ class FeaturedBadge extends StatelessWidget {
       icon: Icons.star_rounded,
       label: 'Destacado',
       foreground: AppColors.gold,
-      background: AppColors.champagne,
+      background: context.colors.premiumBg,
       compact: compact,
     );
   }
@@ -112,12 +112,12 @@ class AvailabilityBadge extends StatelessWidget {
         AppColors.primary.withValues(alpha: 0.08),
       ),
       ProductAvailability.paused => (
-        AppColors.muted,
-        AppColors.muted.withValues(alpha: 0.08),
+        context.colors.muted,
+        context.colors.muted.withValues(alpha: 0.08),
       ),
       ProductAvailability.unavailable => (
-        AppColors.muted,
-        AppColors.muted.withValues(alpha: 0.08),
+        context.colors.muted,
+        context.colors.muted.withValues(alpha: 0.08),
       ),
     };
 
@@ -203,7 +203,7 @@ class VerificationStatusBadge extends StatelessWidget {
           icon: Icons.store_rounded,
           label: 'Negocio confirmado',
           foreground: AppColors.gold,
-          background: AppColors.champagne,
+          background: context.colors.premiumBg,
           compact: compact,
         );
     }

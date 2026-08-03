@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
@@ -36,10 +38,12 @@ class _ChatScreenState extends State<ChatScreen> {
   List<ChatMessage> _messages = [];
   String? _currentConvId;
   bool _sending = false;
+  bool _sendingImage = false;
   bool _loading = true;
   bool _loadError = false;
   String _userId = '';
   bool _otherTyping = false;
+  Product? _displayProduct;
 
   // Para debounce del evento typing:stop
   Timer? _typingTimer;
@@ -53,12 +57,37 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _currentConvId = widget.conversationId;
+    _displayProduct = widget.product;
     _initAsync();
+  }
+
+  /// Si nos abrieron solo con productId (p. ej. desde la lista de chats o
+  /// una notificación push, que no traen el objeto Product completo), lo
+  /// buscamos para poder mostrar la barra "sobre qué producto es este chat".
+  Future<void> _loadDisplayProduct() async {
+    if (_displayProduct != null) return;
+    final productId = widget.productId;
+    if (productId == null || productId.isEmpty) return;
+    try {
+      final product = await ApiService.getProduct(productId);
+      if (!mounted) return;
+      setState(() => _displayProduct = product);
+    } catch (_) {
+      // Sin producto: la barra simplemente no se muestra.
+    }
   }
 
   /// Inicialización asíncrona: obtiene el userId y luego carga mensajes.
   Future<void> _initAsync() async {
-    _userId = await _getUserId();
+    final userId = await _getUserId();
+    if (!mounted) return;
+    // setState explícito: build() usa _userId para decidir qué burbujas son
+    // "propias" (isMine). Sin este rebuild, si _loadMessages tardara en
+    // completarse (o la lista llegara vacía), el chat podría quedar
+    // pintado una vez con _userId aún vacío y no repintarse nunca con el
+    // identificador correcto.
+    setState(() => _userId = userId);
+    _loadDisplayProduct();
 
     // Conectar socket y unirse a la sala
     _socket.connect();
@@ -103,6 +132,7 @@ class _ChatScreenState extends State<ChatScreen> {
             text: '[Mensaje eliminado]',
             createdAt: _messages[idx].createdAt,
             read: _messages[idx].read,
+            imageUrl: null,
           );
         }
       });
@@ -170,12 +200,23 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _loadMessages() async {
     if (_currentConvId == null || _currentConvId!.isEmpty) {
-      if (mounted) setState(() { _loading = false; _loadError = false; });
+      if (mounted)
+        setState(() {
+          _loading = false;
+          _loadError = false;
+        });
       return;
     }
-    if (mounted) setState(() { _loading = true; _loadError = false; });
+    if (mounted)
+      setState(() {
+        _loading = true;
+        _loadError = false;
+      });
     try {
-      final messages = await ApiService.getMessages(_currentConvId!, userId: _userId);
+      final messages = await ApiService.getMessages(
+        _currentConvId!,
+        userId: _userId,
+      );
       if (!mounted) return;
       setState(() {
         _messages = messages;
@@ -232,56 +273,84 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     try {
-      final senderId = _userId;
-
-      if (widget.sellerId != null && _currentConvId == widget.conversationId) {
-        // Primera vez: enviar y crear conversación
-        final result = await ApiService.sendMessage(
-          productId: widget.productId ?? '',
-          sellerId: widget.sellerId!,
-          text: text,
-          senderId: senderId,
-        );
-        if (!mounted) return;
-        setState(() {
-          _messages = (result['messages'] as List<dynamic>)
-              .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
-              .toList();
-          final newConvId = result['conversationId'] as String?;
-          if (newConvId != null && newConvId != _currentConvId) {
-            // Unirse a la nueva sala de conversación
-            if (_currentConvId != null && _currentConvId!.isNotEmpty) {
-              _socket.leaveConversation(_currentConvId!);
-            }
-            _currentConvId = newConvId;
-            _socket.joinConversation(_currentConvId!);
-          }
-        });
-      } else if (_currentConvId != null && _currentConvId!.isNotEmpty) {
-        // Enviar en conversación existente
-        final result = await ApiService.sendMessage(
-          productId: widget.productId ?? '',
-          sellerId: widget.sellerId ?? '',
-          text: text,
-          senderId: senderId,
-          conversationId: _currentConvId,
-        );
-        if (!mounted) return;
-        setState(() {
-          _messages = (result['messages'] as List<dynamic>)
-              .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
-              .toList();
-        });
-      }
-      _scrollToBottom();
+      final isNewConversation =
+          widget.sellerId != null && _currentConvId == widget.conversationId;
+      final result = isNewConversation
+          ? await ApiService.sendMessage(
+              productId: widget.productId ?? '',
+              sellerId: widget.sellerId!,
+              text: text,
+              senderId: _userId,
+            )
+          : await ApiService.sendMessage(
+              productId: widget.productId ?? '',
+              sellerId: widget.sellerId ?? '',
+              text: text,
+              senderId: _userId,
+              conversationId: _currentConvId,
+            );
+      _applySendResult(result);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al enviar: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error al enviar: $e')));
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+
+  /// Elige una imagen de la galería y la envía al chat. El backend la
+  /// convierte a WebP antes de guardarla para que pese menos.
+  Future<void> _pickAndSendImage() async {
+    if (_sendingImage) return;
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+    if (picked == null || !mounted) return;
+
+    setState(() => _sendingImage = true);
+    try {
+      final isNewConversation =
+          widget.sellerId != null && _currentConvId == widget.conversationId;
+      final result = await ApiService.sendChatImage(
+        imagePath: picked.path,
+        senderId: _userId,
+        productId: widget.productId,
+        sellerId: widget.sellerId,
+        conversationId: isNewConversation ? null : _currentConvId,
+      );
+      _applySendResult(result);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error al enviar la imagen: $e')));
+    } finally {
+      if (mounted) setState(() => _sendingImage = false);
+    }
+  }
+
+  /// Aplica la respuesta común de /chat/send y /chat/send-image: actualiza
+  /// la lista de mensajes y, si esta era la primera vez que se enviaba
+  /// (todavía no existía conversación), se une a la sala recién creada.
+  void _applySendResult(Map<String, dynamic> result) {
+    if (!mounted) return;
+    setState(() {
+      _messages = (result['messages'] as List<dynamic>)
+          .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
+          .toList();
+      final newConvId = result['conversationId'] as String?;
+      if (newConvId != null && newConvId != _currentConvId) {
+        if (_currentConvId != null && _currentConvId!.isNotEmpty) {
+          _socket.leaveConversation(_currentConvId!);
+        }
+        _currentConvId = newConvId;
+        _socket.joinConversation(_currentConvId!);
+      }
+    });
+    _scrollToBottom();
   }
 
   Future<void> _deleteMessage(ChatMessage msg) async {
@@ -318,122 +387,138 @@ class _ChatScreenState extends State<ChatScreen> {
             text: '[Mensaje eliminado]',
             createdAt: msg.createdAt,
             read: msg.read,
+            imageUrl: null,
           );
         }
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al eliminar: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error al eliminar: $e')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
-    final currentUserId = auth.backendSellerId ?? '';
+    // _userId es el mismo identificador con el que se envían y cargan los
+    // mensajes (_getUserId(): backendSellerId si hay sesión, si no el
+    // device_id anónimo) — usar cualquier otra fuente aquí (p. ej.
+    // auth.backendSellerId directo) rompe la comparación para usuarios
+    // anónimos, porque backendSellerId siempre es null para ellos y
+    // "msg.senderId == ''" nunca es true.
+    final currentUserId = _userId;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chat'),
         actions: [
-          if (widget.product != null)
+          if (_displayProduct != null)
             IconButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) =>
-                        ProductDetailScreen(product: widget.product!),
-                  ),
-                );
-              },
+              onPressed: () => _navigateToListing(context, _displayProduct!),
               icon: const Icon(Icons.open_in_new_rounded),
             ),
         ],
       ),
       body: Column(
         children: [
-          if (widget.product != null)
-            _ProductBar(product: widget.product!),
+          if (_displayProduct != null)
+            _ProductBar(
+              product: _displayProduct!,
+              onTap: () => _navigateToListing(context, _displayProduct!),
+            ),
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _loadError
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.wifi_off_rounded,
-                                size: 48, color: AppColors.muted),
-                            const SizedBox(height: 12),
-                            const Text(
-                              'No se pudieron cargar los mensajes',
-                              style: TextStyle(
-                                color: AppColors.muted,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            TextButton.icon(
-                              onPressed: _loadMessages,
-                              icon: const Icon(Icons.refresh_rounded),
-                              label: const Text('Reintentar'),
-                            ),
-                          ],
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.wifi_off_rounded,
+                          size: 48,
+                          color: context.colors.muted,
                         ),
-                      )
-                    : _messages.isEmpty && !_otherTyping
-                        ? const Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.chat_bubble_outline_rounded,
-                                    size: 48, color: AppColors.muted),
-                                SizedBox(height: 12),
-                                Text(
-                                  'Envía un mensaje para empezar',
-                                  style: TextStyle(
-                                    color: AppColors.muted,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        : ListView.builder(
-                            controller: _scrollController,
-                            padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
-                            itemCount: _messages.length + (_otherTyping ? 1 : 0),
-                            itemBuilder: (context, index) {
-                              if (_otherTyping && index == _messages.length) {
-                                return _TypingIndicator();
-                              }
-                              final msg = _messages[index];
-                              final isMine = msg.senderId == currentUserId;
-                              final canDelete =
-                                  isMine && msg.text != '[Mensaje eliminado]';
-                              return _MessageBubble(
-                                message: msg,
-                                isMine: isMine,
-                                showSender: index == 0 ||
-                                    _messages[index - 1].senderId !=
-                                        msg.senderId,
-                                onDelete: canDelete
-                                    ? () => _deleteMessage(msg)
-                                    : null,
-                              );
-                            },
+                        const SizedBox(height: 12),
+                        Text(
+                          'No se pudieron cargar los mensajes',
+                          style: TextStyle(
+                            color: context.colors.muted,
+                            fontWeight: FontWeight.w500,
                           ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextButton.icon(
+                          onPressed: _loadMessages,
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('Reintentar'),
+                        ),
+                      ],
+                    ),
+                  )
+                : _messages.isEmpty && !_otherTyping
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.chat_bubble_outline_rounded,
+                          size: 48,
+                          color: context.colors.muted,
+                        ),
+                        SizedBox(height: 12),
+                        Text(
+                          'Envía un mensaje para empezar',
+                          style: TextStyle(
+                            color: context.colors.muted,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
+                    itemCount: _messages.length + (_otherTyping ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (_otherTyping && index == _messages.length) {
+                        return _TypingIndicator();
+                      }
+                      final msg = _messages[index];
+                      final isMine = msg.senderId == currentUserId;
+                      final canDelete =
+                          isMine && msg.text != '[Mensaje eliminado]';
+                      return _MessageBubble(
+                        message: msg,
+                        isMine: isMine,
+                        showSender:
+                            index == 0 ||
+                            _messages[index - 1].senderId != msg.senderId,
+                        onDelete: canDelete ? () => _deleteMessage(msg) : null,
+                      );
+                    },
+                  ),
           ),
           Container(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-            decoration: const BoxDecoration(
-              color: AppColors.surface,
-              border: Border(top: BorderSide(color: AppColors.border)),
+            decoration: BoxDecoration(
+              color: context.colors.surface,
+              border: Border(top: BorderSide(color: context.colors.border)),
             ),
             child: Row(
               children: [
+                IconButton(
+                  onPressed: _sendingImage ? null : _pickAndSendImage,
+                  icon: _sendingImage
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.image_outlined),
+                ),
                 Expanded(
                   child: TextField(
                     controller: _textController,
@@ -488,14 +573,14 @@ class _TypingIndicator extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: context.colors.surface,
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(16),
                 topRight: Radius.circular(16),
                 bottomLeft: Radius.circular(4),
                 bottomRight: Radius.circular(16),
               ),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(color: context.colors.border),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -522,8 +607,7 @@ class _Dot extends StatefulWidget {
   State<_Dot> createState() => _DotState();
 }
 
-class _DotState extends State<_Dot>
-    with SingleTickerProviderStateMixin {
+class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
 
@@ -534,9 +618,10 @@ class _DotState extends State<_Dot>
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
-    _animation = Tween<double>(begin: 0.3, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _animation = Tween<double>(
+      begin: 0.3,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
     Future.delayed(Duration(milliseconds: widget.delay), () {
       _controller.repeat(reverse: true);
     });
@@ -558,8 +643,8 @@ class _DotState extends State<_Dot>
           child: Container(
             width: 8,
             height: 8,
-            decoration: const BoxDecoration(
-              color: AppColors.muted,
+            decoration: BoxDecoration(
+              color: context.colors.muted,
               shape: BoxShape.circle,
             ),
           ),
@@ -569,60 +654,82 @@ class _DotState extends State<_Dot>
   }
 }
 
+void _navigateToListing(BuildContext context, Product product) {
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(builder: (_) => ProductDetailScreen(product: product)),
+  );
+}
+
 class _ProductBar extends StatelessWidget {
-  const _ProductBar({required this.product});
+  const _ProductBar({required this.product, required this.onTap});
 
   final Product product;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: const BoxDecoration(
-        color: AppColors.champagne,
-        border: Border(bottom: BorderSide(color: AppColors.border)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: product.imageColor.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(product.imageIcon, color: product.imageColor, size: 22),
+    return Material(
+      color: context.colors.premiumBg,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: context.colors.border)),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  product.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                  ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: product.imageColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                Text(
-                  Product.formatPrice(product.price),
-                  style: const TextStyle(
-                    color: AppColors.primaryDark,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                  ),
+                child: Icon(
+                  product.imageIcon,
+                  color: product.imageColor,
+                  size: 22,
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      product.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    Text(
+                      Product.formatPrice(product.price),
+                      style: TextStyle(
+                        color: context.colors.accent,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                'Chat de compra',
+                style: TextStyle(color: context.colors.muted, fontSize: 12),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: context.colors.muted,
+                size: 20,
+              ),
+            ],
           ),
-          const Text(
-            'Chat de compra',
-            style: TextStyle(color: AppColors.muted, fontSize: 12),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -644,27 +751,31 @@ class _MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDeleted = message.text == '[Mensaje eliminado]';
+    final hasImage = !isDeleted && message.imageUrl != null;
+    final hasText = !isDeleted && message.text.isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: GestureDetector(
         onLongPress: onDelete,
         child: Column(
-          crossAxisAlignment:
-              isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: isMine
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment:
-                  isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+              mainAxisAlignment: isMine
+                  ? MainAxisAlignment.end
+                  : MainAxisAlignment.start,
               children: [
                 if (!isMine && showSender)
                   Padding(
                     padding: const EdgeInsets.only(left: 4, bottom: 4),
                     child: Text(
                       'Comprador',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        color: AppColors.muted,
+                        color: context.colors.muted,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -675,13 +786,16 @@ class _MessageBubble extends StatelessWidget {
               constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * 0.75,
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: EdgeInsets.symmetric(
+                horizontal: hasImage && !hasText ? 4 : 14,
+                vertical: hasImage && !hasText ? 4 : 10,
+              ),
               decoration: BoxDecoration(
                 color: isDeleted
-                    ? AppColors.muted.withValues(alpha: 0.12)
+                    ? context.colors.muted.withValues(alpha: 0.12)
                     : isMine
-                        ? AppColors.primary
-                        : AppColors.surface,
+                    ? AppColors.primary
+                    : context.colors.surface,
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(16),
                   topRight: const Radius.circular(16),
@@ -690,26 +804,63 @@ class _MessageBubble extends StatelessWidget {
                 ),
                 border: isMine
                     ? null
-                    : Border.all(color: AppColors.border),
+                    : Border.all(color: context.colors.border),
               ),
               child: Column(
                 crossAxisAlignment: isMine
                     ? CrossAxisAlignment.end
                     : CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    isDeleted ? '[Mensaje eliminado]' : message.text,
-                    style: TextStyle(
-                      color: isDeleted
-                          ? AppColors.muted
-                          : isMine
-                              ? Colors.white
-                              : AppColors.ink,
-                      fontSize: 15,
-                      height: 1.3,
-                      fontStyle: isDeleted ? FontStyle.italic : FontStyle.normal,
+                  if (hasImage)
+                    Padding(
+                      padding: EdgeInsets.only(bottom: hasText ? 6 : 0),
+                      child: GestureDetector(
+                        onTap: () => _openFullImage(context, message.imageUrl!),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            '${ApiService.baseUrl}${message.imageUrl}',
+                            width: 220,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (_, child, progress) =>
+                                progress == null
+                                ? child
+                                : const SizedBox(
+                                    width: 220,
+                                    height: 220,
+                                    child: Center(
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  ),
+                            errorBuilder: (_, _, _) => const SizedBox(
+                              width: 220,
+                              height: 120,
+                              child: Center(
+                                child: Icon(Icons.broken_image_outlined),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                  if (isDeleted || hasText)
+                    Text(
+                      isDeleted ? '[Mensaje eliminado]' : message.text,
+                      style: TextStyle(
+                        color: isDeleted
+                            ? context.colors.muted
+                            : isMine
+                            ? Colors.white
+                            : context.colors.ink,
+                        fontSize: 15,
+                        height: 1.3,
+                        fontStyle: isDeleted
+                            ? FontStyle.italic
+                            : FontStyle.normal,
+                      ),
+                    ),
                   if (!isDeleted) ...[
                     const SizedBox(height: 4),
                     Row(
@@ -720,7 +871,7 @@ class _MessageBubble extends StatelessWidget {
                           style: TextStyle(
                             color: isMine
                                 ? Colors.white.withValues(alpha: 0.7)
-                                : AppColors.muted,
+                                : context.colors.muted,
                             fontSize: 11,
                           ),
                         ),
@@ -755,5 +906,46 @@ class _MessageBubble extends StatelessWidget {
     } catch (_) {
       return '';
     }
+  }
+
+  void _openFullImage(BuildContext context, String imageUrl) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _FullImageViewer(imageUrl: '${ApiService.baseUrl}$imageUrl'),
+        fullscreenDialog: true,
+      ),
+    );
+  }
+}
+
+/// Visor de pantalla completa con zoom para las imágenes del chat.
+class _FullImageViewer extends StatelessWidget {
+  const _FullImageViewer({required this.imageUrl});
+
+  final String imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          minScale: 1,
+          maxScale: 4,
+          child: Image.network(
+            imageUrl,
+            errorBuilder: (_, _, _) => const Icon(
+              Icons.broken_image_outlined,
+              color: Colors.white,
+              size: 64,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

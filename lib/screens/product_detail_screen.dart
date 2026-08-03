@@ -336,7 +336,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       _InfoPill(
                         icon: Icons.schedule_rounded,
                         label: product.publishedAgo,
-                        color: AppColors.muted,
+                        color: context.colors.muted,
                       ),
                       // Badge de estado: disponibilidad para producto, abierta/resuelta para "se busca"
                       if (product.isWantedPost)
@@ -401,9 +401,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                     Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: AppColors.surface,
+                        color: context.colors.surface,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.border),
+                        border: Border.all(color: context.colors.border),
                       ),
                       child: Column(
                         children: [
@@ -429,9 +429,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                                 Expanded(
                                   child: Text(
                                     extra.name,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.w600,
-                                      color: AppColors.ink,
+                                      color: context.colors.ink,
                                       fontSize: 15,
                                     ),
                                   ),
@@ -442,16 +442,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                                     vertical: 4,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: AppColors.primaryDark.withValues(
+                                    color: context.colors.accent.withValues(
                                       alpha: 0.06,
                                     ),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
                                     '+${Product.formatPrice(extra.extraPrice)}',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.w800,
-                                      color: AppColors.primaryDark,
+                                      color: context.colors.accent,
                                       fontSize: 14,
                                     ),
                                   ),
@@ -496,7 +496,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   const SizedBox(height: 8),
                   Text(
                     product.description,
-                    style: AppTypography.body(15.5, color: AppColors.muted),
+                    style: AppTypography.body(
+                      15.5,
+                      color: context.colors.muted,
+                    ),
                   ),
                   // ─── Calificaciones del producto — no aplica a "se busca" ──────
                   if (!product.isWantedPost) ...[
@@ -535,9 +538,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: AppColors.surface,
+                      color: context.colors.surface,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.border),
+                      border: Border.all(color: context.colors.border),
                     ),
                     child: Row(
                       children: [
@@ -545,19 +548,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 'Escanea o comparte',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   fontSize: 15,
-                                  color: AppColors.ink,
+                                  color: context.colors.ink,
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 'Muestra este código para que escaneen el producto o comparte el enlace.',
                                 style: TextStyle(
-                                  color: AppColors.muted,
+                                  color: context.colors.muted,
                                   fontWeight: FontWeight.w500,
                                   fontSize: 13,
                                   height: 1.35,
@@ -584,7 +587,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: AppColors.border),
+                            border: Border.all(color: context.colors.border),
                           ),
                           child: GestureDetector(
                             onTap: () {
@@ -654,9 +657,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
         top: false,
         child: Container(
           padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
-          decoration: const BoxDecoration(
-            color: AppColors.surface,
-            border: Border(top: BorderSide(color: AppColors.border)),
+          decoration: BoxDecoration(
+            color: context.colors.surface,
+            border: Border(top: BorderSide(color: context.colors.border)),
           ),
           child: Row(
             children: [
@@ -1088,7 +1091,7 @@ class _PhotoStrip extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: selected ? AppColors.primary : AppColors.border,
+                  color: selected ? AppColors.primary : context.colors.border,
                   width: selected ? 2 : 1,
                 ),
               ),
@@ -1124,10 +1127,10 @@ class _DayChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: selected
             ? AppColors.primary.withValues(alpha: 0.10)
-            : AppColors.surface,
+            : context.colors.surface,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: selected ? AppColors.primary : AppColors.border,
+          color: selected ? AppColors.primary : context.colors.border,
           width: selected ? 1.5 : 1,
         ),
       ),
@@ -1136,7 +1139,7 @@ class _DayChip extends StatelessWidget {
         style: TextStyle(
           fontSize: 12.5,
           fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-          color: selected ? AppColors.primary : AppColors.muted,
+          color: selected ? AppColors.primary : context.colors.muted,
         ),
       ),
     );
@@ -1190,7 +1193,9 @@ class _InfoPill extends StatelessWidget {
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: color == AppColors.muted ? AppColors.muted : AppColors.ink,
+              color: color == context.colors.muted
+                  ? context.colors.muted
+                  : context.colors.ink,
             ),
           ),
         ],
@@ -1222,7 +1227,7 @@ class _BudgetTag extends StatelessWidget {
     }
     return Text(
       label,
-      style: AppTypography.heading(18, color: AppColors.primaryDark),
+      style: AppTypography.heading(18, color: context.colors.accent),
     );
   }
 }
@@ -1235,7 +1240,7 @@ class _WantedStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = resolved ? AppColors.muted : AppColors.success;
+    final color = resolved ? context.colors.muted : AppColors.success;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -1322,9 +1327,9 @@ class _SellerCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: context.colors.surface,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: context.colors.border),
         ),
         child: Row(
           children: [
@@ -1333,8 +1338,8 @@ class _SellerCard extends StatelessWidget {
               backgroundColor: AppColors.primary.withValues(alpha: 0.12),
               child: Text(
                 seller.avatarInitials,
-                style: const TextStyle(
-                  color: AppColors.primaryDark,
+                style: TextStyle(
+                  color: context.colors.accent,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -1373,8 +1378,8 @@ class _SellerCard extends StatelessWidget {
                     seller.major,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.muted,
+                    style: TextStyle(
+                      color: context.colors.muted,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -1433,19 +1438,19 @@ class _CompactRating extends StatelessWidget {
             const SizedBox(width: 3),
             Text(
               rating.toStringAsFixed(1),
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 13,
-                color: AppColors.ink,
+                color: context.colors.ink,
               ),
             ),
             const SizedBox(width: 3),
             Text(
               '($reviews)',
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.w500,
                 fontSize: 12,
-                color: AppColors.muted,
+                color: context.colors.muted,
               ),
             ),
           ],
@@ -1489,16 +1494,16 @@ class _StatusSelector extends StatelessWidget {
                   Icon(
                     _iconFor(status),
                     size: 18,
-                    color: selected ? Colors.white : _colorFor(status),
+                    color: selected ? Colors.white : _colorFor(context, status),
                   ),
                   const SizedBox(width: 6),
                   Text(status.label),
                 ],
               ),
               selected: selected,
-              selectedColor: _colorFor(status),
+              selectedColor: _colorFor(context, status),
               labelStyle: TextStyle(
-                color: selected ? Colors.white : AppColors.ink,
+                color: selected ? Colors.white : context.colors.ink,
                 fontWeight: FontWeight.w600,
               ),
               onSelected: (isSelected) async {
@@ -1537,7 +1542,7 @@ class _StatusSelector extends StatelessWidget {
     );
   }
 
-  Color _colorFor(ProductAvailability status) {
+  Color _colorFor(BuildContext context, ProductAvailability status) {
     switch (status) {
       case ProductAvailability.available:
         return AppColors.success;
@@ -1548,9 +1553,9 @@ class _StatusSelector extends StatelessWidget {
       case ProductAvailability.negotiating:
         return AppColors.primary;
       case ProductAvailability.paused:
-        return AppColors.muted;
+        return context.colors.muted;
       case ProductAvailability.unavailable:
-        return AppColors.muted;
+        return context.colors.muted;
     }
   }
 
@@ -1600,8 +1605,8 @@ class _ProductRatingSection extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   '${product.productRating.toStringAsFixed(1)} (${product.productReviews} reseña${product.productReviews == 1 ? '' : 's'})',
-                  style: const TextStyle(
-                    color: AppColors.muted,
+                  style: TextStyle(
+                    color: context.colors.muted,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1759,8 +1764,8 @@ class _InteractiveStarRatingState extends State<_InteractiveStarRating> {
               _selectedStars > 0
                   ? 'Tu calificación: $_selectedStars/5'
                   : 'Toca una estrella para calificar',
-              style: const TextStyle(
-                color: AppColors.muted,
+              style: TextStyle(
+                color: context.colors.muted,
                 fontWeight: FontWeight.w500,
                 fontSize: 13,
               ),
@@ -1770,8 +1775,8 @@ class _InteractiveStarRatingState extends State<_InteractiveStarRating> {
             if (widget.product.productReviews > 0)
               Text(
                 '· Promedio: ${widget.product.productRating.toStringAsFixed(1)} (${widget.product.productReviews})',
-                style: const TextStyle(
-                  color: AppColors.muted,
+                style: TextStyle(
+                  color: context.colors.muted,
                   fontWeight: FontWeight.w500,
                   fontSize: 13,
                 ),

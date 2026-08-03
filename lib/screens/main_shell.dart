@@ -198,10 +198,10 @@ class MainShellState extends State<MainShell> {
         bottomNavigationBar: SafeArea(
           top: false,
           child: DecoratedBox(
-            decoration: const BoxDecoration(
-              color: AppColors.surface,
+            decoration: BoxDecoration(
+              color: context.colors.surface,
               border: Border(
-                top: BorderSide(color: AppColors.border, width: 0.8),
+                top: BorderSide(color: context.colors.border, width: 0.8),
               ),
             ),
             child: SizedBox(
@@ -276,7 +276,7 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selected = index == currentIndex;
-    final color = selected ? AppColors.primary : AppColors.muted;
+    final color = selected ? AppColors.primary : context.colors.muted;
 
     Widget iconWidget = Icon(
       selected ? selectedIcon : icon,

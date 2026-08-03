@@ -153,7 +153,8 @@ class _HomeScreenState extends State<HomeScreen>
         // Mensaje amigable en vez del texto técnico crudo de la excepción
         // (ej. "ClientException: Connection closed..."), que ya se
         // reintentó automáticamente en ApiService antes de llegar aquí.
-        _error = 'No pudimos cargar el inicio. Revisa tu conexión e '
+        _error =
+            'No pudimos cargar el inicio. Revisa tu conexión e '
             'intenta de nuevo.';
       });
     }
@@ -216,8 +217,8 @@ class _HomeScreenState extends State<HomeScreen>
                 Text(
                   _error!,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: AppColors.muted,
+                  style: TextStyle(
+                    color: context.colors.muted,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -489,19 +490,24 @@ class _HomeScreenState extends State<HomeScreen>
   // a la forma de Product para que ambos tipos de publicación se sientan
   // como "la misma publicación" al usuario.
   Future<void> _openWantedPost(BuildContext context, WantedPost post) {
+    // Solo refresca el contador de favoritos (lectura local, instantánea):
+    // el usuario pudo marcar/desmarcar el producto como favorito en el
+    // detalle. No se recarga el feed completo del backend para no
+    // reordenar el mezclado (_feedSeed) ni reiniciar la animación de
+    // entrada de las tarjetas cada vez que se vuelve al home.
     return Navigator.of(context)
         .push(
           springDetailRoute(
             ProductDetailScreen(product: Product.fromWantedPost(post)),
           ),
         )
-        .then((_) => _loadData(silent: true));
+        .then((_) => _loadFavoriteCount());
   }
 
   Future<void> _openDetail(BuildContext context, Product product) {
     return Navigator.of(context)
         .push(springDetailRoute(ProductDetailScreen(product: product)))
-        .then((_) => _loadData(silent: true));
+        .then((_) => _loadFavoriteCount());
   }
 
   Future<void> _openSellerProducts(
@@ -543,9 +549,9 @@ class _HighlightPlansBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.colors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -559,9 +565,9 @@ class _HighlightPlansBanner extends StatelessWidget {
                   color: AppColors.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.trending_up_rounded,
-                  color: AppColors.primaryDark,
+                  color: context.colors.accent,
                 ),
               ),
               const SizedBox(width: 12),
@@ -576,8 +582,8 @@ class _HighlightPlansBanner extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       'Desde ${topPlan.price} por ${topPlan.days == 1 ? '24h' : '${topPlan.days} días'}; también hay plan mensual.',
-                      style: const TextStyle(
-                        color: AppColors.muted,
+                      style: TextStyle(
+                        color: context.colors.muted,
                         fontWeight: FontWeight.w600,
                         height: 1.3,
                       ),
@@ -613,15 +619,15 @@ class _HighlightPlanChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.background,
+        color: context.colors.background,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.colors.border),
       ),
       child: Text(
         '$label · $value',
-        style: const TextStyle(
+        style: TextStyle(
           fontWeight: FontWeight.w700,
-          color: AppColors.primaryDark,
+          color: context.colors.accent,
         ),
       ),
     );
@@ -715,9 +721,9 @@ class _CategoryFilterChipState extends State<_CategoryFilterChip> {
           const SizedBox(width: 6),
           Text(
             widget.category.name,
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.w700,
-              color: AppColors.primaryDark,
+              color: context.colors.accent,
             ),
           ),
           const SizedBox(width: 8),
@@ -729,16 +735,16 @@ class _CategoryFilterChipState extends State<_CategoryFilterChip> {
                   ? Icons.notifications_active_rounded
                   : Icons.notifications_none_rounded,
               size: 18,
-              color: _isFollowing ? AppColors.primary : AppColors.muted,
+              color: _isFollowing ? AppColors.primary : context.colors.muted,
             ),
           ),
           const SizedBox(width: 4),
           GestureDetector(
             onTap: widget.onClear,
-            child: const Icon(
+            child: Icon(
               Icons.close_rounded,
               size: 18,
-              color: AppColors.muted,
+              color: context.colors.muted,
             ),
           ),
         ],
@@ -755,25 +761,25 @@ class _SearchBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.surface,
+      color: context.colors.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
-        side: const BorderSide(color: AppColors.border),
+        side: BorderSide(color: context.colors.border),
       ),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
-        child: const Padding(
+        child: Padding(
           padding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           child: Row(
             children: [
-              Icon(Icons.search_rounded, color: AppColors.muted),
+              Icon(Icons.search_rounded, color: context.colors.muted),
               SizedBox(width: 10),
               Expanded(
                 child: Text(
                   'Buscar libros, laptops, tutorias...',
                   style: TextStyle(
-                    color: AppColors.muted,
+                    color: context.colors.muted,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -823,10 +829,12 @@ class _CategoryScroller extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: selected
                           ? AppColors.primary.withValues(alpha: 0.10)
-                          : AppColors.surface,
+                          : context.colors.surface,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: selected ? AppColors.primary : AppColors.border,
+                        color: selected
+                            ? AppColors.primary
+                            : context.colors.border,
                         width: selected ? 2 : 1,
                       ),
                     ),
@@ -841,7 +849,7 @@ class _CategoryScroller extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                      color: selected ? AppColors.primary : AppColors.ink,
+                      color: selected ? AppColors.primary : context.colors.ink,
                     ),
                   ),
                 ],
@@ -875,7 +883,7 @@ class _BusinessCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(14),
         boxShadow: AppShadows.lifted,
       ),
@@ -901,16 +909,16 @@ class _BusinessCard extends StatelessWidget {
                               width: 48,
                               height: 48,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => const Icon(
+                              errorBuilder: (_, _, _) => Icon(
                                 Icons.store_rounded,
-                                color: AppColors.primaryDark,
+                                color: context.colors.accent,
                                 size: 22,
                               ),
                             ),
                           )
-                        : const Icon(
+                        : Icon(
                             Icons.store_rounded,
-                            color: AppColors.primaryDark,
+                            color: context.colors.accent,
                             size: 22,
                           ),
                   ),
@@ -950,8 +958,8 @@ class _BusinessCard extends StatelessWidget {
                             Expanded(
                               child: Text(
                                 '${products.length} publicación${products.length == 1 ? '' : 'es'}',
-                                style: const TextStyle(
-                                  color: AppColors.muted,
+                                style: TextStyle(
+                                  color: context.colors.muted,
                                   fontWeight: FontWeight.w500,
                                   fontSize: 13,
                                 ),
@@ -968,8 +976,8 @@ class _BusinessCard extends StatelessWidget {
                               seller.reviews > 0
                                   ? '${seller.rating.toStringAsFixed(1)} (${seller.reviews})'
                                   : 'Sin calificaciones',
-                              style: const TextStyle(
-                                color: AppColors.muted,
+                              style: TextStyle(
+                                color: context.colors.muted,
                                 fontWeight: FontWeight.w600,
                                 fontSize: 12,
                               ),
@@ -982,7 +990,7 @@ class _BusinessCard extends StatelessWidget {
                   const SizedBox(width: 4),
                   Icon(
                     Icons.chevron_right_rounded,
-                    color: AppColors.muted.withValues(alpha: 0.4),
+                    color: context.colors.muted.withValues(alpha: 0.4),
                     size: 22,
                   ),
                 ],
@@ -1027,13 +1035,13 @@ class _BusinessCard extends StatelessWidget {
                                     alpha: 0.04,
                                   ),
                                 ),
-                                child: const Center(
+                                child: Center(
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Icon(
                                         Icons.grid_view_rounded,
-                                        color: AppColors.muted,
+                                        color: context.colors.muted,
                                         size: 20,
                                       ),
                                       SizedBox(height: 6),
@@ -1041,7 +1049,7 @@ class _BusinessCard extends StatelessWidget {
                                         'Ver todo',
                                         style: TextStyle(
                                           fontWeight: FontWeight.w600,
-                                          color: AppColors.muted,
+                                          color: context.colors.muted,
                                           fontSize: 12,
                                         ),
                                       ),
@@ -1081,10 +1089,10 @@ class _SellerProductsScreen extends StatelessWidget {
             CircleAvatar(
               radius: 16,
               backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-              child: const Icon(
+              child: Icon(
                 Icons.store_rounded,
                 size: 16,
-                color: AppColors.primaryDark,
+                color: context.colors.accent,
               ),
             ),
             const SizedBox(width: 10),
@@ -1094,10 +1102,10 @@ class _SellerProductsScreen extends StatelessWidget {
       ),
       body: SafeArea(
         child: products.isEmpty
-            ? const Center(
+            ? Center(
                 child: Text(
                   'Este negocio aún no tiene publicaciones.',
-                  style: TextStyle(color: AppColors.muted),
+                  style: TextStyle(color: context.colors.muted),
                 ),
               )
             : Padding(

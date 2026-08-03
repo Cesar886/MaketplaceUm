@@ -123,7 +123,7 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
     final results = _filteredResults;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.colors.background,
       appBar: AppBar(title: const Text('Buscar')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
@@ -142,8 +142,7 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                   _showFilters ? Icons.filter_list_off : Icons.tune_rounded,
                   color: _hasActiveFilters ? AppColors.primary : null,
                 ),
-                onPressed: () =>
-                    setState(() => _showFilters = !_showFilters),
+                onPressed: () => setState(() => _showFilters = !_showFilters),
               ),
             ),
           ),
@@ -154,12 +153,12 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: context.colors.surface,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
                   color: _hasActiveFilters
                       ? AppColors.primary.withValues(alpha: 0.4)
-                      : AppColors.border,
+                      : context.colors.border,
                 ),
               ),
               child: Column(
@@ -167,14 +166,17 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.filter_alt_rounded,
-                          size: 18, color: AppColors.primary),
+                      const Icon(
+                        Icons.filter_alt_rounded,
+                        size: 18,
+                        color: AppColors.primary,
+                      ),
                       const SizedBox(width: 6),
-                      const Text(
+                      Text(
                         'Filtros avanzados',
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
-                          color: AppColors.ink,
+                          color: context.colors.ink,
                         ),
                       ),
                       const Spacer(),
@@ -188,11 +190,14 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                   const SizedBox(height: 12),
 
                   // Precio mínimo / máximo
-                  const Text('Rango de precio',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                          color: AppColors.muted)),
+                  Text(
+                    'Rango de precio',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: context.colors.muted,
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -206,16 +211,21 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                             hintText: 'Mín',
                             isDense: true,
                             contentPadding: EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
                           ),
                         ),
                       ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: Text('-',
-                            style: TextStyle(
-                                color: AppColors.muted,
-                                fontWeight: FontWeight.w700)),
+                        child: Text(
+                          '-',
+                          style: TextStyle(
+                            color: context.colors.muted,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
                       Expanded(
                         child: TextField(
@@ -227,7 +237,9 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                             hintText: 'Máx',
                             isDense: true,
                             contentPadding: EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
                           ),
                         ),
                       ),
@@ -236,11 +248,14 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                   const SizedBox(height: 12),
 
                   // Vendedor
-                  const Text('Vendedor',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                          color: AppColors.muted)),
+                  Text(
+                    'Vendedor',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: context.colors.muted,
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   TextField(
                     controller: _sellerController,
@@ -250,8 +265,10 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                       prefixIcon: Icon(Icons.person_outline_rounded, size: 20),
                       hintText: 'Nombre del vendedor',
                       isDense: true,
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                     ),
                   ),
                 ],
@@ -301,9 +318,7 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
             children: [
               Expanded(
                 child: Text(
-                  _loading
-                      ? 'Cargando...'
-                      : '${results.length} resultados',
+                  _loading ? 'Cargando...' : '${results.length} resultados',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ),
@@ -318,12 +333,9 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                     fontSize: 14,
                   ),
                   items: const [
-                    DropdownMenuItem(
-                        value: 0, child: Text('Más recientes')),
-                    DropdownMenuItem(
-                        value: 1, child: Text('Menor precio')),
-                    DropdownMenuItem(
-                        value: 2, child: Text('Mayor precio')),
+                    DropdownMenuItem(value: 0, child: Text('Más recientes')),
+                    DropdownMenuItem(value: 1, child: Text('Menor precio')),
+                    DropdownMenuItem(value: 2, child: Text('Mayor precio')),
                   ],
                   onChanged: (v) {
                     if (v != null) setState(() => _sortValue = v);
@@ -342,12 +354,12 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
               ),
             )
           else if (results.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.all(32),
               child: Center(
                 child: Text(
                   'No se encontraron resultados.',
-                  style: TextStyle(color: AppColors.muted),
+                  style: TextStyle(color: context.colors.muted),
                 ),
               ),
             )

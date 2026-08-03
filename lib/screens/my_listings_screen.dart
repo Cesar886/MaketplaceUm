@@ -16,7 +16,8 @@ class MyListingsScreen extends StatefulWidget {
   State<MyListingsScreen> createState() => _MyListingsScreenState();
 }
 
-class _MyListingsScreenState extends State<MyListingsScreen> with AutoRefreshMixin {
+class _MyListingsScreenState extends State<MyListingsScreen>
+    with AutoRefreshMixin {
   List<Product> _listings = [];
   bool _loading = true;
 
@@ -53,9 +54,7 @@ class _MyListingsScreenState extends State<MyListingsScreen> with AutoRefreshMix
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
-        body: SafeArea(
-          child: Center(child: CircularProgressIndicator()),
-        ),
+        body: SafeArea(child: Center(child: CircularProgressIndicator())),
       );
     }
 
@@ -77,21 +76,21 @@ class _MyListingsScreenState extends State<MyListingsScreen> with AutoRefreshMix
               ],
             ),
             const SizedBox(height: 8),
-          const Text(
-            'Administra tus productos activos, destacados y expirados.',
-            style: TextStyle(
-              color: AppColors.muted,
-              fontWeight: FontWeight.w600,
+            Text(
+              'Administra tus productos activos, destacados y expirados.',
+              style: TextStyle(
+                color: context.colors.muted,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
-          const SizedBox(height: 18),
-          _StatsRow(listings: _listings),
-          const SizedBox(height: 18),
-          for (final product in _listings) ...[
-            _MyListingTile(product: product),
-            const SizedBox(height: 12),
+            const SizedBox(height: 18),
+            _StatsRow(listings: _listings),
+            const SizedBox(height: 18),
+            for (final product in _listings) ...[
+              _MyListingTile(product: product),
+              const SizedBox(height: 12),
+            ],
           ],
-        ],
         ),
       ),
     );
@@ -161,9 +160,9 @@ class _StatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.colors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -181,8 +180,8 @@ class _StatCard extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppColors.muted,
+            style: TextStyle(
+              color: context.colors.muted,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -204,9 +203,9 @@ class _MyListingTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.colors.border),
       ),
       child: Column(
         children: [
@@ -247,17 +246,17 @@ class _MyListingTile extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       Product.formatPrice(product.price),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.primaryDark,
+                        color: context.colors.accent,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       product.publishedAgo,
-                      style: const TextStyle(
-                        color: AppColors.muted,
+                      style: TextStyle(
+                        color: context.colors.muted,
                         fontWeight: FontWeight.w600,
                       ),
                     ),

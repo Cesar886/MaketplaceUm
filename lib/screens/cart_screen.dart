@@ -95,9 +95,7 @@ class _CartScreenState extends State<CartScreen> with AutoRefreshMixin {
 
     if (_loading) {
       return const Scaffold(
-        body: SafeArea(
-          child: Center(child: CircularProgressIndicator()),
-        ),
+        body: SafeArea(child: Center(child: CircularProgressIndicator())),
       );
     }
 
@@ -110,19 +108,22 @@ class _CartScreenState extends State<CartScreen> with AutoRefreshMixin {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.favorite_border_rounded,
-                    size: 64, color: AppColors.muted),
+                Icon(
+                  Icons.favorite_border_rounded,
+                  size: 64,
+                  color: context.colors.muted,
+                ),
                 const SizedBox(height: 20),
                 Text(
                   'Tus favoritos',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 10),
-                const Text(
+                Text(
                   'Inicia sesión para guardar productos favoritos y contactar vendedores.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: AppColors.muted,
+                    color: context.colors.muted,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -132,7 +133,8 @@ class _CartScreenState extends State<CartScreen> with AutoRefreshMixin {
                   child: ElevatedButton(
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
-                          builder: (_) => const LoginScreen()),
+                        builder: (_) => const LoginScreen(),
+                      ),
                     ),
                     child: const Text('Iniciar sesión'),
                   ),
@@ -178,14 +180,14 @@ class _CartScreenState extends State<CartScreen> with AutoRefreshMixin {
             Icon(
               Icons.favorite_border_rounded,
               size: 64,
-              color: AppColors.muted.withValues(alpha: 0.4),
+              color: context.colors.muted.withValues(alpha: 0.4),
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'No tienes favoritos aún.\n¡Explora y guarda productos!',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: AppColors.muted,
+                color: context.colors.muted,
                 fontWeight: FontWeight.w600,
                 fontSize: 15,
               ),
@@ -197,11 +199,13 @@ class _CartScreenState extends State<CartScreen> with AutoRefreshMixin {
   }
 
   void _openDetail(BuildContext context, Product product) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => ProductDetailScreen(product: product),
-      ),
-    ).then((_) => _loadFavorites());
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute<void>(
+            builder: (_) => ProductDetailScreen(product: product),
+          ),
+        )
+        .then((_) => _loadFavorites());
   }
 }
 
@@ -221,7 +225,7 @@ class _FavoriteItemTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.surface,
+      color: context.colors.surface,
       borderRadius: BorderRadius.circular(10),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -261,10 +265,10 @@ class _FavoriteItemTile extends StatelessWidget {
                         const SizedBox(height: 6),
                         Text(
                           Product.formatPrice(product.price),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.w800,
                             fontSize: 16,
-                            color: AppColors.primaryDark,
+                            color: context.colors.accent,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -281,8 +285,8 @@ class _FavoriteItemTile extends StatelessWidget {
                                 product.category.name,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: AppColors.muted,
+                                style: TextStyle(
+                                  color: context.colors.muted,
                                   fontWeight: FontWeight.w500,
                                   fontSize: 12,
                                 ),
@@ -314,7 +318,10 @@ class _FavoriteItemTile extends StatelessWidget {
                     icon: const Icon(Icons.chat_rounded, size: 16),
                     label: const Text('Chat'),
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       textStyle: const TextStyle(fontSize: 13),

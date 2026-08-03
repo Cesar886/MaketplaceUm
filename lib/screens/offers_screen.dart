@@ -72,10 +72,10 @@ class _OffersScreenState extends State<OffersScreen> with AutoRefreshMixin {
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  Text(
                     'Precios especiales publicados por estudiantes esta semana.',
                     style: TextStyle(
-                      color: AppColors.muted,
+                      color: context.colors.muted,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -92,7 +92,8 @@ class _OffersScreenState extends State<OffersScreen> with AutoRefreshMixin {
                   SectionHeader(
                     title: _loading
                         ? 'Cargando...'
-                        : '${filtered.length} ofertas activas'),
+                        : '${filtered.length} ofertas activas',
+                  ),
                 ],
               ),
             ),
@@ -101,7 +102,8 @@ class _OffersScreenState extends State<OffersScreen> with AutoRefreshMixin {
             padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
             sliver: _loading
                 ? const SliverFillRemaining(
-                    child: Center(child: CircularProgressIndicator()))
+                    child: Center(child: CircularProgressIndicator()),
+                  )
                 : SliverList.separated(
                     itemCount: filtered.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 12),
@@ -124,11 +126,13 @@ class _OffersScreenState extends State<OffersScreen> with AutoRefreshMixin {
   }
 
   void _openDetail(BuildContext context, Product product) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => ProductDetailScreen(product: product),
-      ),
-    ).then((_) => _loadData(silent: true));
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute<void>(
+            builder: (_) => ProductDetailScreen(product: product),
+          ),
+        )
+        .then((_) => _loadData(silent: true));
   }
 }
 
@@ -144,9 +148,9 @@ class _OfferHeroBand extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.colors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -165,11 +169,11 @@ class _OfferHeroBand extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Precios de oportunidad',
                   style: TextStyle(
-                    color: AppColors.ink,
+                    color: context.colors.ink,
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
                   ),
@@ -203,16 +207,19 @@ class _OfferHeroBand extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 7),
               child: Row(
                 children: [
-                  Icon(product.category.icon,
-                      color: AppColors.primary, size: 16),
+                  Icon(
+                    product.category.icon,
+                    color: AppColors.primary,
+                    size: 16,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       product.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.ink,
+                      style: TextStyle(
+                        color: context.colors.ink,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -220,8 +227,8 @@ class _OfferHeroBand extends StatelessWidget {
                   const SizedBox(width: 8),
                   Text(
                     Product.formatPrice(product.price),
-                    style: const TextStyle(
-                      color: AppColors.primaryDark,
+                    style: TextStyle(
+                      color: context.colors.accent,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
