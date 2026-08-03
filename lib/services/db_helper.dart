@@ -263,35 +263,42 @@ class DBHelper {
     );
   }
 
-  // ---------- LOGIN ----------
-
-  Future<Map<String, dynamic>?> login(String email, String password) async {
-    final db = await database;
-
-    // Buscar usuario por correo
-    final result = await db.query(
-      'users',
-      where: 'email = ?',
-      whereArgs: [email],
-    );
-
-    if (result.isEmpty) return null;
-
-    final user = result.first;
-    final storedHash = user['password_hash'] as String;
-
-    // Verificar contraseña con bcrypt
-    if (!BCrypt.checkpw(password, storedHash)) return null;
-
-    return user;
-  }
-
   // ---------- CONSULTAS ÚTILES ----------
 
   Future<Map<String, dynamic>?> getUserById(int userId) async {
     final db = await database;
     final result = await db.query('users', where: 'id = ?', whereArgs: [userId]);
-    return result.isEmpty ? null : result.first;
+    if (result.isEmpty) return null;
+    // sqflite devuelve mapas de solo lectura: se clona para permitir mutaciones
+    // posteriores (ej. AuthProvider.updateProfile actualizando _currentUser).
+    return Map<String, dynamic>.from(result.first);
+  }
+
+  /// Busca un usuario local por email. Se usa para reflejar (cachear) en
+  /// este dispositivo una cuenta cuya autoridad real es el backend — ver
+  /// AuthProvider._mirrorLocalUser.
+  Future<Map<String, dynamic>?> getUserByEmail(String email) async {
+    final db = await database;
+    final result = await db.query(
+      'users',
+      where: 'email = ?',
+      whereArgs: [email],
+    );
+    if (result.isEmpty) return null;
+    return Map<String, dynamic>.from(result.first);
+  }
+
+  /// Actualiza el hash de contraseña de un usuario local ya existente.
+  /// Se usa para mantener el login offline de este dispositivo funcionando
+  /// después de que el backend confirmó ese mismo password como correcto.
+  Future<void> updatePasswordHash(int userId, String password) async {
+    final db = await database;
+    await db.update(
+      'users',
+      {'password_hash': _hashPassword(password)},
+      where: 'id = ?',
+      whereArgs: [userId],
+    );
   }
 
   /// Actualiza nombre y/o teléfono del usuario local, en sync con el backend.

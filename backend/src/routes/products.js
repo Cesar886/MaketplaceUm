@@ -107,6 +107,7 @@ function attachRelations(productsList, userId) {
 
     return {
       ...p,
+      postType: 'producto',
       is_available,
       productRating: ratingStats.average,
       productReviews: ratingStats.count,

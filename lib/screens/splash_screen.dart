@@ -4,8 +4,8 @@ import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
 import '../providers/auth_provider.dart';
+import '../services/anonymous_id.dart';
 import '../widgets/app_logo.dart';
-import 'auth/onboarding_screen.dart';
 import 'main_shell.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -26,25 +26,23 @@ class _SplashScreenState extends State<SplashScreen> {
     // Pequeña pausa para mostrar el splash
     await Future<void>.delayed(const Duration(milliseconds: 600));
 
+    // Asegura que exista un device_id local — es el único requisito de
+    // arranque. No se pide login/registro para entrar: el feed, el detalle
+    // de productos/"se busca" y el contacto por WhatsApp funcionan sin
+    // cuenta. El registro solo se pide más adelante, al intentar publicar.
+    await AnonymousId.get();
+
     if (!mounted) return;
 
-    // Intentar restaurar sesión guardada
+    // Restaurar sesión guardada si existe (no bloquea el arranque si no hay).
     final auth = context.read<AuthProvider>();
-    final restored = await auth.tryAutoLogin();
+    await auth.tryAutoLogin();
 
     if (!mounted) return;
 
-    if (restored) {
-      // Sesión restaurada → ir directo al home
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(builder: (_) => const MainShell()),
-      );
-    } else {
-      // No hay sesión → ir al onboarding
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(builder: (_) => const OnboardingScreen()),
-      );
-    }
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(builder: (_) => const MainShell()),
+    );
   }
 
   @override

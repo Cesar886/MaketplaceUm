@@ -6,7 +6,23 @@
 const MIN_NAME_LENGTH = 2;
 const MAX_NAME_LENGTH = 60;
 const MAX_DESCRIPTION_LENGTH = 280;
+const MIN_PASSWORD_LENGTH = 6;
 const PHONE_REGEX = /^[0-9+\-\s()]{6,20}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function validateEmail(email) {
+  if (typeof email !== 'string' || !EMAIL_REGEX.test(email.trim())) {
+    return 'Correo electrónico inválido';
+  }
+  return null;
+}
+
+function validatePassword(password) {
+  if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
+    return `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres`;
+  }
+  return null;
+}
 
 function validateName(name) {
   if (typeof name !== 'string') return 'El nombre es requerido';
@@ -51,7 +67,10 @@ module.exports = {
   MIN_NAME_LENGTH,
   MAX_NAME_LENGTH,
   MAX_DESCRIPTION_LENGTH,
+  MIN_PASSWORD_LENGTH,
   validateName,
+  validateEmail,
+  validatePassword,
   validatePhone,
   validateBusinessDescription,
   validateBusinessCategory,

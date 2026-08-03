@@ -9,7 +9,7 @@ import '../mock_data.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
-import 'auth/login_screen.dart';
+import '../widgets/publish_auth_gate.dart';
 
 class PublishProductScreen extends StatefulWidget {
   const PublishProductScreen({super.key, this.editingProduct});
@@ -24,7 +24,13 @@ class PublishProductScreen extends StatefulWidget {
 
 class _PublishProductScreenState extends State<PublishProductScreen> {
   static const List<String> _dayNames = [
-    'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom',
+    'Lun',
+    'Mar',
+    'Mié',
+    'Jue',
+    'Vie',
+    'Sáb',
+    'Dom',
   ];
 
   final _titleController = TextEditingController();
@@ -121,7 +127,8 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     }
   }
 
-  int get _totalImageCount => _existingImageUrls.length + _selectedImages.length;
+  int get _totalImageCount =>
+      _existingImageUrls.length + _selectedImages.length;
 
   Future<void> _pickImages() async {
     final picked = await _picker.pickMultiImage(
@@ -233,7 +240,11 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      _showError(_isEditing ? 'Error al guardar los cambios: $e' : 'Error al publicar: $e');
+      _showError(
+        _isEditing
+            ? 'Error al guardar los cambios: $e'
+            : 'Error al publicar: $e',
+      );
     } finally {
       if (mounted) setState(() => _publishing = false);
     }
@@ -277,7 +288,8 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     }
 
     final stockChanged = _isStockLimited
-        ? (stockQuantity != product.stockQuantity || stockResetDaily != product.stockResetDaily)
+        ? (stockQuantity != product.stockQuantity ||
+              stockResetDaily != product.stockResetDaily)
         : product.stockQuantity != null;
     if (_isStockLimited && stockChanged && stockQuantity != null) {
       try {
@@ -294,18 +306,18 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(warnings.isEmpty
-            ? 'Cambios guardados exitosamente'
-            : 'Producto actualizado, con avisos: ${warnings.join(' · ')}'),
+        content: Text(
+          warnings.isEmpty
+              ? 'Cambios guardados exitosamente'
+              : 'Producto actualizado, con avisos: ${warnings.join(' · ')}',
+        ),
       ),
     );
     Navigator.of(context).pop(true);
   }
 
   void _showError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg)),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   void _addExtra() {
@@ -345,14 +357,27 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.calendar_month_rounded, size: 16, color: AppColors.muted),
+              const Icon(
+                Icons.calendar_month_rounded,
+                size: 16,
+                color: AppColors.muted,
+              ),
               const SizedBox(width: 6),
               const Expanded(
-                child: Text('Días disponibles', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                child: Text(
+                  'Días disponibles',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
               ),
               Text(
-                _selectedDays.isEmpty ? 'Opcional · todos los días' : '${_selectedDays.length}/7',
-                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.muted),
+                _selectedDays.isEmpty
+                    ? 'Opcional · todos los días'
+                    : '${_selectedDays.length}/7',
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.muted,
+                ),
               ),
             ],
           ),
@@ -367,8 +392,14 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                 selected: selected,
                 showCheckmark: false,
                 selectedColor: AppColors.primary.withValues(alpha: 0.12),
-                labelStyle: TextStyle(color: selected ? AppColors.primary : AppColors.ink),
-                side: BorderSide(color: selected ? AppColors.primary.withValues(alpha: 0.4) : AppColors.border),
+                labelStyle: TextStyle(
+                  color: selected ? AppColors.primary : AppColors.ink,
+                ),
+                side: BorderSide(
+                  color: selected
+                      ? AppColors.primary.withValues(alpha: 0.4)
+                      : AppColors.border,
+                ),
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 onSelected: (value) {
                   setState(() {
@@ -408,20 +439,28 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                   color: AppColors.surfaceMuted,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.inventory_2_rounded, color: AppColors.primary),
+                child: const Icon(
+                  Icons.inventory_2_rounded,
+                  color: AppColors.primary,
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text('Inventario',
-                    style: AppTypography.heading(15)),
+                child: Text('Inventario', style: AppTypography.heading(15)),
               ),
             ],
           ),
           const SizedBox(height: 12),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('¿Tiene cantidad limitada?', style: TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: const Text('Útil si tienes un número fijo de unidades.', style: TextStyle(fontSize: 12)),
+            title: const Text(
+              '¿Tiene cantidad limitada?',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: const Text(
+              'Útil si tienes un número fijo de unidades.',
+              style: TextStyle(fontSize: 12),
+            ),
             value: _isStockLimited,
             onChanged: (val) => setState(() => _isStockLimited = val),
             activeColor: AppColors.primary,
@@ -440,8 +479,14 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
             const SizedBox(height: 10),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('¿Se reinicia automáticamente cada día?', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: const Text('El stock volverá a esta cantidad a medianoche.', style: TextStyle(fontSize: 12)),
+              title: const Text(
+                '¿Se reinicia automáticamente cada día?',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              subtitle: const Text(
+                'El stock volverá a esta cantidad a medianoche.',
+                style: TextStyle(fontSize: 12),
+              ),
               value: _autoResetStock,
               onChanged: (val) => setState(() => _autoResetStock = val),
               activeColor: AppColors.primary,
@@ -471,22 +516,34 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                   color: AppColors.surfaceMuted,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.add_box_rounded, color: AppColors.primary),
+                child: const Icon(
+                  Icons.add_box_rounded,
+                  color: AppColors.primary,
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text('Extras opcionales',
-                    style: AppTypography.heading(15)),
+                child: Text(
+                  'Extras opcionales',
+                  style: AppTypography.heading(15),
+                ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.background,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Text('Opcional',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700, color: AppColors.muted)),
+                child: const Text(
+                  'Opcional',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.muted,
+                  ),
+                ),
               ),
             ],
           ),
@@ -494,9 +551,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           Text(
             r'Tu producto tiene variantes? Agrega extras como "Con estuche +$25", "Impresion a color +$10"',
             style: TextStyle(
-                color: AppColors.muted,
-                fontWeight: FontWeight.w600,
-                height: 1.35),
+              color: AppColors.muted,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+            ),
           ),
           const SizedBox(height: 12),
           // Lista de extras agregados
@@ -528,8 +586,11 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                         color: AppColors.danger.withValues(alpha: 0.10),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: const Icon(Icons.close_rounded,
-                          size: 16, color: AppColors.danger),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        size: 16,
+                        color: AppColors.danger,
+                      ),
                     ),
                   ),
                 ],
@@ -547,7 +608,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                   decoration: const InputDecoration(
                     hintText: 'Nombre del extra',
                     isDense: true,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                     border: OutlineInputBorder(),
                   ),
                   textCapitalization: TextCapitalization.sentences,
@@ -561,7 +625,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                   decoration: const InputDecoration(
                     hintText: '+ \$0',
                     isDense: true,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                     border: OutlineInputBorder(),
                   ),
                   keyboardType: TextInputType.number,
@@ -578,11 +645,13 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                   borderRadius: BorderRadius.circular(8),
                   child: Padding(
                     padding: const EdgeInsets.all(10),
-                    child: Icon(Icons.add_rounded,
-                        color: _extras.length >= 8
-                            ? AppColors.muted
-                            : AppColors.primary,
-                        size: 22),
+                    child: Icon(
+                      Icons.add_rounded,
+                      color: _extras.length >= 8
+                          ? AppColors.muted
+                          : AppColors.primary,
+                      size: 22,
+                    ),
                   ),
                 ),
               ),
@@ -609,44 +678,15 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     final auth = context.watch<AuthProvider>();
 
     if (_loading) {
-      return const SafeArea(
-        child: Center(child: CircularProgressIndicator()),
-      );
+      return const SafeArea(child: Center(child: CircularProgressIndicator()));
     }
 
     if (!auth.isLoggedIn) {
-      return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.add_circle_outline_rounded,
-                  size: 64, color: AppColors.muted),
-              const SizedBox(height: 20),
-              Text('Publica tus productos',
-                  style: AppTypography.heading(18)),
-              const SizedBox(height: 10),
-              const Text(
-                'Inicia sesión o crea una cuenta para empezar a vender en el campus.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    color: AppColors.muted, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 28),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                        builder: (_) => const LoginScreen()),
-                  ),
-                  child: const Text('Iniciar sesión'),
-                ),
-              ),
-            ],
-          ),
-        ),
+      return const PublishAuthGate(
+        icon: Icons.add_circle_outline_rounded,
+        title: 'Crea tu cuenta para publicar',
+        subtitle:
+            'Regístrate para publicar tu producto y que otros estudiantes lo vean. Ver el feed y contactar vendedores no requiere cuenta.',
       );
     }
 
@@ -654,7 +694,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
         children: [
-          Text(_isEditing ? 'Editar producto' : 'Publicar producto', style: AppTypography.heading(22)),
+          Text(
+            _isEditing ? 'Editar producto' : 'Publicar producto',
+            style: AppTypography.heading(22),
+          ),
           const SizedBox(height: 6),
           Text(
             _isEditing
@@ -739,7 +782,11 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                         value: category.id,
                         child: Row(
                           children: [
-                            Icon(category.icon, color: category.color, size: 20),
+                            Icon(
+                              category.icon,
+                              color: category.color,
+                              size: 20,
+                            ),
                             const SizedBox(width: 10),
                             Text(category.name),
                           ],
@@ -766,8 +813,8 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
               plans: _plans,
               selectedPlanId: _selectedPlanId,
               onSelectPlan: (planId) => setState(
-                () => _selectedPlanId =
-                    _selectedPlanId == planId ? null : planId,
+                () =>
+                    _selectedPlanId = _selectedPlanId == planId ? null : planId,
               ),
             ),
           ],
@@ -778,11 +825,14 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                 ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Icon(Icons.publish_rounded),
-            label: Text(_publishing
-                ? (_isEditing ? 'Guardando...' : 'Publicando...')
-                : (_isEditing ? 'Guardar cambios' : 'Publicar ahora')),
+            label: Text(
+              _publishing
+                  ? (_isEditing ? 'Guardando...' : 'Publicando...')
+                  : (_isEditing ? 'Guardar cambios' : 'Publicar ahora'),
+            ),
           ),
         ],
       ),
@@ -842,13 +892,25 @@ class _AddPhotoTile extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              hasImages ? Icons.add_photo_alternate_rounded : Icons.add_a_photo_rounded,
+              hasImages
+                  ? Icons.add_photo_alternate_rounded
+                  : Icons.add_a_photo_rounded,
               color: AppColors.primary,
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Subir fotos',
-              style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.primary),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                'Subir fotos',
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary,
+                ),
+              ),
             ),
           ],
         ),
@@ -859,10 +921,7 @@ class _AddPhotoTile extends StatelessWidget {
 
 // ─── Miniatura de imagen seleccionada ─────────────────────────
 class _ImageThumbnail extends StatelessWidget {
-  const _ImageThumbnail({
-    required this.file,
-    required this.onRemove,
-  });
+  const _ImageThumbnail({required this.file, required this.onRemove});
 
   final XFile file;
   final VoidCallback onRemove;
@@ -886,7 +945,10 @@ class _ImageThumbnail extends StatelessWidget {
               fit: BoxFit.cover,
               width: 104,
               height: 110,
-              errorBuilder: (_, _, _) => const Icon(Icons.broken_image_rounded, color: AppColors.muted),
+              errorBuilder: (_, _, _) => const Icon(
+                Icons.broken_image_rounded,
+                color: AppColors.muted,
+              ),
             ),
           ),
         ),
@@ -901,7 +963,11 @@ class _ImageThumbnail extends StatelessWidget {
                 color: AppColors.danger,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.close_rounded, size: 16, color: Colors.white),
+              child: const Icon(
+                Icons.close_rounded,
+                size: 16,
+                color: Colors.white,
+              ),
             ),
           ),
         ),
@@ -912,10 +978,7 @@ class _ImageThumbnail extends StatelessWidget {
 
 // ─── Miniatura de una imagen ya subida (modo edición) ─────────
 class _ExistingImageThumbnail extends StatelessWidget {
-  const _ExistingImageThumbnail({
-    required this.url,
-    required this.onRemove,
-  });
+  const _ExistingImageThumbnail({required this.url, required this.onRemove});
 
   final String url;
   final VoidCallback onRemove;
@@ -939,7 +1002,10 @@ class _ExistingImageThumbnail extends StatelessWidget {
               fit: BoxFit.cover,
               width: 104,
               height: 110,
-              errorBuilder: (_, _, _) => const Icon(Icons.broken_image_rounded, color: AppColors.muted),
+              errorBuilder: (_, _, _) => const Icon(
+                Icons.broken_image_rounded,
+                color: AppColors.muted,
+              ),
             ),
           ),
         ),
@@ -954,7 +1020,11 @@ class _ExistingImageThumbnail extends StatelessWidget {
                 color: AppColors.danger,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.close_rounded, size: 16, color: Colors.white),
+              child: const Icon(
+                Icons.close_rounded,
+                size: 16,
+                color: Colors.white,
+              ),
             ),
           ),
         ),
@@ -999,18 +1069,27 @@ class _HighlightSection extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text('Destaca tu publicación',
-                    style: AppTypography.heading(15)),
+                child: Text(
+                  'Destaca tu publicación',
+                  style: AppTypography.heading(15),
+                ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.background,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Text('Opcional',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700, color: AppColors.muted)),
+                child: const Text(
+                  'Opcional',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.muted,
+                  ),
+                ),
               ),
             ],
           ),
@@ -1018,9 +1097,10 @@ class _HighlightSection extends StatelessWidget {
           const Text(
             'Publicar es gratis. Si eliges un plan, tu producto aparece primero en Destacados.',
             style: TextStyle(
-                color: AppColors.muted,
-                fontWeight: FontWeight.w600,
-                height: 1.35),
+              color: AppColors.muted,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+            ),
           ),
           const SizedBox(height: 12),
           for (final plan in plans) ...[
@@ -1078,12 +1158,18 @@ class _PlanCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(plan.title,
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  Text(
+                    plan.title,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
                   const SizedBox(height: 3),
-                  Text(plan.description,
-                      style: const TextStyle(
-                          color: AppColors.muted, fontWeight: FontWeight.w600)),
+                  Text(
+                    plan.description,
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ],
               ),
             ),

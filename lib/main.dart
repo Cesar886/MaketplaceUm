@@ -44,6 +44,19 @@ class MyApp extends StatelessWidget {
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: theme.themeMode,
+      // Los layouts de la app (tiles de tamaño fijo, chips, etc.) no están
+      // diseñados para una escala de fuente del sistema sin límite: un ajuste
+      // de accesibilidad de Android en "texto grande" puede desbordar texto
+      // en widgets angostos. Se limita el escalado a un rango razonable en
+      // vez de dejarlo sin tope.
+      builder: (context, child) {
+        final clampedScaler = MediaQuery.textScalerOf(context)
+            .clamp(minScaleFactor: 1.0, maxScaleFactor: 1.3);
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: clampedScaler),
+          child: child!,
+        );
+      },
       home: const SplashScreen(),
     );
   }

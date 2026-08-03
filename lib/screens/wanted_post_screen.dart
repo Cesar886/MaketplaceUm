@@ -4,11 +4,15 @@ import 'package:provider/provider.dart';
 import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
-import '../services/anonymous_id.dart';
 import '../services/api_service.dart';
+import '../widgets/publish_auth_gate.dart';
 
 class WantedPostScreen extends StatefulWidget {
-  const WantedPostScreen({super.key});
+  const WantedPostScreen({super.key, this.editingPost});
+
+  /// Si viene no-nulo, la pantalla entra en modo edición: precarga los
+  /// campos de esta publicación y el botón llama a PUT en vez de POST.
+  final WantedPost? editingPost;
 
   @override
   State<WantedPostScreen> createState() => _WantedPostScreenState();
@@ -26,9 +30,22 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
   bool _loading = true;
   bool _publishing = false;
 
+  bool get _isEditing => widget.editingPost != null;
+
   @override
   void initState() {
     super.initState();
+    final post = widget.editingPost;
+    if (post != null) {
+      _titleController.text = post.title;
+      _descriptionController.text = post.description ?? '';
+      _type = post.type;
+      _selectedCategoryId = post.categoryId;
+      if (post.priceMin != null)
+        _priceMinController.text = post.priceMin.toString();
+      if (post.priceMax != null)
+        _priceMaxController.text = post.priceMax.toString();
+    }
     _loadCategories();
   }
 
@@ -38,7 +55,14 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
       if (!mounted) return;
       setState(() {
         _categories = categories;
-        _selectedCategoryId = categories.isNotEmpty ? categories.first.id : null;
+        final currentIsValid =
+            _selectedCategoryId != null &&
+            categories.any((c) => c.id == _selectedCategoryId);
+        if (!currentIsValid) {
+          _selectedCategoryId = categories.isNotEmpty
+              ? categories.first.id
+              : null;
+        }
         _loading = false;
       });
     } catch (_) {
@@ -63,32 +87,69 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
 
     setState(() => _publishing = true);
     try {
-      final auth = context.read<AuthProvider>();
-      final userId = await AnonymousId.resolve(
-        isLoggedIn: auth.isLoggedIn,
-        backendSellerId: auth.backendSellerId,
-      );
+      final description = _descriptionController.text.trim().isEmpty
+          ? null
+          : _descriptionController.text.trim();
+      final priceMin = double.tryParse(_priceMinController.text.trim());
+      final priceMax = double.tryParse(_priceMaxController.text.trim());
 
-      await ApiService.createWantedPost(
-        userId: userId,
-        title: title,
-        description: _descriptionController.text.trim().isEmpty
-            ? null
-            : _descriptionController.text.trim(),
-        categoryId: _selectedCategoryId!,
-        type: _type,
-        priceMin: double.tryParse(_priceMinController.text.trim()),
-        priceMax: double.tryParse(_priceMaxController.text.trim()),
-      );
-
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('¡Búsqueda publicada! Te avisaremos si alguien responde.')),
-      );
+      if (_isEditing) {
+        // La edición requiere sesión real (JWT), no basta el anonymous id:
+        // el backend usa requireAuth para que un no-dueño reciba 403.
+        final auth = context.read<AuthProvider>();
+        final synced = await auth.ensureBackendSync();
+        if (!synced) {
+          _showError('Error de autenticación. Vuelve a iniciar sesión.');
+          return;
+        }
+        await ApiService.editWantedPost(
+          id: widget.editingPost!.id,
+          title: title,
+          description: description,
+          categoryId: _selectedCategoryId!,
+          type: _type,
+          priceMin: priceMin,
+          priceMax: priceMax,
+        );
+        if (!mounted) return;
+        Navigator.of(context).pop(true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cambios guardados exitosamente')),
+        );
+      } else {
+        // Publicar también requiere sesión real (JWT): el backend usa
+        // requireAuth para que el autor salga del token, no del body.
+        final auth = context.read<AuthProvider>();
+        final synced = await auth.ensureBackendSync();
+        if (!synced) {
+          _showError('Error de autenticación. Vuelve a iniciar sesión.');
+          return;
+        }
+        await ApiService.createWantedPost(
+          title: title,
+          description: description,
+          categoryId: _selectedCategoryId!,
+          type: _type,
+          priceMin: priceMin,
+          priceMax: priceMax,
+        );
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              '¡Búsqueda publicada! Te avisaremos si alguien responde.',
+            ),
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
-      _showError('Error al publicar: $e');
+      _showError(
+        _isEditing
+            ? 'Error al guardar los cambios: $e'
+            : 'Error al publicar: $e',
+      );
     } finally {
       if (mounted) setState(() => _publishing = false);
     }
@@ -108,8 +169,23 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
     if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    // Publicar una búsqueda también requiere cuenta (igual que un producto);
+    // ver/responder búsquedas de otros no la requiere.
+    if (!context.watch<AuthProvider>().isLoggedIn) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Publicar búsqueda')),
+        body: const PublishAuthGate(
+          icon: Icons.search_rounded,
+          title: 'Crea tu cuenta para publicar tu búsqueda',
+          subtitle:
+              'Regístrate para publicar qué buscas y que te avisemos si alguien responde.',
+        ),
+      );
+    }
     return Scaffold(
-      appBar: AppBar(title: const Text('Publicar búsqueda')),
+      appBar: AppBar(
+        title: Text(_isEditing ? 'Editar búsqueda' : 'Publicar búsqueda'),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -165,7 +241,9 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
                     prefixText: r'$ ',
-                    labelText: _type == 'servicio' ? 'Mínimo (cotización)' : 'Precio mínimo',
+                    labelText: _type == 'servicio'
+                        ? 'Mínimo (cotización)'
+                        : 'Precio mínimo',
                   ),
                 ),
               ),
@@ -176,7 +254,9 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
                     prefixText: r'$ ',
-                    labelText: _type == 'servicio' ? 'Máximo (cotización)' : 'Precio máximo',
+                    labelText: _type == 'servicio'
+                        ? 'Máximo (cotización)'
+                        : 'Precio máximo',
                   ),
                 ),
               ),
@@ -188,10 +268,14 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
             style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
             child: _publishing
                 ? const SizedBox(
-                    width: 20, height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
                   )
-                : const Text('Publicar búsqueda'),
+                : Text(_isEditing ? 'Guardar cambios' : 'Publicar búsqueda'),
           ),
         ],
       ),

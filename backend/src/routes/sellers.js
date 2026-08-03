@@ -3,7 +3,7 @@ const fs = require('fs');
 const sharp = require('sharp');
 const multer = require('multer');
 const { sellers, categories, updateSellerField } = require('../data');
-const { requireAuth } = require('../auth');
+const { requireAuth, optionalAuth } = require('../auth');
 const db = require('../database');
 const {
   validateName,
@@ -33,9 +33,16 @@ function register(app) {
     res.json(sellers);
   });
 
-  app.get('/api/sellers/:id', (req, res) => {
+  // El email es privado: solo se incluye en la respuesta si quien pide el
+  // perfil es el propio dueño (Bearer token cuyo sub coincide con :id).
+  // El resto de campos, incluido phone, ya son públicos vía rowToSeller.
+  app.get('/api/sellers/:id', optionalAuth, (req, res) => {
     const seller = sellers.find(s => s.id === req.params.id);
     if (!seller) return res.status(404).json({ error: 'Vendedor no encontrado' });
+    if (req.user && req.user.id === seller.id) {
+      const rawRow = db.getDb().prepare('SELECT email FROM sellers WHERE id = ?').get(seller.id);
+      return res.json({ ...seller, email: rawRow.email || null });
+    }
     res.json(seller);
   });
 

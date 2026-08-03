@@ -1,5 +1,19 @@
 import 'package:flutter/material.dart';
 
+/// Convierte una fecha ISO en un texto relativo corto ("Hace 5 min").
+/// Usado por publicaciones que no traen un `publishedAgo` ya calculado
+/// por el backend (p. ej. "se busca").
+String relativeTimeFromIso(String iso) {
+  final parsed = DateTime.tryParse(iso);
+  if (parsed == null) return '';
+  final diff = DateTime.now().difference(parsed);
+  if (diff.inMinutes < 1) return 'Ahora';
+  if (diff.inHours < 1) return 'Hace ${diff.inMinutes} min';
+  if (diff.inDays < 1) return 'Hace ${diff.inHours} h';
+  if (diff.inDays < 7) return 'Hace ${diff.inDays} d';
+  return 'Hace ${(diff.inDays / 7).floor()} sem';
+}
+
 /// Map from icon name strings (from backend) to Flutter [IconData].
 IconData _parseIcon(String icon) {
   const map = <String, IconData>{
@@ -231,7 +245,55 @@ class Product {
     this.productRating = 0.0,
     this.productReviews = 0,
     this.userRating,
+    this.postType = 'producto',
+    this.priceMin,
+    this.priceMax,
+    this.wantedStatus,
+    this.wantedKind,
   });
+
+  /// Adapta un [WantedPost] a la forma de [Product] para que
+  /// [ProductDetailScreen] pueda mostrar ambos tipos de publicación con la
+  /// misma pantalla. Los campos exclusivos de producto (precio fijo, stock,
+  /// extras, imágenes, rating) quedan en su valor "vacío" y la pantalla los
+  /// oculta según [postType] en vez de mostrarlos vacíos o con error.
+  factory Product.fromWantedPost(WantedPost post) {
+    final category = post.categoryObj ??
+        const MarketplaceCategory(
+          id: 'other',
+          name: 'Otros',
+          emoji: '\u{1F4E6}',
+          icon: Icons.category_rounded,
+          color: Color(0xFF607D8B),
+        );
+    final seller = post.sellerObj ??
+        Seller(
+          id: post.userId,
+          name: post.userId,
+          avatarInitials: '??',
+          major: '',
+          rating: 0,
+          reviews: 0,
+          verified: false,
+        );
+    return Product(
+      id: post.id,
+      title: post.title,
+      price: 0,
+      category: category,
+      description: post.description ?? '',
+      publishedAgo: relativeTimeFromIso(post.createdAt),
+      seller: seller,
+      imageIcon: post.isService ? Icons.build_outlined : Icons.shopping_bag_outlined,
+      imageColor: category.color,
+      isAvailable: !post.isResolved,
+      postType: 'se_busca',
+      priceMin: post.priceMin,
+      priceMax: post.priceMax,
+      wantedStatus: post.status,
+      wantedKind: post.type,
+    );
+  }
 
   /// Formatea un precio numérico a string con símbolo de moneda.
   /// Ej: 250.0 → "\$250", 1500.0 → "\$1,500"
@@ -365,6 +427,7 @@ class Product {
       productRating: (json['productRating'] as num?)?.toDouble() ?? 0.0,
       productReviews: (json['productReviews'] as num?)?.toInt() ?? 0,
       userRating: (json['userRating'] as num?)?.toInt(),
+      postType: json['postType'] as String? ?? 'producto',
     );
   }
 
@@ -394,6 +457,17 @@ class Product {
   final double productRating;
   final int productReviews;
   final int? userRating; // null = no ha calificado, 1-5 = su calificación
+
+  /// 'producto' o 'se_busca'. Determina qué secciones de
+  /// [ProductDetailScreen] se muestran/ocultan.
+  final String postType;
+  // Campos exclusivos de "se busca" (postType == 'se_busca'):
+  final double? priceMin;
+  final double? priceMax;
+  final String? wantedStatus; // 'abierta' | 'resuelta'
+  final String? wantedKind; // 'producto' | 'servicio' (lo que se busca)
+
+  bool get isWantedPost => postType == 'se_busca';
 }
 
 class CartItem {
@@ -483,6 +557,10 @@ class WantedPost {
     required this.status,
     this.resolvedWithUserId,
     required this.createdAt,
+    this.updatedAt,
+    this.resolvedAt,
+    this.sellerObj,
+    this.categoryObj,
   });
 
   factory WantedPost.fromJson(Map<String, dynamic> json) {
@@ -498,6 +576,14 @@ class WantedPost {
       status: json['status'] as String? ?? 'abierta',
       resolvedWithUserId: json['resolvedWithUserId'] as String?,
       createdAt: json['createdAt'] as String? ?? '',
+      updatedAt: json['updatedAt'] as String?,
+      resolvedAt: json['resolvedAt'] as String?,
+      sellerObj: json['sellerObj'] != null
+          ? Seller.fromJson(json['sellerObj'] as Map<String, dynamic>)
+          : null,
+      categoryObj: json['categoryObj'] != null
+          ? MarketplaceCategory.fromJson(json['categoryObj'] as Map<String, dynamic>)
+          : null,
     );
   }
 
@@ -512,6 +598,10 @@ class WantedPost {
   final String status; // 'abierta' | 'resuelta'
   final String? resolvedWithUserId;
   final String createdAt;
+  final String? updatedAt;
+  final String? resolvedAt;
+  final Seller? sellerObj;
+  final MarketplaceCategory? categoryObj;
 
   bool get isService => type == 'servicio';
   bool get isResolved => status == 'resuelta';

@@ -430,6 +430,40 @@ function runMigrations() {
     `);
   }
 
+  // 15. Sellers: índice único de email (case-insensitive) para evitar que dos
+  //     cuentas distintas terminen compartiendo el mismo correo. Parcial:
+  //     ignora filas con email NULL/'' (cuentas legacy sin correo capturado).
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sellers_email_unique
+    ON sellers(email COLLATE NOCASE)
+    WHERE email IS NOT NULL AND email != ''
+  `);
+
+  // 16. Sellers: agregar password_hash. Antes de esto, el password vivía
+  // SOLO en el SQLite local del dispositivo (sqflite) y nunca se mandaba al
+  // backend, así que el login real dependía de quedarte en el mismo
+  // dispositivo/instalación donde te registraste. Con esta columna el
+  // backend pasa a ser la autoridad real de credenciales (ver
+  // POST /api/auth/register y POST /api/auth/login). Cuentas creadas antes
+  // de esta migración quedan con password_hash NULL hasta que su dueño
+  // vuelva a "registrarse" con ese email (el endpoint lo backfillea).
+  const hasPasswordHash = sellerColsBiz.some(c => c.name === 'password_hash');
+  if (!hasPasswordHash) {
+    db.exec(`ALTER TABLE sellers ADD COLUMN password_hash TEXT`);
+  }
+
+  // 17. Sellers: contador de intentos fallidos de login + bloqueo temporal.
+  //     Tras LOGIN_MAX_ATTEMPTS (ver index.js) intentos fallidos seguidos,
+  //     la cuenta queda bloqueada hasta locked_until para frenar fuerza bruta.
+  //     Un login exitoso resetea el contador.
+  const hasFailedAttempts = sellerColsBiz.some(c => c.name === 'failed_login_attempts');
+  if (!hasFailedAttempts) {
+    db.exec(`
+      ALTER TABLE sellers ADD COLUMN failed_login_attempts INTEGER DEFAULT 0;
+      ALTER TABLE sellers ADD COLUMN locked_until TEXT;
+    `);
+  }
+
   console.log('🔄 Migración de schema completada');
 }
 
@@ -535,6 +569,11 @@ function rowToSeller(row) {
   return {
     id: row.id,
     name: row.name,
+    // El teléfono sí se expone públicamente (a diferencia del email): es lo
+    // que permite el botón "Contactar por WhatsApp" sin necesidad de login.
+    // Un vendedor que publica un producto implícitamente acepta que lo
+    // contacten por ese medio.
+    phone: row.phone || null,
     avatarInitials: row.avatarInitials || '',
     major: row.major || '',
     isBusiness: !!row.isBusiness,
@@ -1118,6 +1157,19 @@ function registrarInteraccion({ deviceId, userId, productId, category, tipo }) {
 }
 
 /**
+ * Vincula el historial anónimo de un device_id a un user_id, para que al
+ * registrarse no se pierda el historial de favoritos/vistas/contactos
+ * acumulado como anónimo (afecta el ranking de afinidad del feed).
+ * Se llama una vez al registrarse/iniciar sesión con un deviceId conocido.
+ */
+function linkDeviceToUser(deviceId, userId) {
+  if (!deviceId || !userId) return;
+  db.prepare(`
+    UPDATE interacciones_dispositivo SET user_id = ? WHERE device_id = ? AND user_id IS NULL
+  `).run(userId, deviceId);
+}
+
+/**
  * Poda interacciones_dispositivo para no acumular indefinidamente:
  * borra lo más viejo que INTERACTION_RETENTION_DAYS y, por device_id,
  * conserva solo las INTERACTION_MAX_PER_DEVICE filas más recientes.
@@ -1317,5 +1369,6 @@ module.exports = {
   FEED_WEIGHTS,
   registrarInteraccion,
   limpiarInteraccionesAntiguas,
+  linkDeviceToUser,
   getFeedRanked,
 };

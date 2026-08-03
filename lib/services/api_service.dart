@@ -58,14 +58,17 @@ class ApiService {
 
   // ─── Auth / Registro ──────────────────────────────────────
 
-  /// Llama a POST /api/auth/register para sincronizar el usuario local
-  /// con el backend. Crea un perfil de vendedor si no existe y devuelve
-  /// un JWT para requests autenticados.
+  /// Llama a POST /api/auth/register. El backend es la autoridad real de
+  /// credenciales: guarda el password (hasheado) y devuelve un JWT. Crea el
+  /// perfil de vendedor si no existe; si el email ya existe, se comporta
+  /// como un login (verifica el password) y solo entonces re-sincroniza.
   static Future<Map<String, dynamic>> registerBackendUser({
     required String name,
     required String email,
     required String userType,
+    required String password,
     String? phone,
+    String? deviceId,
   }) async {
     final res = await _client.post(
       _uri('/auth/register'),
@@ -74,11 +77,39 @@ class ApiService {
         'name': name,
         'email': email,
         'userType': userType,
+        'password': password,
         if (phone != null) 'phone': phone,
+        if (deviceId != null) 'deviceId': deviceId,
       }),
     );
     if (res.statusCode != 200 && res.statusCode != 201) {
-      throw Exception('Error al sincronizar usuario con el backend');
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['error'] ?? 'Error al sincronizar usuario con el backend');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Llama a POST /api/auth/login: valida email+password contra el backend
+  /// (única autoridad real de credenciales) y devuelve token + seller.
+  /// Devuelve `null` si las credenciales son incorrectas (401); lanza
+  /// excepción ante cualquier otro error (red, 5xx, etc.).
+  static Future<Map<String, dynamic>?> loginBackend({
+    required String email,
+    required String password,
+    String? deviceId,
+  }) async {
+    final res = await _client.post(
+      _uri('/auth/login'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'email': email,
+        'password': password,
+        if (deviceId != null) 'deviceId': deviceId,
+      }),
+    );
+    if (res.statusCode == 401) return null;
+    if (res.statusCode != 200) {
+      throw Exception('Error al iniciar sesión. Intenta de nuevo.');
     }
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -86,7 +117,8 @@ class ApiService {
   // ─── Health ─────────────────────────────────────────────
   static Future<bool> healthCheck() async {
     try {
-      final res = await _client.get(_uri('/health'))
+      final res = await _client
+          .get(_uri('/health'))
           .timeout(const Duration(seconds: 3));
       return res.statusCode == 200;
     } catch (_) {
@@ -121,7 +153,9 @@ class ApiService {
     if (seller != null) query['seller'] = seller;
     if (userId != null) query['userId'] = userId;
 
-    final res = await _client.get(_uri('/products', query.isNotEmpty ? query : null));
+    final res = await _client.get(
+      _uri('/products', query.isNotEmpty ? query : null),
+    );
     if (res.statusCode != 200) throw Exception('Error fetching products');
     final List<dynamic> data = jsonDecode(res.body) as List<dynamic>;
     return data
@@ -136,8 +170,9 @@ class ApiService {
     return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  /// Crea una publicación "se busca". Requiere sesión: el autor sale del
+  /// JWT (requireAuth en backend), no de un userId de body.
   static Future<WantedPost> createWantedPost({
-    required String userId,
     required String title,
     String? description,
     required String categoryId,
@@ -147,9 +182,8 @@ class ApiService {
   }) async {
     final res = await _client.post(
       _uri('/wanted'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _authHeaders,
       body: jsonEncode({
-        'userId': userId,
         'title': title,
         'description': description,
         'categoryId': categoryId,
@@ -158,7 +192,8 @@ class ApiService {
         if (priceMax != null) 'priceMax': priceMax,
       }),
     );
-    if (res.statusCode != 201) throw Exception('${res.statusCode}: ${res.body}');
+    if (res.statusCode != 201)
+      throw Exception('${res.statusCode}: ${res.body}');
     return WantedPost.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
@@ -172,10 +207,14 @@ class ApiService {
       if (status != null) 'status': status,
       if (type != null) 'type': type,
     };
-    final res = await _client.get(_uri('/wanted', query.isNotEmpty ? query : null));
+    final res = await _client.get(
+      _uri('/wanted', query.isNotEmpty ? query : null),
+    );
     if (res.statusCode != 200) throw Exception('Error fetching wanted posts');
     final List<dynamic> data = jsonDecode(res.body) as List<dynamic>;
-    return data.map((e) => WantedPost.fromJson(e as Map<String, dynamic>)).toList();
+    return data
+        .map((e) => WantedPost.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   /// Edita una publicación "se busca" existente (solo el dueño). A diferencia
@@ -205,7 +244,9 @@ class ApiService {
     );
     if (res.statusCode != 200) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
-      throw Exception(body['error'] ?? 'Error al editar la publicación (${res.statusCode})');
+      throw Exception(
+        body['error'] ?? 'Error al editar la publicación (${res.statusCode})',
+      );
     }
     return WantedPost.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
@@ -226,20 +267,26 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'userId': userId,
-        if (resolvedWithUserId != null) 'resolvedWithUserId': resolvedWithUserId,
+        if (resolvedWithUserId != null)
+          'resolvedWithUserId': resolvedWithUserId,
       }),
     );
-    if (res.statusCode != 200) throw Exception('${res.statusCode}: ${res.body}');
+    if (res.statusCode != 200)
+      throw Exception('${res.statusCode}: ${res.body}');
     return WantedPost.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
-  static Future<String> respondToWantedPost(String id, {required String userId}) async {
+  static Future<String> respondToWantedPost(
+    String id, {
+    required String userId,
+  }) async {
     final res = await _client.post(
       _uri('/wanted/$id/respond'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'userId': userId}),
     );
-    if (res.statusCode != 200) throw Exception('${res.statusCode}: ${res.body}');
+    if (res.statusCode != 200)
+      throw Exception('${res.statusCode}: ${res.body}');
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     return data['conversationId'] as String;
   }
@@ -284,7 +331,9 @@ class ApiService {
       }
       // El seller se obtiene del JWT en el backend (requireAuth)
       if (_token == null) {
-        throw Exception('No hay sesión activa en el backend. Vuelve a iniciar sesión.');
+        throw Exception(
+          'No hay sesión activa en el backend. Vuelve a iniciar sesión.',
+        );
       }
       request.headers['Authorization'] = 'Bearer $_token';
 
@@ -295,7 +344,8 @@ class ApiService {
 
       final streamed = await _client.send(request);
       final res = await http.Response.fromStream(streamed);
-      if (res.statusCode != 201) throw Exception('${res.statusCode}: ${res.body}');
+      if (res.statusCode != 201)
+        throw Exception('${res.statusCode}: ${res.body}');
       return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
     }
 
@@ -317,7 +367,8 @@ class ApiService {
       headers: _authHeaders,
       body: jsonEncode(body),
     );
-    if (res.statusCode != 201) throw Exception('${res.statusCode}: ${res.body}');
+    if (res.statusCode != 201)
+      throw Exception('${res.statusCode}: ${res.body}');
     return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
@@ -340,7 +391,9 @@ class ApiService {
     List<String>? newImagePaths,
   }) async {
     if (_token == null) {
-      throw Exception('No hay sesión activa en el backend. Vuelve a iniciar sesión.');
+      throw Exception(
+        'No hay sesión activa en el backend. Vuelve a iniciar sesión.',
+      );
     }
 
     final request = http.MultipartRequest('PUT', _uri('/products/$productId'));
@@ -360,7 +413,9 @@ class ApiService {
     final res = await http.Response.fromStream(streamed);
     if (res.statusCode != 200) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
-      throw Exception(body['error'] ?? 'Error al editar producto (${res.statusCode})');
+      throw Exception(
+        body['error'] ?? 'Error al editar producto (${res.statusCode})',
+      );
     }
     return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
@@ -403,7 +458,11 @@ class ApiService {
   }
 
   /// Califica un producto con 1-5 estrellas (requiere userId, anónimo o real).
-  static Future<Product> rateProduct(String productId, int stars, {required String userId}) async {
+  static Future<Product> rateProduct(
+    String productId,
+    int stars, {
+    required String userId,
+  }) async {
     final res = await _client.post(
       _uri('/products/$productId/rate'),
       headers: {'Content-Type': 'application/json'},
@@ -411,7 +470,9 @@ class ApiService {
     );
     if (res.statusCode == 403) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
-      throw Exception(body['error'] ?? 'No puedes calificar tu propio producto');
+      throw Exception(
+        body['error'] ?? 'No puedes calificar tu propio producto',
+      );
     }
     if (res.statusCode != 200) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
@@ -422,7 +483,9 @@ class ApiService {
 
   /// Cambia el estado de disponibilidad de un producto (solo el dueño).
   static Future<Product> updateProductStatus(
-      String productId, String status) async {
+    String productId,
+    String status,
+  ) async {
     final res = await _client.patch(
       _uri('/products/$productId/status'),
       headers: _authHeaders,
@@ -456,7 +519,9 @@ class ApiService {
 
   /// Actualiza los días disponibles de un producto (solo el dueño).
   static Future<Product> updateProductDays(
-      String productId, List<int> availableDays) async {
+    String productId,
+    List<int> availableDays,
+  ) async {
     final res = await _client.patch(
       _uri('/products/$productId/days'),
       headers: _authHeaders,
@@ -474,9 +539,7 @@ class ApiService {
     final res = await _client.get(_uri('/sellers'));
     if (res.statusCode != 200) throw Exception('Error fetching sellers');
     final List<dynamic> data = jsonDecode(res.body) as List<dynamic>;
-    return data
-        .map((e) => Seller.fromJson(e as Map<String, dynamic>))
-        .toList();
+    return data.map((e) => Seller.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   static Future<Seller> getSeller(String id) async {
@@ -495,7 +558,8 @@ class ApiService {
     final body = <String, dynamic>{};
     if (name != null) body['name'] = name;
     if (phone != null) body['phone'] = phone;
-    if (businessDescription != null) body['businessDescription'] = businessDescription;
+    if (businessDescription != null)
+      body['businessDescription'] = businessDescription;
     if (businessCategory != null) body['businessCategory'] = businessCategory;
     final res = await _client.patch(
       _uri('/sellers/$sellerId'),
@@ -527,7 +591,8 @@ class ApiService {
     }
     final streamed = await _client.send(request);
     final res = await http.Response.fromStream(streamed);
-    if (res.statusCode != 200) throw Exception('Error al subir logo: ${res.statusCode}');
+    if (res.statusCode != 200)
+      throw Exception('Error al subir logo: ${res.statusCode}');
     return Seller.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
@@ -558,7 +623,10 @@ class ApiService {
     if (res.statusCode != 201) throw Exception('Error adding to cart');
   }
 
-  static Future<void> updateCartQuantity(String cartItemId, int quantity) async {
+  static Future<void> updateCartQuantity(
+    String cartItemId,
+    int quantity,
+  ) async {
     final res = await _client.put(
       _uri('/cart/$cartItemId'),
       headers: _authHeaders,
@@ -598,23 +666,20 @@ class ApiService {
   // ─── Notifications ──────────────────────────────────────
 
   static Future<Map<String, dynamic>> getNotifications() async {
-    final res = await _client.get(_uri('/notifications'), headers: _authHeaders);
+    final res = await _client.get(
+      _uri('/notifications'),
+      headers: _authHeaders,
+    );
     if (res.statusCode != 200) throw Exception('Error fetching notifications');
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   static Future<void> markNotificationRead(String id) async {
-    await _client.patch(
-      _uri('/notifications/$id/read'),
-      headers: _authHeaders,
-    );
+    await _client.patch(_uri('/notifications/$id/read'), headers: _authHeaders);
   }
 
   static Future<void> markAllNotificationsRead() async {
-    await _client.patch(
-      _uri('/notifications/read-all'),
-      headers: _authHeaders,
-    );
+    await _client.patch(_uri('/notifications/read-all'), headers: _authHeaders);
   }
 
   // ─── Push Tokens (FCM) ─────────────────────────────────────────
@@ -653,7 +718,8 @@ class ApiService {
       headers: _authHeaders,
       body: jsonEncode({'playerId': playerId}),
     );
-    if (res.statusCode != 200) throw Exception('Error unregistering push token');
+    if (res.statusCode != 200)
+      throw Exception('Error unregistering push token');
   }
 
   static Future<void> unregisterAllPushTokens() async {
@@ -661,7 +727,8 @@ class ApiService {
       _uri('/notifications/register-push/all'),
       headers: _authHeaders,
     );
-    if (res.statusCode != 200) throw Exception('Error unregistering all push tokens');
+    if (res.statusCode != 200)
+      throw Exception('Error unregistering all push tokens');
   }
 
   static Future<int> getUnreadNotificationCount() async {
@@ -717,10 +784,15 @@ class ApiService {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
-  static Future<List<ChatMessage>> getMessages(String conversationId, {String? userId}) async {
+  static Future<List<ChatMessage>> getMessages(
+    String conversationId, {
+    String? userId,
+  }) async {
     final query = <String, String>{};
     if (userId != null) query['userId'] = userId;
-    final res = await _client.get(_uri('/chat/conversations/$conversationId/messages', query));
+    final res = await _client.get(
+      _uri('/chat/conversations/$conversationId/messages', query),
+    );
     if (res.statusCode != 200) throw Exception('Error fetching messages');
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     return (data['messages'] as List<dynamic>)
@@ -759,7 +831,10 @@ class ApiService {
 
   /// Elimina un mensaje propio (soft-delete: reemplaza el texto).
   /// [senderId] debe coincidir con el dueño del mensaje.
-  static Future<void> deleteMessage(String messageId, {required String senderId}) async {
+  static Future<void> deleteMessage(
+    String messageId, {
+    required String senderId,
+  }) async {
     final res = await _client.delete(
       _uri('/chat/messages/$messageId', {'senderId': senderId}),
     );

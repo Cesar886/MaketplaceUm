@@ -85,35 +85,59 @@ class AuthProvider extends ChangeNotifier {
   }
 
   // ─── Sincronización con backend ────────────────────────────
+  //
+  // El backend es la autoridad real de credenciales (email + password real,
+  // verificado con bcrypt server-side). El SQLite local (DBHelper) es solo
+  // una caché offline y el lugar donde vive accountType/verificationStatus
+  // (eso último todavía no se sincroniza al backend). Antes, el login
+  // verificaba el password SOLO contra esta caché local, así que una cuenta
+  // registrada en otro dispositivo/instalación nunca podía loguearse aquí
+  // aunque el password fuera el correcto — ver AuthProvider.login.
 
-  /// Sincroniza el usuario local con el backend:
-  /// llama a POST /api/auth/register (idempotente), guarda el token JWT
-  /// y el sellerId del backend.
-  Future<void> _syncBackend() async {
-    if (_currentUser == null) return;
-    try {
-      final result = await ApiService.registerBackendUser(
-        name: _currentUser!['name'] as String,
-        email: _currentUser!['email'] as String,
-        userType: _currentUser!['user_type'] as String,
-        phone: _currentUser!['phone'] as String?,
+  /// Aplica el resultado de POST /api/auth/register o /api/auth/login:
+  /// guarda el token JWT y el sellerId, y los persiste para la próxima vez
+  /// que se abra la app (ver tryAutoLogin).
+  Future<void> _applyBackendAuthResult(Map<String, dynamic> result) async {
+    _backendToken = result['token'] as String;
+    _backendSellerId = result['seller']['id'] as String;
+    ApiService.setToken(_backendToken!);
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('backend_token', _backendToken!);
+    await prefs.setString('backend_seller_id', _backendSellerId!);
+
+    await _registerPushDevice();
+  }
+
+  /// Refleja localmente una cuenta ya autenticada por el backend: si el
+  /// email no existe en este dispositivo (p. ej. login desde una
+  /// instalación nueva) crea la fila; si existe, actualiza su hash de
+  /// password para que el login local siga funcionando en este mismo
+  /// dispositivo. Deja `_currentUser` listo con los campos que solo viven
+  /// localmente (accountType, verificationStatus).
+  Future<void> _mirrorLocalUser({
+    required String name,
+    required String email,
+    required String phone,
+    required String password,
+    required String dbType,
+  }) async {
+    final existing = await _db.getUserByEmail(email);
+    if (existing != null) {
+      await _db.updatePasswordHash(existing['id'] as int, password);
+      if (phone.isNotEmpty && phone != existing['phone']) {
+        await _db.updateUserFields(existing['id'] as int, phone: phone);
+      }
+      _currentUser = await _db.getUserById(existing['id'] as int);
+    } else {
+      final userId = await _db.registerUser(
+        name: name,
+        email: email,
+        phone: phone,
+        password: password,
+        userType: dbType,
       );
-      _backendToken = result['token'] as String;
-      _backendSellerId = result['seller']['id'] as String;
-
-      // Configurar el token en ApiService para futuros requests autenticados
-      ApiService.setToken(_backendToken!);
-
-      // Persistir token y sellerId
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('backend_token', _backendToken!);
-      await prefs.setString('backend_seller_id', _backendSellerId!);
-
-      // Registrar FCM token en el backend
-      await _registerPushDevice();
-    } catch (_) {
-      // Si falla la sincronización, el usuario aún puede usar la app offline
-      // pero deberá sincronizar después para publicar productos
+      _currentUser = await _db.getUserById(userId);
     }
   }
 
@@ -141,34 +165,46 @@ class AuthProvider extends ChangeNotifier {
         AccountType.particular => 'particular',
         AccountType.negocio => 'negocio',
       };
+      final effectiveName = businessName ?? name;
 
-      final userId = await _db.registerUser(
-        name: businessName ?? name,
+      // El backend valida/crea la cuenta primero (con el password real).
+      // Si el email ya existe en el backend con OTRO password, esto lanza
+      // una excepción con el mensaje real del servidor (409) — no se
+      // silencia como antes.
+      final deviceId = await AnonymousId.get();
+      final result = await ApiService.registerBackendUser(
+        name: effectiveName,
+        email: email,
+        userType: dbType,
+        password: password,
+        phone: phone,
+        deviceId: deviceId,
+      );
+      await _applyBackendAuthResult(result);
+
+      // Espejo local (caché offline + accountType/verificationStatus)
+      await _mirrorLocalUser(
+        name: effectiveName,
         email: email,
         phone: phone,
         password: password,
-        userType: dbType,
+        dbType: dbType,
       );
+      final userId = _currentUser!['id'] as int;
+      await _saveSession(userId);
 
       // Si es negocio, crear perfil de negocio inmediatamente
       if (userType == AccountType.negocio && businessType != null) {
         await _db.createBusinessProfile(
           userId: userId,
-          businessName: businessName ?? name,
+          businessName: effectiveName,
           businessType: businessType,
           responsibleName: responsibleName,
           businessDescription: businessDescription,
           logoPath: logoPath,
         );
+        _currentUser = await _db.getUserById(userId);
       }
-
-      // Auto-login después de registro
-      final user = await _db.getUserById(userId);
-      _currentUser = user;
-      await _saveSession(userId);
-
-      // Sincronizar con backend (crear vendedor y obtener JWT)
-      await _syncBackend();
 
       return userId;
     } finally {
@@ -281,43 +317,57 @@ class AuthProvider extends ChangeNotifier {
 
     notifyListeners();
 
-    // Sincronizar teléfono (y otros datos) con el backend en segundo plano
-    _syncBackend().then((_) {
-      // Registrar push device si hay sesión restaurada
-      if (_backendSellerId != null) {
-        _registerPushDevice();
-      }
-    });
+    // El token ya se restauró de SharedPreferences arriba — solo falta
+    // re-registrar el device de push, no hay nada que re-sincronizar contra
+    // el backend (no hay password disponible para eso, y no hace falta).
+    if (_backendSellerId != null) {
+      _registerPushDevice();
+    }
 
     return true;
   }
 
   // ─── Login / Logout ────────────────────────────────────────
 
+  /// Autentica contra el backend (única autoridad real de credenciales) y,
+  /// si es correcto, refleja la cuenta en la caché local de este
+  /// dispositivo. Así una cuenta registrada en otro dispositivo/instalación
+  /// puede loguearse aquí con el mismo email/password.
   Future<bool> login(String email, String password) async {
     _loading = true;
     notifyListeners();
 
     try {
-      final user = await _db.login(email, password);
-      if (user != null) {
-        _currentUser = user;
-        await _saveSession(user['id'] as int);
-
-        // Sincronizar con backend (obtener JWT y sellerId)
-        await _syncBackend();
-
-        _loading = false;
-        notifyListeners();
-        return true;
+      final deviceId = await AnonymousId.get();
+      final result = await ApiService.loginBackend(
+        email: email,
+        password: password,
+        deviceId: deviceId,
+      );
+      if (result == null) {
+        // Credenciales incorrectas (401 real del backend)
+        return false;
       }
+
+      await _applyBackendAuthResult(result);
+
+      final seller = result['seller'] as Map<String, dynamic>;
+      final dbType = (seller['isBusiness'] as bool? ?? false)
+          ? 'negocio'
+          : (seller['major'] == 'Estudiante' ? 'estudiante' : 'particular');
+      await _mirrorLocalUser(
+        name: seller['name'] as String? ?? '',
+        email: email,
+        phone: seller['phone'] as String? ?? '',
+        password: password,
+        dbType: dbType,
+      );
+      await _saveSession(_currentUser!['id'] as int);
+
+      return true;
+    } finally {
       _loading = false;
       notifyListeners();
-      return false;
-    } catch (e) {
-      _loading = false;
-      notifyListeners();
-      rethrow;
     }
   }
 
@@ -354,9 +404,13 @@ class AuthProvider extends ChangeNotifier {
     String? businessCategory,
   }) async {
     if (logoPath != null && _backendSellerId != null) {
-      await ApiService.uploadBusinessLogo(sellerId: _backendSellerId!, imagePath: logoPath);
+      await ApiService.uploadBusinessLogo(
+        sellerId: _backendSellerId!,
+        imagePath: logoPath,
+      );
     }
-    final hasProfileFields = name != null ||
+    final hasProfileFields =
+        name != null ||
         phone != null ||
         businessDescription != null ||
         businessCategory != null;
@@ -402,17 +456,12 @@ class AuthProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  /// Asegura que exista un token de backend válido.
-  /// Si no hay token, reintenta la sincronización con el backend.
-  /// Devuelve `true` si hay token disponible después del intento.
+  /// Verifica que exista un token de backend válido para poder publicar.
+  /// Ya no se puede "reintentar" un re-registro sin password (el backend
+  /// ya no acepta re-sincronizar credenciales sin verificarlas) — si no hay
+  /// token, la cuenta quedó sin sincronizar (p. ej. una cuenta local previa
+  /// a este fix) y hay que volver a iniciar sesión para obtener uno real.
   Future<bool> ensureBackendSync() async {
-    if (_backendToken != null) return true;
-    if (_currentUser == null) return false;
-    try {
-      await _syncBackend();
-      return _backendToken != null;
-    } catch (_) {
-      return false;
-    }
+    return _backendToken != null;
   }
 }

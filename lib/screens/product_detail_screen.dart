@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
@@ -16,20 +17,29 @@ import 'auth/login_screen.dart';
 import 'main_shell.dart';
 import 'chat_screen.dart';
 import 'home_screen.dart';
+import 'publish_product_screen.dart';
 import 'qr_display_screen.dart';
+import 'seller_profile_screen.dart';
+import 'wanted_post_screen.dart';
 
 /// Convierte cualquier excepción en un mensaje apto para mostrar al usuario.
 /// Nunca se debe mostrar un stack trace o el texto crudo de una excepción
 /// (p. ej. errores de SQL) directamente en la UI.
-String friendlyErrorMessage(Object error, {String fallback = 'Ocurrió un error. Intenta de nuevo.'}) {
+String friendlyErrorMessage(
+  Object error, {
+  String fallback = 'Ocurrió un error. Intenta de nuevo.',
+}) {
   var message = error.toString();
   if (message.startsWith('Exception: ')) {
     message = message.substring('Exception: '.length);
   }
-  final looksTechnical = message.isEmpty ||
+  final looksTechnical =
+      message.isEmpty ||
       message.length > 140 ||
-      RegExp(r'SQLITE|constraint|SocketException|FormatException|_TypeError|Instance of', caseSensitive: false)
-          .hasMatch(message);
+      RegExp(
+        r'SQLITE|constraint|SocketException|FormatException|_TypeError|Instance of',
+        caseSensitive: false,
+      ).hasMatch(message);
   return looksTechnical ? fallback : message;
 }
 
@@ -94,8 +104,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     } catch (_) {}
   }
 
-  /// Refresca el producto desde la API y actualiza el estado local.
+  /// Refresca la publicación desde la API y actualiza el estado local.
+  /// Para "se busca" no hay historial de precios ni rating, así que solo
+  /// se refresca el post (estado abierta/resuelta, etc.).
   Future<void> _refreshProductFromApi() async {
+    if (product.isWantedPost) {
+      try {
+        final fresh = await ApiService.getWantedPost(product.id);
+        if (!mounted) return;
+        setState(() => _product = Product.fromWantedPost(fresh));
+      } catch (_) {
+        // Si falla, mantenemos los datos locales
+      }
+      return;
+    }
     try {
       final auth = context.read<AuthProvider>();
       final userId = await AnonymousId.resolve(
@@ -131,8 +153,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
             actions: [
               IconButton.filledTonal(
                 onPressed: () => _requireAuth(context, () async {
-                  final nowFav =
-                      await FavoriteProductsService.toggleFavorite(widget.product.id);
+                  final nowFav = await FavoriteProductsService.toggleFavorite(
+                    widget.product.id,
+                  );
                   if (!mounted) return;
                   setState(() => _favorite = nowFav);
                 }),
@@ -142,16 +165,34 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       : Icons.favorite_border_rounded,
                 ),
               ),
-              // Botón eliminar: solo visible si el producto es del usuario actual
+              // Botones editar/eliminar: solo visibles si la publicación es del usuario
+              // actual. "se busca" no tiene endpoint de borrado con esta forma (no hay
+              // DELETE /api/wanted/:id), así que ese ícono solo aplica a producto; el
+              // de editar sí aplica a ambos, cada uno a su propia pantalla de edición.
               if (context.read<AuthProvider>().backendSellerId ==
-                  product.seller.id)
-                IconButton.filledTonal(
-                  onPressed: () => _confirmDelete(context),
-                  icon: const Icon(Icons.delete_rounded),
-                  style: IconButton.styleFrom(
-                    foregroundColor: AppColors.danger,
+                  product.seller.id) ...[
+                if (product.isWantedPost)
+                  if (product.wantedStatus != 'resuelta')
+                    IconButton.filledTonal(
+                      onPressed: () => _editWantedPost(context),
+                      icon: const Icon(Icons.edit_rounded),
+                    )
+                  else
+                    const SizedBox.shrink()
+                else ...[
+                  IconButton.filledTonal(
+                    onPressed: () => _editProduct(context),
+                    icon: const Icon(Icons.edit_rounded),
                   ),
-                ),
+                  IconButton.filledTonal(
+                    onPressed: () => _confirmDelete(context),
+                    icon: const Icon(Icons.delete_rounded),
+                    style: IconButton.styleFrom(
+                      foregroundColor: AppColors.danger,
+                    ),
+                  ),
+                ],
+              ],
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: IconButton.filledTonal(
@@ -200,65 +241,84 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        // FittedBox: si el precio con descuento + botón editar no
-                        // caben en el espacio que deja la columna de calificación,
-                        // se achica en vez de desbordar la fila en pantallas chicas.
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              AnimatedPriceTag(
-                                product: product,
-                                animation: _priceTagController,
-                                large: true,
-                              ),
-                              // Botón editar precio (solo dueño)
-                              if (context.read<AuthProvider>().backendSellerId ==
-                                  product.seller.id)
-                                Padding(
-                                  padding: const EdgeInsets.only(left: 10),
-                                  child: InkWell(
-                                    onTap: () => _showEditPriceDialog(context),
-                                    borderRadius: BorderRadius.circular(20),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(6),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.primary.withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                      child: const Icon(
-                                        Icons.edit_rounded,
-                                        size: 18,
-                                        color: AppColors.primary,
+                  if (product.isWantedPost)
+                    _BudgetTag(product: product)
+                  else
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          // FittedBox: si el precio con descuento + botón editar no
+                          // caben en el espacio que deja la columna de calificación,
+                          // se achica en vez de desbordar la fila en pantallas chicas.
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                AnimatedPriceTag(
+                                  product: product,
+                                  animation: _priceTagController,
+                                  large: true,
+                                ),
+                                // Botón editar precio (solo dueño)
+                                if (context
+                                        .read<AuthProvider>()
+                                        .backendSellerId ==
+                                    product.seller.id)
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 10),
+                                    child: InkWell(
+                                      onTap: () =>
+                                          _showEditPriceDialog(context),
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary.withValues(
+                                            alpha: 0.1,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ),
+                                        ),
+                                        child: const Icon(
+                                          Icons.edit_rounded,
+                                          size: 18,
+                                          color: AppColors.primary,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                      _CompactRating(
-                        rating: product.productRating,
-                        reviews: product.productReviews,
-                      ),
-                    ],
-                  ),
-                  if (_lowest30d != null && product.price > _lowest30d!) ...[
+                        _CompactRating(
+                          rating: product.productRating,
+                          reviews: product.productReviews,
+                        ),
+                      ],
+                    ),
+                  if (!product.isWantedPost &&
+                      _lowest30d != null &&
+                      product.price > _lowest30d!) ...[
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        Icon(Icons.trending_down_rounded, size: 14, color: AppColors.success),
+                        Icon(
+                          Icons.trending_down_rounded,
+                          size: 14,
+                          color: AppColors.success,
+                        ),
                         const SizedBox(width: 4),
                         Text(
                           'Mínimo en 30 días: ${Product.formatPrice(_lowest30d!)}',
-                          style: AppTypography.label(12, color: AppColors.success),
+                          style: AppTypography.label(
+                            12,
+                            color: AppColors.success,
+                          ),
                         ),
                       ],
                     ),
@@ -278,10 +338,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         label: product.publishedAgo,
                         color: AppColors.muted,
                       ),
-                      // Badge de disponibilidad
-                      if (!product.isAvailable)
+                      // Badge de estado: disponibilidad para producto, abierta/resuelta para "se busca"
+                      if (product.isWantedPost)
+                        _WantedStatusBadge(resolved: !product.isAvailable)
+                      else if (!product.isAvailable)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: AppColors.danger.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(999),
@@ -289,25 +354,49 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: const [
-                              Icon(Icons.block_rounded, size: 12, color: AppColors.danger),
+                              Icon(
+                                Icons.block_rounded,
+                                size: 12,
+                                color: AppColors.danger,
+                              ),
                               SizedBox(width: 3),
-                              Text('Agotado', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: AppColors.danger)),
+                              Text(
+                                'Agotado',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.danger,
+                                ),
+                              ),
                             ],
                           ),
                         )
                       else if (product.availability != null)
                         AvailabilityBadge(availability: product.availability!),
-                      if (product.isAvailable && product.stockQuantity != null && product.stockQuantity! > 0)
+                      if (!product.isWantedPost &&
+                          product.isAvailable &&
+                          product.stockQuantity != null &&
+                          product.stockQuantity! > 0)
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
-                          child: Text('${product.stockQuantity} en stock', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                          child: Text(
+                            '${product.stockQuantity} en stock',
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.primary,
+                            ),
+                          ),
                         ),
                     ],
                   ),
                   // ─── Extras opcionales — justo debajo del precio: cambian lo que se paga ──
                   if (product.extras.isNotEmpty) ...[
                     const SizedBox(height: 22),
-                    const _SectionHeader(icon: Icons.add_box_rounded, label: 'Extras opcionales'),
+                    const _SectionHeader(
+                      icon: Icons.add_box_rounded,
+                      label: 'Extras opcionales',
+                    ),
                     const SizedBox(height: 10),
                     Container(
                       padding: const EdgeInsets.all(14),
@@ -325,7 +414,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                                   width: 32,
                                   height: 32,
                                   decoration: BoxDecoration(
-                                    color: AppColors.primary.withValues(alpha: 0.08),
+                                    color: AppColors.primary.withValues(
+                                      alpha: 0.08,
+                                    ),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: const Icon(
@@ -351,7 +442,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                                     vertical: 4,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: AppColors.primaryDark.withValues(alpha: 0.06),
+                                    color: AppColors.primaryDark.withValues(
+                                      alpha: 0.06,
+                                    ),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
@@ -378,7 +471,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   // ─── Días disponibles ────────────────────────────
                   if (product.availableDays.isNotEmpty) ...[
                     const SizedBox(height: 22),
-                    const _SectionHeader(icon: Icons.event_available_rounded, label: 'Días disponibles'),
+                    const _SectionHeader(
+                      icon: Icons.event_available_rounded,
+                      label: 'Días disponibles',
+                    ),
                     const SizedBox(height: 10),
                     Wrap(
                       spacing: 8,
@@ -393,33 +489,48 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                     ),
                   ],
                   const SizedBox(height: 24),
-                  const _SectionHeader(icon: Icons.notes_rounded, label: 'Descripción'),
+                  const _SectionHeader(
+                    icon: Icons.notes_rounded,
+                    label: 'Descripción',
+                  ),
                   const SizedBox(height: 8),
                   Text(
                     product.description,
                     style: AppTypography.body(15.5, color: AppColors.muted),
                   ),
+                  // ─── Calificaciones del producto — no aplica a "se busca" ──────
+                  if (!product.isWantedPost) ...[
+                    const SizedBox(height: 24),
+                    const _SectionHeader(
+                      icon: Icons.star_rounded,
+                      label: 'Calificación',
+                    ),
+                    const SizedBox(height: 10),
+                    _ProductRatingSection(
+                      product: product,
+                      isOwner:
+                          context.read<AuthProvider>().backendSellerId ==
+                          product.seller.id,
+                      onRated: (updatedProduct) {
+                        setState(() {
+                          _product = updatedProduct;
+                        });
+                      },
+                    ),
+                  ],
                   const SizedBox(height: 24),
-                  // ─── Calificaciones del producto ─────────────────
-                  const _SectionHeader(icon: Icons.star_rounded, label: 'Calificación'),
-                  const SizedBox(height: 10),
-                  _ProductRatingSection(
-                    product: product,
-                    isOwner: context.read<AuthProvider>().backendSellerId ==
-                        product.seller.id,
-                    onRated: (updatedProduct) {
-                      setState(() {
-                        _product = updatedProduct;
-                      });
-                    },
+                  _SectionHeader(
+                    icon: Icons.storefront_rounded,
+                    label: product.isWantedPost ? 'Publicado por' : 'Vendedor',
                   ),
-                  const SizedBox(height: 24),
-                  const _SectionHeader(icon: Icons.storefront_rounded, label: 'Vendedor'),
                   const SizedBox(height: 10),
                   _SellerCard(seller: product.seller),
                   const SizedBox(height: 24),
                   // ─── Código QR + Compartir ─────────────────────────
-                  const _SectionHeader(icon: Icons.qr_code_rounded, label: 'Compartir'),
+                  const _SectionHeader(
+                    icon: Icons.qr_code_rounded,
+                    label: 'Compartir',
+                  ),
                   const SizedBox(height: 10),
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -457,7 +568,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                                 width: double.infinity,
                                 child: OutlinedButton.icon(
                                   onPressed: () => _shareProduct(context),
-                                  icon: const Icon(Icons.share_rounded, size: 18),
+                                  icon: const Icon(
+                                    Icons.share_rounded,
+                                    size: 18,
+                                  ),
                                   label: const Text('Compartir'),
                                 ),
                               ),
@@ -516,14 +630,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                     label: const Text('Reportar publicacion'),
                   ),
                   const SizedBox(height: 16),
-                  // Selector de estado (solo visible para el dueño)
+                  // Selector de estado / resolver búsqueda (solo visible para el dueño)
                   if (context.read<AuthProvider>().backendSellerId ==
                       product.seller.id)
-                    _StatusSelector(
-                      productId: product.id,
-                      currentStatus: product.availability,
-                      onChanged: (_) => _refreshProductFromApi(),
-                    ),
+                    if (product.isWantedPost)
+                      if (product.wantedStatus != 'resuelta')
+                        _ResolveWantedButton(onResolve: _resolveWantedPost)
+                      else
+                        const SizedBox.shrink()
+                    else
+                      _StatusSelector(
+                        productId: product.id,
+                        currentStatus: product.availability,
+                        onChanged: (_) => _refreshProductFromApi(),
+                      ),
                 ],
               ),
             ),
@@ -540,13 +660,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
           ),
           child: Row(
             children: [
+              // Favoritos se guarda localmente por dispositivo (sin cuenta),
+              // así que no debe pedir login — ver FavoriteProductsService.
               IconButton.outlined(
-                onPressed: () => _requireAuth(context, () async {
-                  final nowFav =
-                      await FavoriteProductsService.toggleFavorite(widget.product.id);
+                onPressed: () async {
+                  final nowFav = await FavoriteProductsService.toggleFavorite(
+                    widget.product.id,
+                  );
                   if (!mounted) return;
                   setState(() => _favorite = nowFav);
-                }),
+                },
                 icon: Icon(
                   _favorite
                       ? Icons.favorite_rounded
@@ -554,22 +677,51 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 ),
                 color: _favorite ? AppColors.danger : AppColors.primary,
               ),
+              if (_hasWhatsappContact) ...[
+                const SizedBox(width: 10),
+                IconButton.outlined(
+                  onPressed: () => _openWhatsapp(context),
+                  icon: const Icon(Icons.chat_bubble_outline_rounded),
+                  color: AppColors.teal,
+                  tooltip: 'Contactar por WhatsApp',
+                ),
+              ],
               const SizedBox(width: 10),
               Expanded(
-                child: context.read<AuthProvider>().backendSellerId ==
+                child:
+                    context.read<AuthProvider>().backendSellerId ==
                         product.seller.id
                     // Es tu propio producto: no tiene sentido chatear contigo
                     // mismo, así que el CTA principal pasa a ser compartirlo.
                     ? ElevatedButton.icon(
                         onPressed: () => _shareProduct(context),
                         icon: const Icon(Icons.ios_share_rounded),
-                        label: const Text('Compartir producto'),
+                        label: Text(
+                          product.isWantedPost
+                              ? 'Compartir búsqueda'
+                              : 'Compartir producto',
+                        ),
+                      )
+                    : product.isWantedPost
+                    ? ElevatedButton.icon(
+                        onPressed: product.isAvailable
+                            ? () => _respondWantedPost(context)
+                            : null,
+                        icon: const Icon(Icons.chat_rounded),
+                        label: Text(
+                          product.isAvailable
+                              ? 'Responder'
+                              : 'Búsqueda resuelta',
+                        ),
                       )
                     : ElevatedButton.icon(
-                        onPressed:
-                            product.isAvailable ? () => _openChat(context) : null,
+                        onPressed: product.isAvailable
+                            ? () => _openChat(context)
+                            : null,
                         icon: const Icon(Icons.chat_rounded),
-                        label: Text(product.isAvailable ? 'Chat' : 'Agotado por hoy'),
+                        label: Text(
+                          product.isAvailable ? 'Chat' : 'Agotado por hoy',
+                        ),
                       ),
               ),
             ],
@@ -579,18 +731,48 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     );
   }
 
-  /// Datos para el código QR del producto.
+  /// Datos para el código QR de la publicación.
   String get _qrData {
-    return 'mercaditoum://product/${product.id}';
+    final scheme = product.isWantedPost ? 'wanted' : 'product';
+    return 'mercaditoum://$scheme/${product.id}';
   }
 
-  /// Comparte el producto usando share_plus.
+  /// Comparte la publicación usando share_plus.
   void _shareProduct(BuildContext context) {
     final title = product.title;
-    final price = Product.formatPrice(product.price);
     final seller = product.seller.name;
-    final text = 'Mira este producto en Mercadito UM:\n\n$title - $price\nVendedor: $seller';
+    final text = product.isWantedPost
+        ? 'Mira esta búsqueda en Mercadito UM:\n\n$title\nPublicado por: $seller'
+        : 'Mira este producto en Mercadito UM:\n\n$title - ${Product.formatPrice(product.price)}\nVendedor: $seller';
     Share.share(text);
+  }
+
+  /// Contactar por WhatsApp no requiere sesión — solo necesita que el
+  /// vendedor tenga un teléfono registrado.
+  bool get _hasWhatsappContact =>
+      (product.seller.phone ?? '').trim().isNotEmpty;
+
+  /// Abre WhatsApp con el número del vendedor y un mensaje prellenado.
+  /// No requiere sesión: es el punto de contacto principal para quien
+  /// navega la app sin cuenta.
+  Future<void> _openWhatsapp(BuildContext context) async {
+    final rawDigits = product.seller.phone!.replaceAll(RegExp(r'[^0-9]'), '');
+    if (rawDigits.isEmpty) return;
+    // Heurística: números mexicanos suelen guardarse a 10 dígitos sin
+    // código de país; WhatsApp lo requiere para el deep link `wa.me`.
+    final phone = rawDigits.length == 10 ? '52$rawDigits' : rawDigits;
+    final message = product.isWantedPost
+        ? 'Hola ${product.seller.name}, vi en Mercadito UM que buscas "${product.title}" y quiero platicarte.'
+        : 'Hola ${product.seller.name}, vi tu publicación "${product.title}" en Mercadito UM y me interesa.';
+    final uri = Uri.parse(
+      'https://wa.me/$phone?text=${Uri.encodeComponent(message)}',
+    );
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo abrir WhatsApp')),
+      );
+    }
   }
 
   Future<void> _openChat(BuildContext context) async {
@@ -598,7 +780,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     final auth = context.read<AuthProvider>();
     if (auth.isLoggedIn && auth.backendSellerId == product.seller.id) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No puedes enviarte un mensaje a ti mismo')),
+        const SnackBar(
+          content: Text('No puedes enviarte un mensaje a ti mismo'),
+        ),
       );
       return;
     }
@@ -614,6 +798,111 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
         ),
       ),
     );
+  }
+
+  /// Responde a una publicación "se busca": crea/reusa la conversación en el
+  /// backend (a diferencia del chat de producto, acá no se puede navegar con
+  /// un conversationId vacío porque el endpoint exige crearla primero) y
+  /// navega al chat ya con su id.
+  Future<void> _respondWantedPost(BuildContext context) async {
+    final auth = context.read<AuthProvider>();
+    final userId = await AnonymousId.resolve(
+      isLoggedIn: auth.isLoggedIn,
+      backendSellerId: auth.backendSellerId,
+    );
+    try {
+      final conversationId = await ApiService.respondToWantedPost(
+        product.id,
+        userId: userId,
+      );
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ChatScreen(conversationId: conversationId),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            friendlyErrorMessage(
+              e,
+              fallback: 'No se pudo abrir el chat. Intenta de nuevo.',
+            ),
+          ),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    }
+  }
+
+  /// Marca la búsqueda como resuelta (solo el dueño).
+  Future<void> _resolveWantedPost() async {
+    final auth = context.read<AuthProvider>();
+    final userId = await AnonymousId.resolve(
+      isLoggedIn: auth.isLoggedIn,
+      backendSellerId: auth.backendSellerId,
+    );
+    try {
+      await ApiService.resolveWantedPost(product.id, userId: userId);
+      if (!mounted) return;
+      await _refreshProductFromApi();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Marcada como resuelta')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            friendlyErrorMessage(
+              e,
+              fallback: 'No se pudo marcar como resuelta. Intenta de nuevo.',
+            ),
+          ),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    }
+  }
+
+  Future<void> _editProduct(BuildContext context) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => PublishProductScreen(editingProduct: product),
+      ),
+    );
+    if (saved == true) {
+      await _refreshProductFromApi();
+    }
+  }
+
+  /// [product] es un [Product] adaptado desde [WantedPost] (ver
+  /// [Product.fromWantedPost]), así que para editar hay que reconstruir el
+  /// [WantedPost] original con los campos que [WantedPostScreen] precarga.
+  Future<void> _editWantedPost(BuildContext context) async {
+    final editingPost = WantedPost(
+      id: product.id,
+      userId: product.seller.id,
+      title: product.title,
+      description: product.description.isEmpty ? null : product.description,
+      categoryId: product.category.id,
+      type: product.wantedKind ?? 'producto',
+      priceMin: product.priceMin,
+      priceMax: product.priceMax,
+      status: product.wantedStatus ?? 'abierta',
+      createdAt: '',
+    );
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => WantedPostScreen(editingPost: editingPost),
+      ),
+    );
+    if (saved == true) {
+      await _refreshProductFromApi();
+    }
   }
 
   Future<void> _confirmDelete(BuildContext context) async {
@@ -641,9 +930,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     try {
       await ApiService.deleteProduct(product.id);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Producto eliminado')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Producto eliminado')));
       // Volver al inicio
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const HomeScreen()),
@@ -653,7 +942,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(friendlyErrorMessage(e, fallback: 'No se pudo eliminar el producto. Intenta de nuevo.')),
+          content: Text(
+            friendlyErrorMessage(
+              e,
+              fallback: 'No se pudo eliminar el producto. Intenta de nuevo.',
+            ),
+          ),
           backgroundColor: AppColors.danger,
         ),
       );
@@ -671,8 +965,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
             label: 'Iniciar sesión',
             onPressed: () {
               Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                    builder: (_) => const LoginScreen()),
+                MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
               );
             },
           ),
@@ -686,7 +979,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   /// Muestra un diálogo para editar el precio del producto.
   Future<void> _showEditPriceDialog(BuildContext context) async {
     final priceController = TextEditingController(
-      text: product.price.toStringAsFixed(product.price == product.price.floor() ? 0 : 2),
+      text: product.price.toStringAsFixed(
+        product.price == product.price.floor() ? 0 : 2,
+      ),
     );
 
     final result = await showDialog<double>(
@@ -700,7 +995,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
             const SizedBox(height: 16),
             TextField(
               controller: priceController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               autofocus: true,
               decoration: const InputDecoration(
                 prefixText: '\$ ',
@@ -750,7 +1047,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(friendlyErrorMessage(e, fallback: 'No se pudo actualizar el precio. Intenta de nuevo.')),
+          content: Text(
+            friendlyErrorMessage(
+              e,
+              fallback: 'No se pudo actualizar el precio. Intenta de nuevo.',
+            ),
+          ),
           backgroundColor: AppColors.danger,
         ),
       );
@@ -820,7 +1122,9 @@ class _DayChip extends StatelessWidget {
       height: 40,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: selected ? AppColors.primary.withValues(alpha: 0.10) : AppColors.surface,
+        color: selected
+            ? AppColors.primary.withValues(alpha: 0.10)
+            : AppColors.surface,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: selected ? AppColors.primary : AppColors.border,
@@ -895,6 +1199,110 @@ class _InfoPill extends StatelessWidget {
   }
 }
 
+/// Reemplaza el precio fijo para publicaciones "se busca": muestra el
+/// presupuesto (priceMin/priceMax) si el publicante lo dio, o nada si no.
+class _BudgetTag extends StatelessWidget {
+  const _BudgetTag({required this.product});
+
+  final Product product;
+
+  @override
+  Widget build(BuildContext context) {
+    final min = product.priceMin;
+    final max = product.priceMax;
+    if (min == null && max == null) return const SizedBox.shrink();
+    final String label;
+    if (min != null && max != null) {
+      label =
+          'Presupuesto: ${Product.formatPrice(min)} - ${Product.formatPrice(max)}';
+    } else if (max != null) {
+      label = 'Presupuesto: hasta ${Product.formatPrice(max)}';
+    } else {
+      label = 'Presupuesto: desde ${Product.formatPrice(min!)}';
+    }
+    return Text(
+      label,
+      style: AppTypography.heading(18, color: AppColors.primaryDark),
+    );
+  }
+}
+
+/// Badge de estado para "se busca": abierta o resuelta.
+class _WantedStatusBadge extends StatelessWidget {
+  const _WantedStatusBadge({required this.resolved});
+
+  final bool resolved;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = resolved ? AppColors.muted : AppColors.success;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            resolved ? Icons.check_circle_rounded : Icons.search_rounded,
+            size: 12,
+            color: color,
+          ),
+          const SizedBox(width: 3),
+          Text(
+            resolved ? 'Resuelta' : 'Abierta',
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Botón para que el dueño de una "se busca" la marque como resuelta.
+class _ResolveWantedButton extends StatefulWidget {
+  const _ResolveWantedButton({required this.onResolve});
+
+  final Future<void> Function() onResolve;
+
+  @override
+  State<_ResolveWantedButton> createState() => _ResolveWantedButtonState();
+}
+
+class _ResolveWantedButtonState extends State<_ResolveWantedButton> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _busy
+            ? null
+            : () async {
+                setState(() => _busy = true);
+                await widget.onResolve();
+                if (mounted) setState(() => _busy = false);
+              },
+        icon: _busy
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.check_circle_outline_rounded),
+        label: const Text('Marcar como resuelta'),
+      ),
+    );
+  }
+}
+
 class _SellerCard extends StatelessWidget {
   const _SellerCard({required this.seller});
 
@@ -902,86 +1310,96 @@ class _SellerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 28,
-            backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-            child: Text(
-              seller.avatarInitials,
-              style: const TextStyle(
-                color: AppColors.primaryDark,
-                fontWeight: FontWeight.w700,
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: seller.id.isEmpty
+          ? null
+          : () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => SellerProfileScreen(sellerId: seller.id),
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        seller.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ),
-                    if (seller.verified)
-                      const Padding(
-                        padding: EdgeInsets.only(left: 6),
-                        child: Icon(
-                          Icons.verified_rounded,
-                          color: AppColors.teal,
-                          size: 18,
-                        ),
-                      ),
-                  ],
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 28,
+              backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+              child: Text(
+                seller.avatarInitials,
+                style: const TextStyle(
+                  color: AppColors.primaryDark,
+                  fontWeight: FontWeight.w700,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  seller.major,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.muted,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 7),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.star_rounded,
-                      color: AppColors.gold,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 3),
-                    Text(
-                      seller.reviews > 0
-                          ? '${seller.rating.toStringAsFixed(1)} (${seller.reviews} reseña${seller.reviews == 1 ? '' : 's'})'
-                          : 'Sin calificaciones',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          seller.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                      if (seller.verified)
+                        const Padding(
+                          padding: EdgeInsets.only(left: 6),
+                          child: Icon(
+                            Icons.verified_rounded,
+                            color: AppColors.teal,
+                            size: 18,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    seller.major,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.star_rounded,
+                        color: AppColors.gold,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        seller.reviews > 0
+                            ? '${seller.rating.toStringAsFixed(1)} (${seller.reviews} reseña${seller.reviews == 1 ? '' : 's'})'
+                            : 'Sin calificaciones',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1015,12 +1433,20 @@ class _CompactRating extends StatelessWidget {
             const SizedBox(width: 3),
             Text(
               rating.toStringAsFixed(1),
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.ink),
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                color: AppColors.ink,
+              ),
             ),
             const SizedBox(width: 3),
             Text(
               '($reviews)',
-              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12, color: AppColors.muted),
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 12,
+                color: AppColors.muted,
+              ),
             ),
           ],
         ],
@@ -1078,14 +1504,12 @@ class _StatusSelector extends StatelessWidget {
               onSelected: (isSelected) async {
                 if (!isSelected || selected) return;
                 try {
-                  await ApiService.updateProductStatus(
-                      productId, status.name);
+                  await ApiService.updateProductStatus(productId, status.name);
                   if (context.mounted) onChanged(status);
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content:
-                            Text('Estado cambiado a "${status.label}"'),
+                        content: Text('Estado cambiado a "${status.label}"'),
                       ),
                     );
                   }
@@ -1093,7 +1517,13 @@ class _StatusSelector extends StatelessWidget {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text(friendlyErrorMessage(e, fallback: 'No se pudo cambiar el estado. Intenta de nuevo.')),
+                        content: Text(
+                          friendlyErrorMessage(
+                            e,
+                            fallback:
+                                'No se pudo cambiar el estado. Intenta de nuevo.',
+                          ),
+                        ),
                         backgroundColor: AppColors.danger,
                       ),
                     );
@@ -1180,10 +1610,7 @@ class _ProductRatingSection extends StatelessWidget {
           )
         else
           // Interactivo: permite al usuario calificar
-          _InteractiveStarRating(
-            product: product,
-            onRated: onRated,
-          ),
+          _InteractiveStarRating(product: product, onRated: onRated),
       ],
     );
   }
@@ -1221,10 +1648,7 @@ class _StarDisplay extends StatelessWidget {
 /// Estrellas tocables para que el usuario califique el producto.
 /// Si ya calificó antes, se pre-selecciona su calificación.
 class _InteractiveStarRating extends StatefulWidget {
-  const _InteractiveStarRating({
-    required this.product,
-    required this.onRated,
-  });
+  const _InteractiveStarRating({required this.product, required this.onRated});
 
   final Product product;
   final ValueChanged<Product> onRated;
@@ -1266,7 +1690,8 @@ class _InteractiveStarRatingState extends State<_InteractiveStarRating> {
       }
 
       final updated = await ApiService.rateProduct(
-        widget.product.id, stars,
+        widget.product.id,
+        stars,
         userId: userId,
       );
       if (!mounted) return;
@@ -1280,7 +1705,12 @@ class _InteractiveStarRatingState extends State<_InteractiveStarRating> {
       setState(() => _sending = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(friendlyErrorMessage(e, fallback: 'No se pudo enviar tu calificación. Intenta de nuevo.')),
+          content: Text(
+            friendlyErrorMessage(
+              e,
+              fallback: 'No se pudo enviar tu calificación. Intenta de nuevo.',
+            ),
+          ),
           backgroundColor: AppColors.danger,
         ),
       );
@@ -1353,7 +1783,6 @@ class _InteractiveStarRatingState extends State<_InteractiveStarRating> {
   }
 }
 
-
 /// Transición premium para abrir pantalla de detalle: slide-up + fade con spring easing.
 Route<T> springDetailRoute<T>(Widget page) {
   return PageRouteBuilder<T>(
@@ -1361,10 +1790,10 @@ Route<T> springDetailRoute<T>(Widget page) {
     transitionDuration: AppAnimations.slow,
     reverseTransitionDuration: AppAnimations.medium,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
-      final slide = Tween<Offset>(
-        begin: const Offset(0, 0.06),
-        end: Offset.zero,
-      ).animate(CurvedAnimation(parent: animation, curve: AppAnimations.spring));
+      final slide =
+          Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero).animate(
+            CurvedAnimation(parent: animation, curve: AppAnimations.spring),
+          );
 
       final fade = Tween<double>(begin: 0.0, end: 1.0).animate(
         CurvedAnimation(

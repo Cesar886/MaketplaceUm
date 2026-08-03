@@ -90,7 +90,7 @@ class WantedPostCard extends StatelessWidget {
                     ],
                     Expanded(
                       child: Text(
-                        _relativeTime(post.createdAt),
+                        relativeTimeFromIso(post.createdAt),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: AppTypography.body(11, color: AppColors.muted),
@@ -107,17 +107,6 @@ class WantedPostCard extends StatelessWidget {
 
     if (width == null) return card;
     return SizedBox(width: width, child: card);
-  }
-
-  static String _relativeTime(String iso) {
-    final parsed = DateTime.tryParse(iso);
-    if (parsed == null) return '';
-    final diff = DateTime.now().difference(parsed);
-    if (diff.inMinutes < 1) return 'Ahora';
-    if (diff.inHours < 1) return 'Hace ${diff.inMinutes} min';
-    if (diff.inDays < 1) return 'Hace ${diff.inHours} h';
-    if (diff.inDays < 7) return 'Hace ${diff.inDays} d';
-    return 'Hace ${(diff.inDays / 7).floor()} sem';
   }
 }
 

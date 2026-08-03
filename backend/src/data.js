@@ -31,8 +31,8 @@ let ownListings = db.getAllListings().map(row => ({
 function registerSeller(sellerData) {
   // Insertar en SQLite
   db.getDb().prepare(`
-    INSERT OR IGNORE INTO sellers (id, name, email, phone, avatarInitials, major, isBusiness, logoUrl, rating, reviews, verified)
-    VALUES (@id, @name, @email, @phone, @avatarInitials, @major, @isBusiness, @logoUrl, @rating, @reviews, @verified)
+    INSERT OR IGNORE INTO sellers (id, name, email, phone, avatarInitials, major, isBusiness, logoUrl, rating, reviews, verified, password_hash)
+    VALUES (@id, @name, @email, @phone, @avatarInitials, @major, @isBusiness, @logoUrl, @rating, @reviews, @verified, @password_hash)
   `).run({
     ...sellerData,
     email: sellerData.email || null,
@@ -42,6 +42,7 @@ function registerSeller(sellerData) {
     rating: sellerData.rating ?? 0,
     reviews: sellerData.reviews ?? 0,
     logoUrl: sellerData.logoUrl || null,
+    password_hash: sellerData.password_hash || null,
   });
   // Refrescar la lista en memoria desde DB
   sellers.length = 0;

@@ -44,4 +44,27 @@ function requireAuth(req, res, next) {
   }
 }
 
-module.exports = { generateToken, requireAuth, JWT_SECRET };
+/**
+ * Middleware de autenticación opcional.
+ * Si viene un Bearer token válido, deja el payload en req.user.
+ * Si no viene token o es inválido, continúa sin bloquear (req.user queda undefined).
+ * Útil para endpoints públicos que exponen más datos cuando el solicitante
+ * resulta ser el dueño del recurso.
+ */
+function optionalAuth(req, _res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return next();
+
+  const parts = authHeader.split(' ');
+  if (parts.length !== 2 || parts[0] !== 'Bearer') return next();
+
+  try {
+    const decoded = jwt.verify(parts[1], JWT_SECRET);
+    req.user = { id: decoded.sub };
+  } catch (err) {
+    // Token ausente/expirado/inválido: se ignora, el request sigue como anónimo.
+  }
+  next();
+}
+
+module.exports = { generateToken, requireAuth, optionalAuth, JWT_SECRET };

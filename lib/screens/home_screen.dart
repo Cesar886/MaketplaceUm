@@ -16,7 +16,6 @@ import 'main_shell.dart';
 import 'product_detail_screen.dart';
 import 'qr_scanner_screen.dart';
 import 'search_screen.dart';
-import 'wanted_post_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -406,13 +405,12 @@ class _HomeScreenState extends State<HomeScreen> with AutoRefreshMixin, TickerPr
     return null;
   }
 
+  // Misma pantalla y misma transición que un producto: WantedPost se adapta
+  // a la forma de Product para que ambos tipos de publicación se sientan
+  // como "la misma publicación" al usuario.
   Future<void> _openWantedPost(BuildContext context, WantedPost post) {
     return Navigator.of(context)
-        .push(
-          MaterialPageRoute<void>(
-            builder: (_) => WantedPostDetailScreen(postId: post.id),
-          ),
-        )
+        .push(springDetailRoute(ProductDetailScreen(product: Product.fromWantedPost(post))))
         .then((_) => _loadData(silent: true));
   }
 

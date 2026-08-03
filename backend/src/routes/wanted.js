@@ -1,9 +1,37 @@
 const db = require('../database');
+const { sellers, categories } = require('../data');
 const { sendPush } = require('../push');
 const { requireAuth } = require('../auth');
 
 const VALID_TYPES = ['producto', 'servicio'];
 const DAILY_LIMIT = 3;
+
+/**
+ * Junta sellerObj/categoryObj a una publicación "se busca", con el mismo
+ * patrón que attachRelations en products.js, para que el detalle de
+ * "se busca" traiga los mismos datos del publicante/categoría que ya trae
+ * el detalle de producto (nombre, avatar, rating, ícono/color de categoría)
+ * en vez de solo un userId/categoryId crudo.
+ */
+function attachWantedRelations(post) {
+  if (!post) return post;
+  return {
+    ...post,
+    postType: 'se_busca',
+    sellerObj: sellers.find(s => s.id === post.userId) || {
+      id: post.userId,
+      name: post.userId,
+      avatarInitials: post.userId.slice(0, 2).toUpperCase(),
+      major: '',
+      isBusiness: false,
+      logoUrl: null,
+      rating: 0,
+      reviews: 0,
+      verified: false,
+    },
+    categoryObj: categories.find(c => c.id === post.categoryId) || null,
+  };
+}
 
 /**
  * Valida los campos de contenido de una publicación "se busca". Se usa
@@ -32,10 +60,12 @@ function validateWantedFields({ title, categoryId, type, priceMin, priceMax }) {
 
 function register(app) {
   // POST /api/wanted - crear una publicación "Se busca"
-  app.post('/api/wanted', (req, res) => {
-    const { userId, description } = req.body;
-
-    if (!userId) return res.status(400).json({ error: 'userId es requerido' });
+  // Requiere autenticación: el autor se obtiene del JWT, no del body, para
+  // que publicar "se busca" exija cuenta igual que publicar un producto
+  // (POST /api/products) y nadie pueda spoofear la autoría con otro userId.
+  app.post('/api/wanted', requireAuth, (req, res) => {
+    const { description } = req.body;
+    const userId = req.user.id;
 
     const validated = validateWantedFields(req.body);
     if (validated.error) return res.status(400).json({ error: validated.error });
@@ -81,21 +111,21 @@ function register(app) {
       );
     }
 
-    res.status(201).json(post);
+    res.status(201).json(attachWantedRelations(post));
   });
 
   // GET /api/wanted - feed de publicaciones
   app.get('/api/wanted', (req, res) => {
     const { category, status, type } = req.query;
     const posts = db.listWantedPosts({ categoryId: category, status, type });
-    res.json(posts);
+    res.json(posts.map(attachWantedRelations));
   });
 
   // GET /api/wanted/:id - detalle
   app.get('/api/wanted/:id', (req, res) => {
     const post = db.getWantedPostById(req.params.id);
     if (!post) return res.status(404).json({ error: 'Publicación no encontrada' });
-    res.json(post);
+    res.json(attachWantedRelations(post));
   });
 
   // PUT /api/wanted/:id - editar una publicación "se busca" (solo el dueño)
@@ -123,7 +153,7 @@ function register(app) {
       priceMin: validated.priceMin,
       priceMax: validated.priceMax,
     });
-    res.json(updated);
+    res.json(attachWantedRelations(updated));
   });
 
   // PATCH /api/wanted/:id/resolve - marcar como resuelta (solo el dueño)
@@ -137,7 +167,7 @@ function register(app) {
     if (post.status === 'resuelta') {
       return res.status(400).json({ error: 'Esta búsqueda ya fue resuelta' });
     }
-    res.json(db.resolveWantedPost(req.params.id, resolvedWithUserId));
+    res.json(attachWantedRelations(db.resolveWantedPost(req.params.id, resolvedWithUserId)));
   });
 
   // POST /api/wanted/:id/respond - abrir/reusar chat con el publicador
