@@ -116,7 +116,7 @@ function attachRelations(productsList, userId) {
         p.seller ? {
           id: p.seller,
           name: p.seller,
-          avatarInitials: p.seller.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
+          avatarInitials: p.seller.slice(0, 2).toUpperCase(),
           major: '',
           isBusiness: false,
           logoUrl: null,

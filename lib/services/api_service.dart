@@ -91,6 +91,7 @@ class ApiService {
     required String password,
     String? phone,
     String? deviceId,
+    Map<int, BusinessHoursRange>? businessHours,
   }) async {
     final res = await _client.post(
       _uri('/auth/register'),
@@ -102,6 +103,8 @@ class ApiService {
         'password': password,
         if (phone != null) 'phone': phone,
         if (deviceId != null) 'deviceId': deviceId,
+        if (businessHours != null)
+          'businessHours': businessHoursToJson(businessHours),
       }),
     );
     if (res.statusCode != 200 && res.statusCode != 201) {
@@ -599,6 +602,7 @@ class ApiService {
     String? phone,
     String? businessDescription,
     String? businessCategory,
+    Map<int, BusinessHoursRange>? businessHours,
   }) async {
     final body = <String, dynamic>{};
     if (name != null) body['name'] = name;
@@ -606,6 +610,9 @@ class ApiService {
     if (businessDescription != null)
       body['businessDescription'] = businessDescription;
     if (businessCategory != null) body['businessCategory'] = businessCategory;
+    if (businessHours != null) {
+      body['businessHours'] = businessHoursToJson(businessHours);
+    }
     final res = await _client.patch(
       _uri('/sellers/$sellerId'),
       headers: _authHeaders,

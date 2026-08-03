@@ -10,6 +10,7 @@ const {
   validatePhone,
   validateBusinessDescription,
   validateBusinessCategory,
+  validateBusinessHours,
 } = require('../validation/sellerProfile');
 
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
@@ -56,7 +57,7 @@ function register(app) {
     const seller = sellers.find(s => s.id === req.params.id);
     if (!seller) return res.status(404).json({ error: 'Vendedor no encontrado' });
 
-    const { name, phone, businessDescription, businessCategory } = req.body;
+    const { name, phone, businessDescription, businessCategory, businessHours } = req.body;
 
     // ─── Validar todo antes de escribir nada (evita estado a medias) ──
     if (name !== undefined) {
@@ -66,12 +67,18 @@ function register(app) {
     const phoneError = validatePhone(phone);
     if (phoneError) return res.status(400).json({ error: phoneError });
 
+    let normalizedHours;
     if (seller.isBusiness) {
       const descriptionError = validateBusinessDescription(businessDescription);
       if (descriptionError) return res.status(400).json({ error: descriptionError });
       const categoryIds = categories.map(c => c.id);
       const categoryError = validateBusinessCategory(businessCategory, categoryIds);
       if (categoryError) return res.status(400).json({ error: categoryError });
+      if (businessHours !== undefined) {
+        const hoursResult = validateBusinessHours(businessHours);
+        if (hoursResult.error) return res.status(400).json({ error: hoursResult.error });
+        normalizedHours = hoursResult.value;
+      }
     }
 
     // ─── Aplicar cambios ────────────────────────────────────────────
@@ -90,6 +97,9 @@ function register(app) {
       }
       if (businessCategory !== undefined) {
         updateSellerField(seller.id, 'businessCategory', businessCategory);
+      }
+      if (normalizedHours !== undefined) {
+        updateSellerField(seller.id, 'businessHours', JSON.stringify(normalizedHours));
       }
     }
 

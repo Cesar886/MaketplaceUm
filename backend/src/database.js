@@ -34,7 +34,8 @@ function initDatabase() {
       reviews INTEGER DEFAULT 0,
       verified INTEGER DEFAULT 0,
       businessDescription TEXT,
-      businessCategory TEXT
+      businessCategory TEXT,
+      businessHours TEXT
     );
 
     CREATE TABLE IF NOT EXISTS products (
@@ -472,6 +473,15 @@ function runMigrations() {
     db.exec(`ALTER TABLE messages ADD COLUMN image_url TEXT DEFAULT NULL`);
   }
 
+  // 19. Migrar sellers: agregar businessHours (horario de operación por día).
+  //     JSON string keyed por día ('0'=Lunes .. '6'=Domingo), cada valor
+  //     { open: 'HH:mm', close: 'HH:mm' }. Un día ausente = cerrado ese día.
+  const sellerColsHours = db.prepare("PRAGMA table_info('sellers')").all();
+  const hasBusinessHours = sellerColsHours.some(c => c.name === 'businessHours');
+  if (!hasBusinessHours) {
+    db.exec(`ALTER TABLE sellers ADD COLUMN businessHours TEXT`);
+  }
+
   console.log('🔄 Migración de schema completada');
 }
 
@@ -591,6 +601,7 @@ function rowToSeller(row) {
     verified: !!row.verified,
     businessDescription: row.businessDescription || null,
     businessCategory: row.businessCategory || null,
+    businessHours: JSON.parse(row.businessHours || '{}'),
   };
 }
 

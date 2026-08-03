@@ -107,6 +107,45 @@ class MarketplaceCategory {
   final Color color;
 }
 
+/// Horario de apertura/cierre de un negocio para un día específico.
+class BusinessHoursRange {
+  const BusinessHoursRange({required this.open, required this.close});
+
+  factory BusinessHoursRange.fromJson(Map<String, dynamic> json) {
+    return BusinessHoursRange(
+      open: json['open'] as String,
+      close: json['close'] as String,
+    );
+  }
+
+  /// Hora de apertura en formato 'HH:mm'.
+  final String open;
+
+  /// Hora de cierre en formato 'HH:mm'.
+  final String close;
+
+  Map<String, String> toJson() => {'open': open, 'close': close};
+}
+
+/// Parsea el objeto de horarios del negocio: keyed por día
+/// ('0'=Lunes .. '6'=Domingo), un día ausente significa "cerrado" ese día.
+Map<int, BusinessHoursRange> businessHoursFromJson(dynamic json) {
+  if (json is! Map) return {};
+  final result = <int, BusinessHoursRange>{};
+  for (final entry in json.entries) {
+    final day = int.tryParse(entry.key.toString());
+    if (day == null || entry.value is! Map) continue;
+    result[day] = BusinessHoursRange.fromJson(
+      Map<String, dynamic>.from(entry.value as Map),
+    );
+  }
+  return result;
+}
+
+Map<String, dynamic> businessHoursToJson(Map<int, BusinessHoursRange> hours) {
+  return hours.map((day, range) => MapEntry(day.toString(), range.toJson()));
+}
+
 class Seller {
   const Seller({
     this.id = '',
@@ -121,6 +160,7 @@ class Seller {
     required this.verified,
     this.businessDescription,
     this.businessCategory,
+    this.businessHours = const {},
   });
 
   factory Seller.fromJson(Map<String, dynamic> json) {
@@ -137,6 +177,7 @@ class Seller {
       verified: json['verified'] as bool? ?? false,
       businessDescription: json['businessDescription'] as String?,
       businessCategory: json['businessCategory'] as String?,
+      businessHours: businessHoursFromJson(json['businessHours']),
     );
   }
 
@@ -152,6 +193,25 @@ class Seller {
   final bool verified;
   final String? businessDescription;
   final String? businessCategory;
+  final Map<int, BusinessHoursRange> businessHours;
+
+  /// null = no aplica (no es negocio o no configuró horario, así que no hay
+  /// nada que decidir); true/false = abierto/cerrado en este momento según
+  /// [businessHours] y la hora local del dispositivo.
+  bool? get isOpenNow {
+    if (!isBusiness || businessHours.isEmpty) return null;
+    final now = DateTime.now();
+    final day = now.weekday - 1; // DateTime: 1=Lunes..7=Domingo → 0=Lunes..6=Domingo
+    final range = businessHours[day];
+    if (range == null) return false;
+    final openParts = range.open.split(':');
+    final closeParts = range.close.split(':');
+    final openMinutes = int.parse(openParts[0]) * 60 + int.parse(openParts[1]);
+    final closeMinutes =
+        int.parse(closeParts[0]) * 60 + int.parse(closeParts[1]);
+    final nowMinutes = now.hour * 60 + now.minute;
+    return nowMinutes >= openMinutes && nowMinutes < closeMinutes;
+  }
 }
 
 enum ListingStatus { active, featured, expired }

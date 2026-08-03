@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models.dart';
 import '../services/anonymous_id.dart';
 import '../services/api_service.dart';
 import '../services/db_helper.dart';
@@ -155,6 +156,7 @@ class AuthProvider extends ChangeNotifier {
     String? responsibleName,
     String? businessDescription,
     String? logoPath,
+    Map<int, BusinessHoursRange>? businessHours,
   }) async {
     _loading = true;
     notifyListeners();
@@ -179,8 +181,28 @@ class AuthProvider extends ChangeNotifier {
         password: password,
         phone: phone,
         deviceId: deviceId,
+        businessHours: businessHours,
       );
       await _applyBackendAuthResult(result);
+
+      // Sincronizar descripción/rubro del negocio con el backend: son los
+      // mismos campos que EditProfileScreen lee de ahí (GET /api/sellers/:id).
+      // Sin este paso quedaban solo en la caché local (_db.createBusinessProfile
+      // abajo) y "Editar perfil" los mostraba vacíos aunque el usuario ya los
+      // hubiera capturado aquí durante el registro.
+      if (userType == AccountType.negocio &&
+          (businessDescription != null || businessType != null)) {
+        try {
+          await ApiService.updateSellerProfile(
+            sellerId: _backendSellerId!,
+            businessDescription: businessDescription,
+            businessCategory: businessType,
+          );
+        } catch (_) {
+          // No bloquea el registro: el usuario podrá completarlos después
+          // desde "Editar perfil".
+        }
+      }
 
       // Espejo local (caché offline + accountType/verificationStatus)
       await _mirrorLocalUser(
@@ -402,6 +424,7 @@ class AuthProvider extends ChangeNotifier {
     String? logoPath,
     String? businessDescription,
     String? businessCategory,
+    Map<int, BusinessHoursRange>? businessHours,
   }) async {
     if (logoPath != null && _backendSellerId != null) {
       await ApiService.uploadBusinessLogo(
@@ -413,7 +436,8 @@ class AuthProvider extends ChangeNotifier {
         name != null ||
         phone != null ||
         businessDescription != null ||
-        businessCategory != null;
+        businessCategory != null ||
+        businessHours != null;
     if (hasProfileFields && _backendSellerId != null) {
       await ApiService.updateSellerProfile(
         sellerId: _backendSellerId!,
@@ -421,6 +445,7 @@ class AuthProvider extends ChangeNotifier {
         phone: phone,
         businessDescription: businessDescription,
         businessCategory: businessCategory,
+        businessHours: businessHours,
       );
     }
     if (name != null || phone != null) {

@@ -6,7 +6,7 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const { generateToken, requireAuth } = require('./auth');
 const { sellers, saveData, registerSeller, updateSellerField } = require('./data');
-const { validateName, validateEmail, validatePassword, validatePhone } = require('./validation/sellerProfile');
+const { validateName, validateEmail, validatePassword, validatePhone, validateBusinessHours } = require('./validation/sellerProfile');
 
 const routes = [
   require('./routes/categories'),
@@ -174,7 +174,7 @@ app.post('/api/auth/login', (req, res) => {
 // Register: crea un perfil de vendedor en el backend (con password real)
 // y devuelve un JWT.
 app.post('/api/auth/register', (req, res) => {
-  const { name, email, phone, userType, password, deviceId } = req.body;
+  const { name, email, phone, userType, password, deviceId, businessHours } = req.body;
 
   if (!email) {
     return res.status(400).json({ error: 'email es requerido' });
@@ -187,6 +187,13 @@ app.post('/api/auth/register', (req, res) => {
   if (phoneError) return res.status(400).json({ error: phoneError });
   const passwordError = validatePassword(password);
   if (passwordError) return res.status(400).json({ error: passwordError });
+
+  let normalizedHours = {};
+  if (userType === 'negocio' && businessHours !== undefined) {
+    const hoursResult = validateBusinessHours(businessHours);
+    if (hoursResult.error) return res.status(400).json({ error: hoursResult.error });
+    normalizedHours = hoursResult.value;
+  }
 
   // Verificar si ya existe un vendedor con este email. Se compara el correo
   // real (case-insensitive), no un slug derivado de la parte local: dos
@@ -254,6 +261,7 @@ app.post('/api/auth/register', (req, res) => {
     avatarInitials: computeInitials(name),
     major,
     isBusiness: userType === 'negocio',
+    businessHours: normalizedHours,
     rating: 0,
     reviews: 0,
     verified: false,

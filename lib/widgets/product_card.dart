@@ -131,8 +131,7 @@ class _GridProductCard extends StatelessWidget {
                 style: AppTypography.body(11, color: context.colors.muted),
               ),
             ),
-            if (product.availability != null)
-              AvailabilityBadge(availability: product.availability!),
+            if (product.availability != null) productStatusBadge(product),
           ],
         ),
       ],
@@ -209,7 +208,7 @@ class _HorizontalProductCard extends StatelessWidget {
                   ),
                   if (product.availability != null) ...[
                     const SizedBox(width: 6),
-                    AvailabilityBadge(availability: product.availability!),
+                    productStatusBadge(product),
                   ],
                 ],
               ),

@@ -8,6 +8,7 @@ import '../../app_theme.dart';
 import '../../models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
+import '../../widgets/business_hours_editor.dart';
 import '../legal/terms_screen.dart';
 import '../legal/privacy_screen.dart';
 import 'login_screen.dart';
@@ -45,6 +46,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
   List<MarketplaceCategory> _businessCategories = [];
   XFile? _logoFile;
   bool _loadingCategories = true;
+  Map<int, BusinessHoursRange> _businessHours = {};
 
   final _typeLabels = <String, String>{
     'estudiante': 'Estudiante',
@@ -141,6 +143,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
               ? null
               : _businessDescriptionController.text.trim(),
           logoPath: _logoFile?.path,
+          businessHours: _businessHours,
         );
       } else {
         await auth.registerUser(
@@ -453,6 +456,11 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
           ),
         ),
         textCapitalization: TextCapitalization.sentences,
+      ),
+      const SizedBox(height: 14),
+      BusinessHoursEditor(
+        initialHours: _businessHours,
+        onChanged: (hours) => _businessHours = hours,
       ),
 
       const SizedBox(height: 24),

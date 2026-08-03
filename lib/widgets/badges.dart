@@ -139,6 +139,52 @@ class AvailabilityBadge extends StatelessWidget {
   }
 }
 
+/// Badge de "Abierto"/"Cerrado" según el horario de atención del negocio.
+/// Sustituye a [AvailabilityBadge] cuando el producto está disponible y su
+/// vendedor es un negocio con horario configurado (ver [Seller.isOpenNow]).
+class OpenStatusBadge extends StatelessWidget {
+  const OpenStatusBadge({super.key, required this.isOpen});
+
+  final bool isOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final (Color foreground, Color background) = isOpen
+        ? (AppColors.success, AppColors.success.withValues(alpha: 0.08))
+        : (context.colors.muted, context.colors.muted.withValues(alpha: 0.08));
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        isOpen ? 'Abierto' : 'Cerrado',
+        style: TextStyle(
+          color: foreground,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+/// Badge de estado de un producto: normalmente [AvailabilityBadge], salvo
+/// cuando el producto está disponible y su vendedor es un negocio con
+/// horario configurado, en cuyo caso muestra [OpenStatusBadge] en su lugar
+/// (el estado de apertura importa más que "Disponible" para ese caso).
+/// Solo debe llamarse cuando `product.availability != null`.
+Widget productStatusBadge(Product product) {
+  final availability = product.availability!;
+  if (availability == ProductAvailability.available) {
+    final isOpen = product.seller.isOpenNow;
+    if (isOpen != null) return OpenStatusBadge(isOpen: isOpen);
+  }
+  return AvailabilityBadge(availability: availability);
+}
+
 /// Badge contextual que muestra el nivel de verificación según el tipo de cuenta.
 class VerificationStatusBadge extends StatelessWidget {
   const VerificationStatusBadge({

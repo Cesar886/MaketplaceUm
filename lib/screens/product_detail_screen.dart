@@ -372,7 +372,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                           ),
                         )
                       else if (product.availability != null)
-                        AvailabilityBadge(availability: product.availability!),
+                        productStatusBadge(product),
                       if (!product.isWantedPost &&
                           product.isAvailable &&
                           product.stockQuantity != null &&
@@ -390,7 +390,21 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         ),
                     ],
                   ),
-                  // ─── Extras opcionales — justo debajo del precio: cambian lo que se paga ──
+                  // ─── Descripción ──────────────────────────────────
+                  const SizedBox(height: 22),
+                  const _SectionHeader(
+                    icon: Icons.notes_rounded,
+                    label: 'Descripción',
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    product.description,
+                    style: AppTypography.body(
+                      15.5,
+                      color: context.colors.muted,
+                    ),
+                  ),
+                  // ─── Extras opcionales — cambian lo que se paga ──
                   if (product.extras.isNotEmpty) ...[
                     const SizedBox(height: 22),
                     const _SectionHeader(
@@ -475,32 +489,31 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       icon: Icons.event_available_rounded,
                       label: 'Días disponibles',
                     ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (var day = 0; day < 7; day++)
-                          _DayChip(
-                            label: _dayNames[day],
-                            selected: product.availableDays.contains(day),
-                          ),
-                      ],
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: context.colors.surface,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: context.colors.border),
+                        boxShadow: AppShadows.soft,
+                      ),
+                      child: Row(
+                        children: [
+                          for (var day = 0; day < 7; day++) ...[
+                            if (day > 0) const SizedBox(width: 4),
+                            Expanded(
+                              child: _DayChip(
+                                label: _dayNames[day],
+                                selected: product.availableDays.contains(day),
+                                isToday: day == DateTime.now().weekday - 1,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ],
-                  const SizedBox(height: 24),
-                  const _SectionHeader(
-                    icon: Icons.notes_rounded,
-                    label: 'Descripción',
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    product.description,
-                    style: AppTypography.body(
-                      15.5,
-                      color: context.colors.muted,
-                    ),
-                  ),
                   // ─── Calificaciones del producto — no aplica a "se busca" ──────
                   if (!product.isWantedPost) ...[
                     const SizedBox(height: 24),
@@ -528,6 +541,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   ),
                   const SizedBox(height: 10),
                   _SellerCard(seller: product.seller),
+                  if (product.seller.isBusiness &&
+                      product.seller.businessHours.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    const _SectionHeader(
+                      icon: Icons.schedule_rounded,
+                      label: 'Horario de atención',
+                    ),
+                    const SizedBox(height: 10),
+                    _BusinessHoursCard(seller: product.seller),
+                  ],
                   const SizedBox(height: 24),
                   // ─── Código QR + Compartir ─────────────────────────
                   const _SectionHeader(
@@ -1113,35 +1136,74 @@ class _PhotoStrip extends StatelessWidget {
 const _dayNames = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
 class _DayChip extends StatelessWidget {
-  const _DayChip({required this.label, required this.selected});
+  const _DayChip({
+    required this.label,
+    required this.selected,
+    this.isToday = false,
+  });
 
   final String label;
   final bool selected;
+  final bool isToday;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 40,
-      height: 40,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: selected
-            ? AppColors.primary.withValues(alpha: 0.10)
-            : context.colors.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: selected ? AppColors.primary : context.colors.border,
-          width: selected ? 1.5 : 1,
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        AnimatedContainer(
+          duration: AppAnimations.fast,
+          height: 26,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            gradient: selected
+                ? const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [AppColors.primary, AppColors.primaryDark],
+                  )
+                : null,
+            color: selected ? null : context.colors.surfaceMuted,
+            borderRadius: BorderRadius.circular(7),
+            border: isToday && !selected
+                ? Border.all(color: AppColors.amber, width: 1.1)
+                : null,
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: AppColors.primaryDark.withValues(alpha: 0.22),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1.5),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 9.5,
+              fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+              color: selected
+                  ? Colors.white
+                  : context.colors.muted.withValues(alpha: 0.7),
+            ),
+          ),
         ),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 12.5,
-          fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-          color: selected ? AppColors.primary : context.colors.muted,
-        ),
-      ),
+        if (isToday)
+          Positioned(
+            top: -2,
+            right: -2,
+            child: Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: AppColors.amber,
+                shape: BoxShape.circle,
+                border: Border.all(color: context.colors.surface, width: 1),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -1336,13 +1398,30 @@ class _SellerCard extends StatelessWidget {
             CircleAvatar(
               radius: 28,
               backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-              child: Text(
-                seller.avatarInitials,
-                style: TextStyle(
-                  color: context.colors.accent,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+              child: seller.logoUrl != null && seller.logoUrl!.isNotEmpty
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(28),
+                      child: Image.network(
+                        '${ApiService.baseUrl}${seller.logoUrl}',
+                        width: 56,
+                        height: 56,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Text(
+                          seller.avatarInitials,
+                          style: TextStyle(
+                            color: context.colors.accent,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    )
+                  : Text(
+                      seller.avatarInitials,
+                      style: TextStyle(
+                        color: context.colors.accent,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -1405,6 +1484,82 @@ class _SellerCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Tarjeta de solo lectura con el horario semanal de atención del negocio,
+/// resaltando el día actual y si está abierto o cerrado en este momento.
+class _BusinessHoursCard extends StatelessWidget {
+  const _BusinessHoursCard({required this.seller});
+
+  final Seller seller;
+
+  static const _dayNames = [
+    'Lunes',
+    'Martes',
+    'Miércoles',
+    'Jueves',
+    'Viernes',
+    'Sábado',
+    'Domingo',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final today = DateTime.now().weekday - 1; // 0=Lunes..6=Domingo
+    final isOpen = seller.isOpenNow;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: context.colors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (isOpen != null) ...[
+            OpenStatusBadge(isOpen: isOpen),
+            const SizedBox(height: 10),
+          ],
+          ...List.generate(7, (day) {
+            final range = seller.businessHours[day];
+            final isToday = day == today;
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 90,
+                    child: Text(
+                      _dayNames[day],
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,
+                        color: isToday
+                            ? AppColors.primary
+                            : context.colors.ink,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    range != null ? '${range.open} – ${range.close}' : 'Cerrado',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: isToday ? FontWeight.w700 : FontWeight.w500,
+                      color: range != null
+                          ? (isToday ? AppColors.primary : context.colors.ink)
+                          : context.colors.muted,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
       ),
     );
   }

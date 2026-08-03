@@ -8,6 +8,7 @@ import '../../app_theme.dart';
 import '../../models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
+import '../../widgets/business_hours_editor.dart';
 
 const _kMaxBusinessDescriptionLength = 280;
 
@@ -29,6 +30,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   List<MarketplaceCategory> _categories = [];
   XFile? _pickedPhoto;
   bool _saving = false;
+  late Map<int, BusinessHoursRange> _businessHours;
 
   bool get _isBusiness => widget.seller.isBusiness;
 
@@ -41,6 +43,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       text: widget.seller.businessDescription ?? '',
     );
     _selectedCategoryId = widget.seller.businessCategory;
+    _businessHours = Map.of(widget.seller.businessHours);
     if (_isBusiness) _loadCategories();
   }
 
@@ -89,6 +92,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ? _descriptionController.text.trim()
             : null,
         businessCategory: _isBusiness ? _selectedCategoryId : null,
+        businessHours: _isBusiness ? _businessHours : null,
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -238,6 +242,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       child: Icon(Icons.notes_rounded),
                     ),
                   ),
+                ),
+                const SizedBox(height: 16),
+                BusinessHoursEditor(
+                  initialHours: _businessHours,
+                  onChanged: (hours) => _businessHours = hours,
                 ),
               ],
               const SizedBox(height: 28),

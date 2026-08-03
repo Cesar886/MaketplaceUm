@@ -63,6 +63,54 @@ function validateBusinessCategory(categoryId, validCategoryIds) {
   return null;
 }
 
+const HOURS_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const VALID_HOURS_DAYS = ['0', '1', '2', '3', '4', '5', '6'];
+
+// Horario de operación del negocio: opcional. Objeto keyed por día
+// ('0'=Lunes .. '6'=Domingo), cada valor { open: 'HH:mm', close: 'HH:mm' }
+// con open < close. Un día ausente del objeto significa "cerrado" ese día.
+// Devuelve { error } si es inválido, o { value } con el objeto normalizado.
+function validateBusinessHours(businessHours) {
+  if (businessHours === undefined || businessHours === null) return { value: {} };
+
+  let parsed = businessHours;
+  if (typeof parsed === 'string') {
+    if (parsed.trim() === '') return { value: {} };
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return { error: 'businessHours debe ser un JSON válido' };
+    }
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { error: 'businessHours debe ser un objeto' };
+  }
+
+  const normalized = {};
+  for (const [day, range] of Object.entries(parsed)) {
+    if (!VALID_HOURS_DAYS.includes(day)) {
+      return { error: `Día inválido en businessHours: ${day}` };
+    }
+    if (typeof range !== 'object' || range === null) {
+      return { error: `Horario inválido para el día ${day}` };
+    }
+    const { open, close } = range;
+    if (typeof open !== 'string' || !HOURS_REGEX.test(open)) {
+      return { error: `Hora de apertura inválida para el día ${day}` };
+    }
+    if (typeof close !== 'string' || !HOURS_REGEX.test(close)) {
+      return { error: `Hora de cierre inválida para el día ${day}` };
+    }
+    if (close <= open) {
+      return { error: `La hora de cierre debe ser posterior a la de apertura (día ${day})` };
+    }
+    normalized[day] = { open, close };
+  }
+
+  return { value: normalized };
+}
+
 module.exports = {
   MIN_NAME_LENGTH,
   MAX_NAME_LENGTH,
@@ -74,4 +122,5 @@ module.exports = {
   validatePhone,
   validateBusinessDescription,
   validateBusinessCategory,
+  validateBusinessHours,
 };
