@@ -87,48 +87,53 @@ class VerifiedBadge extends StatelessWidget {
   }
 }
 
+/// Badge de solo-lectura para compradores: renderiza directamente el
+/// [ComputedStatus] que ya llegó calculado desde el backend
+/// (`computeProductStatus` en `products.js`, jerarquía de 5 niveles:
+/// manual > inventario > días disponibles > horario > disponible). El
+/// selector de edición (`publish_product_screen.dart`) solo expone los 4
+/// estados manuales pegajosos, no estos 8.
 class AvailabilityBadge extends StatelessWidget {
-  const AvailabilityBadge({super.key, required this.availability});
+  const AvailabilityBadge({
+    super.key,
+    required this.status,
+    this.nextAvailableDay,
+    this.opensAt,
+  });
 
-  final ProductAvailability availability;
+  final ComputedStatus status;
+  final String? nextAvailableDay;
+  final String? opensAt;
 
   @override
   Widget build(BuildContext context) {
-    final (Color foreground, Color background) = switch (availability) {
-      ProductAvailability.available => (
-        AppColors.success,
-        AppColors.success.withValues(alpha: 0.08),
-      ),
-      ProductAvailability.reserved => (
+    final (String label, Color foreground) = switch (status) {
+      ComputedStatus.available => ('Disponible', AppColors.success),
+      ComputedStatus.soldOut => ('Agotado', context.colors.muted),
+      ComputedStatus.availableOtherDay => (
+        nextAvailableDay != null
+            ? 'Disponible el $nextAvailableDay'
+            : 'Disponible otro día',
         AppColors.orange,
-        AppColors.orange.withValues(alpha: 0.08),
       ),
-      ProductAvailability.sold => (
-        AppColors.danger,
-        AppColors.danger.withValues(alpha: 0.08),
-      ),
-      ProductAvailability.negotiating => (
-        AppColors.primary,
-        AppColors.primary.withValues(alpha: 0.08),
-      ),
-      ProductAvailability.paused => (
+      ComputedStatus.closed => (
+        opensAt != null ? 'Abre a las $opensAt' : 'Cerrado por ahora',
         context.colors.muted,
-        context.colors.muted.withValues(alpha: 0.08),
       ),
-      ProductAvailability.unavailable => (
-        context.colors.muted,
-        context.colors.muted.withValues(alpha: 0.08),
-      ),
+      ComputedStatus.reserved => ('Apartado', AppColors.orange),
+      ComputedStatus.negotiating => ('En negociación', AppColors.primary),
+      ComputedStatus.sold => ('Vendido', context.colors.muted),
+      ComputedStatus.paused => ('Pausado', context.colors.muted),
     };
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
       decoration: BoxDecoration(
-        color: background,
+        color: foreground.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        availability.label,
+        label,
         style: TextStyle(
           color: foreground,
           fontSize: 10.5,
@@ -140,8 +145,9 @@ class AvailabilityBadge extends StatelessWidget {
 }
 
 /// Badge de "Abierto"/"Cerrado" según el horario de atención del negocio.
-/// Sustituye a [AvailabilityBadge] cuando el producto está disponible y su
-/// vendedor es un negocio con horario configurado (ver [Seller.isOpenNow]).
+/// A diferencia de [AvailabilityBadge] (que es por producto), este refleja
+/// el horario general del vendedor — se usa en [BusinessHoursCard] y en el
+/// detalle de producto junto al horario, no como badge de un producto.
 class OpenStatusBadge extends StatelessWidget {
   const OpenStatusBadge({super.key, required this.isOpen});
 
@@ -171,18 +177,15 @@ class OpenStatusBadge extends StatelessWidget {
   }
 }
 
-/// Badge de estado de un producto: normalmente [AvailabilityBadge], salvo
-/// cuando el producto está disponible y su vendedor es un negocio con
-/// horario configurado, en cuyo caso muestra [OpenStatusBadge] en su lugar
-/// (el estado de apertura importa más que "Disponible" para ese caso).
-/// Solo debe llamarse cuando `product.availability != null`.
+/// Badge de estado de un producto: el badge de disponibilidad viene
+/// enteramente calculado por el backend en [Product.computedStatus], así
+/// que aquí solo se renderiza — no hay lógica de negocio en el cliente.
 Widget productStatusBadge(Product product) {
-  final availability = product.availability!;
-  if (availability == ProductAvailability.available) {
-    final isOpen = product.seller.isOpenNow;
-    if (isOpen != null) return OpenStatusBadge(isOpen: isOpen);
-  }
-  return AvailabilityBadge(availability: availability);
+  return AvailabilityBadge(
+    status: product.computedStatus,
+    nextAvailableDay: product.nextAvailableDay,
+    opensAt: product.opensAt,
+  );
 }
 
 /// Badge contextual que muestra el nivel de verificación según el tipo de cuenta.

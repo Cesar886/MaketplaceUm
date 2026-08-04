@@ -244,50 +244,75 @@ extension ListingStatusCopy on ListingStatus {
   }
 }
 
-/// Estados de disponibilidad que el dueño puede asignar a su producto.
-enum ProductAvailability {
-  available,
+/// Estado manual "pegajoso" que el dueño activa explícitamente y que
+/// sobreescribe el cálculo automático hasta que lo reactive (vuelva a
+/// `null`) o borre la publicación. 'Disponible'/'No disponible' NO son
+/// valores de este enum — esos son resultados de [ComputedStatus], nunca
+/// una elección manual (ver [Product.computedStatus]).
+enum ManualStatus {
   reserved,
   sold,
   negotiating,
-  paused,
-  unavailable;
+  paused;
 
   String get label {
     switch (this) {
-      case ProductAvailability.available:
-        return 'Disponible';
-      case ProductAvailability.reserved:
+      case ManualStatus.reserved:
         return 'Apartado';
-      case ProductAvailability.sold:
+      case ManualStatus.sold:
         return 'Vendido';
-      case ProductAvailability.negotiating:
+      case ManualStatus.negotiating:
         return 'En negociación';
-      case ProductAvailability.paused:
+      case ManualStatus.paused:
         return 'Pausado';
-      case ProductAvailability.unavailable:
-        return 'No disponible';
     }
   }
 
-  /// Map from the backend string value.
-  static ProductAvailability? fromString(String? value) {
+  /// Valor tal como lo espera/devuelve el backend (`manual_status`).
+  String get apiValue => name;
+
+  static ManualStatus? fromString(String? value) {
     if (value == null) return null;
+    for (final status in ManualStatus.values) {
+      if (status.name == value) return status;
+    }
+    return null;
+  }
+}
+
+/// Badge de disponibilidad calculado por el backend (`computed_status`) a
+/// partir de [ManualStatus] + inventario + días disponibles + horario del
+/// negocio — nunca se elige a mano, ver `computeProductStatus` en
+/// `backend/src/routes/products.js` para la jerarquía completa.
+enum ComputedStatus {
+  available,
+  soldOut,
+  availableOtherDay,
+  closed,
+  reserved,
+  sold,
+  negotiating,
+  paused;
+
+  static ComputedStatus fromString(String? value) {
     switch (value) {
-      case 'available':
-        return ProductAvailability.available;
+      case 'sold_out':
+        return ComputedStatus.soldOut;
+      case 'available_other_day':
+        return ComputedStatus.availableOtherDay;
+      case 'closed':
+        return ComputedStatus.closed;
       case 'reserved':
-        return ProductAvailability.reserved;
+        return ComputedStatus.reserved;
       case 'sold':
-        return ProductAvailability.sold;
+        return ComputedStatus.sold;
       case 'negotiating':
-        return ProductAvailability.negotiating;
+        return ComputedStatus.negotiating;
       case 'paused':
-        return ProductAvailability.paused;
-      case 'unavailable':
-        return ProductAvailability.unavailable;
+        return ComputedStatus.paused;
+      case 'available':
       default:
-        return null;
+        return ComputedStatus.available;
     }
   }
 }
@@ -310,7 +335,10 @@ class Product {
     this.isOffer = false,
     this.isFavorite = false,
     this.status,
-    this.availability,
+    this.manualStatus,
+    this.computedStatus = ComputedStatus.available,
+    this.nextAvailableDay,
+    this.opensAt,
     this.stockQuantity,
     this.stockResetDaily = false,
     this.stockInitial,
@@ -328,6 +356,7 @@ class Product {
     this.locationLat,
     this.locationLng,
     this.paymentMethods,
+    this.views = 0,
   });
 
   /// Adapta un [WantedPost] a la forma de [Product] para que
@@ -375,6 +404,7 @@ class Product {
       locationLat: post.locationLat,
       locationLng: post.locationLng,
       paymentMethods: post.paymentMethods,
+      views: post.views,
     );
   }
 
@@ -499,7 +529,18 @@ class Product {
       isOffer: json['isOffer'] as bool? ?? false,
       isFavorite: json['isFavorite'] as bool? ?? false,
       status: parseStatus(),
-      availability: ProductAvailability.fromString(json['status'] as String?),
+      manualStatus: ManualStatus.fromString(json['manual_status'] as String?),
+      computedStatus: ComputedStatus.fromString(
+        json['computed_status'] as String?,
+      ),
+      nextAvailableDay:
+          (json['computed_status_detail']
+                  as Map<String, dynamic>?)?['next_available_day']
+              as String?,
+      opensAt:
+          (json['computed_status_detail']
+                  as Map<String, dynamic>?)?['opens_at']
+              as String?,
       stockQuantity: json['stock_quantity'] as int?,
       stockResetDaily: json['stock_reset_daily'] as bool? ?? false,
       stockInitial: json['stock_initial'] as int?,
@@ -519,6 +560,7 @@ class Product {
       paymentMethods: (json['paymentMethods'] as List<dynamic>?)
           ?.map((e) => e as String)
           .toList(),
+      views: (json['views'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -538,7 +580,10 @@ class Product {
   final bool isOffer;
   final bool isFavorite;
   final ListingStatus? status;
-  final ProductAvailability? availability;
+  final ManualStatus? manualStatus;
+  final ComputedStatus computedStatus;
+  final String? nextAvailableDay;
+  final String? opensAt;
   final int? stockQuantity;
   final bool stockResetDaily;
   final int? stockInitial;
@@ -567,6 +612,9 @@ class Product {
   /// del perfil del vendedor). Usa [effectivePaymentMethods] para el valor
   /// a mostrar/considerar; no leas este campo directamente en UI.
   final List<String>? paymentMethods;
+
+  /// Conteo simple de vistas de detalle (no vistas únicas por usuario).
+  final int views;
 
   bool get isWantedPost => postType == 'se_busca';
   bool get hasLocation => locationLat != null && locationLng != null;
@@ -665,6 +713,7 @@ class WantedPost {
     this.locationLat,
     this.locationLng,
     this.paymentMethods,
+    this.views = 0,
   });
 
   factory WantedPost.fromJson(Map<String, dynamic> json) {
@@ -695,6 +744,7 @@ class WantedPost {
       paymentMethods: (json['paymentMethods'] as List<dynamic>?)
           ?.map((e) => e as String)
           .toList(),
+      views: (json['views'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -716,6 +766,7 @@ class WantedPost {
   final double? locationLat;
   final double? locationLng;
   final List<String>? paymentMethods;
+  final int views;
 
   bool get isService => type == 'servicio';
   bool get isResolved => status == 'resuelta';

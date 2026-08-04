@@ -117,9 +117,11 @@ class PaymentMethodsSelector extends StatelessWidget {
   }
 }
 
-/// Muestra de métodos de pago en modo solo-lectura: pills con ícono + texto
-/// corto en una fila (wrap si no caben todos). Usado en el detalle de
-/// producto y en el perfil de vendedor.
+/// Muestra de métodos de pago en modo solo-lectura: ícono + texto corto,
+/// sin fondo/borde/sombra, para que se lea como información (lo que el
+/// vendedor acepta) y no como botones tocables. Envuelve a una segunda
+/// línea con [Wrap] si no caben todos en una sola fila. Usado en el detalle
+/// de producto y en el perfil de vendedor.
 class PaymentMethodsChips extends StatelessWidget {
   const PaymentMethodsChips({super.key, required this.methods});
 
@@ -134,34 +136,24 @@ class PaymentMethodsChips extends StatelessWidget {
     if (options.isEmpty) return const SizedBox.shrink();
 
     return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+      spacing: 18,
+      runSpacing: 10,
       children: [
         for (final option in options)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                color: AppColors.primary.withValues(alpha: 0.18),
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(option.icon, size: 16, color: AppColors.primary),
-                const SizedBox(width: 6),
-                Text(
-                  option.label,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primaryDark,
-                  ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(option.icon, size: 16, color: context.colors.muted),
+              const SizedBox(width: 6),
+              Text(
+                option.label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: context.colors.ink,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
       ],
     );

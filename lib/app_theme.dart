@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'widgets/edge_swipe_back.dart';
+
 /// Sistema "Puesto de Barrio": azul piedra pastel como ancla premium, fondo
 /// neutro casi blanco (sin tinte arenoso), cempasúchil como único acento
 /// de firma. Ver docs de diseño para justificación de cada valor.
@@ -223,6 +225,21 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: AppColors.background,
+      // Transición + gesto de "deslizar desde el borde para regresar" de
+      // estilo iOS en Android y iOS por igual. El área activa del gesto ya
+      // viene limitada por Flutter a una franja angosta desde el borde
+      // izquierdo (~20px o el ancho del notch, lo que sea mayor — ver
+      // _kBackGestureWidth en flutter/cupertino/route.dart), así que no
+      // compite con gestos horizontales de ancho completo como el carrusel
+      // de imágenes o el mapa interactivo. Aplica solo a rutas que respetan
+      // el theme (MaterialPageRoute/CupertinoPageRoute); un PageRouteBuilder
+      // con transitionsBuilder propio lo ignora por completo.
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: SensitiveCupertinoPageTransitionsBuilder(),
+          TargetPlatform.iOS: SensitiveCupertinoPageTransitionsBuilder(),
+        },
+      ),
       textTheme: base.copyWith(
         headlineLarge: base.headlineLarge?.copyWith(
           fontWeight: FontWeight.w700,
@@ -357,6 +374,12 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: AppColors.darkBackground,
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: SensitiveCupertinoPageTransitionsBuilder(),
+          TargetPlatform.iOS: SensitiveCupertinoPageTransitionsBuilder(),
+        },
+      ),
       textTheme: base.copyWith(
         headlineLarge: base.headlineLarge?.copyWith(
           fontWeight: FontWeight.w700,

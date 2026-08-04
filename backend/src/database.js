@@ -62,7 +62,8 @@ function initDatabase() {
       stock_reset_daily INTEGER DEFAULT 0,
       stock_initial INTEGER,
       stock_updated_at TEXT,
-      availableDays TEXT DEFAULT '[]'
+      availableDays TEXT DEFAULT '[]',
+      manual_status TEXT DEFAULT NULL
     );
 
     CREATE TABLE IF NOT EXISTS price_history (
@@ -520,6 +521,29 @@ function runMigrations() {
     db.exec(`ALTER TABLE wanted_posts ADD COLUMN paymentMethods TEXT DEFAULT NULL`);
   }
 
+  // 22. Separar el override manual del vendedor (vendido/apartado/en
+  //     negociación/pausado) del badge de disponibilidad, que ahora se
+  //     calcula en tiempo real (ver computeProductStatus en products.js) a
+  //     partir de manual_status + stock + availableDays + horario del
+  //     negocio. `status` queda como columna legacy sin escribirse más;
+  //     'available'/'unavailable' dejan de ser valores manuales válidos.
+  if (!cols.some(c => c.name === 'manual_status')) {
+    db.exec(`ALTER TABLE products ADD COLUMN manual_status TEXT DEFAULT NULL`);
+    db.prepare(`
+      UPDATE products SET manual_status = status
+      WHERE status IN ('sold', 'reserved', 'negotiating', 'paused')
+    `).run();
+  }
+
+  // 23. Contador simple de vistas (no vistas únicas por usuario): se
+  //     incrementa en POST /:id/view salvo que el solicitante sea el dueño.
+  if (!cols.some(c => c.name === 'views')) {
+    db.exec(`ALTER TABLE products ADD COLUMN views INTEGER DEFAULT 0`);
+  }
+  if (!wantedCols.some(c => c.name === 'views')) {
+    db.exec(`ALTER TABLE wanted_posts ADD COLUMN views INTEGER DEFAULT 0`);
+  }
+
   console.log('🔄 Migración de schema completada');
 }
 
@@ -548,6 +572,7 @@ function rowToProduct(row) {
     isOffer: !!row.isOffer,
     isFavorite: !!row.isFavorite,
     status: row.status || null,
+    manual_status: row.manual_status || null,
     offerExpiresAt: row.offerExpiresAt || null,
     extras: JSON.parse(row.extras || '[]'),
     stock_quantity: row.stock_quantity ?? null,
@@ -560,6 +585,7 @@ function rowToProduct(row) {
     locationLat: row.location_lat ?? null,
     locationLng: row.location_lng ?? null,
     paymentMethods: row.paymentMethods ? JSON.parse(row.paymentMethods) : null,
+    views: row.views ?? 0,
   };
 }
 
@@ -586,6 +612,7 @@ function productToRow(product) {
     isOffer: product.isOffer ? 1 : 0,
     isFavorite: product.isFavorite ? 1 : 0,
     status: product.status || null,
+    manual_status: product.manual_status || null,
     offerExpiresAt: product.offerExpiresAt || null,
     extras: JSON.stringify(product.extras || []),
     stock_quantity: product.stock_quantity ?? null,
@@ -620,6 +647,7 @@ function rowToWantedPost(row) {
     locationLat: row.location_lat ?? null,
     locationLng: row.location_lng ?? null,
     paymentMethods: row.paymentMethods ? JSON.parse(row.paymentMethods) : null,
+    views: row.views ?? 0,
   };
 }
 
@@ -701,12 +729,12 @@ function insertProduct(product) {
   db.prepare(`
     INSERT INTO products (id, title, price, priceNum, category, description, publishedAgo, seller,
       images, imageIcon, imageColor, previousPrice, discountLabel,
-      isFeatured, isOffer, isFavorite, status, offerExpiresAt, extras,
+      isFeatured, isOffer, isFavorite, status, manual_status, offerExpiresAt, extras,
       stock_quantity, stock_reset_daily, stock_initial, stock_updated_at, created_at, availableDays, updated_at,
       location_lat, location_lng, paymentMethods)
     VALUES (@id, @title, @price, @priceNum, @category, @description, @publishedAgo, @seller,
       @images, @imageIcon, @imageColor, @previousPrice, @discountLabel,
-      @isFeatured, @isOffer, @isFavorite, @status, @offerExpiresAt, @extras,
+      @isFeatured, @isOffer, @isFavorite, @status, @manual_status, @offerExpiresAt, @extras,
       @stock_quantity, @stock_reset_daily, @stock_initial, @stock_updated_at, @created_at, @availableDays, @updated_at,
       @location_lat, @location_lng, @paymentMethods)
     ON CONFLICT(id) DO UPDATE SET
@@ -716,7 +744,7 @@ function insertProduct(product) {
       images = excluded.images, imageIcon = excluded.imageIcon, imageColor = excluded.imageColor,
       previousPrice = excluded.previousPrice, discountLabel = excluded.discountLabel,
       isFeatured = excluded.isFeatured, isOffer = excluded.isOffer, isFavorite = excluded.isFavorite,
-      status = excluded.status, offerExpiresAt = excluded.offerExpiresAt, extras = excluded.extras,
+      status = excluded.status, manual_status = excluded.manual_status, offerExpiresAt = excluded.offerExpiresAt, extras = excluded.extras,
       stock_quantity = excluded.stock_quantity, stock_reset_daily = excluded.stock_reset_daily,
       stock_initial = excluded.stock_initial, stock_updated_at = excluded.stock_updated_at,
       availableDays = excluded.availableDays, updated_at = excluded.updated_at,
@@ -737,7 +765,7 @@ function updateProduct(id, updates) {
       images = @images, imageIcon = @imageIcon, imageColor = @imageColor,
       previousPrice = @previousPrice, discountLabel = @discountLabel,
       isFeatured = @isFeatured, isOffer = @isOffer, isFavorite = @isFavorite,
-      status = @status, offerExpiresAt = @offerExpiresAt, extras = @extras,
+      status = @status, manual_status = @manual_status, offerExpiresAt = @offerExpiresAt, extras = @extras,
       stock_quantity = @stock_quantity, stock_reset_daily = @stock_reset_daily,
       stock_initial = @stock_initial, stock_updated_at = @stock_updated_at,
       availableDays = @availableDays, updated_at = @updated_at,
@@ -750,6 +778,10 @@ function updateProduct(id, updates) {
 
 function deleteProduct(id) {
   db.prepare('DELETE FROM products WHERE id = ?').run(id);
+}
+
+function incrementProductViews(id) {
+  db.prepare('UPDATE products SET views = views + 1 WHERE id = ?').run(id);
 }
 
 function getAllCartItems() {
@@ -1092,6 +1124,10 @@ function listWantedPosts({ categoryId, status, type } = {}) {
   return db.prepare(query).all(...params).map(rowToWantedPost);
 }
 
+function incrementWantedPostViews(id) {
+  db.prepare('UPDATE wanted_posts SET views = views + 1 WHERE id = ?').run(id);
+}
+
 /**
  * Edita una publicación "se busca" existente. Solo actualiza los campos
  * de contenido (title/description/categoryId/type/priceMin/priceMax);
@@ -1407,6 +1443,7 @@ module.exports = {
   insertProduct,
   updateProduct,
   deleteProduct,
+  incrementProductViews,
   getAllCartItems,
   addCartItem,
   updateCartItem,
@@ -1447,6 +1484,7 @@ module.exports = {
   getWantedPostById,
   listWantedPosts,
   updateWantedPost,
+  incrementWantedPostViews,
   resolveWantedPost,
   countWantedPostsSince,
   createWantedConversation,

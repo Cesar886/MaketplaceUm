@@ -146,6 +146,20 @@ function register(app) {
     res.json(attachWantedRelations(post));
   });
 
+  // POST /api/wanted/:id/view - registra una vista de detalle (mismo
+  // criterio simple que POST /api/products/:id/view: no cuenta si quien
+  // pide es el dueño, sin exigir JWT).
+  app.post('/api/wanted/:id/view', (req, res) => {
+    const post = db.getWantedPostById(req.params.id);
+    if (!post) return res.status(404).json({ error: 'Publicación no encontrada' });
+
+    const userId = req.body?.userId;
+    if (!userId || post.userId !== userId) {
+      db.incrementWantedPostViews(post.id);
+    }
+    res.status(204).end();
+  });
+
   // PUT /api/wanted/:id - editar una publicación "se busca" (solo el dueño)
   // A diferencia del resto de wanted.js, usa requireAuth (JWT real) en vez
   // de confiar en un userId de body, para que un no-dueño reciba 403 de

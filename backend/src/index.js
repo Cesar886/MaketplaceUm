@@ -1,3 +1,15 @@
+// Fija la zona horaria del proceso a la del campus (América/Monterrey),
+// sin importar en qué timezone esté configurado el host donde corra este
+// servidor (muchos hosts cloud usan UTC por defecto). Todo el cálculo de
+// disponibilidad por horario de negocio (computeProductStatus, Nivel 4) y
+// otras comparaciones de fecha/hora en el código (día de la semana, reset
+// diario de stock) usan `new Date()` en hora local del proceso — sin esto,
+// "hora local" podía significar UTC en producción y desalinear la
+// comparación contra los horarios que los negocios configuran pensando en
+// hora de Monterrey. Debe ejecutarse antes de cualquier require que pueda
+// crear un Date (por eso va como primera línea del archivo).
+process.env.TZ = 'America/Monterrey';
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');

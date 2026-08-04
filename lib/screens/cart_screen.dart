@@ -310,8 +310,7 @@ class _FavoriteItemTile extends StatelessWidget {
               // ─── Botones inferiores ─────────────────────────
               Row(
                 children: [
-                  if (product.availability != null)
-                    AvailabilityBadge(availability: product.availability!),
+                  productStatusBadge(product),
                   const Spacer(),
                   OutlinedButton.icon(
                     onPressed: onChat,

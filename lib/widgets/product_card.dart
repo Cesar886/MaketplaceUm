@@ -5,6 +5,7 @@ import '../models.dart';
 import 'badges.dart';
 import 'mock_product_image.dart';
 import 'price_tag.dart';
+import 'views_counter.dart';
 
 class ProductCard extends StatelessWidget {
   const ProductCard({
@@ -131,7 +132,9 @@ class _GridProductCard extends StatelessWidget {
                 style: AppTypography.body(11, color: context.colors.muted),
               ),
             ),
-            if (product.availability != null) productStatusBadge(product),
+            ViewsCounter(views: product.views),
+            const SizedBox(width: 6),
+            productStatusBadge(product),
           ],
         ),
       ],
@@ -206,10 +209,10 @@ class _HorizontalProductCard extends StatelessWidget {
                     product.publishedAgo,
                     style: AppTypography.body(11, color: context.colors.muted),
                   ),
-                  if (product.availability != null) ...[
-                    const SizedBox(width: 6),
-                    productStatusBadge(product),
-                  ],
+                  const SizedBox(width: 6),
+                  ViewsCounter(views: product.views),
+                  const SizedBox(width: 6),
+                  productStatusBadge(product),
                 ],
               ),
             ],

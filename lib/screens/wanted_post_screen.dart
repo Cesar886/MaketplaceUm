@@ -337,8 +337,8 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
         const SizedBox(height: 4),
         Text(
           _sellerPaymentMethods.isEmpty
-              ? 'Por defecto se usan los métodos de pago de tu perfil.'
-              : 'Por defecto se usan los de tu perfil: '
+              ? 'Usa los métodos de tu perfil.'
+              : 'Usa: '
                     '${_sellerPaymentMethods.map((id) => paymentMethodById(id)?.label ?? id).join(', ')}.',
           style: TextStyle(color: context.colors.muted, fontSize: 13),
         ),

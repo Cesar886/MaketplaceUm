@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../app_theme.dart';
@@ -10,12 +10,12 @@ import '../services/anonymous_id.dart';
 import '../services/api_service.dart';
 import '../services/favorite_products_service.dart';
 import '../services/recent_products_service.dart';
+import '../services/view_cooldown.dart';
 import '../widgets/badges.dart';
 import '../widgets/payment_methods.dart';
 import '../widgets/product_image_carousel.dart';
 import '../widgets/price_tag.dart';
-import '../widgets/seller_schedule_location_row.dart';
-import '../widgets/static_mini_map.dart';
+import '../widgets/views_counter.dart';
 import 'auth/login_screen.dart';
 import 'main_shell.dart';
 import 'chat_screen.dart';
@@ -55,6 +55,14 @@ class ProductDetailScreen extends StatefulWidget {
   State<ProductDetailScreen> createState() => _ProductDetailScreenState();
 }
 
+/// Fondo oscuro y sólido para los íconos flotantes sobre el carrusel de
+/// fotos — asegura contraste legible sin importar qué tan clara o
+/// ruidosa sea la imagen de fondo.
+final ButtonStyle _appBarIconButtonStyle = IconButton.styleFrom(
+  backgroundColor: Colors.black.withValues(alpha: 0.45),
+  foregroundColor: Colors.white,
+);
+
 class _ProductDetailScreenState extends State<ProductDetailScreen>
     with SingleTickerProviderStateMixin {
   late bool _favorite = widget.product.isFavorite;
@@ -86,6 +94,29 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     // el objeto que llegó por navegación. Esto también dispara el fetch
     // del historial de precios.
     _refreshProductFromApi();
+    _registerViewIfNeeded();
+  }
+
+  /// Registra una vista de detalle (fire-and-forget, no bloquea la UI),
+  /// salvo que el cooldown local diga que ya se contó una vista reciente
+  /// para esta publicación.
+  Future<void> _registerViewIfNeeded() async {
+    final id = widget.product.id;
+    final shouldRegister = await ViewCooldown.shouldRegisterView(id);
+    if (!shouldRegister) return;
+    await ViewCooldown.markViewed(id);
+
+    final auth = context.read<AuthProvider>();
+    final userId = await AnonymousId.resolve(
+      isLoggedIn: auth.isLoggedIn,
+      backendSellerId: auth.backendSellerId,
+    );
+
+    if (widget.product.isWantedPost) {
+      ApiService.registerWantedPostView(id, userId: userId);
+    } else {
+      ApiService.registerProductView(id, userId: userId);
+    }
   }
 
   @override
@@ -148,12 +179,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
             leading: Padding(
               padding: const EdgeInsets.all(8),
               child: IconButton.filled(
+                style: _appBarIconButtonStyle,
                 onPressed: () => Navigator.of(context).pop(),
                 icon: const Icon(Icons.arrow_back_rounded),
               ),
             ),
             actions: [
-              IconButton.filledTonal(
+              IconButton.filled(
+                style: _appBarIconButtonStyle,
                 onPressed: () => _requireAuth(context, () async {
                   final nowFav = await FavoriteProductsService.toggleFavorite(
                     widget.product.id,
@@ -165,6 +198,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   _favorite
                       ? Icons.favorite_rounded
                       : Icons.favorite_border_rounded,
+                  color: _favorite ? AppColors.danger : Colors.white,
                 ),
               ),
               // Botones editar/eliminar: solo visibles si la publicación es del usuario
@@ -175,29 +209,33 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   product.seller.id) ...[
                 if (product.isWantedPost)
                   if (product.wantedStatus != 'resuelta')
-                    IconButton.filledTonal(
+                    IconButton.filled(
+                      style: _appBarIconButtonStyle,
                       onPressed: () => _editWantedPost(context),
                       icon: const Icon(Icons.edit_rounded),
                     )
                   else
                     const SizedBox.shrink()
                 else ...[
-                  IconButton.filledTonal(
+                  IconButton.filled(
+                    style: _appBarIconButtonStyle,
                     onPressed: () => _editProduct(context),
                     icon: const Icon(Icons.edit_rounded),
                   ),
-                  IconButton.filledTonal(
+                  IconButton.filled(
+                    style: _appBarIconButtonStyle,
                     onPressed: () => _confirmDelete(context),
-                    icon: const Icon(Icons.delete_rounded),
-                    style: IconButton.styleFrom(
-                      foregroundColor: AppColors.danger,
+                    icon: const Icon(
+                      Icons.delete_rounded,
+                      color: AppColors.danger,
                     ),
                   ),
                 ],
               ],
               Padding(
                 padding: const EdgeInsets.only(right: 8),
-                child: IconButton.filledTonal(
+                child: IconButton.filled(
+                  style: _appBarIconButtonStyle,
                   onPressed: () => _shareProduct(context),
                   icon: const Icon(Icons.share_rounded),
                 ),
@@ -230,6 +268,25 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                           padding: EdgeInsets.only(left: 10, top: 2),
                           child: FeaturedBadge(),
                         ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(
+                        product.category.icon,
+                        size: 13,
+                        color: product.category.color,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        product.category.name,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: product.category.color,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -320,16 +377,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      _InfoPill(
-                        icon: product.category.icon,
-                        label: product.category.name,
-                        color: product.category.color,
-                      ),
-                      _InfoPill(
-                        icon: Icons.schedule_rounded,
-                        label: product.publishedAgo,
-                        color: context.colors.muted,
-                      ),
                       // Badge de estado: disponibilidad para producto, abierta/resuelta para "se busca"
                       if (product.isWantedPost)
                         _WantedStatusBadge(resolved: !product.isAvailable)
@@ -363,7 +410,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                             ],
                           ),
                         )
-                      else if (product.availability != null)
+                      else
                         productStatusBadge(product),
                       if (!product.isWantedPost &&
                           product.isAvailable &&
@@ -380,6 +427,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                             ),
                           ),
                         ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: ViewsCounter(views: product.views, large: true),
+                      ),
                     ],
                   ),
                   // ─── Descripción ──────────────────────────────────
@@ -396,122 +447,61 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       color: context.colors.muted,
                     ),
                   ),
-                  // ─── Extras opcionales — cambian lo que se paga ──
-                  if (product.extras.isNotEmpty) ...[
-                    const SizedBox(height: 22),
-                    const _SectionHeader(
-                      icon: Icons.add_box_rounded,
-                      label: 'Extras opcionales',
-                    ),
-                    const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: context.colors.surface,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: context.colors.border),
-                      ),
-                      child: Column(
-                        children: [
-                          for (final extra in product.extras) ...[
-                            Row(
-                              children: [
-                                Container(
-                                  width: 32,
-                                  height: 32,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary.withValues(
-                                      alpha: 0.08,
-                                    ),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(
-                                    Icons.add_box_outlined,
-                                    size: 18,
-                                    color: AppColors.primary,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    extra.name,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: context.colors.ink,
-                                      fontSize: 15,
-                                    ),
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: context.colors.accent.withValues(
-                                      alpha: 0.06,
-                                    ),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    '+${Product.formatPrice(extra.extraPrice)}',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      color: context.colors.accent,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (extra != product.extras.last)
-                              const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 10),
-                                child: Divider(height: 1, indent: 44),
-                              ),
-                          ],
-                        ],
+                  if (product.publishedAgo.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Editado ${product.publishedAgo.toLowerCase()}',
+                      style: AppTypography.body(
+                        11,
+                        color: context.colors.muted,
+                      ).copyWith(
+                        color: context.colors.muted.withValues(alpha: 0.7),
                       ),
                     ),
                   ],
-                  // ─── Días disponibles ────────────────────────────
-                  if (product.availableDays.isNotEmpty) ...[
-                    const SizedBox(height: 22),
-                    const _SectionHeader(
-                      icon: Icons.event_available_rounded,
-                      label: 'Días disponibles',
-                    ),
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: context.colors.surface,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: context.colors.border),
-                        boxShadow: AppShadows.soft,
-                      ),
-                      child: Row(
-                        children: [
-                          for (var day = 0; day < 7; day++) ...[
-                            if (day > 0) const SizedBox(width: 4),
+                  // ─── Extras opcionales — cambian lo que se paga ──
+                  if (product.extras.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    for (final extra in product.extras) ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 5),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.add_rounded,
+                              size: 15,
+                              color: context.colors.muted,
+                            ),
+                            const SizedBox(width: 6),
                             Expanded(
-                              child: _DayChip(
-                                label: _dayNames[day],
-                                selected: product.availableDays.contains(day),
-                                isToday: day == DateTime.now().weekday - 1,
+                              child: Text(
+                                extra.name,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                  color: context.colors.ink,
+                                  fontSize: 13.5,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '+${Product.formatPrice(extra.extraPrice)}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: context.colors.muted,
+                                fontSize: 13,
                               ),
                             ),
                           ],
-                        ],
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                   // ─── Calificaciones del producto — no aplica a "se busca" ──────
                   if (!product.isWantedPost) ...[
                     const SizedBox(height: 24),
                     const _SectionHeader(
                       icon: Icons.star_rounded,
-                      label: 'Calificación',
+                      label: 'Califica este Producto',
                     ),
                     const SizedBox(height: 10),
                     _ProductRatingSection(
@@ -526,147 +516,46 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       },
                     ),
                   ],
-                  // ─── Ubicación puntual de esta publicación (solo negocios,
-                  // Nivel 2) — independiente de la ubicación de perfil del
-                  // vendedor, que se muestra más abajo junto al horario. ──
-                  if (product.hasLocation) ...[
-                    const SizedBox(height: 24),
-                    const _SectionHeader(
-                      icon: Icons.location_on_rounded,
-                      label: 'Ubicación de esta publicación',
-                    ),
-                    const SizedBox(height: 10),
-                    StaticMiniMap(
-                      lat: product.locationLat,
-                      lng: product.locationLng,
-                    ),
-                  ],
                   const SizedBox(height: 24),
                   _SectionHeader(
                     icon: Icons.storefront_rounded,
                     label: product.isWantedPost ? 'Publicado por' : 'Vendedor',
                   ),
-                  if (product.seller.isBusiness &&
-                      (product.seller.businessHours.isNotEmpty ||
-                          product.seller.hasLocation)) ...[
-                    const SizedBox(height: 14),
-                    SellerScheduleAndLocationRow(seller: product.seller),
-                    const SizedBox(height: 16),
-                  ] else
-                    const SizedBox(height: 10),
+                  const SizedBox(height: 10),
                   _SellerCard(seller: product.seller),
-                  if (product.effectivePaymentMethods.isNotEmpty) ...[
-                    const SizedBox(height: 24),
-                    const _SectionHeader(
-                      icon: Icons.payments_rounded,
-                      label: 'Métodos de pago aceptados',
-                    ),
-                    const SizedBox(height: 10),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: context.colors.surface,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: context.colors.border),
-                      ),
-                      child: PaymentMethodsChips(
-                        methods: product.effectivePaymentMethods,
-                      ),
-                    ),
-                  ],
                   const SizedBox(height: 24),
-                  // ─── Código QR + Compartir ─────────────────────────
+                  // ─── Compartir ──────────────────────────────────────
                   const _SectionHeader(
-                    icon: Icons.qr_code_rounded,
+                    icon: Icons.ios_share_rounded,
                     label: 'Compartir',
                   ),
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: context.colors.surface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: context.colors.border),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Escanea o comparte',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 15,
-                                  color: context.colors.ink,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Muestra este código para que escaneen el producto o comparte el enlace.',
-                                style: TextStyle(
-                                  color: context.colors.muted,
-                                  fontWeight: FontWeight.w500,
-                                  fontSize: 13,
-                                  height: 1.35,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              SizedBox(
-                                width: double.infinity,
-                                child: OutlinedButton.icon(
-                                  onPressed: () => _shareProduct(context),
-                                  icon: const Icon(
-                                    Icons.share_rounded,
-                                    size: 18,
-                                  ),
-                                  label: const Text('Compartir'),
-                                ),
-                              ),
-                            ],
-                          ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () => _shareProduct(context),
+                          icon: const Icon(Icons.ios_share_rounded, size: 18),
+                          label: const Text('Compartir enlace'),
                         ),
-                        const SizedBox(width: 16),
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: context.colors.border),
-                          ),
-                          child: GestureDetector(
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => QrDisplayScreen(
-                                    data: _qrData,
-                                    title: product.title,
-                                  ),
-                                ),
-                              );
-                            },
-                            child: QrImageView(
+                      ),
+                      const SizedBox(width: 10),
+                      IconButton.outlined(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => QrDisplayScreen(
                               data: _qrData,
-                              version: QrVersions.auto,
-                              size: 100,
-                              eyeStyle: QrEyeStyle(
-                                eyeShape: QrEyeShape.square,
-                                color: AppColors.primaryDark,
-                              ),
-                              dataModuleStyle: const QrDataModuleStyle(
-                                dataModuleShape: QrDataModuleShape.square,
-                                color: AppColors.primaryDark,
-                              ),
+                              title: product.title,
                             ),
                           ),
                         ),
-                      ],
-                    ),
+                        icon: const Icon(Icons.qr_code_rounded),
+                        tooltip: 'Mostrar código QR',
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 18),
-                  OutlinedButton.icon(
+                  const SizedBox(height: 20),
+                  TextButton.icon(
                     onPressed: () {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
@@ -676,7 +565,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         ),
                       );
                     },
-                    icon: const Icon(Icons.flag_outlined),
+                    style: TextButton.styleFrom(
+                      foregroundColor: context.colors.muted,
+                    ),
+                    icon: const Icon(Icons.flag_outlined, size: 18),
                     label: const Text('Reportar publicacion'),
                   ),
                   const SizedBox(height: 16),
@@ -726,7 +618,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 const SizedBox(width: 10),
                 IconButton.outlined(
                   onPressed: () => _openWhatsapp(context),
-                  icon: const Icon(Icons.chat_bubble_outline_rounded),
+                  icon: const FaIcon(FontAwesomeIcons.whatsapp),
                   color: AppColors.teal,
                   tooltip: 'Contactar por WhatsApp',
                 ),
@@ -1107,81 +999,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 
 /// Encabezado de sección consistente — ícono + label, usado en toda la
 /// pantalla de detalle para que las secciones se lean como un solo sistema.
-const _dayNames = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-
-class _DayChip extends StatelessWidget {
-  const _DayChip({
-    required this.label,
-    required this.selected,
-    this.isToday = false,
-  });
-
-  final String label;
-  final bool selected;
-  final bool isToday;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        AnimatedContainer(
-          duration: AppAnimations.fast,
-          height: 26,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            gradient: selected
-                ? const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [AppColors.primary, AppColors.primaryDark],
-                  )
-                : null,
-            color: selected ? null : context.colors.surfaceMuted,
-            borderRadius: BorderRadius.circular(7),
-            border: isToday && !selected
-                ? Border.all(color: AppColors.amber, width: 1.1)
-                : null,
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: AppColors.primaryDark.withValues(alpha: 0.22),
-                      blurRadius: 4,
-                      offset: const Offset(0, 1.5),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 9.5,
-              fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-              color: selected
-                  ? Colors.white
-                  : context.colors.muted.withValues(alpha: 0.7),
-            ),
-          ),
-        ),
-        if (isToday)
-          Positioned(
-            top: -2,
-            right: -2,
-            child: Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(
-                color: AppColors.amber,
-                shape: BoxShape.circle,
-                border: Border.all(color: context.colors.surface, width: 1),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.icon, required this.label});
 
@@ -1196,46 +1013,6 @@ class _SectionHeader extends StatelessWidget {
         const SizedBox(width: 8),
         Text(label, style: AppTypography.heading(15)),
       ],
-    );
-  }
-}
-
-class _InfoPill extends StatelessWidget {
-  const _InfoPill({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: color),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: color == context.colors.muted
-                  ? context.colors.muted
-                  : context.colors.ink,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -1349,10 +1126,18 @@ class _SellerCard extends StatelessWidget {
 
   final Seller seller;
 
+  /// El link "Ver ubicación y horarios" solo tiene sentido si el perfil del
+  /// vendedor tiene algo que mostrar ahí — evita llevar a una pantalla sin
+  /// nada útil que enseñar (ver [SellerProfileScreen]).
+  bool get _hasScheduleOrLocation =>
+      seller.businessHours.isNotEmpty || seller.hasLocation;
+
   @override
   Widget build(BuildContext context) {
+    final isOpen = seller.isOpenNow;
+    final hasReviews = seller.reviews > 0;
     return InkWell(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(16),
       onTap: seller.id.isEmpty
           ? null
           : () => Navigator.of(context).push(
@@ -1361,101 +1146,178 @@ class _SellerCard extends StatelessWidget {
               ),
             ),
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.fromLTRB(16, 16, 14, 16),
         decoration: BoxDecoration(
           color: context.colors.surface,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: context.colors.border),
+          boxShadow: AppShadows.soft,
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CircleAvatar(
-              radius: 28,
-              backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-              child: seller.logoUrl != null && seller.logoUrl!.isNotEmpty
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(28),
-                      child: Image.network(
-                        '${ApiService.baseUrl}${seller.logoUrl}',
-                        width: 56,
-                        height: 56,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => Text(
-                          seller.avatarInitials,
-                          style: TextStyle(
-                            color: context.colors.accent,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    )
-                  : Text(
-                      seller.avatarInitials,
-                      style: TextStyle(
-                        color: context.colors.accent,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          seller.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                      if (seller.verified)
-                        const Padding(
-                          padding: EdgeInsets.only(left: 6),
-                          child: Icon(
-                            Icons.verified_rounded,
-                            color: AppColors.teal,
-                            size: 18,
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    seller.major,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: context.colors.muted,
-                      fontWeight: FontWeight.w600,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: AppColors.primary.withValues(alpha: 0.18),
+                      width: 1.5,
                     ),
                   ),
-                  const SizedBox(height: 7),
-                  Row(
+                  child: CircleAvatar(
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.10),
+                    child: seller.logoUrl != null && seller.logoUrl!.isNotEmpty
+                        ? ClipOval(
+                            child: Image.network(
+                              '${ApiService.baseUrl}${seller.logoUrl}',
+                              width: 50,
+                              height: 50,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => Text(
+                                seller.avatarInitials,
+                                style: TextStyle(
+                                  color: context.colors.accent,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          )
+                        : Text(
+                            seller.avatarInitials,
+                            style: TextStyle(
+                              color: context.colors.accent,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(
-                        Icons.star_rounded,
-                        color: AppColors.gold,
-                        size: 18,
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              seller.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.heading(
+                                16,
+                                color: context.colors.ink,
+                              ),
+                            ),
+                          ),
+                          if (seller.verified)
+                            const Padding(
+                              padding: EdgeInsets.only(left: 6),
+                              child: Icon(
+                                Icons.verified_rounded,
+                                color: AppColors.teal,
+                                size: 17,
+                              ),
+                            ),
+                        ],
                       ),
-                      const SizedBox(width: 3),
+                      const SizedBox(height: 3),
                       Text(
-                        seller.reviews > 0
-                            ? '${seller.rating.toStringAsFixed(1)} (${seller.reviews} reseña${seller.reviews == 1 ? '' : 's'})'
-                            : 'Sin calificaciones',
-                        style: const TextStyle(fontWeight: FontWeight.w700),
+                        seller.major,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: context.colors.muted,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 9),
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3.5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: hasReviews
+                                  ? AppColors.gold.withValues(alpha: 0.12)
+                                  : context.colors.surfaceMuted,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  hasReviews
+                                      ? Icons.star_rounded
+                                      : Icons.star_border_rounded,
+                                  color: hasReviews
+                                      ? AppColors.gold
+                                      : context.colors.muted,
+                                  size: 14,
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  hasReviews
+                                      ? '${seller.rating.toStringAsFixed(1)} (${seller.reviews})'
+                                      : 'Sin calificaciones',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 11.5,
+                                    color: hasReviews
+                                        ? context.colors.ink
+                                        : context.colors.muted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (isOpen != null) OpenStatusBadge(isOpen: isOpen),
+                        ],
                       ),
                     ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: context.colors.muted.withValues(alpha: 0.6),
+                  size: 22,
+                ),
+              ],
+            ),
+            if (_hasScheduleOrLocation) ...[
+              const SizedBox(height: 14),
+              Container(height: 1, color: context.colors.border),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(
+                    Icons.schedule_rounded,
+                    size: 15,
+                    color: context.colors.accent,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Ver ubicación y horarios',
+                    style: TextStyle(
+                      color: context.colors.accent,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
                   ),
                 ],
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -1533,55 +1395,11 @@ class _ProductRatingSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (isOwner)
-          // Solo lectura: promedio de estrellas
-          Row(
-            children: [
-              _StarDisplay(rating: product.productRating),
-              if (product.productReviews > 0) ...[
-                const SizedBox(width: 8),
-                Text(
-                  '${product.productRating.toStringAsFixed(1)} (${product.productReviews} reseña${product.productReviews == 1 ? '' : 's'})',
-                  style: TextStyle(
-                    color: context.colors.muted,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ],
-          )
+          const SizedBox.shrink()
         else
           // Interactivo: permite al usuario calificar
           _InteractiveStarRating(product: product, onRated: onRated),
       ],
-    );
-  }
-}
-
-/// Muestra estrellas rellenas según un valor decimal (solo lectura).
-class _StarDisplay extends StatelessWidget {
-  const _StarDisplay({required this.rating});
-
-  final double rating;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(5, (index) {
-        final starIndex = index + 1;
-        IconData icon;
-        if (rating >= starIndex) {
-          icon = Icons.star_rounded;
-        } else if (rating >= starIndex - 0.5) {
-          icon = Icons.star_half_rounded;
-        } else {
-          icon = Icons.star_border_rounded;
-        }
-        return Padding(
-          padding: const EdgeInsets.only(right: 2),
-          child: Icon(icon, size: 22, color: AppColors.gold),
-        );
-      }),
     );
   }
 }
@@ -1660,10 +1478,11 @@ class _InteractiveStarRatingState extends State<_InteractiveStarRating> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -1693,60 +1512,23 @@ class _InteractiveStarRatingState extends State<_InteractiveStarRating> {
             ],
           ],
         ),
-        const SizedBox(height: 6),
-        Row(
-          children: [
-            Text(
-              _selectedStars > 0
-                  ? 'Tu calificación: $_selectedStars/5'
-                  : 'Toca una estrella para calificar',
-              style: TextStyle(
-                color: context.colors.muted,
-                fontWeight: FontWeight.w500,
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(width: 12),
-            // Mostrar el promedio general
-            if (widget.product.productReviews > 0)
-              Text(
-                '· Promedio: ${widget.product.productRating.toStringAsFixed(1)} (${widget.product.productReviews})',
-                style: TextStyle(
-                  color: context.colors.muted,
-                  fontWeight: FontWeight.w500,
-                  fontSize: 13,
-                ),
-              ),
-          ],
-        ),
+        if (widget.product.effectivePaymentMethods.isNotEmpty)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final id in widget.product.effectivePaymentMethods)
+                if (paymentMethodById(id) != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 12),
+                    child: Icon(
+                      paymentMethodById(id)!.icon,
+                      size: 20,
+                      color: context.colors.muted,
+                    ),
+                  ),
+            ],
+          ),
       ],
     );
   }
-}
-
-/// Transición premium para abrir pantalla de detalle: slide-up + fade con spring easing.
-Route<T> springDetailRoute<T>(Widget page) {
-  return PageRouteBuilder<T>(
-    pageBuilder: (context, animation, secondaryAnimation) => page,
-    transitionDuration: AppAnimations.slow,
-    reverseTransitionDuration: AppAnimations.medium,
-    transitionsBuilder: (context, animation, secondaryAnimation, child) {
-      final slide =
-          Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero).animate(
-            CurvedAnimation(parent: animation, curve: AppAnimations.spring),
-          );
-
-      final fade = Tween<double>(begin: 0.0, end: 1.0).animate(
-        CurvedAnimation(
-          parent: animation,
-          curve: const Interval(0, 0.6, curve: Curves.easeOut),
-        ),
-      );
-
-      return FadeTransition(
-        opacity: fade,
-        child: SlideTransition(position: slide, child: child),
-      );
-    },
-  );
 }

@@ -6,6 +6,7 @@ import '../models.dart';
 import '../services/api_service.dart';
 import '../widgets/payment_methods.dart';
 import '../widgets/product_card.dart';
+import '../widgets/seller_profile_skeleton.dart';
 import '../widgets/seller_schedule_location_row.dart';
 import 'product_detail_screen.dart';
 
@@ -84,30 +85,37 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Perfil')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(_error!, textAlign: TextAlign.center),
+      body: AnimatedSwitcher(
+        duration: AppAnimations.medium,
+        child: _loading
+            ? const SellerProfileSkeleton(key: ValueKey('seller-skeleton'))
+            : _error != null
+            ? Center(
+                key: const ValueKey('seller-error'),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(_error!, textAlign: TextAlign.center),
+                ),
+              )
+            : RefreshIndicator(
+                key: const ValueKey('seller-content'),
+                onRefresh: _load,
+                child: _buildContent(context),
               ),
-            )
-          : RefreshIndicator(onRefresh: _load, child: _buildContent(context)),
+      ),
     );
   }
 
   Widget _buildContent(BuildContext context) {
     final seller = _seller!;
     final hasWhatsapp = (seller.phone ?? '').trim().isNotEmpty;
+    final hasOperationalInfo =
+        seller.businessHours.isNotEmpty ||
+        seller.hasLocation ||
+        seller.paymentMethods.isNotEmpty;
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
-        if (seller.isBusiness &&
-            (seller.businessHours.isNotEmpty || seller.hasLocation)) ...[
-          SellerScheduleAndLocationRow(seller: seller),
-          const SizedBox(height: 20),
-        ],
         Center(
           child: Column(
             children: [
@@ -163,7 +171,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
                   const SizedBox(width: 3),
                   Text(
                     seller.reviews > 0
-                        ? '${seller.rating.toStringAsFixed(1)} (${seller.reviews} reseña${seller.reviews == 1 ? '' : 's'})'
+                        ? '${seller.rating.toStringAsFixed(1)} (${seller.reviews})'
                         : 'Sin calificaciones',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
@@ -195,11 +203,20 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
             ],
           ),
         ),
-        if (seller.paymentMethods.isNotEmpty) ...[
-          const SizedBox(height: 24),
-          Text('Métodos de pago aceptados', style: AppTypography.heading(16)),
-          const SizedBox(height: 10),
-          PaymentMethodsChips(methods: seller.paymentMethods),
+        if (hasOperationalInfo) ...[
+          const SizedBox(height: 28),
+          if (seller.businessHours.isNotEmpty || seller.hasLocation) ...[
+            SellerScheduleAndLocationRow(seller: seller),
+            if (seller.paymentMethods.isNotEmpty) const SizedBox(height: 20),
+          ],
+          if (seller.paymentMethods.isNotEmpty) ...[
+            Text(
+              'Métodos de pago aceptados',
+              style: AppTypography.heading(16),
+            ),
+            const SizedBox(height: 10),
+            PaymentMethodsChips(methods: seller.paymentMethods),
+          ],
         ],
         const SizedBox(height: 24),
         Text('Publicaciones', style: AppTypography.heading(16)),

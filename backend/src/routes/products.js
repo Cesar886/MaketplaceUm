@@ -65,7 +65,8 @@ function normalizeExtras(extrasInput) {
 }
 
 /**
- * Normaliza los días de la semana disponibles (0=domingo .. 6=sábado):
+ * Normaliza los días de la semana disponibles (0=lunes .. 6=domingo, mismo
+ * índice que Seller.businessHours y que el day picker de Flutter):
  * dedupe, valida rango entero y ordena. Acepta array o JSON string.
  */
 function normalizeAvailableDays(daysInput) {
@@ -81,6 +82,80 @@ function normalizeAvailableDays(daysInput) {
         .map(d => Number(d))
         .filter(d => Number.isInteger(d) && d >= 0 && d <= 6))].sort()
     : [];
+}
+
+// ─── Estados manuales que el vendedor puede activar explícitamente ────
+// 'available'/'unavailable' YA NO son valores manuales: son resultados del
+// cálculo automático (ver computeProductStatus). Estos 4 son "pegajosos":
+// no expiran con el tiempo/inventario/calendario, solo los quita el vendedor
+// reactivando (PATCH /status con manual_status: null) o borrando el producto.
+const MANUAL_STATUSES = ['sold', 'reserved', 'negotiating', 'paused'];
+
+const DAY_NAMES_ES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+
+/**
+ * Calcula el badge de disponibilidad de un producto en tiempo real,
+ * evaluando en orden de más estricto a más flexible y deteniéndose en el
+ * primer nivel que aplique:
+ *   1. manual_status (vendido/apartado/en negociación/pausado) — sobreescribe todo.
+ *   2. Inventario agotado (stock_quantity <= 0, solo si usa stock limitado).
+ *   3. Días disponibles: si el vendedor marcó al menos un día y hoy no es
+ *      uno de ellos → "disponible el [próximo día marcado]". 0 días marcados
+ *      significa "sin restricción de calendario", no "nunca disponible".
+ *   4. Horario del negocio (solo vendedores tipo negocio con businessHours
+ *      configurado): fuera de horario → "cerrado"/"abre a las [hora]".
+ *   5. Happy path: "disponible".
+ * Devuelve { computed_status, computed_status_detail } — nunca persiste en
+ * la base de datos, se recalcula en cada lectura.
+ */
+function computeProductStatus(product, seller) {
+  if (product.manual_status && MANUAL_STATUSES.includes(product.manual_status)) {
+    return { computed_status: product.manual_status, computed_status_detail: {} };
+  }
+
+  const usesLimitedStock = product.stock_quantity !== null && product.stock_quantity !== undefined;
+  if (usesLimitedStock && product.stock_quantity <= 0) {
+    return { computed_status: 'sold_out', computed_status_detail: {} };
+  }
+
+  const now = new Date();
+  const todayIdx = (now.getDay() + 6) % 7; // JS getDay(): 0=domingo..6=sábado → 0=lunes..6=domingo
+
+  const availableDays = Array.isArray(product.availableDays) ? product.availableDays : [];
+  if (availableDays.length > 0 && !availableDays.includes(todayIdx)) {
+    let nextDay = null;
+    for (let offset = 1; offset <= 7; offset++) {
+      const candidate = (todayIdx + offset) % 7;
+      if (availableDays.includes(candidate)) {
+        nextDay = candidate;
+        break;
+      }
+    }
+    return {
+      computed_status: 'available_other_day',
+      computed_status_detail: { next_available_day: nextDay !== null ? DAY_NAMES_ES[nextDay] : null },
+    };
+  }
+
+  if (seller && seller.isBusiness && seller.businessHours && Object.keys(seller.businessHours).length > 0) {
+    const range = seller.businessHours[String(todayIdx)] || seller.businessHours[todayIdx];
+    if (!range) {
+      return { computed_status: 'closed', computed_status_detail: {} };
+    }
+    const [openH, openM] = String(range.open).split(':').map(Number);
+    const [closeH, closeM] = String(range.close).split(':').map(Number);
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const openMinutes = openH * 60 + openM;
+    const closeMinutes = closeH * 60 + closeM;
+    if (nowMinutes < openMinutes) {
+      return { computed_status: 'closed', computed_status_detail: { opens_at: range.open } };
+    }
+    if (nowMinutes >= closeMinutes) {
+      return { computed_status: 'closed', computed_status_detail: {} };
+    }
+  }
+
+  return { computed_status: 'available', computed_status_detail: {} };
 }
 
 function attachRelations(productsList, userId) {
@@ -106,26 +181,32 @@ function attachRelations(productsList, userId) {
     const ratingStats = db.getProductRatingStats(p.id);
     const userRating = userId ? db.getUserProductRating(p.id, userId) : null;
 
+    const sellerObj = sellers.find(s => s.id === p.seller) || (
+      p.seller ? {
+        id: p.seller,
+        name: p.seller,
+        avatarInitials: p.seller.slice(0, 2).toUpperCase(),
+        major: '',
+        isBusiness: false,
+        logoUrl: null,
+        rating: 0,
+        reviews: 0,
+        verified: false,
+      } : null
+    );
+
+    const { computed_status, computed_status_detail } = computeProductStatus(p, sellerObj);
+
     return {
       ...p,
       postType: 'producto',
       is_available,
+      computed_status,
+      computed_status_detail,
       productRating: ratingStats.average,
       productReviews: ratingStats.count,
       userRating,
-      sellerObj: sellers.find(s => s.id === p.seller) || (
-        p.seller ? {
-          id: p.seller,
-          name: p.seller,
-          avatarInitials: p.seller.slice(0, 2).toUpperCase(),
-          major: '',
-          isBusiness: false,
-          logoUrl: null,
-          rating: 0,
-          reviews: 0,
-          verified: false,
-        } : null
-      ),
+      sellerObj,
       categoryObj: categories.find(c => c.id === p.category) || null,
     };
   });
@@ -158,6 +239,26 @@ function register(app) {
     const product = products.find(p => p.id === req.params.id);
     if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
     res.json(attachRelations([product], req.query.userId)[0]);
+  });
+
+  // POST /api/products/:id/view – registra una vista de detalle. Conteo
+  // simple (no vistas únicas): el cliente ya aplica su propio cooldown para
+  // no spamear esto en aperturas repetidas. No cuenta si quien pide es el
+  // dueño de la publicación, mismo criterio de "userId" ya usado en
+  // calificaciones (product.seller === userId, sin exigir JWT).
+  app.post('/api/products/:id/view', (req, res) => {
+    const product = products.find(p => p.id === req.params.id);
+    if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+
+    const userId = req.body?.userId;
+    if (!userId || product.seller !== userId) {
+      db.incrementProductViews(product.id);
+      // GET /api/products/:id lee del array `products` en memoria (no de
+      // SQLite directo), así que hay que reflejar el incremento ahí también
+      // o quedaría desactualizado hasta el próximo reinicio del servidor.
+      product.views = (product.views || 0) + 1;
+    }
+    res.status(204).end();
   });
 
   // POST /api/products – crear nuevo producto (con imágenes opcionales)
@@ -213,8 +314,6 @@ function register(app) {
       Promise.all(conversionPromises)
         .then((images) => {
           const priceNum = Number(price);
-          const validStatuses = ['available', 'reserved', 'sold', 'negotiating', 'paused', 'unavailable'];
-          const status = req.body?.status || 'available';
 
           const extrasInput = normalizeExtras(req.body?.extras);
           const availableDays = normalizeAvailableDays(req.body?.availableDays);
@@ -231,7 +330,7 @@ function register(app) {
             images,
             imageIcon: images.length > 0 ? null : (categoryObj?.icon || 'category'),
             imageColor: categoryObj?.color || '#607D8B',
-            status: validStatuses.includes(status) ? status : 'available',
+            manual_status: null,
             extras: extrasInput,
             isFeatured: false,
             isOffer: false,
@@ -444,8 +543,11 @@ function register(app) {
     }
   });
 
-  // PATCH /api/products/:id/status – cambiar estado de disponibilidad (solo dueño)
-  const VALID_STATUSES = ['available', 'reserved', 'sold', 'negotiating', 'paused', 'unavailable'];
+  // PATCH /api/products/:id/status – activar/quitar un estado manual (solo dueño).
+  // 'available'/'unavailable' ya no son valores aceptados: el badge de
+  // "disponible" o "no disponible" es siempre calculado (ver
+  // computeProductStatus), nunca una elección manual. Mandar status: null
+  // "reactiva" el producto, volviéndolo al cálculo automático.
   app.patch('/api/products/:id/status', requireAuth, (req, res) => {
     try {
       const product = products.find(p => p.id === req.params.id);
@@ -456,13 +558,13 @@ function register(app) {
       }
 
       const { status } = req.body;
-      if (!status || !VALID_STATUSES.includes(status)) {
+      if (status !== null && !MANUAL_STATUSES.includes(status)) {
         return res.status(400).json({
-          error: 'Estado inválido. Valores válidos: ' + VALID_STATUSES.join(', '),
+          error: 'Estado inválido. Valores válidos: ' + MANUAL_STATUSES.join(', ') + ', o null para reactivar',
         });
       }
 
-      product.status = status;
+      product.manual_status = status;
 
       // Si se marca como vendido, la oferta expira automáticamente
       if (status === 'sold' && product.isOffer) {
@@ -520,17 +622,15 @@ function register(app) {
 
       product.stock_updated_at = new Date().toISOString();
 
-      // Auto-agotar si llega a 0
-      if (product.stock_quantity === 0 && product.status === 'available') {
-        product.status = 'sold';
-        if (product.isOffer) {
-          product.isOffer = false;
-          product.previousPrice = null;
-          product.discountLabel = null;
-          product.offerExpiresAt = null;
-        }
-      } else if (product.stock_quantity > 0 && product.status === 'sold') {
-        product.status = 'available'; // Restaurar si se agrega stock
+      // El badge "Agotado" ya no se persiste en status: se calcula en cada
+      // lectura a partir de stock_quantity (ver computeProductStatus). Solo
+      // se conserva el efecto secundario de expirar la oferta al agotarse,
+      // que es un concepto de precio, no de disponibilidad.
+      if (product.stock_quantity === 0 && product.isOffer) {
+        product.isOffer = false;
+        product.previousPrice = null;
+        product.discountLabel = null;
+        product.offerExpiresAt = null;
       }
 
       saveData();

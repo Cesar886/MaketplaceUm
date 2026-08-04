@@ -9,6 +9,7 @@ import '../mock_data.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../widgets/badges.dart';
 import '../widgets/location_picker.dart';
 import '../widgets/payment_methods.dart';
 import '../widgets/publish_auth_gate.dart';
@@ -39,6 +40,18 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     'Vie',
     'Sáb',
     'Dom',
+  ];
+
+  // Mismos índices que _dayNames (0=lunes..6=domingo), en minúscula y
+  // completos para el texto del badge calculado ("Disponible el miércoles").
+  static const List<String> _dayFullNames = [
+    'lunes',
+    'martes',
+    'miércoles',
+    'jueves',
+    'viernes',
+    'sábado',
+    'domingo',
   ];
 
   final _titleController = TextEditingController();
@@ -86,9 +99,15 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   final Set<String> _customPaymentMethods = {};
   bool _showPaymentMethodsError = false;
 
-  // ─── Estado del producto (solo editable en modo edición) ──
-  ProductAvailability? _currentStatus;
+  // ─── Gestión de venta: estado manual pegajoso (solo editable en modo
+  // edición) — null significa "sin override, badge calculado automático".
+  ManualStatus? _currentStatus;
   bool _updatingStatus = false;
+
+  // ─── Vendedor actual: solo para alimentar el preview del badge calculado
+  // (horario de negocio). En edición viene del propio producto; al publicar
+  // uno nuevo se carga en _loadData junto con el resto.
+  Seller? _seller;
 
   @override
   void initState() {
@@ -118,7 +137,8 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       _customizePaymentMethods = true;
       _customPaymentMethods.addAll(product.paymentMethods!);
     }
-    _currentStatus = product.availability;
+    _currentStatus = product.manualStatus;
+    _seller = product.seller;
 
     if (product.stockQuantity != null) {
       _isStockLimited = true;
@@ -149,6 +169,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
         }
         if (results.length > 2) {
           final seller = results[2] as Seller;
+          _seller = seller;
           _savedSellerLat = seller.locationLat;
           _savedSellerLng = seller.locationLng;
           if (_hasSavedSellerLocation) {
@@ -239,6 +260,8 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   }
 
   Future<void> _publish() async {
+    if (!_flushPendingExtra()) return;
+
     final title = _titleController.text.trim();
     final description = _descriptionController.text.trim();
     final price = _priceController.text.trim();
@@ -307,7 +330,6 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           price: price,
           category: _selectedCategoryId,
           description: description,
-          status: 'available', // El backend deriva de availableDays
           availableDays: _selectedDays.toList()..sort(),
           extras: _extras.map((e) => e.toJson()).toList(),
           imagePaths: _selectedImages.map((xf) => xf.path).toList(),
@@ -434,8 +456,151 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     });
   }
 
+  /// Si el usuario escribió un extra pero no tocó "+" antes de guardar, lo
+  /// agrega solo en vez de perderlo en silencio — es fácil olvidar ese paso
+  /// y el dato ya está escrito, así que no tiene sentido descartarlo.
+  /// Devuelve false (y muestra el error correspondiente) si lo que quedó a
+  /// medias no se puede completar solo, para no publicar con datos rotos.
+  bool _flushPendingExtra() {
+    final name = _extraNameController.text.trim();
+    final priceText = _extraPriceController.text.trim();
+    if (name.isEmpty && priceText.isEmpty) return true;
+    if (_extras.length >= 8) {
+      _showError('Máximo 8 extras por producto');
+      return false;
+    }
+    if (name.isEmpty) {
+      _showError('Falta el nombre del extra que empezaste a agregar');
+      return false;
+    }
+    final price = double.tryParse(priceText);
+    if (price == null || price <= 0) {
+      _showError('El extra "$name" necesita un precio válido mayor a cero');
+      return false;
+    }
+    setState(() {
+      _extras.add(ProductExtra(name: name, extraPrice: price));
+      _extraNameController.clear();
+      _extraPriceController.clear();
+    });
+    return true;
+  }
+
   void _removeExtra(int index) {
     setState(() => _extras.removeAt(index));
+  }
+
+  /// Réplica simplificada, en el cliente, de la jerarquía de 5 niveles que
+  /// calcula el backend (`computeProductStatus` en products.js) — solo para
+  /// dar feedback inmediato en el formulario mientras el vendedor ajusta las
+  /// reglas, antes de guardar. La fuente de verdad real sigue siendo el
+  /// `computed_status` que devuelve el API en cada lectura.
+  (ComputedStatus, String?, String?) _computePreviewStatus() {
+    if (_currentStatus != null) {
+      final mapped = switch (_currentStatus!) {
+        ManualStatus.reserved => ComputedStatus.reserved,
+        ManualStatus.sold => ComputedStatus.sold,
+        ManualStatus.negotiating => ComputedStatus.negotiating,
+        ManualStatus.paused => ComputedStatus.paused,
+      };
+      return (mapped, null, null);
+    }
+
+    if (_isStockLimited) {
+      final stock = int.tryParse(_stockController.text.trim());
+      if (stock != null && stock <= 0) {
+        return (ComputedStatus.soldOut, null, null);
+      }
+    }
+
+    final today = DateTime.now().weekday - 1; // 0=Lun..6=Dom
+    if (_selectedDays.isNotEmpty && !_selectedDays.contains(today)) {
+      int? nextDay;
+      for (var offset = 1; offset <= 7; offset++) {
+        final candidate = (today + offset) % 7;
+        if (_selectedDays.contains(candidate)) {
+          nextDay = candidate;
+          break;
+        }
+      }
+      return (
+        ComputedStatus.availableOtherDay,
+        nextDay != null ? _dayFullNames[nextDay] : null,
+        null,
+      );
+    }
+
+    final seller = _seller;
+    if (seller != null &&
+        seller.isBusiness &&
+        seller.businessHours.isNotEmpty) {
+      final range = seller.businessHours[today];
+      if (range == null) {
+        return (ComputedStatus.closed, null, null);
+      }
+      final now = DateTime.now();
+      final openParts = range.open.split(':');
+      final closeParts = range.close.split(':');
+      final openMinutes =
+          int.parse(openParts[0]) * 60 + int.parse(openParts[1]);
+      final closeMinutes =
+          int.parse(closeParts[0]) * 60 + int.parse(closeParts[1]);
+      final nowMinutes = now.hour * 60 + now.minute;
+      if (nowMinutes < openMinutes) {
+        return (ComputedStatus.closed, null, range.open);
+      }
+      if (nowMinutes >= closeMinutes) {
+        return (ComputedStatus.closed, null, null);
+      }
+    }
+
+    return (ComputedStatus.available, null, null);
+  }
+
+  Widget _buildStatusPreview() {
+    final (status, nextDay, opensAt) = _computePreviewStatus();
+    return Row(
+      children: [
+        Text(
+          'Así se verá: ',
+          style: TextStyle(
+            color: context.colors.muted,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        AvailabilityBadge(
+          status: status,
+          nextAvailableDay: nextDay,
+          opensAt: opensAt,
+        ),
+      ],
+    );
+  }
+
+  /// Agrupa las reglas que alimentan el cálculo automático del badge —
+  /// días disponibles e inventario (el horario, cuando aplica, sale del
+  /// perfil de negocio y no se edita aquí). No son botones de estado por sí
+  /// mismos: son insumos de [computedStatus]. Ver [_buildStatusSection]
+  /// para la intervención manual que sí sobreescribe el badge.
+  Widget _buildAvailabilityRulesSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Reglas de disponibilidad', style: AppTypography.heading(15)),
+        const SizedBox(height: 4),
+        Text(
+          'El badge que ven los demás se calcula solo a partir de estas reglas (y del horario del negocio, si aplica).',
+          style: TextStyle(color: context.colors.muted, fontSize: 13),
+        ),
+        const SizedBox(height: 10),
+        _buildDaySelector(),
+        const SizedBox(height: 12),
+        _buildStockSection(),
+        const SizedBox(height: 12),
+        _buildStatusPreview(),
+      ],
+    );
   }
 
   Widget _buildDaySelector() {
@@ -924,8 +1089,8 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
         const SizedBox(height: 4),
         Text(
           _sellerPaymentMethods.isEmpty
-              ? 'Por defecto se usan los métodos de pago de tu perfil.'
-              : 'Por defecto se usan los de tu perfil: '
+              ? 'Usa los métodos de tu perfil.'
+              : 'Usa: '
                     '${_sellerPaymentMethods.map((id) => paymentMethodById(id)?.label ?? id).join(', ')}.',
           style: TextStyle(color: context.colors.muted, fontSize: 13),
         ),
@@ -955,22 +1120,29 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     );
   }
 
-  /// Cambia el estado del producto de inmediato (independiente del resto
-  /// del formulario) — mismo endpoint/UX que antes vivía en el detalle de
-  /// producto, ahora solo accesible desde "Editar producto".
-  Future<void> _updateStatus(ProductAvailability status) async {
+  /// Activa (o quita, con `status: null`) un estado manual de inmediato
+  /// (independiente del resto del formulario) — mismo endpoint/UX que antes
+  /// vivía en el detalle de producto, ahora solo accesible desde "Editar
+  /// producto".
+  Future<void> _updateStatus(ManualStatus? status) async {
     if (status == _currentStatus || _updatingStatus) return;
     final product = widget.editingProduct!;
     setState(() => _updatingStatus = true);
     try {
-      await ApiService.updateProductStatus(product.id, status.name);
+      await ApiService.updateProductStatus(product.id, status?.apiValue);
       if (!mounted) return;
       setState(() {
         _currentStatus = status;
         _updatingStatus = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Estado cambiado a "${status.label}"')),
+        SnackBar(
+          content: Text(
+            status != null
+                ? 'Estado cambiado a "${status.label}"'
+                : 'Producto reactivado: el badge vuelve a calcularse automático',
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -979,86 +1151,100 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     }
   }
 
-  Color _statusColor(ProductAvailability status) {
+  Color _statusColor(ManualStatus status) {
     switch (status) {
-      case ProductAvailability.available:
-        return AppColors.success;
-      case ProductAvailability.reserved:
+      case ManualStatus.reserved:
         return AppColors.orange;
-      case ProductAvailability.sold:
+      case ManualStatus.sold:
         return AppColors.danger;
-      case ProductAvailability.negotiating:
+      case ManualStatus.negotiating:
         return AppColors.primary;
-      case ProductAvailability.paused:
-      case ProductAvailability.unavailable:
+      case ManualStatus.paused:
         return context.colors.muted;
     }
   }
 
-  IconData _statusIcon(ProductAvailability status) {
+  IconData _statusIcon(ManualStatus status) {
     switch (status) {
-      case ProductAvailability.available:
-        return Icons.check_circle_rounded;
-      case ProductAvailability.reserved:
+      case ManualStatus.reserved:
         return Icons.bookmark_rounded;
-      case ProductAvailability.sold:
+      case ManualStatus.sold:
         return Icons.sell_rounded;
-      case ProductAvailability.negotiating:
+      case ManualStatus.negotiating:
         return Icons.handshake_rounded;
-      case ProductAvailability.paused:
+      case ManualStatus.paused:
         return Icons.pause_circle_rounded;
-      case ProductAvailability.unavailable:
-        return Icons.block_rounded;
     }
   }
 
-  /// Selector de estado del producto (disponible/apartado/vendido/...).
-  /// Solo visible en modo edición — el visitante del detalle de producto
-  /// solo ve el badge de solo lectura con el estado que elijas aquí.
+  /// Intervención manual del vendedor: apartado/vendido/en negociación/
+  /// pausado. Estos 4 son "pegajosos" — sobreescriben el badge calculado y
+  /// se mantienen hasta que el vendedor presione "Reactivar" o borre la
+  /// publicación (no expiran solos con el tiempo, el stock o el calendario).
+  /// "Disponible"/"No disponible" ya NO son opciones aquí: son resultados
+  /// automáticos de las reglas de "Reglas de disponibilidad" más abajo.
   Widget _buildStatusSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Estado del producto', style: AppTypography.heading(15)),
+        Text('Gestión de venta', style: AppTypography.heading(15)),
         const SizedBox(height: 4),
         Text(
-          'Así lo verán los demás en el detalle del producto.',
+          _currentStatus != null
+              ? 'Este estado sobreescribe el badge automático hasta que lo reactives.'
+              : 'Actívalo solo si necesitas anular temporalmente el cálculo automático (ver "Reglas de disponibilidad").',
           style: TextStyle(color: context.colors.muted, fontSize: 13),
         ),
         const SizedBox(height: 10),
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: ProductAvailability.values.map((status) {
-            final selected = status == _currentStatus;
-            final color = _statusColor(status);
-            return ChoiceChip(
-              label: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    _statusIcon(status),
-                    size: 18,
-                    color: selected ? Colors.white : color,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(status.label),
-                ],
+          children: [
+            ...ManualStatus.values.map((status) {
+              final selected = status == _currentStatus;
+              final color = _statusColor(status);
+              return ChoiceChip(
+                label: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _statusIcon(status),
+                      size: 18,
+                      color: selected ? Colors.white : color,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(status.label),
+                  ],
+                ),
+                selected: selected,
+                selectedColor: color,
+                labelStyle: TextStyle(
+                  color: selected ? Colors.white : context.colors.ink,
+                  fontWeight: FontWeight.w600,
+                ),
+                onSelected: _updatingStatus
+                    ? null
+                    : (isSelected) {
+                        if (!isSelected) return;
+                        _updateStatus(status);
+                      },
+              );
+            }),
+            if (_currentStatus != null)
+              ActionChip(
+                avatar: const Icon(
+                  Icons.autorenew_rounded,
+                  size: 18,
+                  color: AppColors.success,
+                ),
+                label: const Text('Reactivar'),
+                labelStyle: const TextStyle(
+                  color: AppColors.success,
+                  fontWeight: FontWeight.w600,
+                ),
+                onPressed: _updatingStatus ? null : () => _updateStatus(null),
               ),
-              selected: selected,
-              selectedColor: color,
-              labelStyle: TextStyle(
-                color: selected ? Colors.white : context.colors.ink,
-                fontWeight: FontWeight.w600,
-              ),
-              onSelected: _updatingStatus
-                  ? null
-                  : (isSelected) {
-                      if (!isSelected) return;
-                      _updateStatus(status);
-                    },
-            );
-          }).toList(),
+          ],
         ),
       ],
     );
@@ -1174,10 +1360,8 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           const SizedBox(height: 12),
           _buildStatusSection(),
         ],
-        const SizedBox(height: 12),
-        _buildDaySelector(),
-        const SizedBox(height: 12),
-        _buildStockSection(),
+        const SizedBox(height: 20),
+        _buildAvailabilityRulesSection(),
         const SizedBox(height: 12),
         _buildExtrasSection(),
         const SizedBox(height: 16),

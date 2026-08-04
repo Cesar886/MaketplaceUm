@@ -220,6 +220,23 @@ class ApiService {
     return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  /// Registra una vista de detalle de producto. Conteo simple: el backend
+  /// no incrementa si [userId] es el dueño de la publicación. Pensado para
+  /// llamarse fire-and-forget (sin await bloqueante en la UI) desde la
+  /// pantalla de detalle, una vez por apertura y ya filtrado por el
+  /// cooldown del cliente ([ViewCooldown]).
+  static Future<void> registerProductView(String id, {String? userId}) async {
+    try {
+      await _client.post(
+        _uri('/products/$id/view'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({if (userId != null) 'userId': userId}),
+      );
+    } catch (_) {
+      // Best-effort: si falla, simplemente no se contó esta vista.
+    }
+  }
+
   /// Crea una publicación "se busca". Requiere sesión: el autor sale del
   /// JWT (requireAuth en backend), no de un userId de body.
   static Future<WantedPost> createWantedPost({
@@ -317,6 +334,19 @@ class ApiService {
     return WantedPost.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  /// Análogo a [registerProductView] pero para publicaciones "se busca".
+  static Future<void> registerWantedPostView(String id, {String? userId}) async {
+    try {
+      await _client.post(
+        _uri('/wanted/$id/view'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({if (userId != null) 'userId': userId}),
+      );
+    } catch (_) {
+      // Best-effort: si falla, simplemente no se contó esta vista.
+    }
+  }
+
   static Future<WantedPost> resolveWantedPost(
     String id, {
     required String userId,
@@ -362,7 +392,6 @@ class ApiService {
     required String price,
     required String category,
     required String description,
-    String status = 'available',
     List<int> availableDays = const [],
     List<Map<String, dynamic>> extras = const [],
     List<String>? imagePaths,
@@ -380,7 +409,6 @@ class ApiService {
       request.fields['price'] = price;
       request.fields['category'] = category;
       request.fields['description'] = description;
-      request.fields['status'] = status;
       request.fields['extras'] = jsonEncode(extras);
       if (stockQuantity != null) {
         request.fields['stock_quantity'] = stockQuantity.toString();
@@ -425,7 +453,6 @@ class ApiService {
       'price': price,
       'category': category,
       'description': description,
-      'status': status,
       'extras': extras,
       if (stockQuantity != null) 'stock_quantity': stockQuantity,
       'stock_reset_daily': stockResetDaily,
@@ -561,10 +588,12 @@ class ApiService {
     return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
-  /// Cambia el estado de disponibilidad de un producto (solo el dueño).
+  /// Activa (o quita, si [status] es `null`) un estado manual pegajoso del
+  /// producto — vendido/apartado/en negociación/pausado. `null` "reactiva"
+  /// el producto y lo vuelve al cálculo automático del badge.
   static Future<Product> updateProductStatus(
     String productId,
-    String status,
+    String? status,
   ) async {
     final res = await _client.patch(
       _uri('/products/$productId/status'),

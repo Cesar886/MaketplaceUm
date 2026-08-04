@@ -10,6 +10,7 @@ import '../services/favorite_products_service.dart';
 import '../services/feed_mixer.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/auto_refresh.dart';
+import '../widgets/home_grid_skeleton.dart';
 import '../widgets/product_card.dart';
 import '../widgets/section_header.dart';
 import '../widgets/wanted_post_card.dart';
@@ -196,12 +197,20 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: AppAnimations.medium,
+      child: _buildBody(context),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
     if (_loading) {
-      return const SafeArea(child: Center(child: CircularProgressIndicator()));
+      return const HomeGridSkeleton(key: ValueKey('home-skeleton'));
     }
 
     if (_error != null) {
       return SafeArea(
+        key: const ValueKey('home-error'),
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(32),
@@ -241,6 +250,7 @@ class _HomeScreenState extends State<HomeScreen>
     final recent = filtered.where((p) => !p.isFeatured).toList();
 
     return SafeArea(
+      key: const ValueKey('home-content'),
       child: RefreshIndicator(
         onRefresh: _loadData,
         child: CustomScrollView(
@@ -511,8 +521,9 @@ class _HomeScreenState extends State<HomeScreen>
     // entrada de las tarjetas cada vez que se vuelve al home.
     return Navigator.of(context)
         .push(
-          springDetailRoute(
-            ProductDetailScreen(product: Product.fromWantedPost(post)),
+          MaterialPageRoute<void>(
+            builder: (_) =>
+                ProductDetailScreen(product: Product.fromWantedPost(post)),
           ),
         )
         .then((_) => _loadFavoriteCount());
@@ -520,7 +531,11 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _openDetail(BuildContext context, Product product) {
     return Navigator.of(context)
-        .push(springDetailRoute(ProductDetailScreen(product: product)))
+        .push(
+          MaterialPageRoute<void>(
+            builder: (_) => ProductDetailScreen(product: product),
+          ),
+        )
         .then((_) => _loadFavoriteCount());
   }
 
