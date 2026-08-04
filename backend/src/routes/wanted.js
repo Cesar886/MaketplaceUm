@@ -2,7 +2,7 @@ const db = require('../database');
 const { sellers, categories } = require('../data');
 const { sendPush } = require('../push');
 const { requireAuth } = require('../auth');
-const { validateLocation } = require('../validation/sellerProfile');
+const { validateLocation, validatePaymentMethods } = require('../validation/sellerProfile');
 
 const VALID_TYPES = ['producto', 'servicio'];
 const DAILY_LIMIT = 3;
@@ -21,7 +21,7 @@ function attachWantedRelations(post) {
     postType: 'se_busca',
     sellerObj: sellers.find(s => s.id === post.userId) || {
       id: post.userId,
-      name: post.userId,
+      name: post.sellerName || 'Usuario',
       avatarInitials: post.userId.slice(0, 2).toUpperCase(),
       major: '',
       isBusiness: false,
@@ -81,6 +81,11 @@ function register(app) {
       postLocation = locationResult.value;
     }
 
+    // Métodos de pago de esta publicación (opcional): si no se manda,
+    // queda null y el cliente usa los del perfil del publicante.
+    const paymentMethodsResult = validatePaymentMethods(req.body?.paymentMethods);
+    if (paymentMethodsResult.error) return res.status(400).json({ error: paymentMethodsResult.error });
+
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
     const countToday = db.countWantedPostsSince(userId, since);
     if (countToday >= DAILY_LIMIT) {
@@ -99,6 +104,7 @@ function register(app) {
       priceMax: parsedPriceMax,
       locationLat: postLocation ? postLocation.lat : null,
       locationLng: postLocation ? postLocation.lng : null,
+      paymentMethods: paymentMethodsResult.value,
     });
 
     // Notificar a los interesados en esta categoría (mismo patrón que products.js)
@@ -157,6 +163,9 @@ function register(app) {
     const validated = validateWantedFields(req.body);
     if (validated.error) return res.status(400).json({ error: validated.error });
 
+    const paymentMethodsResult = validatePaymentMethods(req.body?.paymentMethods);
+    if (paymentMethodsResult.error) return res.status(400).json({ error: paymentMethodsResult.error });
+
     const updated = db.updateWantedPost(req.params.id, {
       title: validated.title,
       description: req.body.description || null,
@@ -164,6 +173,7 @@ function register(app) {
       type: validated.type,
       priceMin: validated.priceMin,
       priceMax: validated.priceMax,
+      paymentMethods: paymentMethodsResult.value,
     });
     res.json(attachWantedRelations(updated));
   });

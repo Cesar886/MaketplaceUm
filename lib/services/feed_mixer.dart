@@ -13,29 +13,6 @@ class FeedItem {
   final Object data;
 }
 
-/// Un tramo contiguo de ítems del mismo tipo dentro del feed intercalado —
-/// como [FeedMixer] siempre emite bloques contiguos por tipo, agrupar
-/// consecutivos del mismo tipo reconstruye esos bloques 1:1, útil para
-/// renderizar cada bloque como su propio sliver (grid para productos/
-/// búsquedas, lista de tarjetas para negocios).
-class FeedSegment {
-  const FeedSegment(this.type, this.items);
-  final FeedItemType type;
-  final List<Object> items;
-}
-
-List<FeedSegment> groupIntoSegments(List<FeedItem> feedItems) {
-  final segments = <FeedSegment>[];
-  for (final item in feedItems) {
-    if (segments.isNotEmpty && segments.last.type == item.type) {
-      segments.last.items.add(item.data);
-    } else {
-      segments.add(FeedSegment(item.type, [item.data]));
-    }
-  }
-  return segments;
-}
-
 class _BlockRange {
   const _BlockRange(this.min, this.max);
   final int min;

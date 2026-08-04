@@ -38,7 +38,12 @@ class MockProductImage extends StatelessWidget {
               width: double.infinity,
               fit: BoxFit.cover,
               gaplessPlayback: true,
-              errorBuilder: (_, _, _) => _buildMockIcon(context),
+              errorBuilder: (_, _, _) => CategoryImagePlaceholder(
+                product: product,
+                height: height,
+                showFeaturedBadge: showFeaturedBadge,
+                photoIndex: photoIndex,
+              ),
               loadingBuilder: (_, child, progress) {
                 if (progress == null) return child;
                 return Container(
@@ -71,10 +76,37 @@ class MockProductImage extends StatelessWidget {
     }
 
     // Sin imágenes reales: mock icon
-    return _buildMockIcon(context);
+    return CategoryImagePlaceholder(
+      product: product,
+      height: height,
+      borderRadius: borderRadius,
+      showFeaturedBadge: showFeaturedBadge,
+      photoIndex: photoIndex,
+    );
   }
+}
 
-  Widget _buildMockIcon(BuildContext context) {
+/// Placeholder de categoría — se muestra cuando el producto no tiene
+/// imágenes reales subidas. Extraído de [MockProductImage] para poder
+/// reutilizarlo también en [ProductImageCarousel] cuando `images` está vacío.
+class CategoryImagePlaceholder extends StatelessWidget {
+  const CategoryImagePlaceholder({
+    super.key,
+    required this.product,
+    this.height,
+    this.borderRadius = const BorderRadius.all(Radius.circular(8)),
+    this.showFeaturedBadge = true,
+    this.photoIndex = 0,
+  });
+
+  final Product product;
+  final double? height;
+  final BorderRadius borderRadius;
+  final bool showFeaturedBadge;
+  final int photoIndex;
+
+  @override
+  Widget build(BuildContext context) {
     final tintAmount = 0.08 + (photoIndex * 0.03).clamp(0, 0.09);
     final background = Color.lerp(
       context.colors.surface,
@@ -87,6 +119,7 @@ class MockProductImage extends StatelessWidget {
       borderRadius: borderRadius,
       child: Container(
         height: height,
+        width: double.infinity,
         decoration: BoxDecoration(
           color: background,
           border: Border.all(color: accent.withValues(alpha: 0.10)),

@@ -352,14 +352,12 @@ class _HomeScreenState extends State<HomeScreen>
             // siguiente página — ver el doc de [FeedMixer] para el porqué.
             ..._buildFeedSlivers(
               context,
-              groupIntoSegments(
-                FeedMixer(
-                  products: recent,
-                  wantedPosts: _wantedPosts,
-                  businesses: _businessesWithProducts,
-                  seed: _feedSeed,
-                ).getAll(),
-              ),
+              FeedMixer(
+                products: recent,
+                wantedPosts: _wantedPosts,
+                businesses: _businessesWithProducts,
+                seed: _feedSeed,
+              ).getAll(),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 8)),
           ],
@@ -368,69 +366,93 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  /// Traduce los segmentos ya agrupados por [groupIntoSegments] a slivers:
-  /// grids para productos/búsquedas (respetando el orden interno de cada
-  /// bloque) y una tarjeta por negocio. `productOffset` lleva la cuenta
-  /// global de productos ya renderizados para que la animación de stagger
-  /// siga una progresión continua aunque los productos estén repartidos en
-  /// varios bloques a lo largo del feed.
+  /// Traduce el feed ya intercalado (item por item, sin agrupar por bloque)
+  /// a slivers.
+  ///
+  /// Productos y búsquedas fluyen en UN SOLO grid de 2 columnas continuo:
+  /// como [FeedMixer] intercala bloques de tamaño variable (2-4 productos,
+  /// 1-3 búsquedas...), agrupar cada bloque en su propio `SliverGrid`
+  /// dejaba el último ítem de cualquier bloque de tamaño impar solo en su
+  /// fila — con la celda vecina en blanco, rompiendo visualmente el patrón
+  /// de 2 columnas en medio del feed. Por eso acá se arma UN run de grid
+  /// que abarca todos los ítems grid-eables consecutivos, sin importar si
+  /// cambian de tipo (producto → búsqueda → producto) dentro del mismo run;
+  /// el tipo de cada ítem solo decide qué card dibuja `itemBuilder`, nunca
+  /// cuántas columnas ocupa.
+  ///
+  /// Los negocios SÍ cortan ese grid a propósito — `_BusinessCard` es una
+  /// tarjeta ancha con varios productos adentro, pensada para verse a todo
+  /// el ancho (`SliverToBoxAdapter`), no para una celda de grid angosta.
+  /// Cada vez que aparece un negocio se cierra el run de grid en curso y se
+  /// retoma uno nuevo después.
+  ///
+  /// `productOffset` lleva la cuenta global de productos ya renderizados
+  /// para que la animación de stagger siga una progresión continua aunque
+  /// los productos estén repartidos en varios runs a lo largo del feed.
   List<Widget> _buildFeedSlivers(
     BuildContext context,
-    List<FeedSegment> segments,
+    List<FeedItem> feedItems,
   ) {
     final widgets = <Widget>[];
     var productOffset = 0;
+    var i = 0;
 
-    for (final segment in segments) {
-      switch (segment.type) {
-        case FeedItemType.product:
-          final items = segment.items.cast<Product>();
-          final offset = productOffset;
-          widgets.add(
-            SliverPadding(
+    while (i < feedItems.length) {
+      final item = feedItems[i];
+
+      if (item.type == FeedItemType.business) {
+        final entry = item.data as MapEntry<Seller, List<Product>>;
+        widgets.add(
+          SliverToBoxAdapter(
+            child: Padding(
               padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
-              sliver: SliverLayoutBuilder(
-                builder: (context, constraints) {
-                  final width = constraints.crossAxisExtent;
-                  final columns = width >= 720 ? 3 : 2;
-                  return AnimatedBuilder(
-                    animation: _staggerController,
-                    builder: (context, _) {
-                      return SliverGrid.builder(
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: columns,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                          childAspectRatio: columns == 3 ? 0.72 : 0.64,
-                        ),
-                        itemCount: items.length,
-                        itemBuilder: (context, index) {
-                          final product = items[index];
-                          return ProductCard(
-                            product: product,
-                            onTap: () => _openDetail(context, product),
-                            animationValue: _cardAnimValue(offset + index),
-                          );
-                        },
-                      );
-                    },
-                  );
-                },
+              child: _BusinessCard(
+                seller: entry.key,
+                products: entry.value,
+                onProductTap: (p) => _openDetail(context, p),
+                onSellerTap: () =>
+                    _openSellerProducts(context, entry.key, entry.value),
               ),
             ),
-          );
-          productOffset += items.length;
-          break;
+          ),
+        );
+        i++;
+        continue;
+      }
 
-        case FeedItemType.wanted:
-          final items = segment.items.cast<WantedPost>();
-          widgets.add(
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
-              sliver: SliverLayoutBuilder(
-                builder: (context, constraints) {
-                  final width = constraints.crossAxisExtent;
-                  final columns = width >= 720 ? 3 : 2;
+      // Run de grid: todos los ítems producto/búsqueda consecutivos, sin
+      // cortar por tipo — solo se corta cuando aparece un negocio.
+      final runStart = i;
+      while (i < feedItems.length &&
+          feedItems[i].type != FeedItemType.business) {
+        i++;
+      }
+      final run = feedItems.sublist(runStart, i);
+
+      // Offset de stagger por ítem del run: solo avanza para productos
+      // (las búsquedas no animan con _cardAnimValue), -1 para el resto.
+      final staggerIndexes = <int>[];
+      var productsInRun = 0;
+      for (final entry in run) {
+        if (entry.type == FeedItemType.product) {
+          staggerIndexes.add(productsInRun);
+          productsInRun++;
+        } else {
+          staggerIndexes.add(-1);
+        }
+      }
+      final offset = productOffset;
+
+      widgets.add(
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
+          sliver: SliverLayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.crossAxisExtent;
+              final columns = width >= 720 ? 3 : 2;
+              return AnimatedBuilder(
+                animation: _staggerController,
+                builder: (context, _) {
                   return SliverGrid.builder(
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: columns,
@@ -438,9 +460,20 @@ class _HomeScreenState extends State<HomeScreen>
                       mainAxisSpacing: 12,
                       childAspectRatio: columns == 3 ? 0.72 : 0.64,
                     ),
-                    itemCount: items.length,
+                    itemCount: run.length,
                     itemBuilder: (context, index) {
-                      final post = items[index];
+                      final entry = run[index];
+                      if (entry.type == FeedItemType.product) {
+                        final product = entry.data as Product;
+                        return ProductCard(
+                          product: product,
+                          onTap: () => _openDetail(context, product),
+                          animationValue: _cardAnimValue(
+                            offset + staggerIndexes[index],
+                          ),
+                        );
+                      }
+                      final post = entry.data as WantedPost;
                       return WantedPostCard(
                         post: post,
                         category: _categoryById(post.categoryId),
@@ -449,31 +482,12 @@ class _HomeScreenState extends State<HomeScreen>
                     },
                   );
                 },
-              ),
-            ),
-          );
-          break;
-
-        case FeedItemType.business:
-          final items = segment.items.cast<MapEntry<Seller, List<Product>>>();
-          for (final entry in items) {
-            widgets.add(
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
-                  child: _BusinessCard(
-                    seller: entry.key,
-                    products: entry.value,
-                    onProductTap: (p) => _openDetail(context, p),
-                    onSellerTap: () =>
-                        _openSellerProducts(context, entry.key, entry.value),
-                  ),
-                ),
-              ),
-            );
-          }
-          break;
-      }
+              );
+            },
+          ),
+        ),
+      );
+      productOffset += productsInRun;
     }
 
     return widgets;

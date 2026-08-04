@@ -10,6 +10,7 @@ import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../widgets/location_picker.dart';
+import '../widgets/payment_methods.dart';
 import '../widgets/publish_auth_gate.dart';
 import '../widgets/static_mini_map.dart';
 
@@ -79,6 +80,16 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   double? _customLocationLat;
   double? _customLocationLng;
 
+  // ─── Métodos de pago (opcional, hereda del perfil por defecto) ──
+  List<String> _sellerPaymentMethods = [];
+  bool _customizePaymentMethods = false;
+  final Set<String> _customPaymentMethods = {};
+  bool _showPaymentMethodsError = false;
+
+  // ─── Estado del producto (solo editable en modo edición) ──
+  ProductAvailability? _currentStatus;
+  bool _updatingStatus = false;
+
   @override
   void initState() {
     super.initState();
@@ -102,6 +113,12 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     _selectedDays.addAll(product.availableDays);
     _existingImageUrls.addAll(product.images);
     _extras.addAll(product.extras);
+    _sellerPaymentMethods = product.seller.paymentMethods;
+    if (product.paymentMethods != null) {
+      _customizePaymentMethods = true;
+      _customPaymentMethods.addAll(product.paymentMethods!);
+    }
+    _currentStatus = product.availability;
 
     if (product.stockQuantity != null) {
       _isStockLimited = true;
@@ -116,9 +133,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       final results = await Future.wait([
         ApiService.getCategories(),
         ApiService.getHighlightPlans(),
-        if (!_isEditing &&
-            auth.accountType == AccountType.negocio &&
-            auth.backendSellerId != null)
+        if (!_isEditing && auth.backendSellerId != null)
           ApiService.getSeller(auth.backendSellerId!),
       ]);
       if (!mounted) return;
@@ -139,6 +154,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           if (_hasSavedSellerLocation) {
             _locationChoice = _LocationChoice.useSaved;
           }
+          _sellerPaymentMethods = seller.paymentMethods;
         }
         _loading = false;
       });
@@ -243,6 +259,11 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       _showError('Agrega al menos una foto del producto');
       return;
     }
+    if (_customizePaymentMethods && _customPaymentMethods.isEmpty) {
+      setState(() => _showPaymentMethodsError = true);
+      _showError('Selecciona al menos un método de pago para este producto');
+      return;
+    }
 
     int? stockQuantity;
     int? stockInitial;
@@ -295,6 +316,9 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           stockInitial: stockInitial,
           locationLat: location?.$1,
           locationLng: location?.$2,
+          paymentMethods: _customizePaymentMethods
+              ? _customPaymentMethods.toList()
+              : null,
         );
         if (!mounted) return;
         _titleController.clear();
@@ -341,6 +365,9 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       availableDays: _selectedDays.toList()..sort(),
       existingImageUrls: _existingImageUrls,
       newImagePaths: _selectedImages.map((xf) => xf.path).toList(),
+      paymentMethods: _customizePaymentMethods
+          ? _customPaymentMethods.toList()
+          : null,
     );
 
     final warnings = <String>[];
@@ -886,6 +913,157 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     );
   }
 
+  /// Sección de métodos de pago de la publicación: por defecto hereda los
+  /// del perfil del vendedor sin ninguna acción; un toggle opcional permite
+  /// personalizarlos solo para esta publicación.
+  Widget _buildPaymentMethodsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Métodos de pago', style: AppTypography.heading(15)),
+        const SizedBox(height: 4),
+        Text(
+          _sellerPaymentMethods.isEmpty
+              ? 'Por defecto se usan los métodos de pago de tu perfil.'
+              : 'Por defecto se usan los de tu perfil: '
+                    '${_sellerPaymentMethods.map((id) => paymentMethodById(id)?.label ?? id).join(', ')}.',
+          style: TextStyle(color: context.colors.muted, fontSize: 13),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: _customizePaymentMethods,
+          onChanged: (value) => setState(() {
+            _customizePaymentMethods = value;
+            if (!value) _showPaymentMethodsError = false;
+          }),
+          title: const Text('Personalizar métodos de pago para este producto'),
+        ),
+        if (_customizePaymentMethods) ...[
+          const SizedBox(height: 6),
+          PaymentMethodsSelector(
+            selected: _customPaymentMethods,
+            showError: _showPaymentMethodsError,
+            onChanged: (methods) => setState(() {
+              _customPaymentMethods
+                ..clear()
+                ..addAll(methods);
+              if (methods.isNotEmpty) _showPaymentMethodsError = false;
+            }),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Cambia el estado del producto de inmediato (independiente del resto
+  /// del formulario) — mismo endpoint/UX que antes vivía en el detalle de
+  /// producto, ahora solo accesible desde "Editar producto".
+  Future<void> _updateStatus(ProductAvailability status) async {
+    if (status == _currentStatus || _updatingStatus) return;
+    final product = widget.editingProduct!;
+    setState(() => _updatingStatus = true);
+    try {
+      await ApiService.updateProductStatus(product.id, status.name);
+      if (!mounted) return;
+      setState(() {
+        _currentStatus = status;
+        _updatingStatus = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Estado cambiado a "${status.label}"')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _updatingStatus = false);
+      _showError('No se pudo cambiar el estado. Intenta de nuevo.');
+    }
+  }
+
+  Color _statusColor(ProductAvailability status) {
+    switch (status) {
+      case ProductAvailability.available:
+        return AppColors.success;
+      case ProductAvailability.reserved:
+        return AppColors.orange;
+      case ProductAvailability.sold:
+        return AppColors.danger;
+      case ProductAvailability.negotiating:
+        return AppColors.primary;
+      case ProductAvailability.paused:
+      case ProductAvailability.unavailable:
+        return context.colors.muted;
+    }
+  }
+
+  IconData _statusIcon(ProductAvailability status) {
+    switch (status) {
+      case ProductAvailability.available:
+        return Icons.check_circle_rounded;
+      case ProductAvailability.reserved:
+        return Icons.bookmark_rounded;
+      case ProductAvailability.sold:
+        return Icons.sell_rounded;
+      case ProductAvailability.negotiating:
+        return Icons.handshake_rounded;
+      case ProductAvailability.paused:
+        return Icons.pause_circle_rounded;
+      case ProductAvailability.unavailable:
+        return Icons.block_rounded;
+    }
+  }
+
+  /// Selector de estado del producto (disponible/apartado/vendido/...).
+  /// Solo visible en modo edición — el visitante del detalle de producto
+  /// solo ve el badge de solo lectura con el estado que elijas aquí.
+  Widget _buildStatusSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Estado del producto', style: AppTypography.heading(15)),
+        const SizedBox(height: 4),
+        Text(
+          'Así lo verán los demás en el detalle del producto.',
+          style: TextStyle(color: context.colors.muted, fontSize: 13),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: ProductAvailability.values.map((status) {
+            final selected = status == _currentStatus;
+            final color = _statusColor(status);
+            return ChoiceChip(
+              label: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _statusIcon(status),
+                    size: 18,
+                    color: selected ? Colors.white : color,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(status.label),
+                ],
+              ),
+              selected: selected,
+              selectedColor: color,
+              labelStyle: TextStyle(
+                color: selected ? Colors.white : context.colors.ink,
+                fontWeight: FontWeight.w600,
+              ),
+              onSelected: _updatingStatus
+                  ? null
+                  : (isSelected) {
+                      if (!isSelected) return;
+                      _updateStatus(status);
+                    },
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
   Widget _buildForm() {
     return ListView(
       padding: EdgeInsets.fromLTRB(18, 18, 18, _isEditing ? 12 : 24),
@@ -992,12 +1170,18 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
             ),
           ],
         ),
+        if (_isEditing) ...[
+          const SizedBox(height: 12),
+          _buildStatusSection(),
+        ],
         const SizedBox(height: 12),
         _buildDaySelector(),
         const SizedBox(height: 12),
         _buildStockSection(),
         const SizedBox(height: 12),
         _buildExtrasSection(),
+        const SizedBox(height: 16),
+        _buildPaymentMethodsSection(),
         if (!_isEditing) ...[
           const SizedBox(height: 16),
           _buildLocationSection(),

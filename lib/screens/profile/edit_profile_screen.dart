@@ -10,6 +10,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/business_hours_editor.dart';
 import '../../widgets/location_picker.dart';
+import '../../widgets/payment_methods.dart';
 import '../../widgets/static_mini_map.dart';
 
 const _kMaxBusinessDescriptionLength = 280;
@@ -35,6 +36,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late Map<int, BusinessHoursRange> _businessHours;
   double? _locationLat;
   double? _locationLng;
+  late final Set<String> _selectedPaymentMethods;
+  bool _showPaymentMethodsError = false;
 
   bool get _isBusiness => widget.seller.isBusiness;
 
@@ -50,6 +53,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _businessHours = Map.of(widget.seller.businessHours);
     _locationLat = widget.seller.locationLat;
     _locationLng = widget.seller.locationLng;
+    _selectedPaymentMethods = Set.of(widget.seller.paymentMethods);
     if (_isBusiness) _loadCategories();
   }
 
@@ -101,6 +105,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedPaymentMethods.isEmpty) {
+      setState(() => _showPaymentMethodsError = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selecciona al menos un método de pago que aceptas.'),
+        ),
+      );
+      return;
+    }
 
     setState(() => _saving = true);
     try {
@@ -116,6 +129,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         businessHours: _isBusiness ? _businessHours : null,
         locationLat: _isBusiness ? _locationLat : null,
         locationLng: _isBusiness ? _locationLng : null,
+        paymentMethods: _selectedPaymentMethods.toList(),
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -300,6 +314,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                 ),
               ],
+              const SizedBox(height: 20),
+              Text(
+                'Métodos de pago que aceptas',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: context.colors.muted,
+                ),
+              ),
+              const SizedBox(height: 8),
+              PaymentMethodsSelector(
+                selected: _selectedPaymentMethods,
+                showError: _showPaymentMethodsError,
+                onChanged: (methods) => setState(() {
+                  _selectedPaymentMethods
+                    ..clear()
+                    ..addAll(methods);
+                  if (methods.isNotEmpty) _showPaymentMethodsError = false;
+                }),
+              ),
               const SizedBox(height: 28),
               SizedBox(
                 width: double.infinity,

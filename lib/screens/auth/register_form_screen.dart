@@ -9,6 +9,9 @@ import '../../models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/business_hours_editor.dart';
+import '../../widgets/location_picker.dart';
+import '../../widgets/payment_methods.dart';
+import '../../widgets/static_mini_map.dart';
 import '../legal/terms_screen.dart';
 import '../legal/privacy_screen.dart';
 import 'login_screen.dart';
@@ -47,6 +50,12 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
   XFile? _logoFile;
   bool _loadingCategories = true;
   Map<int, BusinessHoursRange> _businessHours = {};
+  double? _locationLat;
+  double? _locationLng;
+
+  // ─── Métodos de pago (obligatorio, todos los tipos de cuenta) ──
+  final Set<String> _selectedPaymentMethods = {};
+  bool _showPaymentMethodsError = false;
 
   final _typeLabels = <String, String>{
     'estudiante': 'Estudiante',
@@ -105,8 +114,32 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
     }
   }
 
+  Future<void> _pickLocation() async {
+    final picked = await LocationPickerScreen.open(
+      context,
+      initialLat: _locationLat,
+      initialLng: _locationLng,
+      title: 'Ubicación de tu negocio',
+    );
+    if (picked != null) {
+      setState(() {
+        _locationLat = picked.latitude;
+        _locationLng = picked.longitude;
+      });
+    }
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedPaymentMethods.isEmpty) {
+      setState(() => _showPaymentMethodsError = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selecciona al menos un método de pago que aceptas.'),
+        ),
+      );
+      return;
+    }
     if (!_acceptedTerms) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -144,6 +177,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
               : _businessDescriptionController.text.trim(),
           logoPath: _logoFile?.path,
           businessHours: _businessHours,
+          paymentMethods: _selectedPaymentMethods.toList(),
         );
       } else {
         await auth.registerUser(
@@ -154,6 +188,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
           userType: widget.userType == 'estudiante'
               ? AccountType.estudiante
               : AccountType.particular,
+          paymentMethods: _selectedPaymentMethods.toList(),
         );
       }
 
@@ -171,6 +206,23 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
             );
           } catch (_) {
             // Si falla la subida del logo, no bloqueamos el registro
+          }
+        }
+      }
+
+      // Si es negocio con ubicación marcada, guardarla en el backend
+      if (_isBusiness && _locationLat != null && _locationLng != null) {
+        final authProvider = context.read<AuthProvider>();
+        final sellerId = authProvider.backendSellerId;
+        if (sellerId != null) {
+          try {
+            await ApiService.updateSellerProfile(
+              sellerId: sellerId,
+              locationLat: _locationLat,
+              locationLng: _locationLng,
+            );
+          } catch (_) {
+            // Si falla el guardado de ubicación, no bloqueamos el registro
           }
         }
       }
@@ -216,6 +268,10 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                   ..._buildBusinessSections()
                 else
                   ..._buildStandardFields(),
+
+                const SizedBox(height: 24),
+                // ─── Métodos de pago (obligatorio, todos los tipos) ──
+                _buildPaymentMethodsSection(),
 
                 const SizedBox(height: 14),
                 // ─── Aceptación de términos ─────────────────────
@@ -462,6 +518,34 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
         initialHours: _businessHours,
         onChanged: (hours) => _businessHours = hours,
       ),
+      const SizedBox(height: 14),
+      Text(
+        'Ubicación del negocio (opcional)',
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+          color: context.colors.muted,
+        ),
+      ),
+      const SizedBox(height: 8),
+      if (_locationLat != null && _locationLng != null) ...[
+        StaticMiniMap(
+          lat: _locationLat,
+          lng: _locationLng,
+          showOpenInMapsButton: false,
+          height: 120,
+        ),
+        const SizedBox(height: 8),
+      ],
+      OutlinedButton.icon(
+        onPressed: _pickLocation,
+        icon: const Icon(Icons.map_outlined),
+        label: Text(
+          _locationLat != null
+              ? 'Cambiar ubicación'
+              : 'Marcar ubicación en el mapa',
+        ),
+      ),
 
       const SizedBox(height: 24),
       // ─── Datos de contacto ─────────────────────────────────
@@ -507,6 +591,37 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
         ),
         const SizedBox(width: 10),
         Text(title, style: Theme.of(context).textTheme.titleMedium),
+      ],
+    );
+  }
+
+  // ─── Métodos de pago (obligatorio, todos los tipos de cuenta) ──
+
+  Widget _buildPaymentMethodsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle('Métodos de pago', Icons.payments_rounded),
+        const SizedBox(height: 6),
+        Text(
+          '¿Qué métodos de pago aceptas? Selecciona al menos uno.',
+          style: TextStyle(
+            color: context.colors.muted,
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+          ),
+        ),
+        const SizedBox(height: 12),
+        PaymentMethodsSelector(
+          selected: _selectedPaymentMethods,
+          showError: _showPaymentMethodsError,
+          onChanged: (methods) => setState(() {
+            _selectedPaymentMethods
+              ..clear()
+              ..addAll(methods);
+            if (methods.isNotEmpty) _showPaymentMethodsError = false;
+          }),
+        ),
       ],
     );
   }

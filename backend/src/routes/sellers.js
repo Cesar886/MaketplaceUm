@@ -12,6 +12,7 @@ const {
   validateBusinessCategory,
   validateBusinessHours,
   validateLocation,
+  validatePaymentMethods,
 } = require('../validation/sellerProfile');
 
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
@@ -58,7 +59,7 @@ function register(app) {
     const seller = sellers.find(s => s.id === req.params.id);
     if (!seller) return res.status(404).json({ error: 'Vendedor no encontrado' });
 
-    const { name, phone, businessDescription, businessCategory, businessHours, locationLat, locationLng } = req.body;
+    const { name, phone, businessDescription, businessCategory, businessHours, locationLat, locationLng, paymentMethods } = req.body;
 
     // ─── Validar todo antes de escribir nada (evita estado a medias) ──
     if (name !== undefined) {
@@ -67,6 +68,17 @@ function register(app) {
     }
     const phoneError = validatePhone(phone);
     if (phoneError) return res.status(400).json({ error: phoneError });
+
+    // Métodos de pago: a diferencia de horario/descripción/ubicación, esto
+    // aplica a CUALQUIER vendedor (negocio o no) — no está gated por
+    // isBusiness. Si se manda, debe quedar al menos 1 (no se permite vaciar
+    // por completo desde edición de perfil).
+    let normalizedPaymentMethods;
+    if (paymentMethods !== undefined) {
+      const paymentMethodsResult = validatePaymentMethods(paymentMethods, { required: true });
+      if (paymentMethodsResult.error) return res.status(400).json({ error: paymentMethodsResult.error });
+      normalizedPaymentMethods = paymentMethodsResult.value;
+    }
 
     let normalizedHours;
     let normalizedLocation;
@@ -100,6 +112,9 @@ function register(app) {
     }
     if (phone !== undefined) {
       updateSellerField(seller.id, 'phone', phone.trim());
+    }
+    if (normalizedPaymentMethods !== undefined) {
+      updateSellerField(seller.id, 'paymentMethods', JSON.stringify(normalizedPaymentMethods));
     }
     if (seller.isBusiness) {
       if (businessDescription !== undefined) {

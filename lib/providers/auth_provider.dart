@@ -157,6 +157,7 @@ class AuthProvider extends ChangeNotifier {
     String? businessDescription,
     String? logoPath,
     Map<int, BusinessHoursRange>? businessHours,
+    required List<String> paymentMethods,
   }) async {
     _loading = true;
     notifyListeners();
@@ -182,6 +183,7 @@ class AuthProvider extends ChangeNotifier {
         phone: phone,
         deviceId: deviceId,
         businessHours: businessHours,
+        paymentMethods: paymentMethods,
       );
       await _applyBackendAuthResult(result);
 
@@ -427,6 +429,7 @@ class AuthProvider extends ChangeNotifier {
     Map<int, BusinessHoursRange>? businessHours,
     double? locationLat,
     double? locationLng,
+    List<String>? paymentMethods,
   }) async {
     if (logoPath != null && _backendSellerId != null) {
       await ApiService.uploadBusinessLogo(
@@ -440,7 +443,8 @@ class AuthProvider extends ChangeNotifier {
         businessDescription != null ||
         businessCategory != null ||
         businessHours != null ||
-        (locationLat != null && locationLng != null);
+        (locationLat != null && locationLng != null) ||
+        paymentMethods != null;
     if (hasProfileFields && _backendSellerId != null) {
       await ApiService.updateSellerProfile(
         sellerId: _backendSellerId!,
@@ -451,6 +455,7 @@ class AuthProvider extends ChangeNotifier {
         businessHours: businessHours,
         locationLat: locationLat,
         locationLng: locationLng,
+        paymentMethods: paymentMethods,
       );
     }
     if (name != null || phone != null) {

@@ -6,6 +6,7 @@ import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../widgets/location_picker.dart';
+import '../widgets/payment_methods.dart';
 import '../widgets/publish_auth_gate.dart';
 import '../widgets/static_mini_map.dart';
 
@@ -46,6 +47,12 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
   double? _customLocationLat;
   double? _customLocationLng;
 
+  // ─── Métodos de pago (opcional, hereda del perfil por defecto) ──
+  List<String> _sellerPaymentMethods = [];
+  bool _customizePaymentMethods = false;
+  final Set<String> _customPaymentMethods = {};
+  bool _showPaymentMethodsError = false;
+
   bool get _isEditing => widget.editingPost != null;
 
   @override
@@ -61,6 +68,11 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
         _priceMinController.text = post.priceMin.toString();
       if (post.priceMax != null)
         _priceMaxController.text = post.priceMax.toString();
+      _sellerPaymentMethods = post.sellerObj?.paymentMethods ?? [];
+      if (post.paymentMethods != null) {
+        _customizePaymentMethods = true;
+        _customPaymentMethods.addAll(post.paymentMethods!);
+      }
     }
     _loadCategories();
     _loadSellerLocation();
@@ -69,14 +81,13 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
   Future<void> _loadSellerLocation() async {
     if (_isEditing) return;
     final auth = context.read<AuthProvider>();
-    if (auth.accountType != AccountType.negocio ||
-        auth.backendSellerId == null) {
-      return;
-    }
+    if (auth.backendSellerId == null) return;
     try {
       final seller = await ApiService.getSeller(auth.backendSellerId!);
       if (!mounted) return;
       setState(() {
+        _sellerPaymentMethods = seller.paymentMethods;
+        if (auth.accountType != AccountType.negocio) return;
         _savedSellerLat = seller.locationLat;
         _savedSellerLng = seller.locationLng;
         if (_hasSavedSellerLocation) {
@@ -84,8 +95,8 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
         }
       });
     } catch (_) {
-      // Sin ubicación de negocio: el formulario simplemente no ofrece
-      // "usar la guardada", no bloquea el resto de la publicación.
+      // Sin perfil disponible: el formulario simplemente no ofrece
+      // "usar la ubicación/métodos guardados", no bloquea el resto.
     }
   }
 
@@ -157,6 +168,11 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
       _showError('Selecciona una categoría');
       return;
     }
+    if (_customizePaymentMethods && _customPaymentMethods.isEmpty) {
+      setState(() => _showPaymentMethodsError = true);
+      _showError('Selecciona al menos un método de pago para esta búsqueda');
+      return;
+    }
 
     setState(() => _publishing = true);
     try {
@@ -183,6 +199,9 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
           type: _type,
           priceMin: priceMin,
           priceMax: priceMax,
+          paymentMethods: _customizePaymentMethods
+              ? _customPaymentMethods.toList()
+              : null,
         );
         if (!mounted) return;
         Navigator.of(context).pop(true);
@@ -208,6 +227,9 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
           priceMax: priceMax,
           locationLat: location?.$1,
           locationLng: location?.$2,
+          paymentMethods: _customizePaymentMethods
+              ? _customPaymentMethods.toList()
+              : null,
         );
         if (!mounted) return;
         Navigator.of(context).pop();
@@ -298,6 +320,48 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
             lng: _customLocationLng,
             showOpenInMapsButton: false,
             height: 120,
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Sección de métodos de pago de la publicación: por defecto hereda los
+  /// del perfil; un toggle opcional permite personalizarlos solo para esta
+  /// búsqueda.
+  Widget _buildPaymentMethodsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Métodos de pago (opcional)', style: AppTypography.heading(15)),
+        const SizedBox(height: 4),
+        Text(
+          _sellerPaymentMethods.isEmpty
+              ? 'Por defecto se usan los métodos de pago de tu perfil.'
+              : 'Por defecto se usan los de tu perfil: '
+                    '${_sellerPaymentMethods.map((id) => paymentMethodById(id)?.label ?? id).join(', ')}.',
+          style: TextStyle(color: context.colors.muted, fontSize: 13),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: _customizePaymentMethods,
+          onChanged: (value) => setState(() {
+            _customizePaymentMethods = value;
+            if (!value) _showPaymentMethodsError = false;
+          }),
+          title: const Text('Personalizar métodos de pago para esta búsqueda'),
+        ),
+        if (_customizePaymentMethods) ...[
+          const SizedBox(height: 6),
+          PaymentMethodsSelector(
+            selected: _customPaymentMethods,
+            showError: _showPaymentMethodsError,
+            onChanged: (methods) => setState(() {
+              _customPaymentMethods
+                ..clear()
+                ..addAll(methods);
+              if (methods.isNotEmpty) _showPaymentMethodsError = false;
+            }),
           ),
         ],
       ],
@@ -408,6 +472,8 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
             const SizedBox(height: 16),
             _buildLocationSection(),
           ],
+          const SizedBox(height: 16),
+          _buildPaymentMethodsSection(),
           const SizedBox(height: 24),
           FilledButton(
             onPressed: _publishing ? null : _publish,

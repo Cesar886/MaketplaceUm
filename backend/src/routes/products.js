@@ -5,7 +5,7 @@ const { products, sellers, categories, saveData } = require('../data');
 const { requireAuth } = require('../auth');
 const db = require('../database');
 const { sendPush } = require('../push');
-const { validateLocation } = require('../validation/sellerProfile');
+const { validateLocation, validatePaymentMethods } = require('../validation/sellerProfile');
 
 // Configuración anti-abuso de ofertas
 const COOLDOWN_HOURS = 72;
@@ -193,6 +193,14 @@ function register(app) {
         productLocation = locationResult.value;
       }
 
+      // Métodos de pago de esta publicación (opcional): si no se manda,
+      // queda null y el cliente usa los del perfil del vendedor.
+      const paymentMethodsResult = validatePaymentMethods(req.body?.paymentMethods);
+      if (paymentMethodsResult.error) {
+        return res.status(400).json({ error: paymentMethodsResult.error });
+      }
+      const productPaymentMethods = paymentMethodsResult.value;
+
       // Convertir cada imagen a WebP usando Promise.all
       const conversionPromises = (req.files || []).map((file) => {
         return convertToWebp(file.path).catch((convErr) => {
@@ -235,6 +243,7 @@ function register(app) {
             availableDays,
             locationLat: productLocation ? productLocation.lat : null,
             locationLng: productLocation ? productLocation.lng : null,
+            paymentMethods: productPaymentMethods,
           };
 
           products.unshift(newProduct);
@@ -312,6 +321,18 @@ function register(app) {
         }
         const categoryObj = categories.find(c => c.id === category);
 
+        // Métodos de pago de esta publicación (opcional): si se manda
+        // (incluso como arreglo vacío), reemplaza el override; un arreglo
+        // vacío se normaliza a null (vuelve a heredar los del perfil).
+        let paymentMethodsUpdate;
+        if (req.body.paymentMethods !== undefined) {
+          const paymentMethodsResult = validatePaymentMethods(req.body.paymentMethods);
+          if (paymentMethodsResult.error) {
+            return res.status(400).json({ error: paymentMethodsResult.error });
+          }
+          paymentMethodsUpdate = paymentMethodsResult.value;
+        }
+
         // ─── Imágenes: existingImages son las URLs que el usuario decide
         // conservar; todo lo que estaba en product.images y no aparece ahí
         // se considera eliminado. Los archivos nuevos vienen en req.files.
@@ -354,6 +375,9 @@ function register(app) {
             }
             if (req.body.availableDays !== undefined) {
               product.availableDays = normalizeAvailableDays(req.body.availableDays);
+            }
+            if (paymentMethodsUpdate !== undefined) {
+              product.paymentMethods = paymentMethodsUpdate;
             }
             product.updated_at = new Date().toISOString().replace('T', ' ').slice(0, 19);
 

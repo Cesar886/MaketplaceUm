@@ -11,7 +11,8 @@ import '../services/api_service.dart';
 import '../services/favorite_products_service.dart';
 import '../services/recent_products_service.dart';
 import '../widgets/badges.dart';
-import '../widgets/mock_product_image.dart';
+import '../widgets/payment_methods.dart';
+import '../widgets/product_image_carousel.dart';
 import '../widgets/price_tag.dart';
 import '../widgets/seller_schedule_location_row.dart';
 import '../widgets/static_mini_map.dart';
@@ -56,7 +57,6 @@ class ProductDetailScreen extends StatefulWidget {
 
 class _ProductDetailScreenState extends State<ProductDetailScreen>
     with SingleTickerProviderStateMixin {
-  int _photoIndex = 0;
   late bool _favorite = widget.product.isFavorite;
   late Product _product;
   double? _lowest30d;
@@ -206,11 +206,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
             flexibleSpace: FlexibleSpaceBar(
               background: Hero(
                 tag: 'product-${product.id}',
-                child: MockProductImage(
-                  product: product,
-                  photoIndex: _photoIndex,
-                  borderRadius: BorderRadius.zero,
-                ),
+                child: ProductImageCarousel(product: product),
               ),
             ),
           ),
@@ -220,12 +216,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _PhotoStrip(
-                    product: product,
-                    selectedIndex: _photoIndex,
-                    onSelect: (index) => setState(() => _photoIndex = index),
-                  ),
-                  const SizedBox(height: 18),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -556,14 +546,35 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                     icon: Icons.storefront_rounded,
                     label: product.isWantedPost ? 'Publicado por' : 'Vendedor',
                   ),
-                  const SizedBox(height: 10),
                   if (product.seller.isBusiness &&
                       (product.seller.businessHours.isNotEmpty ||
                           product.seller.hasLocation)) ...[
+                    const SizedBox(height: 14),
                     SellerScheduleAndLocationRow(seller: product.seller),
                     const SizedBox(height: 16),
-                  ],
+                  ] else
+                    const SizedBox(height: 10),
                   _SellerCard(seller: product.seller),
+                  if (product.effectivePaymentMethods.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    const _SectionHeader(
+                      icon: Icons.payments_rounded,
+                      label: 'Métodos de pago aceptados',
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: context.colors.surface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: context.colors.border),
+                      ),
+                      child: PaymentMethodsChips(
+                        methods: product.effectivePaymentMethods,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   // ─── Código QR + Compartir ─────────────────────────
                   const _SectionHeader(
@@ -669,20 +680,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                     label: const Text('Reportar publicacion'),
                   ),
                   const SizedBox(height: 16),
-                  // Selector de estado / resolver búsqueda (solo visible para el dueño)
-                  if (context.read<AuthProvider>().backendSellerId ==
-                      product.seller.id)
-                    if (product.isWantedPost)
-                      if (product.wantedStatus != 'resuelta')
-                        _ResolveWantedButton(onResolve: _resolveWantedPost)
-                      else
-                        const SizedBox.shrink()
-                    else
-                      _StatusSelector(
-                        productId: product.id,
-                        currentStatus: product.availability,
-                        onChanged: (_) => _refreshProductFromApi(),
-                      ),
+                  // Resolver búsqueda (solo visible para el dueño). El estado
+                  // de un producto (disponible/apartado/vendido/...) ya no se
+                  // cambia aquí — el dueño lo hace desde "Editar producto";
+                  // en este detalle todos ven solo el badge de solo lectura.
+                  if (product.isWantedPost &&
+                      context.read<AuthProvider>().backendSellerId ==
+                          product.seller.id &&
+                      product.wantedStatus != 'resuelta')
+                    _ResolveWantedButton(onResolve: _resolveWantedPost),
                 ],
               ),
             ),
@@ -1099,51 +1105,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   }
 }
 
-class _PhotoStrip extends StatelessWidget {
-  const _PhotoStrip({
-    required this.product,
-    required this.selectedIndex,
-    required this.onSelect,
-  });
-
-  final Product product;
-  final int selectedIndex;
-  final ValueChanged<int> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: List.generate(3, (index) {
-        final selected = index == selectedIndex;
-        return Padding(
-          padding: EdgeInsets.only(right: index == 2 ? 0 : 10),
-          child: InkWell(
-            onTap: () => onSelect(index),
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              width: 72,
-              height: 58,
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: selected ? AppColors.primary : context.colors.border,
-                  width: selected ? 2 : 1,
-                ),
-              ),
-              child: MockProductImage(
-                product: product,
-                photoIndex: index,
-                showFeaturedBadge: false,
-              ),
-            ),
-          ),
-        );
-      }),
-    );
-  }
-}
-
 /// Encabezado de sección consistente — ícono + label, usado en toda la
 /// pantalla de detalle para que las secciones se lean como un solo sistema.
 const _dayNames = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -1549,123 +1510,6 @@ class _CompactRating extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-/// Selector de estado (solo lo ve el dueño del producto).
-class _StatusSelector extends StatelessWidget {
-  const _StatusSelector({
-    required this.productId,
-    required this.currentStatus,
-    required this.onChanged,
-  });
-
-  final String productId;
-  final ProductAvailability? currentStatus;
-  final ValueChanged<ProductAvailability> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Estado del producto',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: ProductAvailability.values.map((status) {
-            final selected = status == currentStatus;
-            return ChoiceChip(
-              label: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    _iconFor(status),
-                    size: 18,
-                    color: selected ? Colors.white : _colorFor(context, status),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(status.label),
-                ],
-              ),
-              selected: selected,
-              selectedColor: _colorFor(context, status),
-              labelStyle: TextStyle(
-                color: selected ? Colors.white : context.colors.ink,
-                fontWeight: FontWeight.w600,
-              ),
-              onSelected: (isSelected) async {
-                if (!isSelected || selected) return;
-                try {
-                  await ApiService.updateProductStatus(productId, status.name);
-                  if (context.mounted) onChanged(status);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Estado cambiado a "${status.label}"'),
-                      ),
-                    );
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          friendlyErrorMessage(
-                            e,
-                            fallback:
-                                'No se pudo cambiar el estado. Intenta de nuevo.',
-                          ),
-                        ),
-                        backgroundColor: AppColors.danger,
-                      ),
-                    );
-                  }
-                }
-              },
-            );
-          }).toList(),
-        ),
-      ],
-    );
-  }
-
-  Color _colorFor(BuildContext context, ProductAvailability status) {
-    switch (status) {
-      case ProductAvailability.available:
-        return AppColors.success;
-      case ProductAvailability.reserved:
-        return AppColors.orange;
-      case ProductAvailability.sold:
-        return AppColors.danger;
-      case ProductAvailability.negotiating:
-        return AppColors.primary;
-      case ProductAvailability.paused:
-        return context.colors.muted;
-      case ProductAvailability.unavailable:
-        return context.colors.muted;
-    }
-  }
-
-  IconData _iconFor(ProductAvailability status) {
-    switch (status) {
-      case ProductAvailability.available:
-        return Icons.check_circle_rounded;
-      case ProductAvailability.reserved:
-        return Icons.bookmark_rounded;
-      case ProductAvailability.sold:
-        return Icons.sell_rounded;
-      case ProductAvailability.negotiating:
-        return Icons.handshake_rounded;
-      case ProductAvailability.paused:
-        return Icons.pause_circle_rounded;
-      case ProductAvailability.unavailable:
-        return Icons.block_rounded;
-    }
   }
 }
 

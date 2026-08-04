@@ -92,6 +92,7 @@ class ApiService {
     String? phone,
     String? deviceId,
     Map<int, BusinessHoursRange>? businessHours,
+    required List<String> paymentMethods,
   }) async {
     final res = await _client.post(
       _uri('/auth/register'),
@@ -105,6 +106,7 @@ class ApiService {
         if (deviceId != null) 'deviceId': deviceId,
         if (businessHours != null)
           'businessHours': businessHoursToJson(businessHours),
+        'paymentMethods': paymentMethods,
       }),
     );
     if (res.statusCode != 200 && res.statusCode != 201) {
@@ -229,6 +231,7 @@ class ApiService {
     double? priceMax,
     double? locationLat,
     double? locationLng,
+    List<String>? paymentMethods,
   }) async {
     final res = await _client.post(
       _uri('/wanted'),
@@ -244,6 +247,7 @@ class ApiService {
           'locationLat': locationLat,
           'locationLng': locationLng,
         },
+        if (paymentMethods != null) 'paymentMethods': paymentMethods,
       }),
     );
     if (res.statusCode != 201)
@@ -283,6 +287,7 @@ class ApiService {
     required String type,
     double? priceMin,
     double? priceMax,
+    List<String>? paymentMethods,
   }) async {
     final res = await _client.put(
       _uri('/wanted/$id'),
@@ -294,6 +299,7 @@ class ApiService {
         'type': type,
         if (priceMin != null) 'priceMin': priceMin,
         if (priceMax != null) 'priceMax': priceMax,
+        'paymentMethods': paymentMethods ?? const [],
       }),
     );
     if (res.statusCode != 200) {
@@ -365,6 +371,7 @@ class ApiService {
     int? stockInitial,
     double? locationLat,
     double? locationLng,
+    List<String>? paymentMethods,
   }) async {
     // Si hay imágenes, usar multipart
     if (imagePaths != null && imagePaths.isNotEmpty) {
@@ -388,6 +395,9 @@ class ApiService {
       if (locationLat != null && locationLng != null) {
         request.fields['locationLat'] = locationLat.toString();
         request.fields['locationLng'] = locationLng.toString();
+      }
+      if (paymentMethods != null) {
+        request.fields['paymentMethods'] = jsonEncode(paymentMethods);
       }
       // El seller se obtiene del JWT en el backend (requireAuth)
       if (_token == null) {
@@ -425,6 +435,7 @@ class ApiService {
         'locationLat': locationLat,
         'locationLng': locationLng,
       },
+      if (paymentMethods != null) 'paymentMethods': paymentMethods,
     };
     final res = await _client.post(
       _uri('/products'),
@@ -453,6 +464,7 @@ class ApiService {
     List<int> availableDays = const [],
     List<String> existingImageUrls = const [],
     List<String>? newImagePaths,
+    List<String>? paymentMethods,
   }) async {
     if (_token == null) {
       throw Exception(
@@ -467,6 +479,10 @@ class ApiService {
     request.fields['extras'] = jsonEncode(extras);
     request.fields['availableDays'] = jsonEncode(availableDays);
     request.fields['existingImages'] = jsonEncode(existingImageUrls);
+    // Siempre se manda (aunque vacío): el backend interpreta [] como "sin
+    // override, hereda del perfil" — un arreglo vacío es una respuesta
+    // válida, no "no tocar este campo".
+    request.fields['paymentMethods'] = jsonEncode(paymentMethods ?? const []);
     request.headers['Authorization'] = 'Bearer $_token';
 
     for (final path in newImagePaths ?? const <String>[]) {
@@ -621,6 +637,7 @@ class ApiService {
     Map<int, BusinessHoursRange>? businessHours,
     double? locationLat,
     double? locationLng,
+    List<String>? paymentMethods,
   }) async {
     final body = <String, dynamic>{};
     if (name != null) body['name'] = name;
@@ -635,6 +652,7 @@ class ApiService {
       body['locationLat'] = locationLat;
       body['locationLng'] = locationLng;
     }
+    if (paymentMethods != null) body['paymentMethods'] = paymentMethods;
     final res = await _client.patch(
       _uri('/sellers/$sellerId'),
       headers: _authHeaders,

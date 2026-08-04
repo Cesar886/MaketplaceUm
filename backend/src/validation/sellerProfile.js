@@ -133,11 +133,51 @@ function validateLocation(lat, lng) {
   return { value: { lat: parsedLat, lng: parsedLng } };
 }
 
+// Catálogo fijo de métodos de pago — no crece con input de usuario, por eso
+// se valida contra esta lista cerrada en vez de contra una tabla externa.
+const VALID_PAYMENT_METHODS = ['efectivo', 'transferencia', 'paypal', 'cripto'];
+
+// Métodos de pago aceptados: array de strings del catálogo fijo.
+// - required=true (registro/perfil): al menos 1 método es obligatorio.
+// - required=false (producto/wanted): opcional; [] o undefined/null se
+//   normaliza a null, que en la app significa "hereda del perfil".
+function validatePaymentMethods(paymentMethods, { required = false } = {}) {
+  if (paymentMethods === undefined || paymentMethods === null) {
+    if (required) return { error: 'Selecciona al menos un método de pago' };
+    return { value: null };
+  }
+  let parsed = paymentMethods;
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return { error: 'paymentMethods debe ser un JSON válido' };
+    }
+  }
+  if (!Array.isArray(parsed)) {
+    return { error: 'paymentMethods debe ser un arreglo' };
+  }
+  const unique = [...new Set(parsed)];
+  for (const method of unique) {
+    if (typeof method !== 'string' || !VALID_PAYMENT_METHODS.includes(method)) {
+      return { error: `Método de pago inválido: ${method}` };
+    }
+  }
+  if (required && unique.length === 0) {
+    return { error: 'Selecciona al menos un método de pago' };
+  }
+  if (!required && unique.length === 0) {
+    return { value: null };
+  }
+  return { value: unique };
+}
+
 module.exports = {
   MIN_NAME_LENGTH,
   MAX_NAME_LENGTH,
   MAX_DESCRIPTION_LENGTH,
   MIN_PASSWORD_LENGTH,
+  VALID_PAYMENT_METHODS,
   validateName,
   validateEmail,
   validatePassword,
@@ -146,4 +186,5 @@ module.exports = {
   validateBusinessCategory,
   validateBusinessHours,
   validateLocation,
+  validatePaymentMethods,
 };

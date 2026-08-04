@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -79,11 +80,18 @@ class StaticMiniMap extends StatelessWidget {
                           width: displaySize,
                           height: displaySize,
                           child: Image(
+                            // En web, `fetch`/XHR prohíben fijar el header
+                            // `User-Agent` (es un "forbidden header name" del
+                            // spec) — el navegador rechaza la petición con
+                            // "Refused to set unsafe header" y la imagen
+                            // nunca carga, dejando solo el placeholder gris.
                             image: NetworkImage(
                               tileUrl,
-                              headers: const {
-                                'User-Agent': 'MercaditoUM/1.0 (Flutter app)',
-                              },
+                              headers: kIsWeb
+                                  ? null
+                                  : const {
+                                      'User-Agent': 'MercaditoUM/1.0 (Flutter app)',
+                                    },
                             ),
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) =>

@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../app_theme.dart';
 import '../models.dart';
 import '../services/api_service.dart';
+import '../widgets/payment_methods.dart';
 import '../widgets/product_card.dart';
 import '../widgets/seller_schedule_location_row.dart';
 import 'product_detail_screen.dart';
@@ -194,6 +195,12 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
             ],
           ),
         ),
+        if (seller.paymentMethods.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          Text('Métodos de pago aceptados', style: AppTypography.heading(16)),
+          const SizedBox(height: 10),
+          PaymentMethodsChips(methods: seller.paymentMethods),
+        ],
         const SizedBox(height: 24),
         Text('Publicaciones', style: AppTypography.heading(16)),
         const SizedBox(height: 12),

@@ -506,6 +506,20 @@ function runMigrations() {
     `);
   }
 
+  // 21. Métodos de pago aceptados. En sellers es el catálogo del perfil
+  //     (obligatorio elegir al menos 1 al registrarse); en products/wanted_posts
+  //     es un override opcional por publicación — NULL significa "hereda los
+  //     del perfil del vendedor", no "sin métodos de pago".
+  if (!sellerColsLoc.some(c => c.name === 'paymentMethods')) {
+    db.exec(`ALTER TABLE sellers ADD COLUMN paymentMethods TEXT`);
+  }
+  if (!cols.some(c => c.name === 'paymentMethods')) {
+    db.exec(`ALTER TABLE products ADD COLUMN paymentMethods TEXT DEFAULT NULL`);
+  }
+  if (!wantedCols.some(c => c.name === 'paymentMethods')) {
+    db.exec(`ALTER TABLE wanted_posts ADD COLUMN paymentMethods TEXT DEFAULT NULL`);
+  }
+
   console.log('🔄 Migración de schema completada');
 }
 
@@ -545,6 +559,7 @@ function rowToProduct(row) {
     updated_at: row.updated_at || null,
     locationLat: row.location_lat ?? null,
     locationLng: row.location_lng ?? null,
+    paymentMethods: row.paymentMethods ? JSON.parse(row.paymentMethods) : null,
   };
 }
 
@@ -582,6 +597,7 @@ function productToRow(product) {
     updated_at: product.updated_at || null,
     location_lat: product.locationLat ?? null,
     location_lng: product.locationLng ?? null,
+    paymentMethods: product.paymentMethods ? JSON.stringify(product.paymentMethods) : null,
   };
 }
 
@@ -603,6 +619,7 @@ function rowToWantedPost(row) {
     updatedAt: row.updated_at || null,
     locationLat: row.location_lat ?? null,
     locationLng: row.location_lng ?? null,
+    paymentMethods: row.paymentMethods ? JSON.parse(row.paymentMethods) : null,
   };
 }
 
@@ -634,6 +651,7 @@ function rowToSeller(row) {
     businessHours: JSON.parse(row.businessHours || '{}'),
     locationLat: row.location_lat ?? null,
     locationLng: row.location_lng ?? null,
+    paymentMethods: JSON.parse(row.paymentMethods || '[]'),
   };
 }
 
@@ -675,18 +693,35 @@ function getProductById(id) {
 
 function insertProduct(product) {
   const row = productToRow(product);
+  // NUNCA usar INSERT OR REPLACE: en SQLite eso hace un DELETE + INSERT de la
+  // fila existente, y con foreign_keys=ON eso dispara el ON DELETE CASCADE de
+  // product_ratings (y cualquier otra tabla hija), borrando datos relacionados
+  // cada vez que se guarda un producto ya existente. Un upsert real (ON
+  // CONFLICT DO UPDATE) modifica la fila in place sin disparar cascadas.
   db.prepare(`
-    INSERT OR REPLACE INTO products (id, title, price, priceNum, category, description, publishedAgo, seller,
+    INSERT INTO products (id, title, price, priceNum, category, description, publishedAgo, seller,
       images, imageIcon, imageColor, previousPrice, discountLabel,
       isFeatured, isOffer, isFavorite, status, offerExpiresAt, extras,
       stock_quantity, stock_reset_daily, stock_initial, stock_updated_at, created_at, availableDays, updated_at,
-      location_lat, location_lng)
+      location_lat, location_lng, paymentMethods)
     VALUES (@id, @title, @price, @priceNum, @category, @description, @publishedAgo, @seller,
       @images, @imageIcon, @imageColor, @previousPrice, @discountLabel,
       @isFeatured, @isOffer, @isFavorite, @status, @offerExpiresAt, @extras,
-      @stock_quantity, @stock_reset_daily, @stock_initial, @stock_updated_at,
-      COALESCE((SELECT created_at FROM products WHERE id = @id), @created_at), @availableDays, @updated_at,
-      @location_lat, @location_lng)
+      @stock_quantity, @stock_reset_daily, @stock_initial, @stock_updated_at, @created_at, @availableDays, @updated_at,
+      @location_lat, @location_lng, @paymentMethods)
+    ON CONFLICT(id) DO UPDATE SET
+      title = excluded.title, price = excluded.price, priceNum = excluded.priceNum,
+      category = excluded.category, description = excluded.description,
+      publishedAgo = excluded.publishedAgo, seller = excluded.seller,
+      images = excluded.images, imageIcon = excluded.imageIcon, imageColor = excluded.imageColor,
+      previousPrice = excluded.previousPrice, discountLabel = excluded.discountLabel,
+      isFeatured = excluded.isFeatured, isOffer = excluded.isOffer, isFavorite = excluded.isFavorite,
+      status = excluded.status, offerExpiresAt = excluded.offerExpiresAt, extras = excluded.extras,
+      stock_quantity = excluded.stock_quantity, stock_reset_daily = excluded.stock_reset_daily,
+      stock_initial = excluded.stock_initial, stock_updated_at = excluded.stock_updated_at,
+      availableDays = excluded.availableDays, updated_at = excluded.updated_at,
+      location_lat = excluded.location_lat, location_lng = excluded.location_lng,
+      paymentMethods = excluded.paymentMethods
   `).run(row);
 }
 
@@ -706,7 +741,8 @@ function updateProduct(id, updates) {
       stock_quantity = @stock_quantity, stock_reset_daily = @stock_reset_daily,
       stock_initial = @stock_initial, stock_updated_at = @stock_updated_at,
       availableDays = @availableDays, updated_at = @updated_at,
-      location_lat = @location_lat, location_lng = @location_lng
+      location_lat = @location_lat, location_lng = @location_lng,
+      paymentMethods = @paymentMethods
     WHERE id = ?
   `).run(row, id);
   return getProductById(id);
@@ -1016,8 +1052,8 @@ function getUnreadMessageCount(userId) {
 
 function createWantedPost(post) {
   db.prepare(`
-    INSERT INTO wanted_posts (id, user_id, title, description, category_id, type, price_min, price_max, status, created_at, location_lat, location_lng)
-    VALUES (@id, @userId, @title, @description, @categoryId, @type, @priceMin, @priceMax, 'abierta', datetime('now'), @location_lat, @location_lng)
+    INSERT INTO wanted_posts (id, user_id, title, description, category_id, type, price_min, price_max, status, created_at, location_lat, location_lng, paymentMethods)
+    VALUES (@id, @userId, @title, @description, @categoryId, @type, @priceMin, @priceMax, 'abierta', datetime('now'), @location_lat, @location_lng, @paymentMethods)
   `).run({
     id: post.id,
     userId: post.userId,
@@ -1029,6 +1065,7 @@ function createWantedPost(post) {
     priceMax: post.priceMax ?? null,
     location_lat: post.locationLat ?? null,
     location_lng: post.locationLng ?? null,
+    paymentMethods: post.paymentMethods ? JSON.stringify(post.paymentMethods) : null,
   });
   return getWantedPostById(post.id);
 }
@@ -1069,6 +1106,7 @@ function updateWantedPost(id, updates) {
       type = @type,
       price_min = @priceMin,
       price_max = @priceMax,
+      paymentMethods = @paymentMethods,
       updated_at = datetime('now')
     WHERE id = @id
   `).run({
@@ -1079,6 +1117,7 @@ function updateWantedPost(id, updates) {
     type: updates.type,
     priceMin: updates.priceMin ?? null,
     priceMax: updates.priceMax ?? null,
+    paymentMethods: updates.paymentMethods ? JSON.stringify(updates.paymentMethods) : null,
   });
   return getWantedPostById(id);
 }

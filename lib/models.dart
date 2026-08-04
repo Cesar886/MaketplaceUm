@@ -163,6 +163,7 @@ class Seller {
     this.businessHours = const {},
     this.locationLat,
     this.locationLng,
+    this.paymentMethods = const [],
   });
 
   factory Seller.fromJson(Map<String, dynamic> json) {
@@ -182,6 +183,11 @@ class Seller {
       businessHours: businessHoursFromJson(json['businessHours']),
       locationLat: (json['locationLat'] as num?)?.toDouble(),
       locationLng: (json['locationLng'] as num?)?.toDouble(),
+      paymentMethods:
+          (json['paymentMethods'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
     );
   }
 
@@ -200,6 +206,7 @@ class Seller {
   final Map<int, BusinessHoursRange> businessHours;
   final double? locationLat;
   final double? locationLng;
+  final List<String> paymentMethods;
 
   bool get hasLocation => locationLat != null && locationLng != null;
 
@@ -320,6 +327,7 @@ class Product {
     this.wantedKind,
     this.locationLat,
     this.locationLng,
+    this.paymentMethods,
   });
 
   /// Adapta un [WantedPost] a la forma de [Product] para que
@@ -366,6 +374,7 @@ class Product {
       wantedKind: post.type,
       locationLat: post.locationLat,
       locationLng: post.locationLng,
+      paymentMethods: post.paymentMethods,
     );
   }
 
@@ -507,6 +516,9 @@ class Product {
       postType: json['postType'] as String? ?? 'producto',
       locationLat: (json['locationLat'] as num?)?.toDouble(),
       locationLng: (json['locationLng'] as num?)?.toDouble(),
+      paymentMethods: (json['paymentMethods'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList(),
     );
   }
 
@@ -551,8 +563,18 @@ class Product {
   final double? locationLat;
   final double? locationLng;
 
+  /// Override de métodos de pago para ESTA publicación (null = hereda los
+  /// del perfil del vendedor). Usa [effectivePaymentMethods] para el valor
+  /// a mostrar/considerar; no leas este campo directamente en UI.
+  final List<String>? paymentMethods;
+
   bool get isWantedPost => postType == 'se_busca';
   bool get hasLocation => locationLat != null && locationLng != null;
+
+  /// Métodos de pago que realmente aplican a esta publicación: los propios
+  /// si se personalizaron, o los del perfil del vendedor si no.
+  List<String> get effectivePaymentMethods =>
+      paymentMethods ?? seller.paymentMethods;
 }
 
 class CartItem {
@@ -642,6 +664,7 @@ class WantedPost {
     this.categoryObj,
     this.locationLat,
     this.locationLng,
+    this.paymentMethods,
   });
 
   factory WantedPost.fromJson(Map<String, dynamic> json) {
@@ -669,6 +692,9 @@ class WantedPost {
           : null,
       locationLat: (json['locationLat'] as num?)?.toDouble(),
       locationLng: (json['locationLng'] as num?)?.toDouble(),
+      paymentMethods: (json['paymentMethods'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList(),
     );
   }
 
@@ -689,6 +715,7 @@ class WantedPost {
   final MarketplaceCategory? categoryObj;
   final double? locationLat;
   final double? locationLng;
+  final List<String>? paymentMethods;
 
   bool get isService => type == 'servicio';
   bool get isResolved => status == 'resuelta';

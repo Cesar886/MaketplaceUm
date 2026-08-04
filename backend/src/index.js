@@ -6,7 +6,7 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const { generateToken, requireAuth } = require('./auth');
 const { sellers, saveData, registerSeller, updateSellerField } = require('./data');
-const { validateName, validateEmail, validatePassword, validatePhone, validateBusinessHours } = require('./validation/sellerProfile');
+const { validateName, validateEmail, validatePassword, validatePhone, validateBusinessHours, validatePaymentMethods } = require('./validation/sellerProfile');
 
 const routes = [
   require('./routes/categories'),
@@ -174,7 +174,7 @@ app.post('/api/auth/login', (req, res) => {
 // Register: crea un perfil de vendedor en el backend (con password real)
 // y devuelve un JWT.
 app.post('/api/auth/register', (req, res) => {
-  const { name, email, phone, userType, password, deviceId, businessHours } = req.body;
+  const { name, email, phone, userType, password, deviceId, businessHours, paymentMethods } = req.body;
 
   if (!email) {
     return res.status(400).json({ error: 'email es requerido' });
@@ -194,6 +194,7 @@ app.post('/api/auth/register', (req, res) => {
     if (hoursResult.error) return res.status(400).json({ error: hoursResult.error });
     normalizedHours = hoursResult.value;
   }
+
 
   // Verificar si ya existe un vendedor con este email. Se compara el correo
   // real (case-insensitive), no un slug derivado de la parte local: dos
@@ -240,6 +241,13 @@ app.post('/api/auth/register', (req, res) => {
     });
   }
 
+  // Métodos de pago aceptados: obligatorio para toda cuenta nueva (negocio
+  // o no), al menos 1 del catálogo fijo. Solo se exige aquí — la rama de
+  // arriba (email ya existe) se comporta como login y no debe romperse por
+  // un cliente viejo que no mande este campo.
+  const paymentMethodsResult = validatePaymentMethods(paymentMethods, { required: true });
+  if (paymentMethodsResult.error) return res.status(400).json({ error: paymentMethodsResult.error });
+
   // Generar un ID único basado en el email (parte local + hash corto).
   // Es solo un identificador legible; la unicidad real de cuenta la
   // garantiza el chequeo de email de arriba + el índice UNIQUE en DB.
@@ -262,6 +270,7 @@ app.post('/api/auth/register', (req, res) => {
     major,
     isBusiness: userType === 'negocio',
     businessHours: normalizedHours,
+    paymentMethods: paymentMethodsResult.value,
     rating: 0,
     reviews: 0,
     verified: false,
