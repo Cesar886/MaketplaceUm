@@ -447,18 +447,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       color: context.colors.muted,
                     ),
                   ),
-                  if (product.publishedAgo.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      'Editado ${product.publishedAgo.toLowerCase()}',
-                      style: AppTypography.body(
-                        11,
-                        color: context.colors.muted,
-                      ).copyWith(
-                        color: context.colors.muted.withValues(alpha: 0.7),
-                      ),
-                    ),
-                  ],
                   // ─── Extras opcionales — cambian lo que se paga ──
                   if (product.extras.isNotEmpty) ...[
                     const SizedBox(height: 14),
@@ -1216,11 +1204,11 @@ class _SellerCard extends StatelessWidget {
                             ),
                           ),
                           if (seller.verified)
-                            const Padding(
-                              padding: EdgeInsets.only(left: 6),
-                              child: Icon(
-                                Icons.verified_rounded,
-                                color: AppColors.teal,
+                            Padding(
+                              padding: const EdgeInsets.only(left: 6),
+                              child: InsigniaVerificada.desdeTipo(
+                                seller.tipoCuenta,
+                                compact: true,
                                 size: 17,
                               ),
                             ),

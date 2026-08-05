@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app_theme.dart';
 import '../models.dart';
 import '../services/api_service.dart';
+import '../widgets/badges.dart';
 import '../widgets/payment_methods.dart';
 import '../widgets/product_card.dart';
 import '../widgets/seller_profile_skeleton.dart';
@@ -83,6 +85,12 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final seller = _seller;
+    final showWhatsappBar =
+        !_loading &&
+        _error == null &&
+        seller != null &&
+        (seller.phone ?? '').trim().isNotEmpty;
     return Scaffold(
       appBar: AppBar(title: const Text('Perfil')),
       body: AnimatedSwitcher(
@@ -103,12 +111,33 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
                 child: _buildContent(context),
               ),
       ),
+      bottomNavigationBar: showWhatsappBar
+          ? SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: SizedBox(
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed: _openWhatsapp,
+                    icon: const FaIcon(FontAwesomeIcons.whatsapp),
+                    label: const Text('Contactar por WhatsApp'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.teal,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            )
+          : null,
     );
   }
 
   Widget _buildContent(BuildContext context) {
     final seller = _seller!;
-    final hasWhatsapp = (seller.phone ?? '').trim().isNotEmpty;
     final hasOperationalInfo =
         seller.businessHours.isNotEmpty ||
         seller.hasLocation ||
@@ -140,22 +169,22 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(seller.name, style: AppTypography.heading(19)),
+                  Text(seller.name, style: AppTypography.heading(21)),
                   if (seller.verified) ...[
                     const SizedBox(width: 6),
-                    const Icon(
-                      Icons.verified_rounded,
-                      color: AppColors.teal,
+                    InsigniaVerificada.desdeTipo(
+                      seller.tipoCuenta,
+                      compact: true,
                       size: 20,
                     ),
                   ],
                 ],
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
               Text(
                 seller.major,
-                style: const TextStyle(
-                  color: AppColors.muted,
+                style: TextStyle(
+                  color: context.colors.muted,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -179,25 +208,11 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
               ),
               if (seller.businessDescription != null &&
                   seller.businessDescription!.isNotEmpty) ...[
-                const SizedBox(height: 10),
+                const SizedBox(height: 6),
                 Text(
                   seller.businessDescription!,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppColors.muted),
-                ),
-              ],
-              if (hasWhatsapp) ...[
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _openWhatsapp,
-                    icon: const Icon(Icons.chat_bubble_outline_rounded),
-                    label: const Text('Contactar por WhatsApp'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.teal,
-                    ),
-                  ),
+                  style: TextStyle(color: context.colors.muted),
                 ),
               ],
             ],
@@ -232,26 +247,31 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
             ),
           )
         else
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _products.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 0.66,
-            ),
-            itemBuilder: (context, index) {
-              final product = _products[index];
-              return ProductCard(
-                product: product,
-                heroEnabled: false,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => ProductDetailScreen(product: product),
-                  ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth >= 720 ? 3 : 2;
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _products.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: columns == 3 ? 0.72 : 0.64,
                 ),
+                itemBuilder: (context, index) {
+                  final product = _products[index];
+                  return ProductCard(
+                    product: product,
+                    heroEnabled: false,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => ProductDetailScreen(product: product),
+                      ),
+                    ),
+                  );
+                },
               );
             },
           ),

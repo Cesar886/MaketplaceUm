@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../app_theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/app_logo.dart';
+import '../../widgets/badges.dart';
 import '../main_shell.dart';
 
 class AccountCreatedScreen extends StatelessWidget {
@@ -120,144 +121,37 @@ class AccountCreatedScreen extends StatelessWidget {
     );
   }
 
-  String _verificationLabel(AuthProvider auth) {
-    switch (auth.verificationStatus) {
-      case VerificationStatus.noIniciada:
-        return 'Sin verificar';
-      case VerificationStatus.pendiente:
-        return 'En revisión';
-      case VerificationStatus.aprobada:
-        return 'Verificada';
-      case VerificationStatus.rechazada:
-        return 'Rechazada';
-    }
-  }
+  /// La verificación ya no tiene estado "en revisión": el backend la
+  /// resuelve al instante, así que la cuenta solo puede estar verificada o
+  /// no. Si no lo está, es porque el usuario pospuso el trámite o porque sus
+  /// datos fueron rechazados; en ambos casos puede retomarlo desde el perfil.
+  String _verificationLabel(AuthProvider auth) =>
+      auth.isVerified ? 'Verificada' : 'Sin verificar';
 
   Widget _buildVerificationBadge(BuildContext context, AuthProvider auth) {
-    switch (auth.verificationStatus) {
-      case VerificationStatus.noIniciada:
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: context.colors.muted.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(
-              color: context.colors.muted.withValues(alpha: 0.18),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.visibility_off_rounded,
-                size: 16,
-                color: context.colors.muted,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Sin verificar',
-                style: TextStyle(
-                  color: context.colors.muted,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        );
-      case VerificationStatus.pendiente:
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: AppColors.gold.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: AppColors.gold.withValues(alpha: 0.22)),
-          ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.hourglass_bottom_rounded,
-                size: 16,
-                color: AppColors.gold,
-              ),
-              SizedBox(width: 6),
-              Text(
-                'En revisión',
-                style: TextStyle(
-                  color: AppColors.gold,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        );
-      case VerificationStatus.aprobada:
-        return _buildApprovedBadge(auth);
-      case VerificationStatus.rechazada:
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: AppColors.danger.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: AppColors.danger.withValues(alpha: 0.18)),
-          ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.gpp_bad_rounded, size: 16, color: AppColors.danger),
-              SizedBox(width: 6),
-              Text(
-                'Rechazada',
-                style: TextStyle(
-                  color: AppColors.danger,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        );
+    if (auth.isVerified) {
+      return InsigniaVerificada(tipo: auth.accountType);
     }
-  }
-
-  Widget _buildApprovedBadge(AuthProvider auth) {
-    String label;
-    IconData icon;
-    Color color;
-
-    switch (auth.accountType) {
-      case AccountType.estudiante:
-        label = 'Verificado UM';
-        icon = Icons.school_rounded;
-        color = AppColors.teal;
-      case AccountType.particular:
-        label = 'Identidad verificada';
-        icon = Icons.badge_rounded;
-        color = AppColors.primary;
-      case AccountType.negocio:
-        label = 'Negocio confirmado';
-        icon = Icons.store_rounded;
-        color = AppColors.gold;
-    }
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
+        color: context.colors.muted.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withValues(alpha: 0.22)),
+        border: Border.all(color: context.colors.muted.withValues(alpha: 0.18)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: color),
+          Icon(
+            Icons.visibility_off_rounded,
+            size: 16,
+            color: context.colors.muted,
+          ),
           const SizedBox(width: 6),
           Text(
-            label,
+            'Sin verificar',
             style: TextStyle(
-              color: color,
+              color: context.colors.muted,
               fontWeight: FontWeight.w700,
               fontSize: 13,
             ),

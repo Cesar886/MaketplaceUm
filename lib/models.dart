@@ -158,6 +158,7 @@ class Seller {
     required this.rating,
     required this.reviews,
     required this.verified,
+    this.tipoCuenta = 'particular',
     this.businessDescription,
     this.businessCategory,
     this.businessHours = const {},
@@ -178,6 +179,9 @@ class Seller {
       rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
       reviews: (json['reviews'] as num?)?.toInt() ?? 0,
       verified: json['verified'] as bool? ?? false,
+      // Backends viejos no mandan tipoCuenta: 'particular' es el tipo menos
+      // privilegiado, así que es el default seguro.
+      tipoCuenta: json['tipoCuenta'] as String? ?? 'particular',
       businessDescription: json['businessDescription'] as String?,
       businessCategory: json['businessCategory'] as String?,
       businessHours: businessHoursFromJson(json['businessHours']),
@@ -201,6 +205,11 @@ class Seller {
   final double rating;
   final int reviews;
   final bool verified;
+
+  /// 'estudiante' | 'negocio' | 'particular'. Determina el color y la
+  /// etiqueta de [InsigniaVerificada]. 'particular' es lo que la UI llama
+  /// cuenta "externa".
+  final String tipoCuenta;
   final String? businessDescription;
   final String? businessCategory;
   final Map<int, BusinessHoursRange> businessHours;

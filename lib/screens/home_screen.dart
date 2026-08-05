@@ -10,6 +10,7 @@ import '../services/favorite_products_service.dart';
 import '../services/feed_mixer.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/auto_refresh.dart';
+import '../widgets/badges.dart';
 import '../widgets/home_grid_skeleton.dart';
 import '../widgets/product_card.dart';
 import '../widgets/section_header.dart';
@@ -18,6 +19,7 @@ import 'main_shell.dart';
 import 'product_detail_screen.dart';
 import 'qr_scanner_screen.dart';
 import 'search_screen.dart';
+import 'seller_profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -544,11 +546,10 @@ class _HomeScreenState extends State<HomeScreen>
     Seller seller,
     List<Product> products,
   ) async {
-    final sorted = List<Product>.from(products)
-      ..sort((a, b) => b.isFeatured ? 1 : 0 - (a.isFeatured ? 1 : 0));
+    if (seller.id.isEmpty) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => _SellerProductsScreen(seller: seller, products: sorted),
+        builder: (_) => SellerProfileScreen(sellerId: seller.id),
       ),
     );
   }
@@ -910,264 +911,199 @@ class _BusinessCard extends StatelessWidget {
     final displayProducts = products.take(4).toList();
     final remaining = products.length - displayProducts.length;
 
-    return Container(
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: context.colors.surface,
         borderRadius: BorderRadius.circular(14),
         boxShadow: AppShadows.lifted,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ─── Header: logo + nombre ──────────────────────────
-          InkWell(
-            onTap: onSellerTap,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 12, 4),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundColor: AppColors.primary.withValues(alpha: 0.08),
-                    child: seller.logoUrl != null && seller.logoUrl!.isNotEmpty
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(24),
-                            child: Image.network(
-                              '${ApiService.baseUrl}${seller.logoUrl}',
-                              width: 48,
-                              height: 48,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => Icon(
-                                Icons.store_rounded,
-                                color: context.colors.accent,
-                                size: 22,
+      child: Material(
+        color: context.colors.surface,
+        clipBehavior: Clip.antiAlias,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: onSellerTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ─── Header: logo + nombre ──────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 12, 4),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 24,
+                      backgroundColor: AppColors.primary.withValues(
+                        alpha: 0.08,
+                      ),
+                      child:
+                          seller.logoUrl != null && seller.logoUrl!.isNotEmpty
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(24),
+                              child: Image.network(
+                                '${ApiService.baseUrl}${seller.logoUrl}',
+                                width: 48,
+                                height: 48,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => Icon(
+                                  Icons.store_rounded,
+                                  color: context.colors.accent,
+                                  size: 22,
+                                ),
                               ),
+                            )
+                          : Icon(
+                              Icons.store_rounded,
+                              color: context.colors.accent,
+                              size: 22,
                             ),
-                          )
-                        : Icon(
-                            Icons.store_rounded,
-                            color: context.colors.accent,
-                            size: 22,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  seller.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 16,
+                                    letterSpacing: -0.3,
+                                  ),
+                                ),
+                              ),
+                              if (seller.verified)
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 6),
+                                  child: InsigniaVerificada.desdeTipo(
+                                    seller.tipoCuenta,
+                                    compact: true,
+                                    size: 18,
+                                  ),
+                                ),
+                            ],
                           ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                seller.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 16,
-                                  letterSpacing: -0.3,
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '${products.length} publicación${products.length == 1 ? '' : 'es'}',
+                                  style: TextStyle(
+                                    color: context.colors.muted,
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 13,
+                                  ),
                                 ),
                               ),
-                            ),
-                            if (seller.verified)
-                              const Padding(
-                                padding: EdgeInsets.only(left: 6),
-                                child: Icon(
-                                  Icons.verified_rounded,
-                                  size: 18,
-                                  color: AppColors.teal,
-                                ),
+                              const SizedBox(width: 4),
+                              const Icon(
+                                Icons.star_rounded,
+                                size: 14,
+                                color: AppColors.gold,
                               ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                '${products.length} publicación${products.length == 1 ? '' : 'es'}',
+                              const SizedBox(width: 2),
+                              Text(
+                                seller.reviews > 0
+                                    ? '${seller.rating.toStringAsFixed(1)} (${seller.reviews})'
+                                    : 'Sin calificaciones',
                                 style: TextStyle(
                                   color: context.colors.muted,
-                                  fontWeight: FontWeight.w500,
-                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 4),
-                            const Icon(
-                              Icons.star_rounded,
-                              size: 14,
-                              color: AppColors.gold,
-                            ),
-                            const SizedBox(width: 2),
-                            Text(
-                              seller.reviews > 0
-                                  ? '${seller.rating.toStringAsFixed(1)} (${seller.reviews})'
-                                  : 'Sin calificaciones',
-                              style: TextStyle(
-                                color: context.colors.muted,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: context.colors.muted.withValues(alpha: 0.4),
-                    size: 22,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // ─── Productos (sin divisor) ─────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: SizedBox(
-              height: 110,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount:
-                          displayProducts.length + (remaining > 0 ? 1 : 0),
-                      separatorBuilder: (_, _) => const SizedBox(width: 10),
-                      itemBuilder: (context, index) {
-                        if (index < displayProducts.length) {
-                          final product = displayProducts[index];
-                          return ProductCard(
-                            product: product,
-                            width: 118,
-                            onTap: () => onProductTap(product),
-                            heroEnabled: false,
-                          );
-                        }
-                        // ─── "Ver todo" minimal ───────────────
-                        return SizedBox(
-                          width: 90,
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: onSellerTap,
-                              borderRadius: BorderRadius.circular(12),
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  color: AppColors.primary.withValues(
-                                    alpha: 0.04,
-                                  ),
-                                ),
-                                child: Center(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.grid_view_rounded,
-                                        color: context.colors.muted,
-                                        size: 20,
-                                      ),
-                                      SizedBox(height: 6),
-                                      Text(
-                                        'Ver todo',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          color: context.colors.muted,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
+                            ],
                           ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Pantalla simple que muestra todos los productos de un negocio.
-class _SellerProductsScreen extends StatelessWidget {
-  const _SellerProductsScreen({required this.seller, required this.products});
-
-  final Seller seller;
-  final List<Product> products;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-              child: Icon(
-                Icons.store_rounded,
-                size: 16,
-                color: context.colors.accent,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Text(seller.name),
-          ],
-        ),
-      ),
-      body: SafeArea(
-        child: products.isEmpty
-            ? Center(
-                child: Text(
-                  'Este negocio aún no tiene publicaciones.',
-                  style: TextStyle(color: context.colors.muted),
-                ),
-              )
-            : Padding(
-                padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final columns = constraints.maxWidth >= 720 ? 3 : 2;
-                    return GridView.builder(
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: columns,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                        childAspectRatio: columns == 3 ? 0.72 : 0.64,
+                        ],
                       ),
-                      itemCount: products.length,
-                      itemBuilder: (context, index) {
-                        return ProductCard(
-                          product: products[index],
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => ProductDetailScreen(
-                                  product: products[index],
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: context.colors.muted.withValues(alpha: 0.4),
+                      size: 22,
+                    ),
+                  ],
+                ),
+              ),
+              // ─── Productos (sin divisor) ─────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: SizedBox(
+                  height: 110,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount:
+                              displayProducts.length + (remaining > 0 ? 1 : 0),
+                          separatorBuilder: (_, _) => const SizedBox(width: 10),
+                          itemBuilder: (context, index) {
+                            if (index < displayProducts.length) {
+                              final product = displayProducts[index];
+                              return ProductCard(
+                                product: product,
+                                width: 118,
+                                onTap: () => onProductTap(product),
+                                heroEnabled: false,
+                              );
+                            }
+                            // ─── "Ver todo" minimal ───────────────
+                            return SizedBox(
+                              width: 90,
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: onSellerTap,
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(12),
+                                      color: AppColors.primary.withValues(
+                                        alpha: 0.04,
+                                      ),
+                                    ),
+                                    child: Center(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.grid_view_rounded,
+                                            color: context.colors.muted,
+                                            size: 20,
+                                          ),
+                                          SizedBox(height: 6),
+                                          Text(
+                                            'Ver todo',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              color: context.colors.muted,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
                             );
                           },
-                        );
-                      },
-                    );
-                  },
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
+            ],
+          ),
+        ),
       ),
     );
   }

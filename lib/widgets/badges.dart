@@ -70,19 +70,66 @@ class StatusBadge extends StatelessWidget {
   }
 }
 
-class VerifiedBadge extends StatelessWidget {
-  const VerifiedBadge({super.key, this.compact = false});
+/// Insignia de cuenta verificada, que se muestra junto al nombre del usuario
+/// en el perfil, en las tarjetas de publicaciones y en cualquier otro lugar
+/// donde aparezca su nombre — solo si `seller.verified == true`.
+///
+/// Los tres tipos comparten el MISMO ícono de check a propósito: el color
+/// comunica de qué tipo de cuenta se trata sin sugerir que una es "más
+/// confiable" que otra. Verificarse significa lo mismo en los tres casos
+/// (el backend comprobó automáticamente un dato real de contacto), solo
+/// cambia qué dato se comprobó.
+class InsigniaVerificada extends StatelessWidget {
+  const InsigniaVerificada({
+    super.key,
+    required this.tipo,
+    this.compact = false,
+    this.size = 16,
+  }) : _tipoCrudo = null;
 
+  /// Variante para construir la insignia con el `tipoCuenta` tal como llega
+  /// del backend ('estudiante' | 'negocio' | 'particular'), sin tener que
+  /// mapear el string a [AccountType] en cada call site.
+  const InsigniaVerificada.desdeTipo(String tipoCuenta, {
+    super.key,
+    this.compact = false,
+    this.size = 16,
+  })  : _tipoCrudo = tipoCuenta,
+        tipo = AccountType.particular;
+
+  final AccountType tipo;
   final bool compact;
+
+  /// Tamaño del ícono en la variante compacta. Existe para que los call
+  /// sites conserven el tamaño que ya tenían.
+  final double size;
+  final String? _tipoCrudo;
+
+  /// Un tipo desconocido cae a 'particular', el estilo más neutro: nunca se
+  /// le atribuye a una cuenta un nivel de verificación que no tiene.
+  AccountType get _tipoEfectivo =>
+      _tipoCrudo == null ? tipo : (_tipoCrudo.toAccountType ?? AccountType.particular);
 
   @override
   Widget build(BuildContext context) {
+    final (color, etiqueta) = switch (_tipoEfectivo) {
+      AccountType.estudiante => (AppColors.primary, 'Estudiante verificado'),
+      AccountType.negocio => (AppColors.teal, 'Negocio verificado'),
+      AccountType.particular => (AppColors.muted, 'Verificado'),
+    };
+
+    // En modo compacto (tarjetas de producto, listas) solo cabe el ícono: la
+    // etiqueta completa competiría con el título del producto.
+    if (compact) {
+      return Icon(Icons.verified_rounded, size: size, color: color);
+    }
+
     return _Badge(
       icon: Icons.verified_rounded,
-      label: 'Verificado',
-      foreground: AppColors.teal,
-      background: AppColors.teal.withValues(alpha: 0.08),
-      compact: compact,
+      label: etiqueta,
+      foreground: color,
+      background: color.withValues(alpha: 0.08),
+      compact: false,
     );
   }
 }
@@ -186,77 +233,6 @@ Widget productStatusBadge(Product product) {
     nextAvailableDay: product.nextAvailableDay,
     opensAt: product.opensAt,
   );
-}
-
-/// Badge contextual que muestra el nivel de verificación según el tipo de cuenta.
-class VerificationStatusBadge extends StatelessWidget {
-  const VerificationStatusBadge({
-    super.key,
-    required this.accountType,
-    required this.verificationStatus,
-    this.compact = false,
-  });
-
-  final AccountType accountType;
-  final VerificationStatus verificationStatus;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    // No mostrar nada si no hay verificación iniciada
-    if (verificationStatus == VerificationStatus.noIniciada) {
-      return const SizedBox.shrink();
-    }
-
-    // Si está pendiente o rechazada, mostrar status genérico
-    if (verificationStatus == VerificationStatus.pendiente) {
-      return _Badge(
-        icon: Icons.hourglass_bottom_rounded,
-        label: 'En revisión',
-        foreground: AppColors.gold,
-        background: AppColors.gold.withValues(alpha: 0.10),
-        compact: compact,
-      );
-    }
-
-    if (verificationStatus == VerificationStatus.rechazada) {
-      return _Badge(
-        icon: Icons.gpp_bad_rounded,
-        label: 'Rechazada',
-        foreground: AppColors.danger,
-        background: AppColors.danger.withValues(alpha: 0.08),
-        compact: compact,
-      );
-    }
-
-    // Aprobada → badge según tipo de cuenta
-    switch (accountType) {
-      case AccountType.estudiante:
-        return _Badge(
-          icon: Icons.school_rounded,
-          label: 'Verificado UM',
-          foreground: AppColors.teal,
-          background: AppColors.teal.withValues(alpha: 0.10),
-          compact: compact,
-        );
-      case AccountType.particular:
-        return _Badge(
-          icon: Icons.badge_rounded,
-          label: 'Identidad verificada',
-          foreground: AppColors.primary,
-          background: AppColors.primary.withValues(alpha: 0.10),
-          compact: compact,
-        );
-      case AccountType.negocio:
-        return _Badge(
-          icon: Icons.store_rounded,
-          label: 'Negocio confirmado',
-          foreground: AppColors.gold,
-          background: context.colors.premiumBg,
-          compact: compact,
-        );
-    }
-  }
 }
 
 class _Badge extends StatelessWidget {

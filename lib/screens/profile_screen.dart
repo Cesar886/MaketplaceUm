@@ -10,6 +10,7 @@ import '../services/recent_products_service.dart';
 import '../widgets/badges.dart';
 import '../widgets/product_card.dart';
 import 'auth/login_screen.dart';
+import 'auth/verification_screen.dart';
 import 'legal/cookies_screen.dart';
 import 'legal/privacy_screen.dart';
 import 'legal/terms_screen.dart';
@@ -284,11 +285,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ],
                             ),
                             const SizedBox(height: 8),
-                            VerificationStatusBadge(
-                              accountType: auth.accountType,
-                              verificationStatus: auth.verificationStatus,
-                              compact: true,
-                            ),
+                            if (auth.isVerified)
+                              InsigniaVerificada(tipo: auth.accountType),
                           ],
                         ),
                       ),
@@ -502,10 +500,20 @@ class _VerificationCard extends StatelessWidget {
 
   final AuthProvider auth;
 
+  Future<void> _abrirVerificacion(BuildContext context) async {
+    final verificado = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => VerificationScreen(tipo: auth.accountType),
+      ),
+    );
+    // La pantalla ya actualizó el AuthProvider; esto solo cubre el caso de
+    // volver con el gesto de retroceso, donde no hubo resultado.
+    if (verificado != true) await auth.refrescarEstadoVerificacion();
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Si ya está verificado, mostrar estado positivo
-    if (auth.verificationStatus == VerificationStatus.aprobada) {
+    if (auth.isVerified) {
       return Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -521,10 +529,7 @@ class _VerificationCard extends StatelessWidget {
                 color: context.colors.surface,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: VerificationStatusBadge(
-                accountType: auth.accountType,
-                verificationStatus: auth.verificationStatus,
-              ),
+              child: InsigniaVerificada(tipo: auth.accountType),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -532,12 +537,12 @@ class _VerificationCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _verifiedTitle(auth),
+                    _tituloVerificado(auth),
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    _verifiedSubtitle(auth),
+                    'Tu insignia es visible para los compradores.',
                     style: TextStyle(
                       color: context.colors.muted,
                       fontWeight: FontWeight.w600,
@@ -552,62 +557,23 @@ class _VerificationCard extends StatelessWidget {
       );
     }
 
-    // Estado pendiente
-    if (auth.verificationStatus == VerificationStatus.pendiente) {
-      return Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.gold.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.gold.withValues(alpha: 0.22)),
-        ),
-        child: Row(
-          children: [
-            const Icon(
-              Icons.hourglass_bottom_rounded,
-              color: AppColors.gold,
-              size: 28,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Verificación en revisión',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    'Tus documentos están siendo revisados por el equipo.',
-                    style: TextStyle(
-                      color: context.colors.muted,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    // Rechazada: se explica qué corregir y se ofrece reintentar. Solo aplica
+    // al flujo de negocio, el único que puede terminar en rechazo.
+    final rechazada = auth.estadoVerificacion == 'rechazado';
 
-    // No iniciada → mostrar opción para verificar
     return InkWell(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => const _ProfileVerificationRedirect(),
-        ),
-      ),
+      onTap: () => _abrirVerificacion(context),
       borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: AppColors.teal.withValues(alpha: 0.08),
+          color: (rechazada ? AppColors.danger : AppColors.teal)
+              .withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.teal.withValues(alpha: 0.22)),
+          border: Border.all(
+            color: (rechazada ? AppColors.danger : AppColors.teal)
+                .withValues(alpha: 0.22),
+          ),
         ),
         child: Row(
           children: [
@@ -617,20 +583,24 @@ class _VerificationCard extends StatelessWidget {
                 color: context.colors.surface,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.badge_rounded, color: AppColors.teal),
+              child: Icon(
+                rechazada ? Icons.gpp_bad_rounded : Icons.badge_rounded,
+                color: rechazada ? AppColors.danger : AppColors.teal,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Verifica tu cuenta',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                  Text(
+                    rechazada ? 'Corrige tu verificación' : 'Verifica tu cuenta',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    'Obtén un badge de confianza para tus compradores.',
+                    auth.motivoRechazo ??
+                        'Es automático y toma menos de un minuto.',
                     style: TextStyle(
                       color: context.colors.muted,
                       fontWeight: FontWeight.w600,
@@ -647,64 +617,15 @@ class _VerificationCard extends StatelessWidget {
     );
   }
 
-  String _verifiedTitle(AuthProvider auth) {
+  String _tituloVerificado(AuthProvider auth) {
     switch (auth.accountType) {
       case AccountType.estudiante:
-        return 'Credencial universitaria verificada';
+        return 'Estudiante verificado';
       case AccountType.particular:
-        return 'Identidad verificada';
+        return 'Cuenta verificada';
       case AccountType.negocio:
-        return 'Negocio confirmado';
+        return 'Negocio verificado';
     }
-  }
-
-  String _verifiedSubtitle(AuthProvider auth) {
-    switch (auth.accountType) {
-      case AccountType.estudiante:
-        return 'Badge "Verificado UM" visible para generar confianza.';
-      case AccountType.particular:
-        return 'Badge "Identidad verificada" activo en tu perfil.';
-      case AccountType.negocio:
-        return 'Badge "Negocio confirmado" activo en tu perfil.';
-    }
-  }
-}
-
-/// Pantalla temporal de redirección para verificación desde perfil.
-/// En una versión completa llevaría a un formulario de verificación.
-class _ProfileVerificationRedirect extends StatelessWidget {
-  const _ProfileVerificationRedirect();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Verificación')),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.badge_rounded, size: 64, color: AppColors.teal),
-              const SizedBox(height: 20),
-              Text(
-                'Verificación de cuenta',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Puedes iniciar tu verificación desde el registro o contactar al administrador.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: context.colors.muted,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }
 

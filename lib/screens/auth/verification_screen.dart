@@ -1,135 +1,222 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart' as ll;
 import 'package:provider/provider.dart';
 
 import '../../app_theme.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/api_service.dart';
+import '../../widgets/location_picker.dart';
+import '../../widgets/otp_input.dart';
+import '../../widgets/static_mini_map.dart';
 import 'account_created_screen.dart';
 
+/// Pantalla única de verificación de cuenta para los tres tipos.
+///
+/// La verificación es 100% automática: el backend valida y resuelve sin que
+/// intervenga ningún administrador. Estudiante y cuenta externa usan un
+/// código de 6 dígitos (correo institucional / SMS); negocio se resuelve en
+/// una sola llamada validando nombre, ubicación y link de red social.
+///
+/// Se abre desde dos lugares con el mismo comportamiento:
+///  - durante el registro ([desdeRegistro] true, continúa a la pantalla de
+///    cuenta creada y permite posponer);
+///  - desde el perfil ([desdeRegistro] false, cierra devolviendo true si la
+///    cuenta quedó verificada).
 class VerificationScreen extends StatefulWidget {
-  const VerificationScreen({super.key});
+  const VerificationScreen({
+    super.key,
+    required this.tipo,
+    this.desdeRegistro = false,
+  });
+
+  final AccountType tipo;
+  final bool desdeRegistro;
 
   @override
   State<VerificationScreen> createState() => _VerificationScreenState();
 }
 
 class _VerificationScreenState extends State<VerificationScreen> {
-  bool _submitting = false;
-  String? _errorMessage;
+  bool _enviando = false;
+  String? _error;
+  String? _campoConError;
 
-  // Campos para estudiante
+  /// Código mostrado en pantalla cuando el backend corre sin proveedor de
+  /// email/SMS configurado. Permite probar el flujo completo en desarrollo.
+  String? _codigoDev;
+
+  /// Cambia de la captura de datos al ingreso del código.
+  bool _esperandoCodigo = false;
+  String? _destinoCodigo;
+
+  final _llaveOtp = GlobalKey<OtpInputState>();
+
+  // Estudiante
+  final _correoController = TextEditingController();
   final _matriculaController = TextEditingController();
-  final _carreraController = TextEditingController();
-  String? _studentPhotoPath;
 
-  // Campos para particular
-  final _fullNameController = TextEditingController();
-  String? _idDocPath;
+  // Negocio
+  final _nombreNegocioController = TextEditingController();
+  final _linkController = TextEditingController();
+  ll.LatLng? _ubicacion;
 
-  // Campos para negocio
-  final _businessNameController = TextEditingController();
-  String _businessType = 'Comida';
-  final _locationController = TextEditingController();
-  final _scheduleController = TextEditingController();
+  // Externo
+  final _telefonoController = TextEditingController();
 
   @override
   void dispose() {
+    _correoController.dispose();
     _matriculaController.dispose();
-    _carreraController.dispose();
-    _fullNameController.dispose();
-    _businessNameController.dispose();
-    _locationController.dispose();
-    _scheduleController.dispose();
+    _nombreNegocioController.dispose();
+    _linkController.dispose();
+    _telefonoController.dispose();
     super.dispose();
   }
 
-  Future<void> _handleVerify(AuthProvider auth) async {
-    // Validar campos requeridos según el tipo
-    switch (auth.accountType) {
-      case AccountType.estudiante:
-        if (_matriculaController.text.trim().isEmpty) {
-          _showError('Ingresa tu matrícula');
-          return;
-        }
-        if (_studentPhotoPath == null) {
-          _showError('Selecciona una foto de tu credencial');
-          return;
-        }
-      case AccountType.particular:
-        if (_fullNameController.text.trim().isEmpty) {
-          _showError('Ingresa tu nombre completo');
-          return;
-        }
-        if (_idDocPath == null) {
-          _showError('Selecciona una foto de tu identificación');
-          return;
-        }
-      case AccountType.negocio:
-        if (_businessNameController.text.trim().isEmpty) {
-          _showError('Ingresa el nombre del negocio');
-          return;
-        }
-    }
+  AuthProvider get _auth => context.read<AuthProvider>();
 
+  // ─── Acciones ──────────────────────────────────────────────
+
+  /// Envuelve una operación contra el backend: limpia el error anterior,
+  /// bloquea el botón y traduce [VerificacionException] al mensaje que ya
+  /// viene redactado desde el servidor.
+  Future<void> _ejecutar(Future<void> Function() operacion) async {
     setState(() {
-      _submitting = true;
-      _errorMessage = null;
+      _enviando = true;
+      _error = null;
+      _campoConError = null;
     });
-
     try {
-      switch (auth.accountType) {
-        case AccountType.estudiante:
-          await auth.submitStudentVerification(
-            matricula: _matriculaController.text.trim(),
-            carrera: _carreraController.text.trim().isEmpty
-                ? null
-                : _carreraController.text.trim(),
-            credentialPhotoPath: _studentPhotoPath!,
-          );
-        case AccountType.particular:
-          await auth.submitParticularVerification(
-            fullNameOnId: _fullNameController.text.trim(),
-            idDocumentPath: _idDocPath!,
-          );
-        case AccountType.negocio:
-          await auth.createBusinessProfile(
-            businessName: _businessNameController.text.trim(),
-            businessType: _businessType,
-            locationDescription: _locationController.text.trim().isEmpty
-                ? null
-                : _locationController.text.trim(),
-            schedule: _scheduleController.text.trim().isEmpty
-                ? null
-                : _scheduleController.text.trim(),
-          );
-      }
+      await operacion();
+    } on VerificacionException catch (e) {
       if (!mounted) return;
+      if (e.yaVerificado) {
+        // La cuenta ya estaba verificada (p. ej. se verificó desde otro
+        // dispositivo): no es un error que deba alarmar.
+        await _auth.refrescarEstadoVerificacion();
+        if (mounted) _terminar(verificado: true);
+        return;
+      }
+      setState(() {
+        _error = e.mensaje;
+        _campoConError = e.campo;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _error = 'No hay conexión con el servidor. Inténtalo de nuevo.');
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
+  }
+
+  Future<void> _solicitarCodigoEstudiante() {
+    return _ejecutar(() async {
+      final codigoDev = await _auth.solicitarVerificacionEstudiante(
+        correoInstitucional: _correoController.text.trim(),
+        matricula: _matriculaController.text.trim(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _esperandoCodigo = true;
+        _destinoCodigo = _correoController.text.trim();
+        _codigoDev = codigoDev;
+      });
+      _llaveOtp.currentState?.limpiar();
+    });
+  }
+
+  Future<void> _solicitarCodigoExterno() {
+    return _ejecutar(() async {
+      final codigoDev = await _auth.solicitarVerificacionExterno(
+        _telefonoController.text.trim(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _esperandoCodigo = true;
+        _destinoCodigo = _telefonoController.text.trim();
+        _codigoDev = codigoDev;
+      });
+      _llaveOtp.currentState?.limpiar();
+    });
+  }
+
+  Future<void> _confirmarCodigo(String codigo) {
+    return _ejecutar(() async {
+      if (widget.tipo == AccountType.estudiante) {
+        await _auth.confirmarVerificacionEstudiante(codigo);
+      } else {
+        await _auth.confirmarVerificacionExterno(codigo);
+      }
+      if (mounted) _terminar(verificado: true);
+    });
+  }
+
+  Future<void> _verificarNegocio() {
+    if (_ubicacion == null) {
+      setState(() {
+        _error = 'Coloca el pin de ubicación de tu negocio';
+        _campoConError = 'ubicacion';
+      });
+      return Future.value();
+    }
+    return _ejecutar(() async {
+      final verificado = await _auth.verificarNegocio(
+        nombreNegocio: _nombreNegocioController.text.trim(),
+        lat: _ubicacion!.latitude,
+        lng: _ubicacion!.longitude,
+        linkRedSocial: _linkController.text.trim(),
+      );
+      if (!mounted) return;
+      if (verificado) {
+        _terminar(verificado: true);
+      } else {
+        // Rechazo: el backend dice qué campo corregir y el usuario reintenta
+        // desde la misma pantalla, sin volver a empezar.
+        setState(() {
+          _error = _auth.motivoRechazo ?? 'No pudimos verificar los datos de tu negocio.';
+          _campoConError = _auth.campoRechazado;
+        });
+      }
+    });
+  }
+
+  Future<void> _elegirUbicacion() async {
+    final punto = await LocationPickerScreen.open(
+      context,
+      initialLat: _ubicacion?.latitude,
+      initialLng: _ubicacion?.longitude,
+      title: 'Ubicación de tu negocio',
+    );
+    if (punto != null && mounted) {
+      setState(() {
+        _ubicacion = punto;
+        if (_campoConError == 'ubicacion') _campoConError = null;
+      });
+    }
+  }
+
+  void _terminar({required bool verificado}) {
+    if (widget.desdeRegistro) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(builder: (_) => const AccountCreatedScreen()),
       );
-    } catch (e) {
-      if (!mounted) return;
-      _showError('Error al verificar: $e');
-      setState(() => _submitting = false);
+    } else {
+      Navigator.of(context).pop(verificado);
     }
   }
 
-  void _handleSkip() {
-    // El usuario ya está registrado con status 'no_iniciada'.
-    // No necesitamos llamar a la DB porque el status inicial ya es ese.
-    // Solo navegamos directamente.
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const AccountCreatedScreen()),
-    );
+  void _posponer() {
+    if (widget.desdeRegistro) {
+      _terminar(verificado: false);
+    } else {
+      Navigator.of(context).pop(false);
+    }
   }
 
-  void _showError(String msg) {
-    setState(() => _errorMessage = msg);
-  }
+  // ─── UI ────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
-
     return Scaffold(
       appBar: AppBar(title: const Text('Verificación')),
       body: SafeArea(
@@ -139,12 +226,14 @@ class _VerificationScreenState extends State<VerificationScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Verifica tu cuenta (opcional)',
+                _esperandoCodigo ? 'Ingresa tu código' : _titulo,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 6),
               Text(
-                _descriptionFor(auth.accountType),
+                _esperandoCodigo
+                    ? 'Enviamos un código de 6 dígitos a $_destinoCodigo. Vence en 10 minutos.'
+                    : _descripcion,
                 style: TextStyle(
                   color: context.colors.muted,
                   fontWeight: FontWeight.w600,
@@ -152,81 +241,38 @@ class _VerificationScreenState extends State<VerificationScreen> {
               ),
               const SizedBox(height: 20),
 
-              // ─── Error ───────────────────────────────────
-              if (_errorMessage != null) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.danger.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: AppColors.danger.withValues(alpha: 0.22),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.error_outline_rounded,
-                        size: 20,
-                        color: AppColors.danger,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          _errorMessage!,
-                          style: const TextStyle(
-                            color: AppColors.danger,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+              if (_error != null) ...[
+                _CajaAviso(
+                  mensaje: _error!,
+                  color: AppColors.danger,
+                  icono: Icons.error_outline_rounded,
                 ),
                 const SizedBox(height: 16),
               ],
 
-              // ─── Formulario según tipo ───────────────────
-              Builder(
-                builder: (context) {
-                  switch (auth.accountType) {
-                    case AccountType.estudiante:
-                      return _buildStudentForm();
-                    case AccountType.particular:
-                      return _buildParticularForm();
-                    case AccountType.negocio:
-                      return _buildBusinessForm();
-                  }
-                },
-              ),
+              if (_codigoDev != null) ...[
+                _CajaAviso(
+                  mensaje:
+                      'Modo desarrollo: el servidor no tiene configurado el '
+                      'envío, tu código es $_codigoDev',
+                  color: AppColors.gold,
+                  icono: Icons.build_rounded,
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              if (_esperandoCodigo) _buildIngresoCodigo() else _buildFormulario(),
 
               const SizedBox(height: 28),
 
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _submitting ? null : () => _handleVerify(auth),
-                  child: _submitting
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text('Verificar ahora'),
+              if (widget.desdeRegistro)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: _enviando ? null : _posponer,
+                    child: const Text('Hacerlo después'),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: _submitting ? null : _handleSkip,
-                  child: const Text('Hacerlo después'),
-                ),
-              ),
             ],
           ),
         ),
@@ -234,182 +280,273 @@ class _VerificationScreenState extends State<VerificationScreen> {
     );
   }
 
-  String _descriptionFor(AccountType type) {
-    switch (type) {
-      case AccountType.estudiante:
-        return 'Sube una foto de tu credencial universitaria para obtener el badge "Verificado UM".';
-      case AccountType.particular:
-        return 'Sube una foto de tu identificación oficial para obtener el badge "Identidad verificada".';
-      case AccountType.negocio:
-        return 'Registra los datos de tu negocio. Un administrador confirmará tu puesto manualmente.';
-    }
-  }
+  String get _titulo => switch (widget.tipo) {
+    AccountType.estudiante => 'Verifica que eres estudiante',
+    AccountType.negocio => 'Verifica tu negocio',
+    AccountType.particular => 'Verifica tu número',
+  };
 
-  // ─── Form: Estudiante ──────────────────────────────────────
-  Widget _buildStudentForm() {
+  String get _descripcion => switch (widget.tipo) {
+    AccountType.estudiante =>
+      'Te enviaremos un código a tu correo institucional. La verificación es '
+          'automática, no hay que esperar a que nadie la revise.',
+    AccountType.negocio =>
+      'Con estos tres datos verificamos tu negocio al instante, sin revisión '
+          'manual.',
+    AccountType.particular =>
+      'Te enviaremos un código por SMS. La verificación es automática.',
+  };
+
+  Widget _buildFormulario() => switch (widget.tipo) {
+    AccountType.estudiante => _buildFormEstudiante(),
+    AccountType.negocio => _buildFormNegocio(),
+    AccountType.particular => _buildFormExterno(),
+  };
+
+  // ─── Ingreso del código (estudiante y externo) ─────────────
+
+  Widget _buildIngresoCodigo() {
     return Column(
       children: [
-        TextFormField(
+        OtpInput(
+          key: _llaveOtp,
+          habilitado: !_enviando,
+          onCompleto: _enviando ? (_) {} : _confirmarCodigo,
+        ),
+        const SizedBox(height: 20),
+        if (_enviando) const CircularProgressIndicator(),
+        const SizedBox(height: 12),
+        TextButton(
+          onPressed: _enviando
+              ? null
+              : () {
+                  setState(() {
+                    _esperandoCodigo = false;
+                    _codigoDev = null;
+                    _error = null;
+                  });
+                },
+          child: const Text('Cambiar el dato o reenviar código'),
+        ),
+      ],
+    );
+  }
+
+  // ─── Formularios ───────────────────────────────────────────
+
+  Widget _buildFormEstudiante() {
+    return Column(
+      children: [
+        _CampoTexto(
+          controller: _correoController,
+          etiqueta: 'Correo institucional *',
+          icono: Icons.alternate_email_rounded,
+          tipoTeclado: TextInputType.emailAddress,
+          ayuda: 'Ej. 1220326@alumno.um.edu.mx',
+          conError: _campoConError == 'correo_institucional',
+        ),
+        const SizedBox(height: 14),
+        _CampoTexto(
           controller: _matriculaController,
-          textCapitalization: TextCapitalization.characters,
-          decoration: const InputDecoration(
-            labelText: 'Matrícula *',
-            prefixIcon: Icon(Icons.badge_rounded),
-          ),
+          etiqueta: 'Matrícula *',
+          icono: Icons.badge_rounded,
+          tipoTeclado: TextInputType.number,
+          ayuda: 'Los 7 dígitos de tu correo institucional',
+          conError: _campoConError == 'matricula',
         ),
-        const SizedBox(height: 14),
-        TextFormField(
-          controller: _carreraController,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            labelText: 'Carrera (opcional)',
-            prefixIcon: Icon(Icons.school_rounded),
-          ),
-        ),
-        const SizedBox(height: 14),
-        _PhotoUploadTile(
-          icon: Icons.credit_card_rounded,
-          label: 'Foto de credencial universitaria *',
-          path: _studentPhotoPath,
-          selectedLabel: 'Credencial seleccionada ✓',
-          onPick: () => setState(() {
-            _studentPhotoPath =
-                'mock_credencial_${DateTime.now().millisecondsSinceEpoch}.jpg';
-          }),
+        const SizedBox(height: 24),
+        _BotonPrincipal(
+          etiqueta: 'Enviar código',
+          cargando: _enviando,
+          onPressed: _solicitarCodigoEstudiante,
         ),
       ],
     );
   }
 
-  // ─── Form: Particular ──────────────────────────────────────
-  Widget _buildParticularForm() {
+  Widget _buildFormExterno() {
     return Column(
       children: [
-        TextFormField(
-          controller: _fullNameController,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            labelText: 'Nombre completo (como aparece en el documento) *',
-            prefixIcon: Icon(Icons.badge_rounded),
-          ),
+        _CampoTexto(
+          controller: _telefonoController,
+          etiqueta: 'Número de teléfono *',
+          icono: Icons.phone_rounded,
+          tipoTeclado: TextInputType.phone,
+          ayuda: '10 dígitos, ej. 4431234567',
+          conError: _campoConError == 'telefono',
         ),
-        const SizedBox(height: 14),
-        _PhotoUploadTile(
-          icon: Icons.folder_copy_rounded,
-          label: 'Identificación oficial *',
-          path: _idDocPath,
-          selectedLabel: 'Identificación seleccionada ✓',
-          onPick: () => setState(() {
-            _idDocPath =
-                'mock_identificacion_${DateTime.now().millisecondsSinceEpoch}.jpg';
-          }),
+        const SizedBox(height: 24),
+        _BotonPrincipal(
+          etiqueta: 'Enviar código por SMS',
+          cargando: _enviando,
+          onPressed: _solicitarCodigoExterno,
         ),
       ],
     );
   }
 
-  // ─── Form: Negocio ─────────────────────────────────────────
-  Widget _buildBusinessForm() {
+  Widget _buildFormNegocio() {
+    final conErrorUbicacion = _campoConError == 'ubicacion';
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.teal.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.teal.withValues(alpha: 0.22)),
+        _CampoTexto(
+          controller: _nombreNegocioController,
+          etiqueta: 'Nombre del negocio *',
+          icono: Icons.storefront_rounded,
+          conError: _campoConError == 'nombre_negocio',
+        ),
+        const SizedBox(height: 18),
+
+        Text(
+          'Ubicación del negocio *',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: conErrorUbicacion ? AppColors.danger : context.colors.ink,
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.check_circle_rounded, color: AppColors.teal, size: 24),
-              SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Negocio registrado',
-                      style: TextStyle(
-                        color: AppColors.teal,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                      ),
-                    ),
-                    SizedBox(height: 6),
-                    Text(
-                      'Los datos de tu negocio ya fueron guardados durante el registro. '
-                      'Un administrador revisará y confirmará tu puesto manualmente. '
-                      'Te notificaremos cuando sea aprobado.',
-                      style: TextStyle(
-                        color: context.colors.accent,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                        height: 1.4,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+        ),
+        const SizedBox(height: 8),
+        if (_ubicacion != null) ...[
+          StaticMiniMap(
+            lat: _ubicacion!.latitude,
+            lng: _ubicacion!.longitude,
+            height: 130,
+            showOpenInMapsButton: false,
           ),
+          const SizedBox(height: 8),
+        ],
+        OutlinedButton.icon(
+          onPressed: _enviando ? null : _elegirUbicacion,
+          icon: const Icon(Icons.place_rounded),
+          label: Text(
+            _ubicacion == null ? 'Colocar pin en el mapa' : 'Cambiar ubicación',
+          ),
+        ),
+        const SizedBox(height: 18),
+
+        _CampoTexto(
+          controller: _linkController,
+          etiqueta: 'Link de Facebook, Instagram o Maps *',
+          icono: Icons.link_rounded,
+          tipoTeclado: TextInputType.url,
+          ayuda: 'Un solo link. Comprobamos que la página exista.',
+          conError: _campoConError == 'link_red_social',
+        ),
+        const SizedBox(height: 24),
+        _BotonPrincipal(
+          etiqueta: 'Verificar negocio',
+          cargando: _enviando,
+          onPressed: _verificarNegocio,
         ),
       ],
     );
   }
 }
 
-class _PhotoUploadTile extends StatelessWidget {
-  const _PhotoUploadTile({
-    required this.icon,
-    required this.label,
-    required this.path,
-    required this.onPick,
-    this.selectedLabel,
+// ─── Widgets base compartidos ────────────────────────────────
+
+class _CampoTexto extends StatelessWidget {
+  const _CampoTexto({
+    required this.controller,
+    required this.etiqueta,
+    required this.icono,
+    this.tipoTeclado,
+    this.ayuda,
+    this.conError = false,
   });
 
-  final IconData icon;
-  final String label;
-  final String? path;
-  final VoidCallback onPick;
-  final String? selectedLabel;
+  final TextEditingController controller;
+  final String etiqueta;
+  final IconData icono;
+  final TextInputType? tipoTeclado;
+  final String? ayuda;
+
+  /// Resalta el campo que el backend señaló como causa del rechazo.
+  final bool conError;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onPick,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: path != null ? AppColors.teal : context.colors.border,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              path != null ? Icons.check_circle_rounded : icon,
-              color: path != null ? AppColors.teal : context.colors.muted,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                path != null
-                    ? (selectedLabel ?? 'Archivo seleccionado ✓')
-                    : label,
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: path != null ? AppColors.teal : context.colors.ink,
+    return TextFormField(
+      controller: controller,
+      keyboardType: tipoTeclado,
+      decoration: InputDecoration(
+        labelText: etiqueta,
+        helperText: ayuda,
+        prefixIcon: Icon(icono),
+        enabledBorder: conError
+            ? const OutlineInputBorder(
+                borderSide: BorderSide(color: AppColors.danger, width: 1.6),
+              )
+            : null,
+      ),
+    );
+  }
+}
+
+class _BotonPrincipal extends StatelessWidget {
+  const _BotonPrincipal({
+    required this.etiqueta,
+    required this.cargando,
+    required this.onPressed,
+  });
+
+  final String etiqueta;
+  final bool cargando;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: cargando ? null : onPressed,
+        child: cargando
+            ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
                 ),
-              ),
+              )
+            : Text(etiqueta),
+      ),
+    );
+  }
+}
+
+class _CajaAviso extends StatelessWidget {
+  const _CajaAviso({
+    required this.mensaje,
+    required this.color,
+    required this.icono,
+  });
+
+  final String mensaje;
+  final Color color;
+  final IconData icono;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        children: [
+          Icon(icono, size: 20, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              mensaje,
+              style: TextStyle(color: color, fontWeight: FontWeight.w600),
             ),
-            if (path == null)
-              Icon(Icons.upload_file_rounded, color: context.colors.muted),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

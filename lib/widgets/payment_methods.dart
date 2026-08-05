@@ -136,8 +136,8 @@ class PaymentMethodsChips extends StatelessWidget {
     if (options.isEmpty) return const SizedBox.shrink();
 
     return Wrap(
-      spacing: 18,
-      runSpacing: 10,
+      spacing: 16,
+      runSpacing: 8,
       children: [
         for (final option in options)
           Row(

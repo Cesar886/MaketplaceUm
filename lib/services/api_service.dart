@@ -5,6 +5,35 @@ import 'package:http/http.dart' as http;
 import '../models.dart';
 import '../config/app_config.dart';
 
+/// Error de un endpoint de verificación, con el mensaje textual del backend.
+///
+/// Conserva [campo] para que la pantalla pueda resaltar exactamente el dato
+/// que falló, y [puedeReintentarEn] (minutos) cuando el rechazo viene del
+/// límite de envío de códigos.
+class VerificacionException implements Exception {
+  const VerificacionException(
+    this.mensaje, {
+    this.campo,
+    this.statusCode,
+    this.puedeReintentarEn,
+  });
+
+  final String mensaje;
+  final String? campo;
+  final int? statusCode;
+  final int? puedeReintentarEn;
+
+  /// La cuenta ya estaba verificada: no es un error que deba alarmar, la
+  /// pantalla simplemente refresca y cierra.
+  bool get yaVerificado => statusCode == 409;
+
+  /// Se agotaron los códigos permitidos en la ventana de 15 minutos.
+  bool get demasiadosIntentos => statusCode == 429;
+
+  @override
+  String toString() => mensaje;
+}
+
 /// Servicio centralizado para consumir la API REST de Mercadito UM.
 ///
 /// Auto-detecta la URL base según plataforma / entorno.
@@ -141,6 +170,95 @@ class ApiService {
       throw Exception('Error al iniciar sesión. Intenta de nuevo.');
     }
     return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  // ─── Verificación de cuenta ─────────────────────────────
+  //
+  // El backend resuelve la verificación automáticamente (sin revisión
+  // humana) y es la única autoridad sobre `verified`. Todos estos endpoints
+  // toman el usuario del JWT, así que nunca se manda un id de usuario.
+
+  /// Decodifica la respuesta de un endpoint de verificación, propagando el
+  /// mensaje real del servidor en el error para poder mostrarlo tal cual al
+  /// usuario (ej. "La matrícula no coincide con tu correo institucional").
+  static Map<String, dynamic> _decodeVerificacion(http.Response res) {
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode != 200) {
+      throw VerificacionException(
+        body['error'] as String? ?? 'No pudimos completar la verificación.',
+        campo: body['campo'] as String?,
+        statusCode: res.statusCode,
+        puedeReintentarEn: (body['puede_reintentar_en'] as num?)?.toInt(),
+      );
+    }
+    return body;
+  }
+
+  static Future<Map<String, dynamic>> _postVerificacion(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    final res = await _client.post(
+      _uri('/verificacion$path'),
+      headers: _authHeaders,
+      body: jsonEncode(body),
+    );
+    return _decodeVerificacion(res);
+  }
+
+  /// Envía el código OTP al correo institucional del estudiante.
+  static Future<Map<String, dynamic>> solicitarVerificacionEstudiante({
+    required String correoInstitucional,
+    required String matricula,
+  }) {
+    return _postVerificacion('/estudiante/solicitar', {
+      'correo_institucional': correoInstitucional,
+      'matricula': matricula,
+    });
+  }
+
+  static Future<Map<String, dynamic>> confirmarVerificacionEstudiante(
+    String codigoOtp,
+  ) {
+    return _postVerificacion('/estudiante/confirmar', {'codigo_otp': codigoOtp});
+  }
+
+  /// Verifica un negocio. A diferencia de los flujos con OTP, resuelve en una
+  /// sola llamada: la respuesta trae `estado` 'verificado' o 'rechazado'.
+  static Future<Map<String, dynamic>> verificarNegocio({
+    required String nombreNegocio,
+    required double lat,
+    required double lng,
+    required String linkRedSocial,
+  }) {
+    return _postVerificacion('/negocio/solicitar', {
+      'nombre_negocio': nombreNegocio,
+      'ubicacion_lat': lat,
+      'ubicacion_lng': lng,
+      'link_red_social': linkRedSocial,
+    });
+  }
+
+  static Future<Map<String, dynamic>> solicitarVerificacionExterno(
+    String telefono,
+  ) {
+    return _postVerificacion('/externo/solicitar', {'telefono': telefono});
+  }
+
+  static Future<Map<String, dynamic>> confirmarVerificacionExterno(
+    String codigoOtp,
+  ) {
+    return _postVerificacion('/externo/confirmar', {'codigo_otp': codigoOtp});
+  }
+
+  /// Estado de verificación del usuario autenticado. Lo consultan tanto el
+  /// registro como el perfil.
+  static Future<Map<String, dynamic>> getEstadoVerificacion() async {
+    final res = await _client.get(
+      _uri('/verificacion/estado'),
+      headers: _authHeaders,
+    );
+    return _decodeVerificacion(res);
   }
 
   // ─── Health ─────────────────────────────────────────────

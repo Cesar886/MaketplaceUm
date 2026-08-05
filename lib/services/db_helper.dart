@@ -55,30 +55,11 @@ class DBHelper {
       )
     ''');
 
-    // Datos específicos de verificación de ESTUDIANTE
-    await db.execute('''
-      CREATE TABLE student_verification (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        matricula TEXT NOT NULL,
-        carrera TEXT,
-        credential_photo_path TEXT NOT NULL,
-        submitted_at TEXT NOT NULL,
-        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-      )
-    ''');
-
-    // Datos específicos de verificación de PARTICULAR (externo)
-    await db.execute('''
-      CREATE TABLE particular_verification (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        full_name_on_id TEXT NOT NULL,
-        id_document_path TEXT NOT NULL,
-        submitted_at TEXT NOT NULL,
-        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-      )
-    ''');
+    // Ya no existen tablas locales de verificación (student_verification /
+    // particular_verification): la verificación es automática y vive
+    // enteramente en el backend, que es su única autoridad. Las columnas
+    // is_verified / verification_status de `users` quedan como campos
+    // legacy de instalaciones previas y no se leen — ver AuthProvider.
 
     // Perfil de NEGOCIO (puestos dentro o cerca del campus)
     await db.execute('''
@@ -157,56 +138,8 @@ class DBHelper {
     });
   }
 
-  /// Envía datos de verificación de ESTUDIANTE (queda pendiente de aprobación).
-  Future<void> submitStudentVerification({
-    required int userId,
-    required String matricula,
-    String? carrera,
-    required String credentialPhotoPath,
-  }) async {
-    final db = await database;
-
-    await db.insert('student_verification', {
-      'user_id': userId,
-      'matricula': matricula,
-      'carrera': carrera,
-      'credential_photo_path': credentialPhotoPath,
-      'submitted_at': DateTime.now().toIso8601String(),
-    });
-
-    await db.update(
-      'users',
-      {'verification_status': 'pendiente'},
-      where: 'id = ?',
-      whereArgs: [userId],
-    );
-  }
-
-  /// Envía datos de verificación de PARTICULAR (queda pendiente de aprobación).
-  Future<void> submitParticularVerification({
-    required int userId,
-    required String fullNameOnId,
-    required String idDocumentPath,
-  }) async {
-    final db = await database;
-
-    await db.insert('particular_verification', {
-      'user_id': userId,
-      'full_name_on_id': fullNameOnId,
-      'id_document_path': idDocumentPath,
-      'submitted_at': DateTime.now().toIso8601String(),
-    });
-
-    await db.update(
-      'users',
-      {'verification_status': 'pendiente'},
-      where: 'id = ?',
-      whereArgs: [userId],
-    );
-  }
-
-  /// Crea el perfil de NEGOCIO. No requiere documento personal;
-  /// admin_confirmed se actualiza manualmente por el admin más adelante.
+  /// Crea el perfil de NEGOCIO en la caché local (nombre, rubro, logo). No
+  /// tiene relación con la verificación, que resuelve el backend.
   Future<void> createBusinessProfile({
     required int userId,
     required String businessName,
@@ -230,43 +163,6 @@ class DBHelper {
       'schedule': schedule,
       'admin_confirmed': 0,
     });
-
-    await db.update(
-      'users',
-      {'verification_status': 'pendiente'},
-      where: 'id = ?',
-      whereArgs: [userId],
-    );
-  }
-
-  /// El usuario decide NO verificarse. Se queda como está, sin bloquear su cuenta.
-  Future<void> skipVerification(int userId) async {
-    final db = await database;
-    await db.update(
-      'users',
-      {'verification_status': 'no_iniciada'},
-      where: 'id = ?',
-      whereArgs: [userId],
-    );
-  }
-
-  // ---------- APROBACIÓN (uso del admin) ----------
-
-  /// El admin aprueba o rechaza una verificación pendiente.
-  Future<void> resolveVerification({
-    required int userId,
-    required bool approved,
-  }) async {
-    final db = await database;
-    await db.update(
-      'users',
-      {
-        'is_verified': approved ? 1 : 0,
-        'verification_status': approved ? 'aprobada' : 'rechazada',
-      },
-      where: 'id = ?',
-      whereArgs: [userId],
-    );
   }
 
   // ---------- CONSULTAS ÚTILES ----------
@@ -323,15 +219,6 @@ class DBHelper {
     if (phone != null) values['phone'] = phone;
     if (values.isEmpty) return;
     await db.update('users', values, where: 'id = ?', whereArgs: [userId]);
-  }
-
-  Future<List<Map<String, dynamic>>> getPendingVerifications() async {
-    final db = await database;
-    return await db.query(
-      'users',
-      where: 'verification_status = ?',
-      whereArgs: ['pendiente'],
-    );
   }
 
   Future<Map<String, dynamic>?> getBusinessProfile(int userId) async {

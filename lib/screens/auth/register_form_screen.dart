@@ -228,7 +228,12 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
       }
 
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(builder: (_) => const VerificationScreen()),
+        MaterialPageRoute<void>(
+          builder: (_) => VerificationScreen(
+            tipo: context.read<AuthProvider>().accountType,
+            desdeRegistro: true,
+          ),
+        ),
       );
     } catch (e) {
       if (!context.mounted) return;
