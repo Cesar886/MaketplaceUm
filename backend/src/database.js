@@ -1,7 +1,12 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 
-const DB_PATH = path.join(__dirname, '..', 'mercadito_um.db');
+// Configurable para que los tests puedan correr contra una base temporal con
+// el schema y las migraciones REALES, en vez de recrear a mano un schema
+// paralelo que se desincroniza en silencio. En ejecución normal la variable
+// no está definida y se usa la base del servidor.
+const DB_PATH =
+  process.env.MERCADITO_DB_PATH || path.join(__dirname, '..', 'mercadito_um.db');
 
 let db;
 
@@ -544,6 +549,63 @@ function runMigrations() {
     db.exec(`ALTER TABLE wanted_posts ADD COLUMN views INTEGER DEFAULT 0`);
   }
 
+  // 24. Sistema de verificación de cuentas (100% automático, sin revisión
+  //     humana). `sellers.verified` — que ya existía y que lee toda la app —
+  //     sigue siendo la bandera rápida; la tabla `verificaciones` guarda el
+  //     detalle del flujo (OTPs, datos capturados, rate limiting).
+  const sellerColsVerif = db.prepare("PRAGMA table_info('sellers')").all();
+  if (!sellerColsVerif.some(c => c.name === 'tipo_cuenta')) {
+    db.exec(`ALTER TABLE sellers ADD COLUMN tipo_cuenta TEXT`);
+    // Backfill desde los datos que ya distinguen el tipo de cuenta hoy:
+    // isBusiness (columna real) y major (etiqueta asignada en el registro).
+    db.exec(`
+      UPDATE sellers SET tipo_cuenta = CASE
+        WHEN isBusiness = 1 THEN 'negocio'
+        WHEN major = 'Estudiante' THEN 'estudiante'
+        ELSE 'particular'
+      END
+      WHERE tipo_cuenta IS NULL
+    `);
+  }
+
+  // El tipo 'particular' es lo que la UI llama "externo": se conserva el
+  // nombre interno para no migrar el enum de Flutter, el CHECK del SQLite
+  // local ni las filas ya guardadas.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS verificaciones (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      usuario_id TEXT NOT NULL UNIQUE REFERENCES sellers(id) ON DELETE CASCADE,
+      tipo_cuenta TEXT NOT NULL CHECK(tipo_cuenta IN ('estudiante','negocio','particular')),
+      estado TEXT NOT NULL DEFAULT 'pendiente' CHECK(estado IN ('pendiente','verificado','rechazado')),
+      fecha_verificacion TEXT,
+      creado_en TEXT NOT NULL,
+
+      correo_institucional TEXT,
+      matricula TEXT,
+      codigo_otp_email TEXT,
+      codigo_otp_email_expira TEXT,
+
+      nombre_negocio TEXT,
+      ubicacion_lat REAL,
+      ubicacion_lng REAL,
+      link_red_social TEXT,
+
+      telefono TEXT,
+      codigo_otp_sms TEXT,
+      codigo_otp_sms_expira TEXT,
+
+      motivo_rechazo TEXT,
+      campo_rechazado TEXT,
+      intentos_envio INTEGER NOT NULL DEFAULT 0,
+      ventana_envio_inicio TEXT,
+      intentos_confirmacion INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_verificaciones_correo
+      ON verificaciones(correo_institucional);
+    CREATE INDEX IF NOT EXISTS idx_verificaciones_telefono
+      ON verificaciones(telefono);
+  `);
+
   console.log('🔄 Migración de schema completada');
 }
 
@@ -674,6 +736,9 @@ function rowToSeller(row) {
     rating: row.rating ?? 0,
     reviews: row.reviews ?? 0,
     verified: !!row.verified,
+    // Determina el color/etiqueta de la insignia de verificación en la app.
+    // 'particular' es lo que la UI llama "externo".
+    tipoCuenta: row.tipo_cuenta || 'particular',
     businessDescription: row.businessDescription || null,
     businessCategory: row.businessCategory || null,
     businessHours: JSON.parse(row.businessHours || '{}'),

@@ -31,11 +31,12 @@ let ownListings = db.getAllListings().map(row => ({
 function registerSeller(sellerData) {
   // Insertar en SQLite
   db.getDb().prepare(`
-    INSERT OR IGNORE INTO sellers (id, name, email, phone, avatarInitials, major, isBusiness, logoUrl, rating, reviews, verified, password_hash, businessHours, paymentMethods)
-    VALUES (@id, @name, @email, @phone, @avatarInitials, @major, @isBusiness, @logoUrl, @rating, @reviews, @verified, @password_hash, @businessHours, @paymentMethods)
+    INSERT OR IGNORE INTO sellers (id, name, email, phone, avatarInitials, major, isBusiness, logoUrl, rating, reviews, verified, password_hash, businessHours, paymentMethods, tipo_cuenta)
+    VALUES (@id, @name, @email, @phone, @avatarInitials, @major, @isBusiness, @logoUrl, @rating, @reviews, @verified, @password_hash, @businessHours, @paymentMethods, @tipo_cuenta)
   `).run({
     ...sellerData,
     email: sellerData.email || null,
+    tipo_cuenta: sellerData.tipo_cuenta || 'particular',
     phone: sellerData.phone || null,
     isBusiness: sellerData.isBusiness ? 1 : 0,
     verified: sellerData.verified ? 1 : 0,

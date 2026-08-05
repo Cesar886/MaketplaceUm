@@ -10,6 +10,12 @@
 // crear un Date (por eso va como primera línea del archivo).
 process.env.TZ = 'America/Monterrey';
 
+// Credenciales y configuración desde backend/.env (SMTP, Twilio, JWT_SECRET,
+// dominios institucionales). Va antes de cualquier require que lea
+// process.env al cargarse — validation/verificacion.js y auth.js lo hacen.
+// Si el archivo no existe, dotenv no falla: se usan los valores por defecto.
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -31,6 +37,7 @@ const routes = [
   require('./routes/chat'),
   require('./routes/wanted'),
   require('./routes/feed'),
+  require('./routes/verificacion'),
 ];
 
 const app = express();
@@ -273,6 +280,14 @@ app.post('/api/auth/register', (req, res) => {
   else if (userType === 'negocio') major = 'Negocio • Establecimiento';
   else if (userType === 'particular') major = 'Particular';
 
+  // `tipo_cuenta` es la columna canónica que consulta el sistema de
+  // verificación, en vez de re-derivar el tipo desde `major` (una etiqueta
+  // de UI) cada vez. Un userType desconocido cae a 'particular', el tipo
+  // menos privilegiado.
+  const tipoCuenta = ['estudiante', 'negocio', 'particular'].includes(userType)
+    ? userType
+    : 'particular';
+
   const newSeller = {
     id: sellerId,
     name: name.trim(),
@@ -286,6 +301,7 @@ app.post('/api/auth/register', (req, res) => {
     rating: 0,
     reviews: 0,
     verified: false,
+    tipo_cuenta: tipoCuenta,
     password_hash: bcrypt.hashSync(password, 10),
   };
 
