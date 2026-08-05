@@ -126,8 +126,32 @@ test('rechaza un dominio fuera de la whitelist', () => {
   assert.match(validarLinkRedSocial('https://mi-negocio.com'), /Facebook|Instagram|Maps/i);
 });
 
-test('rechaza un esquema que no es http ni https', () => {
+test('rechaza un esquema que no es https', () => {
   assert.ok(validarLinkRedSocial('javascript:alert(1)'));
+  assert.ok(validarLinkRedSocial('file:///etc/passwd'));
+});
+
+test('rechaza http sin cifrar aunque el dominio sea correcto', () => {
+  // Un link http:// viaja en claro y además abre la puerta a que un atacante
+  // en la red lo reescriba; las tres plataformas permitidas sirven https.
+  assert.match(validarLinkRedSocial('http://www.instagram.com/tacos_um/'), /https/i);
+});
+
+test('rechaza el acortador genérico goo.gl', () => {
+  // goo.gl redirige a CUALQUIER destino (Google lo descontinuó en 2019), así
+  // que aceptarlo equivale a aceptar cualquier URL disfrazada de Google.
+  assert.ok(validarLinkRedSocial('https://goo.gl/abc123'));
+});
+
+test('rechaza el acortador fb.me', () => {
+  assert.ok(validarLinkRedSocial('https://fb.me/abc123'));
+});
+
+test('sigue aceptando el link corto que genera la app de Google Maps', () => {
+  // maps.app.goo.gl es el formato que produce "Compartir" en Maps: quitarlo
+  // rompería el caso de uso principal de los negocios. Es seguro porque cada
+  // salto de la redirección se valida contra destinos privados en linkCheck.
+  assert.strictEqual(validarLinkRedSocial('https://maps.app.goo.gl/aBcDeF123'), null);
 });
 
 test('rechaza una URL mal formada', () => {

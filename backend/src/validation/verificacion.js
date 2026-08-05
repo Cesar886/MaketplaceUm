@@ -27,6 +27,16 @@ const MAX_NOMBRE_NEGOCIO = 80;
 // el `hostname` parseado por `new URL()`, nunca con includes/endsWith sobre el
 // string completo: "instagram.com.phishing.net" contiene "instagram.com" pero
 // es otro dominio.
+//
+// Quedan FUERA a propósito los acortadores genéricos (goo.gl, fb.me): un
+// acortador redirige a cualquier destino, así que aceptarlo equivale a
+// aceptar cualquier URL con apariencia de dominio confiable. goo.gl además
+// está descontinuado por Google desde 2019.
+//
+// maps.app.goo.gl sí se acepta pese a ser un acortador: es el formato que
+// genera "Compartir" en la app de Google Maps, o sea el caso de uso
+// principal de un negocio, y solo apunta a fichas de Maps. El riesgo de
+// redirección lo cubre linkCheck.js, que valida el destino en cada salto.
 const HOSTS_RED_SOCIAL = new Set([
   'facebook.com',
   'www.facebook.com',
@@ -34,13 +44,11 @@ const HOSTS_RED_SOCIAL = new Set([
   'web.facebook.com',
   'fb.com',
   'www.fb.com',
-  'fb.me',
   'instagram.com',
   'www.instagram.com',
   'maps.google.com',
   'www.google.com',
   'google.com',
-  'goo.gl',
   'maps.app.goo.gl',
 ]);
 
@@ -130,7 +138,9 @@ function validarLinkRedSocial(link) {
     return 'El link no es una dirección web válida';
   }
 
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+  // Solo https: las tres plataformas permitidas lo sirven, y un link http
+  // viaja en claro y puede ser reescrito por un atacante en la red.
+  if (url.protocol !== 'https:') {
     return 'El link debe empezar con https://';
   }
   const host = url.hostname.toLowerCase();

@@ -180,19 +180,42 @@ string (`instagram.com.phishing.net` no debe pasar). Solo `https:` y `http:`.
 **Teléfono:** 10 dígitos MX → se antepone `+52` si viene sin lada; se acepta
 también `+52...` ya formado. Se limpian espacios, guiones y paréntesis.
 
-#### `src/services/linkCheck.js`
+#### `src/services/linkCheck.js` y `src/services/redDestino.js`
 
 `async verificarLink(url) → { ok, motivo }`. HEAD con `AbortController` y
-timeout de **5 s**, `redirect: 'follow'`, User-Agent de navegador.
+timeout de **5 s**, User-Agent de navegador.
 
-- `ok` si el status es `< 500` (incluye 2xx, 3xx, 401, 403 y el 999 de bloqueo
+- `ok` si el status es `< 500` (incluye 2xx, 401, 403 y el 999 de bloqueo
   antibot).
 - Falla solo con: timeout, error de DNS/red, `404`, `410`, o `5xx`.
 - Si el HEAD falla con 405 (método no permitido), reintenta con GET y
   `Range: bytes=0-0`.
 
-Motivo: la validación fuerte es el dominio; el HEAD solo descarta URLs
-inventadas dentro de un dominio válido.
+Motivo de la tolerancia: la validación fuerte es el dominio; el HEAD solo
+descarta URLs inventadas dentro de un dominio válido.
+
+**Defensa contra SSRF.** Esta es la única parte del sistema donde un dato del
+usuario decide a qué dirección se conecta el servidor, y `maps.app.goo.gl` es
+un acortador: puede redirigir a `127.0.0.1` o a `169.254.169.254` (metadata de
+la nube). Aunque el endpoint solo devuelve "responde / no responde", ese
+booleano alcanza para mapear qué servicios internos existen. Por eso:
+
+- Las redirecciones se siguen **a mano** (`redirect: 'manual'`, máximo 5
+  saltos), no automáticamente.
+- **Cada salto** se resuelve por DNS y se rechaza si alguna de sus direcciones
+  cae en loopback, RFC1918, link-local, CGNAT, ULA, multicast o reservado
+  (`redDestino.js`, que también desenvuelve IPv4 mapeadas en IPv6 como
+  `::ffff:127.0.0.1`).
+- Se rechaza cualquier salto cuyo esquema no sea http/https.
+- La whitelist solo acepta **https**, y quedan fuera los acortadores genéricos
+  (`goo.gl`, `fb.me`), que redirigen a cualquier destino. `maps.app.goo.gl` se
+  conserva porque es el formato que genera "Compartir" en la app de Maps —el
+  caso de uso principal de un negocio— y su riesgo queda cubierto por la
+  validación por salto.
+
+`comprobarDestino` se inyecta como dependencia para poder testear el
+comportamiento frente a redirecciones contra un servidor local (que por
+definición vive en una dirección privada); el guardián real es el default.
 
 ### 3. Rate limiting y anti-fuerza-bruta
 
