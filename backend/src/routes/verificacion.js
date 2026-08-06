@@ -21,7 +21,7 @@ const {
 } = require('../services/otp');
 const {
   validarCorreoInstitucional,
-  validarMatricula,
+  extraerMatriculaDeCorreo,
   validarNombreNegocio,
   validarLinkRedSocial,
   normalizarTelefono,
@@ -345,29 +345,45 @@ function crearRutasVerificacion({
     requireAuth,
     exigirTipo('estudiante'),
     async (req, res) => {
+      // Normalizar ANTES de validar: así 1220326@ALUMNO.UM.EDU.MX y el mismo
+      // correo con espacios no crean filas distintas para la misma persona.
       const correo = String(req.body.correo_institucional ?? '').trim().toLowerCase();
-      const matricula = String(req.body.matricula ?? '').trim();
 
+      // La app ya valida el formato, pero un cliente puede llamar al endpoint
+      // directamente: esta es la validación que cuenta.
       const errorCorreo = validarCorreoInstitucional(correo);
       if (errorCorreo) {
         return res.status(400).json({ error: errorCorreo, campo: 'correo_institucional' });
       }
-      const errorMatricula = validarMatricula(matricula, correo);
-      if (errorMatricula) {
-        return res.status(400).json({ error: errorMatricula, campo: 'matricula' });
+
+      // La matrícula ya no llega en el cuerpo: son los 7 dígitos del correo,
+      // extraídos con regex (nunca con substring, que aceptaría cualquier
+      // cosa antes del arroba).
+      const matricula = extraerMatriculaDeCorreo(correo);
+      if (!matricula) {
+        return res.status(400).json({
+          error: 'Tu correo institucional debe empezar con tu matrícula de 7 dígitos',
+          campo: 'correo_institucional',
+        });
       }
 
       // Un correo institucional identifica a una persona: no puede respaldar
-      // dos cuentas verificadas.
+      // dos cuentas verificadas. Se comprueba también por matrícula, porque
+      // una misma matrícula con dos dominios institucionales distintos sería
+      // la misma persona con dos cuentas.
       const yaUsado = getDb()
         .prepare(
-          `SELECT usuario_id FROM verificaciones
-           WHERE correo_institucional = ? AND estado = 'verificado' AND usuario_id != ?`,
+          `SELECT correo_institucional FROM verificaciones
+           WHERE (correo_institucional = ? OR matricula = ?)
+             AND estado = 'verificado' AND usuario_id != ?`,
         )
-        .get(correo, req.user.id);
+        .get(correo, matricula, req.user.id);
       if (yaUsado) {
         return res.status(409).json({
-          error: 'Ese correo institucional ya está registrado en otra cuenta.',
+          error:
+            yaUsado.correo_institucional === correo
+              ? 'Ese correo institucional ya está registrado en otra cuenta.'
+              : 'Esa matrícula ya está registrada en otra cuenta.',
           campo: 'correo_institucional',
         });
       }

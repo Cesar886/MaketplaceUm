@@ -23,6 +23,7 @@ rsync -avz --delete \
   --exclude 'uploads' \
   --exclude 'logs' \
   --exclude 'backups' \
+  --exclude '*.test.js' \
   "$LOCAL_DIR" "$HOST:$REMOTE_DIR"
 
 echo "Sincronizado. Recuerda correr 'npm install' en el servidor si cambiaron dependencias, luego 'pm2 restart mercadito-backend'."

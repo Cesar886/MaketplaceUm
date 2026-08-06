@@ -3,7 +3,6 @@ const assert = require('node:assert');
 
 const {
   validarCorreoInstitucional,
-  validarMatricula,
   validarNombreNegocio,
   validarLinkRedSocial,
   normalizarTelefono,
@@ -50,29 +49,35 @@ test('rechaza un correo que no es string', () => {
   assert.ok(validarCorreoInstitucional(1220326));
 });
 
-// ─── extraerMatriculaDeCorreo / validarMatricula ─────────────
+// ─── extraerMatriculaDeCorreo ────────────────────────────────
 
 test('extrae la matrícula de los 7 dígitos del correo institucional', () => {
   assert.strictEqual(extraerMatriculaDeCorreo('1220326@alumno.um.edu.mx'), '1220326');
 });
 
-test('acepta la matrícula que coincide con los dígitos del correo', () => {
-  assert.strictEqual(validarMatricula('1220326', '1220326@alumno.um.edu.mx'), null);
-});
-
-test('acepta la matrícula con espacios alrededor', () => {
-  assert.strictEqual(validarMatricula(' 1220326 ', '1220326@alumno.um.edu.mx'), null);
-});
-
-test('rechaza la matrícula que no coincide con el correo institucional', () => {
-  assert.match(
-    validarMatricula('1220327', '1220326@alumno.um.edu.mx'),
-    /no coincide/i,
+test('extrae la matrícula normalizando mayúsculas y espacios', () => {
+  assert.strictEqual(
+    extraerMatriculaDeCorreo('  1220326@ALUMNO.UM.EDU.MX  '),
+    '1220326',
   );
 });
 
-test('rechaza una matrícula vacía', () => {
-  assert.ok(validarMatricula('', '1220326@alumno.um.edu.mx'));
+test('conserva la matrícula como string, con sus ceros a la izquierda', () => {
+  assert.strictEqual(extraerMatriculaDeCorreo('0012345@alumno.um.edu.mx'), '0012345');
+});
+
+test('no extrae matrícula de un dominio ajeno ni de uno que solo termina igual', () => {
+  assert.strictEqual(extraerMatriculaDeCorreo('1220326@gmail.com'), null);
+  assert.strictEqual(
+    extraerMatriculaDeCorreo('1220326@alumno.um.edu.mx.attacker.com'),
+    null,
+  );
+});
+
+test('no extrae matrícula si no son exactamente 7 dígitos', () => {
+  assert.strictEqual(extraerMatriculaDeCorreo('122032@alumno.um.edu.mx'), null);
+  assert.strictEqual(extraerMatriculaDeCorreo('12203267@alumno.um.edu.mx'), null);
+  assert.strictEqual(extraerMatriculaDeCorreo('daniel@alumno.um.edu.mx'), null);
 });
 
 // ─── validarNombreNegocio ────────────────────────────────────

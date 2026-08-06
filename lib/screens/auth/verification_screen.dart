@@ -36,6 +36,14 @@ class VerificationScreen extends StatefulWidget {
   State<VerificationScreen> createState() => _VerificationScreenState();
 }
 
+/// Formato exacto del correo institucional: los 7 dígitos antes del arroba
+/// SON la matrícula, por eso no se pide por separado. Debe coincidir con
+/// `validarCorreoInstitucional` del backend (validation/verificacion.js).
+final RegExp _correoInstitucionalRe = RegExp(r'^\d{7}@alumno\.um\.edu\.mx$');
+
+const _mensajeCorreoInvalido =
+    'Debe ser tu correo institucional, ej: 1234567@alumno.um.edu.mx';
+
 class _VerificationScreenState extends State<VerificationScreen> {
   bool _enviando = false;
   String? _error;
@@ -53,7 +61,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
   // Estudiante
   final _correoController = TextEditingController();
-  final _matriculaController = TextEditingController();
+  final _focoCorreo = FocusNode();
 
   // Negocio
   final _nombreNegocioController = TextEditingController();
@@ -64,9 +72,19 @@ class _VerificationScreenState extends State<VerificationScreen> {
   final _telefonoController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    // Validación al perder el foco: mientras el usuario escribe no tiene
+    // sentido marcarle en rojo un correo que aún está a medias.
+    _focoCorreo.addListener(() {
+      if (!_focoCorreo.hasFocus) _validarCorreo();
+    });
+  }
+
+  @override
   void dispose() {
     _correoController.dispose();
-    _matriculaController.dispose();
+    _focoCorreo.dispose();
     _nombreNegocioController.dispose();
     _linkController.dispose();
     _telefonoController.dispose();
@@ -109,16 +127,49 @@ class _VerificationScreenState extends State<VerificationScreen> {
     }
   }
 
+  /// Normaliza igual que el backend (trim + minúsculas) y comprueba el
+  /// formato. Devuelve el correo listo para enviar, o null si no es válido —
+  /// en cuyo caso deja el campo marcado con el mensaje correspondiente.
+  ///
+  /// [avisarSiVacio] distingue los dos momentos en que se llama: al perder el
+  /// foco un campo vacío no merece un aviso en rojo; al pulsar "Enviar
+  /// código", sí.
+  String? _validarCorreo({bool avisarSiVacio = false}) {
+    final correo = _correoController.text.trim().toLowerCase();
+    final valido = _correoInstitucionalRe.hasMatch(correo);
+
+    if (!valido && correo.isEmpty && !avisarSiVacio) return null;
+
+    setState(() {
+      if (valido) {
+        // Solo se limpia el aviso de formato: un error que vino del backend
+        // ("ese correo ya está registrado") sigue siendo cierto y debe
+        // seguir a la vista hasta el siguiente intento.
+        if (_error == _mensajeCorreoInvalido) {
+          _error = null;
+          _campoConError = null;
+        }
+      } else {
+        _campoConError = 'correo_institucional';
+        _error = _mensajeCorreoInvalido;
+      }
+    });
+    return valido ? correo : null;
+  }
+
   Future<void> _solicitarCodigoEstudiante() {
+    final correo = _validarCorreo(avisarSiVacio: true);
+    if (correo == null) return Future.value();
     return _ejecutar(() async {
+      // La matrícula va embebida en el correo (los 7 dígitos antes del
+      // arroba); el backend la extrae y la guarda.
       final codigoDev = await _auth.solicitarVerificacionEstudiante(
-        correoInstitucional: _correoController.text.trim(),
-        matricula: _matriculaController.text.trim(),
+        correoInstitucional: correo,
       );
       if (!mounted) return;
       setState(() {
         _esperandoCodigo = true;
-        _destinoCodigo = _correoController.text.trim();
+        _destinoCodigo = correo;
         _codigoDev = codigoDev;
       });
       _llaveOtp.currentState?.limpiar();
@@ -339,20 +390,17 @@ class _VerificationScreenState extends State<VerificationScreen> {
       children: [
         _CampoTexto(
           controller: _correoController,
+          focusNode: _focoCorreo,
           etiqueta: 'Correo institucional *',
           icono: Icons.alternate_email_rounded,
           tipoTeclado: TextInputType.emailAddress,
-          ayuda: 'Ej. 1220326@alumno.um.edu.mx',
+          ayuda: 'Tu matrícula ya va incluida, ej. 1234567@alumno.um.edu.mx',
           conError: _campoConError == 'correo_institucional',
-        ),
-        const SizedBox(height: 14),
-        _CampoTexto(
-          controller: _matriculaController,
-          etiqueta: 'Matrícula *',
-          icono: Icons.badge_rounded,
-          tipoTeclado: TextInputType.number,
-          ayuda: 'Los 7 dígitos de tu correo institucional',
-          conError: _campoConError == 'matricula',
+          // Al corregir el correo se limpia el aviso en el momento, sin
+          // esperar a que el campo pierda el foco.
+          onChanged: (_) {
+            if (_campoConError == 'correo_institucional') _validarCorreo();
+          },
         ),
         const SizedBox(height: 24),
         _BotonPrincipal(
@@ -372,7 +420,6 @@ class _VerificationScreenState extends State<VerificationScreen> {
           etiqueta: 'Número de teléfono *',
           icono: Icons.phone_rounded,
           tipoTeclado: TextInputType.phone,
-          ayuda: '10 dígitos, ej. 4431234567',
           conError: _campoConError == 'telefono',
         ),
         const SizedBox(height: 24),
@@ -450,16 +497,20 @@ class _CampoTexto extends StatelessWidget {
     required this.controller,
     required this.etiqueta,
     required this.icono,
+    this.focusNode,
     this.tipoTeclado,
     this.ayuda,
     this.conError = false,
+    this.onChanged,
   });
 
   final TextEditingController controller;
   final String etiqueta;
   final IconData icono;
+  final FocusNode? focusNode;
   final TextInputType? tipoTeclado;
   final String? ayuda;
+  final ValueChanged<String>? onChanged;
 
   /// Resalta el campo que el backend señaló como causa del rechazo.
   final bool conError;
@@ -468,7 +519,9 @@ class _CampoTexto extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextFormField(
       controller: controller,
+      focusNode: focusNode,
       keyboardType: tipoTeclado,
+      onChanged: onChanged,
       decoration: InputDecoration(
         labelText: etiqueta,
         helperText: ayuda,

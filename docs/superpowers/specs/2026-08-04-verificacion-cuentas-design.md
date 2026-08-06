@@ -160,7 +160,7 @@ o un `string` con el mensaje de error, siguiendo la convención de
 
 ```js
 validarCorreoInstitucional(correo)   // regex ^\d{7}@<dominio>$ contra whitelist
-validarMatricula(matricula, correo)  // 7 dígitos y === parte local del correo
+extraerMatriculaDeCorreo(correo)     // matrícula (string) de los 7 dígitos, o null
 validarNombreNegocio(nombre)         // trim, >= 3 caracteres, <= 80
 validarLinkRedSocial(link)           // URL bien formada + host en whitelist
 normalizarTelefono(telefono)         // → E.164 o error
@@ -248,7 +248,7 @@ usuario `negocio` no puede verificarse por el flujo de estudiante → **403**.
 
 | Endpoint | Body | Respuesta |
 |---|---|---|
-| `POST /api/verificacion/estudiante/solicitar` | `{ correo_institucional, matricula }` | `200 { enviado, expira_en, codigo_dev? }` · 400 validación · 409 correo ya usado por otra cuenta verificada · 429 · 503 |
+| `POST /api/verificacion/estudiante/solicitar` | `{ correo_institucional }` (la matrícula se extrae del correo) | `200 { enviado, expira_en, codigo_dev? }` · 400 validación · 409 correo ya usado por otra cuenta verificada · 429 · 503 |
 | `POST /api/verificacion/estudiante/confirmar` | `{ codigo_otp }` | `200 { verificado:true, tipo_cuenta }` · 400 incorrecto/expirado con `intentos_restantes` |
 | `POST /api/verificacion/negocio/solicitar` | `{ nombre_negocio, ubicacion_lat, ubicacion_lng, link_red_social }` | `200 { estado:'verificado' }` o `200 { estado:'rechazado', motivo_rechazo, campo }` |
 | `POST /api/verificacion/externo/solicitar` | `{ telefono }` | igual que estudiante/solicitar |

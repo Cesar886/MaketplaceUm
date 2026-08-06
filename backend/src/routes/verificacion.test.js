@@ -115,7 +115,6 @@ test('un estudiante se verifica con el código enviado a su correo institucional
 
   const solicitud = await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: correo,
-    matricula: '1220326',
   });
   assert.strictEqual(solicitud.status, 200);
   assert.strictEqual(solicitud.body.enviado, true);
@@ -140,7 +139,6 @@ test('el código deja de existir en la base después de usarse', async () => {
   const usuario = crearUsuario('estudiante');
   await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1330001@alumno.um.edu.mx',
-    matricula: '1330001',
   });
   const { codigo } = enviados.email.at(-1);
   await pedir('/estudiante/confirmar', usuario.token, { codigo_otp: codigo });
@@ -154,7 +152,6 @@ test('el mismo código no sirve dos veces', async () => {
   const usuario = crearUsuario('estudiante');
   await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1330002@alumno.um.edu.mx',
-    matricula: '1330002',
   });
   const { codigo } = enviados.email.at(-1);
   await pedir('/estudiante/confirmar', usuario.token, { codigo_otp: codigo });
@@ -168,21 +165,67 @@ test('rechaza un correo que no es del dominio institucional', async () => {
   const usuario = crearUsuario('estudiante');
   const res = await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1220326@gmail.com',
-    matricula: '1220326',
   });
   assert.strictEqual(res.status, 400);
   assert.match(res.body.error, /institucional/i);
   assert.strictEqual(estaVerificado(usuario.id), false);
 });
 
-test('rechaza una matrícula que no coincide con el correo institucional', async () => {
+test('rechaza correos con matrícula de longitud distinta a 7 o dominio parecido', async () => {
+  const usuario = crearUsuario('estudiante');
+  const invalidos = [
+    '122032@alumno.um.edu.mx',
+    '12203267@alumno.um.edu.mx',
+    '1220326@alumno.um.edu.mx.fake.com',
+    'daniel@alumno.um.edu.mx',
+  ];
+  for (const correo_institucional of invalidos) {
+    const res = await pedir('/estudiante/solicitar', usuario.token, {
+      correo_institucional,
+    });
+    assert.strictEqual(res.status, 400, `${correo_institucional} debía rechazarse`);
+    assert.strictEqual(res.body.campo, 'correo_institucional');
+  }
+  assert.strictEqual(estaVerificado(usuario.id), false);
+});
+
+test('normaliza el correo en mayúsculas antes de validar y guardar', async () => {
   const usuario = crearUsuario('estudiante');
   const res = await pedir('/estudiante/solicitar', usuario.token, {
-    correo_institucional: '1220326@alumno.um.edu.mx',
+    correo_institucional: '  1230001@ALUMNO.UM.EDU.MX  ',
+  });
+  assert.strictEqual(res.status, 200);
+
+  const fila = filaVerificacion(usuario.id);
+  assert.strictEqual(fila.correo_institucional, '1230001@alumno.um.edu.mx');
+  assert.strictEqual(fila.matricula, '1230001');
+});
+
+test('la matrícula se deriva del correo, ignorando la que mande el cliente', async () => {
+  const usuario = crearUsuario('estudiante');
+  const res = await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: '1230002@alumno.um.edu.mx',
     matricula: '9999999',
   });
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(filaVerificacion(usuario.id).matricula, '1230002');
+});
+
+test('un código nuevo invalida el anterior', async () => {
+  const usuario = crearUsuario('estudiante');
+  const cuerpo = { correo_institucional: '1230003@alumno.um.edu.mx' };
+  await pedir('/estudiante/solicitar', usuario.token, cuerpo);
+  const primerCodigo = enviados.email.at(-1).codigo;
+
+  await pedir('/estudiante/solicitar', usuario.token, cuerpo);
+  const segundoCodigo = enviados.email.at(-1).codigo;
+  assert.notStrictEqual(primerCodigo, segundoCodigo);
+
+  const res = await pedir('/estudiante/confirmar', usuario.token, {
+    codigo_otp: primerCodigo,
+  });
   assert.strictEqual(res.status, 400);
-  assert.match(res.body.error, /no coincide/i);
+  assert.strictEqual(estaVerificado(usuario.id), false);
 });
 
 test('rechaza un correo institucional ya usado por otra cuenta verificada', async () => {
@@ -190,7 +233,6 @@ test('rechaza un correo institucional ya usado por otra cuenta verificada', asyn
   const correo = '1440001@alumno.um.edu.mx';
   await pedir('/estudiante/solicitar', primero.token, {
     correo_institucional: correo,
-    matricula: '1440001',
   });
   await pedir('/estudiante/confirmar', primero.token, {
     codigo_otp: enviados.email.at(-1).codigo,
@@ -199,7 +241,6 @@ test('rechaza un correo institucional ya usado por otra cuenta verificada', asyn
   const segundo = crearUsuario('estudiante');
   const res = await pedir('/estudiante/solicitar', segundo.token, {
     correo_institucional: correo,
-    matricula: '1440001',
   });
   assert.strictEqual(res.status, 409);
   assert.match(res.body.error, /ya está registrado|ya esta registrado/i);
@@ -209,7 +250,6 @@ test('rechaza un código incorrecto e informa los intentos restantes', async () 
   const usuario = crearUsuario('estudiante');
   await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1550001@alumno.um.edu.mx',
-    matricula: '1550001',
   });
   const res = await pedir('/estudiante/confirmar', usuario.token, { codigo_otp: '000000' });
   assert.strictEqual(res.status, 400);
@@ -221,7 +261,6 @@ test('invalida el código tras 5 intentos fallidos de confirmación', async () =
   const usuario = crearUsuario('estudiante');
   await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1550002@alumno.um.edu.mx',
-    matricula: '1550002',
   });
   const { codigo } = enviados.email.at(-1);
 
@@ -240,7 +279,6 @@ test('bloquea el cuarto envío de código dentro de la ventana de 15 minutos', a
   const usuario = crearUsuario('estudiante');
   const cuerpo = {
     correo_institucional: '1660001@alumno.um.edu.mx',
-    matricula: '1660001',
   };
   for (let i = 0; i < 3; i++) {
     const ok = await pedir('/estudiante/solicitar', usuario.token, cuerpo);
@@ -253,7 +291,7 @@ test('bloquea el cuarto envío de código dentro de la ventana de 15 minutos', a
 
 test('bloquea el envío a un correo que ya recibió 3 códigos desde otra cuenta', async () => {
   const correo = '1770001@alumno.um.edu.mx';
-  const cuerpo = { correo_institucional: correo, matricula: '1770001' };
+  const cuerpo = { correo_institucional: correo };
   const primero = crearUsuario('estudiante');
   for (let i = 0; i < 3; i++) {
     await pedir('/estudiante/solicitar', primero.token, cuerpo);
@@ -398,7 +436,6 @@ test('bloquea el flujo si la cuenta ya está verificada', async () => {
   const usuario = crearUsuario('estudiante', { verificado: true });
   const res = await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1880001@alumno.um.edu.mx',
-    matricula: '1880001',
   });
   assert.strictEqual(res.status, 409);
   assert.match(res.body.error, /ya está verificada|ya esta verificada/i);
@@ -408,7 +445,6 @@ test('impide que un negocio se verifique por el flujo de estudiante', async () =
   const usuario = crearUsuario('negocio');
   const res = await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1880002@alumno.um.edu.mx',
-    matricula: '1880002',
   });
   assert.strictEqual(res.status, 403);
 });
@@ -435,7 +471,6 @@ test('ignora un usuario_id mandado en el body y usa el del token', async () => {
 
   await pedir('/estudiante/solicitar', atacante.token, {
     correo_institucional: '1990001@alumno.um.edu.mx',
-    matricula: '1990001',
     usuario_id: victima.id,
   });
   await pedir('/estudiante/confirmar', atacante.token, {

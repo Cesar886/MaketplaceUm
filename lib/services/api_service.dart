@@ -206,14 +206,13 @@ class ApiService {
     return _decodeVerificacion(res);
   }
 
-  /// Envía el código OTP al correo institucional del estudiante.
+  /// Envía el código OTP al correo institucional del estudiante. La matrícula
+  /// no viaja aparte: el backend la extrae de los 7 dígitos del correo.
   static Future<Map<String, dynamic>> solicitarVerificacionEstudiante({
     required String correoInstitucional,
-    required String matricula,
   }) {
     return _postVerificacion('/estudiante/solicitar', {
       'correo_institucional': correoInstitucional,
-      'matricula': matricula,
     });
   }
 

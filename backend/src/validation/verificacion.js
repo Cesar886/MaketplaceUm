@@ -85,33 +85,22 @@ function validarCorreoInstitucional(correo) {
 }
 
 /**
- * Devuelve la matrícula contenida en un correo institucional ya validado,
- * o null si el correo no tiene el formato esperado.
+ * Devuelve la matrícula contenida en un correo institucional, o null si el
+ * correo no tiene el formato exacto <7 dígitos>@<dominio institucional>.
+ *
+ * Se devuelve como STRING, nunca como número: la matrícula puede empezar con
+ * cero y `Number('0123456')` lo perdería.
+ *
+ * Repite la comprobación de dominio en lugar de confiar en que quien llama ya
+ * validó: es la única fuente de la matrícula que se guarda en la base.
  */
 function extraerMatriculaDeCorreo(correo) {
   const partes = partirCorreo(correo);
   if (!partes) return null;
+  if (!DOMINIOS_ESTUDIANTE.includes(partes.dominio)) return null;
   return new RegExp(`^\\d{${LONGITUD_MATRICULA}}$`).test(partes.local)
     ? partes.local
     : null;
-}
-
-/**
- * La matrícula no se valida contra ningún sistema externo, pero SÍ contra el
- * correo institucional: los 7 dígitos del correo ya son la matrícula, así que
- * una discrepancia solo puede ser un error de captura o un intento de
- * registrar la matrícula de alguien más.
- */
-function validarMatricula(matricula, correoInstitucional) {
-  if (typeof matricula !== 'string' || !matricula.trim()) {
-    return 'Ingresa tu matrícula';
-  }
-  const esperada = extraerMatriculaDeCorreo(correoInstitucional);
-  if (!esperada) return 'Correo institucional inválido';
-  if (matricula.trim() !== esperada) {
-    return 'La matrícula no coincide con tu correo institucional';
-  }
-  return null;
 }
 
 function validarNombreNegocio(nombre) {
@@ -190,7 +179,6 @@ function normalizarTelefono(telefono) {
 module.exports = {
   validarCorreoInstitucional,
   extraerMatriculaDeCorreo,
-  validarMatricula,
   validarNombreNegocio,
   validarLinkRedSocial,
   normalizarTelefono,
