@@ -16,6 +16,14 @@ process.env.TZ = 'America/Monterrey';
 // Si el archivo no existe, dotenv no falla: se usan los valores por defecto.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
+// TEMPORAL — diagnóstico del incidente de 2026-08-05 (deploy.sh borraba
+// backend/.env en cada rsync). Quitar una vez confirmado en producción que
+// las tres imprimen OK; no debe quedar en el código a largo plazo porque
+// corre en cada arranque del proceso.
+console.log('SMTP_HOST:', process.env.SMTP_HOST ? 'OK' : 'FALTA');
+console.log('SMTP_USER:', process.env.SMTP_USER ? 'OK' : 'FALTA');
+console.log('SMTP_PASS:', process.env.SMTP_PASS ? 'OK' : 'FALTA');
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');

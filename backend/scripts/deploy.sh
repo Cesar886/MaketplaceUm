@@ -8,6 +8,11 @@
 # y el que quedó en el servidor tras el rsync). El .gitignore ya excluye
 # estos archivos de git, pero rsync no usa .gitignore — necesita sus propias
 # exclusiones explícitas.
+#
+# El mismo patrón volvió a pasar el 2026-08-05 con backend/.env: como está en
+# .gitignore, nunca existe en el checkout local, así que --delete lo borraba
+# del servidor en cada deploy (dejando SMTP_HOST/USER/PASS vacíos y el envío
+# de códigos de verificación muerto). --exclude '.env' es la corrección.
 set -euo pipefail
 
 HOST="root@157.245.247.45"
@@ -15,6 +20,7 @@ REMOTE_DIR="/root/mercaditoUmBack/"
 LOCAL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/"
 
 rsync -avz --delete \
+  --exclude '.env' \
   --exclude 'mercadito_um.db' \
   --exclude 'mercadito_um.db-shm' \
   --exclude 'mercadito_um.db-wal' \

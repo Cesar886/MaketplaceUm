@@ -56,6 +56,7 @@ nombre-del-archivo.json
 # Variables de entorno (credenciales SMTP/Twilio, JWT_SECRET). Nunca se
 # commitean — ver backend/.env.example para la lista de variables.
 .env
+.env.example
 backend/.env
 
 # SQLite database (contiene datos de producción/dev locales — nunca debe
