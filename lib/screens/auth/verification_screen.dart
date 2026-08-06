@@ -42,7 +42,7 @@ class VerificationScreen extends StatefulWidget {
 final RegExp _correoInstitucionalRe = RegExp(r'^\d{7}@alumno\.um\.edu\.mx$');
 
 const _mensajeCorreoInvalido =
-    'Debe ser tu correo institucional, ej: 1234567@alumno.um.edu.mx';
+    'Debe ser tu correo institucional';
 
 class _VerificationScreenState extends State<VerificationScreen> {
   bool _enviando = false;
@@ -339,11 +339,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
   String get _descripcion => switch (widget.tipo) {
     AccountType.estudiante =>
-      'Te enviaremos un código a tu correo institucional. La verificación es '
-          'automática, no hay que esperar a que nadie la revise.',
+      'Te enviaremos un código a tu correo institucional.',
     AccountType.negocio =>
-      'Con estos tres datos verificamos tu negocio al instante, sin revisión '
-          'manual.',
+      ' Verificamos tu negocio.',
     AccountType.particular =>
       'Te enviaremos un código por SMS. La verificación es automática.',
   };
@@ -394,7 +392,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
           etiqueta: 'Correo institucional *',
           icono: Icons.alternate_email_rounded,
           tipoTeclado: TextInputType.emailAddress,
-          ayuda: 'Tu matrícula ya va incluida, ej. 1234567@alumno.um.edu.mx',
+          ayuda: 'Tu matrícula ya va incluida',
           conError: _campoConError == 'correo_institucional',
           // Al corregir el correo se limpia el aviso en el momento, sin
           // esperar a que el campo pierda el foco.
