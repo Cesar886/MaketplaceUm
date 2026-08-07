@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:provider/provider.dart';
@@ -9,6 +11,7 @@ import '../../widgets/location_picker.dart';
 import '../../widgets/otp_input.dart';
 import '../../widgets/static_mini_map.dart';
 import 'account_created_screen.dart';
+import 'login_screen.dart';
 
 /// Pantalla única de verificación de cuenta para los tres tipos.
 ///
@@ -57,6 +60,18 @@ class _VerificationScreenState extends State<VerificationScreen> {
   bool _esperandoCodigo = false;
   String? _destinoCodigo;
 
+  /// Código tal como va quedando en [OtpInput]. Solo sirve para habilitar el
+  /// botón "Verificar código" (y para reintentar con el mismo código sin
+  /// tener que reescribirlo tras un fallo).
+  String _codigoIngresado = '';
+
+  /// Segundos que faltan para poder reenviar. Evita que el usuario queme los
+  /// envíos permitidos en la ventana antipam del backend a base de toques.
+  int _segundosReenvio = 0;
+  Timer? _timerReenvio;
+
+  static const _cooldownReenvioSegundos = 60;
+
   final _llaveOtp = GlobalKey<OtpInputState>();
 
   // Estudiante
@@ -83,6 +98,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
   @override
   void dispose() {
+    _timerReenvio?.cancel();
     _correoController.dispose();
     _focoCorreo.dispose();
     _nombreNegocioController.dispose();
@@ -108,6 +124,13 @@ class _VerificationScreenState extends State<VerificationScreen> {
       await operacion();
     } on VerificacionException catch (e) {
       if (!mounted) return;
+      if (e.sesionInvalidada) {
+        // El token guardado ya no valida contra el JWT_SECRET vigente: no hay
+        // nada que reintentar desde aquí, ni tiene sentido dejar al usuario
+        // dando toques a un formulario que va a seguir devolviendo 401.
+        await _cerrarSesionInvalida(e.mensaje);
+        return;
+      }
       if (e.yaVerificado) {
         // La cuenta ya estaba verificada (p. ej. se verificó desde otro
         // dispositivo): no es un error que deba alarmar.
@@ -119,12 +142,65 @@ class _VerificationScreenState extends State<VerificationScreen> {
         _error = e.mensaje;
         _campoConError = e.campo;
       });
+      // 429: el backend ya dijo cuántos minutos faltan para poder pedir otro
+      // código. Se respeta ese número en vez del cooldown local, que sería
+      // más corto y solo produciría otro 429.
+      if (e.demasiadosIntentos && e.puedeReintentarEn != null) {
+        _iniciarCooldownReenvio(e.puedeReintentarEn! * 60);
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _error = 'No hay conexión con el servidor. Inténtalo de nuevo.');
     } finally {
       if (mounted) setState(() => _enviando = false);
     }
+  }
+
+  /// Cierra la sesión local y manda al login. Se llama cuando el backend
+  /// responde `SESSION_INVALIDATED`, es decir cuando el JWT guardado no
+  /// valida contra el secreto vigente.
+  Future<void> _cerrarSesionInvalida(String mensaje) async {
+    await _auth.logout();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensaje)));
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+      (ruta) => ruta.isFirst,
+    );
+  }
+
+  void _iniciarCooldownReenvio(int segundos) {
+    _timerReenvio?.cancel();
+    setState(() => _segundosReenvio = segundos);
+    _timerReenvio = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() => _segundosReenvio--);
+      if (_segundosReenvio <= 0) timer.cancel();
+    });
+  }
+
+  /// Reenvía al mismo destino, sin sacar al usuario del paso del código.
+  Future<void> _reenviarCodigo() {
+    return widget.tipo == AccountType.estudiante
+        ? _solicitarCodigoEstudiante()
+        : _solicitarCodigoExterno();
+  }
+
+  /// Vuelve al formulario para corregir el correo/teléfono. El cooldown se
+  /// cancela porque el destino va a cambiar.
+  void _volverAlFormulario() {
+    _timerReenvio?.cancel();
+    setState(() {
+      _esperandoCodigo = false;
+      _codigoDev = null;
+      _error = null;
+      _campoConError = null;
+      _codigoIngresado = '';
+      _segundosReenvio = 0;
+    });
   }
 
   /// Normaliza igual que el backend (trim + minúsculas) y comprueba el
@@ -171,8 +247,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
         _esperandoCodigo = true;
         _destinoCodigo = correo;
         _codigoDev = codigoDev;
+        _codigoIngresado = '';
       });
       _llaveOtp.currentState?.limpiar();
+      _iniciarCooldownReenvio(_cooldownReenvioSegundos);
     });
   }
 
@@ -186,8 +264,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
         _esperandoCodigo = true;
         _destinoCodigo = _telefonoController.text.trim();
         _codigoDev = codigoDev;
+        _codigoIngresado = '';
       });
       _llaveOtp.currentState?.limpiar();
+      _iniciarCooldownReenvio(_cooldownReenvioSegundos);
     });
   }
 
@@ -292,7 +372,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
               ),
               const SizedBox(height: 20),
 
-              if (_error != null) ...[
+              // En el paso del código el error se pinta bajo las casillas
+              // (ver _buildIngresoCodigo), que es donde el usuario está
+              // mirando; duplicarlo arriba solo empuja el contenido.
+              if (_error != null && !_esperandoCodigo) ...[
                 _CajaAviso(
                   mensaje: _error!,
                   color: AppColors.danger,
@@ -355,27 +438,67 @@ class _VerificationScreenState extends State<VerificationScreen> {
   // ─── Ingreso del código (estudiante y externo) ─────────────
 
   Widget _buildIngresoCodigo() {
+    final esEstudiante = widget.tipo == AccountType.estudiante;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // El destino sigue a la vista pero bloqueado: el usuario comprueba a
+        // qué correo/teléfono se envió sin poder dejarlo a medias mientras el
+        // código de ese destino sigue vigente. Para cambiarlo hay que volver
+        // al formulario, que es lo que invalida el paso.
+        _CampoTexto(
+          controller: esEstudiante ? _correoController : _telefonoController,
+          etiqueta: esEstudiante ? 'Correo institucional' : 'Número de teléfono',
+          icono: esEstudiante
+              ? Icons.alternate_email_rounded
+              : Icons.phone_rounded,
+          habilitado: false,
+        ),
+        const SizedBox(height: 22),
+
         OtpInput(
           key: _llaveOtp,
           habilitado: !_enviando,
+          onCambio: (codigo) => setState(() => _codigoIngresado = codigo),
           onCompleto: _enviando ? (_) {} : _confirmarCodigo,
         ),
-        const SizedBox(height: 20),
-        if (_enviando) const CircularProgressIndicator(),
-        const SizedBox(height: 12),
+
+        if (_error != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            _error!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppColors.danger,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+
+        const SizedBox(height: 22),
+        _BotonPrincipal(
+          etiqueta: 'Verificar código',
+          cargando: _enviando,
+          // Deshabilitado hasta tener las 6 casillas: un código a medias solo
+          // consume uno de los intentos que cuenta el backend.
+          onPressed: _codigoIngresado.length == 6
+              ? () => _confirmarCodigo(_codigoIngresado)
+              : null,
+        ),
+        const SizedBox(height: 4),
         TextButton(
-          onPressed: _enviando
-              ? null
-              : () {
-                  setState(() {
-                    _esperandoCodigo = false;
-                    _codigoDev = null;
-                    _error = null;
-                  });
-                },
-          child: const Text('Cambiar el dato o reenviar código'),
+          onPressed: (_enviando || _segundosReenvio > 0) ? null : _reenviarCodigo,
+          child: Text(
+            _segundosReenvio > 0
+                ? '¿No te llegó? Reenviar en ${_segundosReenvio}s'
+                : '¿No te llegó? Reenviar código',
+          ),
+        ),
+        TextButton(
+          onPressed: _enviando ? null : _volverAlFormulario,
+          child: Text(
+            esEstudiante ? 'Cambiar el correo' : 'Cambiar el número',
+          ),
         ),
       ],
     );
@@ -499,6 +622,7 @@ class _CampoTexto extends StatelessWidget {
     this.tipoTeclado,
     this.ayuda,
     this.conError = false,
+    this.habilitado = true,
     this.onChanged,
   });
 
@@ -513,11 +637,15 @@ class _CampoTexto extends StatelessWidget {
   /// Resalta el campo que el backend señaló como causa del rechazo.
   final bool conError;
 
+  /// En false el campo queda a la vista pero de solo lectura y atenuado.
+  final bool habilitado;
+
   @override
   Widget build(BuildContext context) {
     return TextFormField(
       controller: controller,
       focusNode: focusNode,
+      enabled: habilitado,
       keyboardType: tipoTeclado,
       onChanged: onChanged,
       decoration: InputDecoration(
@@ -543,7 +671,9 @@ class _BotonPrincipal extends StatelessWidget {
 
   final String etiqueta;
   final bool cargando;
-  final VoidCallback onPressed;
+
+  /// null deshabilita el botón (además del estado [cargando]).
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {

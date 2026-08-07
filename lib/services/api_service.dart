@@ -16,12 +16,19 @@ class VerificacionException implements Exception {
     this.campo,
     this.statusCode,
     this.puedeReintentarEn,
+    this.sesionInvalidada = false,
   });
 
   final String mensaje;
   final String? campo;
   final int? statusCode;
   final int? puedeReintentarEn;
+
+  /// El JWT guardado se firmó con un `JWT_SECRET` que ya no es el vigente
+  /// (ver `backend/src/auth.js`): la firma no valida y el token no es
+  /// recuperable. La pantalla debe cerrar sesión y mandar al login — no
+  /// tiene sentido mostrarlo como un error del formulario.
+  final bool sesionInvalidada;
 
   /// La cuenta ya estaba verificada: no es un error que deba alarmar, la
   /// pantalla simplemente refresca y cierra.
@@ -184,11 +191,20 @@ class ApiService {
   static Map<String, dynamic> _decodeVerificacion(http.Response res) {
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     if (res.statusCode != 200) {
+      // `error` es ambiguo en el backend: en la mayoría de rutas trae una
+      // frase ya redactada para el usuario, pero en los 401 de auth.js trae
+      // un código-máquina (SESSION_INVALIDATED) y la frase va en `message`.
+      // Se prefiere `message` cuando existe, para no pintar el código crudo
+      // en la caja de error de la pantalla.
+      final codigo = body['error'] as String?;
       throw VerificacionException(
-        body['error'] as String? ?? 'No pudimos completar la verificación.',
+        body['message'] as String? ??
+            codigo ??
+            'No pudimos completar la verificación.',
         campo: body['campo'] as String?,
         statusCode: res.statusCode,
         puedeReintentarEn: (body['puede_reintentar_en'] as num?)?.toInt(),
+        sesionInvalidada: codigo == 'SESSION_INVALIDATED',
       );
     }
     return body;
@@ -559,8 +575,7 @@ class ApiService {
 
       final streamed = await _client.send(request);
       final res = await http.Response.fromStream(streamed);
-      if (res.statusCode != 201)
-        throw Exception('${res.statusCode}: ${res.body}');
+      if (res.statusCode != 201) _throwProductAuthAwareError(res);
       return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
     }
 
@@ -586,9 +601,26 @@ class ApiService {
       headers: _authHeaders,
       body: jsonEncode(body),
     );
-    if (res.statusCode != 201)
-      throw Exception('${res.statusCode}: ${res.body}');
+    if (res.statusCode != 201) _throwProductAuthAwareError(res);
     return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  /// Traduce un 401 de `/api/products` a un mensaje accionable. El backend
+  /// distingue `error: 'SESSION_INVALIDATED'` (el JWT_SECRET con el que se
+  /// firmó el token ya no es válido, p. ej. tras un restart que no cargó el
+  /// .env correctamente) del resto de fallos de token: en ese caso no hay
+  /// forma de recuperar la sesión, hay que volver a loguearse.
+  static Never _throwProductAuthAwareError(http.Response res) {
+    if (res.statusCode == 401) {
+      Map<String, dynamic>? decoded;
+      try {
+        decoded = jsonDecode(res.body) as Map<String, dynamic>;
+      } catch (_) {}
+      if (decoded?['error'] == 'SESSION_INVALIDATED') {
+        throw Exception('Tu sesión expiró, inicia sesión de nuevo.');
+      }
+    }
+    throw Exception('${res.statusCode}: ${res.body}');
   }
 
   /// Edita los campos generales de un producto ya existente (solo el dueño):

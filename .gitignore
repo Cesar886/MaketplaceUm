@@ -58,6 +58,7 @@ nombre-del-archivo.json
 .env
 .env.example
 backend/.env
+backend/.env.example
 
 # SQLite database (contiene datos de producción/dev locales — nunca debe
 # viajar por git: un deploy que la sobrescriba corrompe el WAL en vivo del

@@ -18,6 +18,10 @@ process.env.MERCADITO_DB_PATH = path.join(
   'test.db',
 );
 process.env.VERIFICATION_STUDENT_DOMAINS = 'alumno.um.edu.mx';
+// auth.js revienta al cargarse si no hay JWT_SECRET (a propósito: ver el
+// comentario ahí). El test firma sus propios tokens, así que le basta un
+// secreto cualquiera, pero tiene que estar puesto ANTES del require.
+process.env.JWT_SECRET = 'secreto-de-prueba';
 
 const express = require('express');
 const db = require('../database');

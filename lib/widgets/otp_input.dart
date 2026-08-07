@@ -13,11 +13,18 @@ class OtpInput extends StatefulWidget {
   const OtpInput({
     super.key,
     required this.onCompleto,
+    this.onCambio,
     this.longitud = 6,
     this.habilitado = true,
   });
 
   final ValueChanged<String> onCompleto;
+
+  /// Se dispara en cada edición con el código parcial. Lo usa la pantalla
+  /// para habilitar el botón "Verificar código" solo cuando están las 6
+  /// casillas, sin tener que sondear el estado de este widget.
+  final ValueChanged<String>? onCambio;
+
   final int longitud;
   final bool habilitado;
 
@@ -53,6 +60,7 @@ class OtpInputState extends State<OtpInput> {
     for (final c in _controllers) {
       c.clear();
     }
+    widget.onCambio?.call('');
     if (mounted) {
       setState(() {});
       _focos.first.requestFocus();
@@ -85,6 +93,7 @@ class OtpInputState extends State<OtpInput> {
 
   void _avisarSiEstaCompleto() {
     final codigo = _codigo;
+    widget.onCambio?.call(codigo);
     if (codigo.length == widget.longitud) {
       widget.onCompleto(codigo);
     }
@@ -99,6 +108,7 @@ class OtpInputState extends State<OtpInput> {
         indice > 0) {
       _controllers[indice - 1].clear();
       _focos[indice - 1].requestFocus();
+      widget.onCambio?.call(_codigo);
       setState(() {});
       return KeyEventResult.handled;
     }
