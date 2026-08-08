@@ -15,6 +15,7 @@ import '../widgets/badges.dart';
 import '../widgets/payment_methods.dart';
 import '../widgets/product_image_carousel.dart';
 import '../widgets/price_tag.dart';
+import '../widgets/user_role.dart';
 import '../widgets/views_counter.dart';
 import 'auth/login_screen.dart';
 import 'main_shell.dart';
@@ -1214,11 +1215,10 @@ class _SellerCard extends StatelessWidget {
                             ),
                         ],
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        seller.major,
+                      SubtituloRol(
+                        seller: seller,
+                        espacioArriba: 3,
                         maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: context.colors.muted,
                           fontWeight: FontWeight.w500,

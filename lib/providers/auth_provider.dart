@@ -288,9 +288,13 @@ class AuthProvider extends ChangeNotifier {
   /// SMTP configurado), para poder probar el flujo sin recibir el correo.
   Future<String?> solicitarVerificacionEstudiante({
     required String correoInstitucional,
+    required String tipo,
+    String? carrera,
   }) async {
     final res = await ApiService.solicitarVerificacionEstudiante(
       correoInstitucional: correoInstitucional,
+      tipo: tipo,
+      carrera: carrera,
     );
     return res['codigo_dev'] as String?;
   }

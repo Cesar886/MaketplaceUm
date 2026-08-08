@@ -1,9 +1,48 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
 import '../models.dart';
 import '../config/app_config.dart';
+
+/// Cliente HTTP que vigila TODAS las respuestas del backend en busca de un
+/// 401 `SESSION_INVALIDATED`, sin que cada endpoint tenga que acordarse de
+/// comprobarlo.
+///
+/// Ese 401 significa que el JWT guardado se firmó con un `JWT_SECRET` que ya
+/// no es el vigente (ver `backend/src/auth.js`): la firma no valida y el
+/// token no es recuperable por ningún reintento. Se dispara una sola vez
+/// [ApiService.onSesionInvalidada], que cierra sesión y manda al login.
+class _SessionAwareClient extends http.BaseClient {
+  _SessionAwareClient(this._inner);
+
+  final http.Client _inner;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final res = await _inner.send(request);
+    if (res.statusCode != 401) return res;
+
+    // El cuerpo de una respuesta en streaming solo puede leerse una vez, así
+    // que se materializa y se reconstruye la respuesta para que quien llamó
+    // la reciba intacta y pueda seguir generando su propio mensaje de error.
+    final bytes = await res.stream.toBytes();
+    if (utf8.decode(bytes, allowMalformed: true).contains('SESSION_INVALIDATED')) {
+      ApiService.notificarSesionInvalidada();
+    }
+    return http.StreamedResponse(
+      Stream.value(bytes),
+      res.statusCode,
+      contentLength: bytes.length,
+      request: res.request,
+      headers: res.headers,
+      isRedirect: res.isRedirect,
+      persistentConnection: res.persistentConnection,
+      reasonPhrase: res.reasonPhrase,
+    );
+  }
+}
 
 /// Error de un endpoint de verificación, con el mensaje textual del backend.
 ///
@@ -17,6 +56,7 @@ class VerificacionException implements Exception {
     this.statusCode,
     this.puedeReintentarEn,
     this.sesionInvalidada = false,
+    this.yaVerificado = false,
   });
 
   final String mensaje;
@@ -32,7 +72,13 @@ class VerificacionException implements Exception {
 
   /// La cuenta ya estaba verificada: no es un error que deba alarmar, la
   /// pantalla simplemente refresca y cierra.
-  bool get yaVerificado => statusCode == 409;
+  ///
+  /// Viene del campo `ya_verificado` del cuerpo, NO del status code: el
+  /// backend usa 409 también para "ese correo/teléfono ya está registrado en
+  /// OTRA cuenta" (`verificacion.js` en `/estudiante/solicitar` y
+  /// `/externo/solicitar`), que es un error que el usuario sí debe ver y
+  /// corregir, no una señal para cerrar la pantalla en silencio.
+  final bool yaVerificado;
 
   /// Se agotaron los códigos permitidos en la ventana de 15 minutos.
   bool get demasiadosIntentos => statusCode == 429;
@@ -48,7 +94,24 @@ class VerificacionException implements Exception {
 class ApiService {
   ApiService._();
 
-  static final _client = http.Client();
+  static final _client = _SessionAwareClient(http.Client());
+
+  /// Se invoca cuando el backend responde `SESSION_INVALIDATED` en cualquier
+  /// endpoint. La app lo engancha en `main.dart` para cerrar sesión y llevar
+  /// al login. Se deja como callback y no como navegación directa para que
+  /// esta capa siga sin depender de Flutter.
+  static void Function()? onSesionInvalidada;
+
+  /// Evita que varias peticiones en paralelo que fallan con el mismo token
+  /// muerto disparen varios logout y varios push al login encimados.
+  static bool _sesionYaInvalidada = false;
+
+  static void notificarSesionInvalidada() {
+    if (_sesionYaInvalidada) return;
+    _sesionYaInvalidada = true;
+    clearToken();
+    onSesionInvalidada?.call();
+  }
 
   /// Override programático (alternativa a la constante _backendHost).
   static String? _customBaseUrl;
@@ -61,6 +124,9 @@ class ApiService {
   /// Asigna el token JWT del usuario autenticado para usarlo en requests.
   static void setToken(String token) {
     _token = token;
+    // Token nuevo (login o registro): vuelve a armarse el disparo, si no un
+    // SESSION_INVALIDATED de la sesión anterior dejaría mudo al siguiente.
+    _sesionYaInvalidada = false;
   }
 
   /// Limpia el token (logout).
@@ -205,30 +271,56 @@ class ApiService {
         statusCode: res.statusCode,
         puedeReintentarEn: (body['puede_reintentar_en'] as num?)?.toInt(),
         sesionInvalidada: codigo == 'SESSION_INVALIDATED',
+        yaVerificado: body['ya_verificado'] == true,
       );
     }
     return body;
   }
 
+  /// Tope de espera de los endpoints de verificación. El envío del OTP sale a
+  /// un SMTP externo: si ese proveedor se cuelga, sin este límite el botón se
+  /// queda cargando para siempre. Es holgado respecto al timeout SMTP del
+  /// backend (10 s por fase) para que gane el error del servidor, que es más
+  /// específico, y este solo actúe si el backend ni siquiera contesta.
+  static const _timeoutVerificacion = Duration(seconds: 15);
+
   static Future<Map<String, dynamic>> _postVerificacion(
     String path,
     Map<String, dynamic> body,
   ) async {
-    final res = await _client.post(
-      _uri('/verificacion$path'),
-      headers: _authHeaders,
-      body: jsonEncode(body),
-    );
+    final http.Response res;
+    try {
+      res = await _client
+          .post(
+            _uri('/verificacion$path'),
+            headers: _authHeaders,
+            body: jsonEncode(body),
+          )
+          .timeout(_timeoutVerificacion);
+    } on TimeoutException {
+      throw const VerificacionException(
+        'El servidor tardó demasiado en responder. Inténtalo de nuevo.',
+      );
+    }
     return _decodeVerificacion(res);
   }
 
-  /// Envía el código OTP al correo institucional del estudiante. La matrícula
-  /// no viaja aparte: el backend la extrae de los 7 dígitos del correo.
+  /// Envía el código OTP al correo institucional. La matrícula no viaja
+  /// aparte: el backend la extrae de los 7 dígitos del correo.
+  ///
+  /// [tipo] es 'estudiante' o 'empleado' y va EXPLÍCITO: el servidor no lo
+  /// deduce del dominio, lo contrasta contra el correo y rechaza con 400 si
+  /// no corresponden. [carrera] solo aplica al alumno; para el personal se
+  /// omite del cuerpo.
   static Future<Map<String, dynamic>> solicitarVerificacionEstudiante({
     required String correoInstitucional,
+    required String tipo,
+    String? carrera,
   }) {
     return _postVerificacion('/estudiante/solicitar', {
       'correo_institucional': correoInstitucional,
+      'tipo': tipo,
+      if (carrera != null) 'carrera': carrera,
     });
   }
 
@@ -269,10 +361,16 @@ class ApiService {
   /// Estado de verificación del usuario autenticado. Lo consultan tanto el
   /// registro como el perfil.
   static Future<Map<String, dynamic>> getEstadoVerificacion() async {
-    final res = await _client.get(
-      _uri('/verificacion/estado'),
-      headers: _authHeaders,
-    );
+    final http.Response res;
+    try {
+      res = await _client
+          .get(_uri('/verificacion/estado'), headers: _authHeaders)
+          .timeout(_timeoutVerificacion);
+    } on TimeoutException {
+      throw const VerificacionException(
+        'El servidor tardó demasiado en responder. Inténtalo de nuevo.',
+      );
+    }
     return _decodeVerificacion(res);
   }
 

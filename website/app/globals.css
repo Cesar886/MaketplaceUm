@@ -1,0 +1,140 @@
+/* Tokens espejo de `lib/app_theme.dart`. Si cambia la paleta de la app,
+   este es el único archivo que hay que tocar en la web. */
+:root {
+  --primary: #3d5c70;
+  --primary-dark: #2b4150;
+  --amber: #e3a008;
+  --amber-dark: #3d2600;
+  --gold: #b8863b;
+  --champagne: #faf3e0;
+  --orange: #a84b37;
+  --teal: #1f6b62;
+
+  --background: #fafaf8;
+  --surface: #ffffff;
+  --surface-muted: #f1f1ee;
+  --ink: #1b1a16;
+  --muted: #6e6b64;
+  --border: #e4e2dc;
+
+  --danger: #b23a2e;
+  --success: #2f7d5c;
+
+  --radio: 12px;
+  --ancho: 640px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--background);
+  color: var(--ink);
+  font-family: var(--fuente-cuerpo), system-ui, sans-serif;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--fuente-titulo), system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+a {
+  color: inherit;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+/* Contenedor central: la app es una pantalla de teléfono, así que en desktop
+   se mantiene una columna estrecha en vez de estirar el layout a lo ancho. */
+.contenedor {
+  max-width: var(--ancho);
+  margin: 0 auto;
+  padding: 0 18px;
+}
+
+/* "Menos cajas, más aire": separadores hairline en vez de tarjetas anidadas,
+   igual que en la pantalla de detalle de la app. */
+.separador {
+  height: 1px;
+  background: var(--border);
+  border: 0;
+  margin: 22px 0;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.pill--exito {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 8%, transparent);
+}
+.pill--aviso {
+  color: var(--orange);
+  background: color-mix(in srgb, var(--orange) 8%, transparent);
+}
+.pill--neutro {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--muted) 8%, transparent);
+}
+.pill--marca {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+.boton-principal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--primary);
+  color: #fff;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 180ms ease;
+}
+
+.boton-principal:hover {
+  background: var(--primary-dark);
+}
+
+/* Respeta a quien pidió menos movimiento en su sistema. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

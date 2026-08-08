@@ -26,9 +26,13 @@ function attachWantedRelations(post) {
       major: '',
       isBusiness: false,
       logoUrl: null,
-      rating: 0,
-      reviews: 0,
+      // El publicante no tiene fila en `sellers`, pero sí puede tener productos
+      // calificados: el agregado se calcula desde product_ratings en vez de
+      // devolver un 0 fijo que la UI pintaría como "Sin calificaciones".
+      ...db.getSellerRatingStats(post.userId),
       verified: false,
+      carrera: null,
+      tipoVerificacion: null,
     },
     categoryObj: categories.find(c => c.id === post.categoryId) || null,
   };

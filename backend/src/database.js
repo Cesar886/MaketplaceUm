@@ -187,6 +187,42 @@ function initDatabase() {
 
     CREATE INDEX IF NOT EXISTS idx_product_ratings_product ON product_ratings(product_id);
 
+    -- Comentarios públicos en una publicación. Escribir exige cuenta con
+    -- verificación institucional (tipo_verificacion no nulo, ver
+    -- routes/comments.js); leer es abierto y no requiere sesión.
+    --
+    -- El borrado es lógico: la fila se queda y se marca. Un comentario que
+    -- retiró su autor y uno que moderó el dueño del producto son casos
+    -- distintos, y si alguien reclama por una publicación hay que poder
+    -- distinguirlos — de ahí `deleted_by` además de `deleted_at`.
+    --
+    -- Sin FOREIGN KEY hacia sellers a propósito: ninguna tabla de esta base
+    -- la tiene (messages.sender_id, notifications.user_id, conversations.*
+    -- tampoco), porque varios de esos ids pueden ser de dispositivo anónimo.
+    -- No se introduce la excepción solo aquí.
+    CREATE TABLE IF NOT EXISTS product_comments (
+      id         TEXT PRIMARY KEY,
+      product_id TEXT NOT NULL,
+      user_id    TEXT NOT NULL,
+      texto      TEXT NOT NULL CHECK(length(texto) >= 1 AND length(texto) <= 500),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      deleted_at TEXT DEFAULT NULL,
+      deleted_by TEXT DEFAULT NULL,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    );
+
+    -- Hilo de un producto. Las cuatro columnas en este orden convierten la
+    -- paginación por keyset (WHERE product_id=? AND deleted_at IS NULL AND
+    -- (created_at, id) < (?, ?) ORDER BY created_at DESC, id DESC) en un
+    -- range scan puro, sin paso de ordenamiento.
+    CREATE INDEX IF NOT EXISTS idx_product_comments_product
+      ON product_comments(product_id, deleted_at, created_at DESC, id DESC);
+
+    -- Rate limit por usuario: "¿hace cuánto comentó?" no puede usar el
+    -- índice de arriba, que arranca por product_id.
+    CREATE INDEX IF NOT EXISTS idx_product_comments_user
+      ON product_comments(user_id, created_at DESC);
+
     -- Interacciones de feed: registra vistas/favoritos/contactos por device_id
     -- (siempre presente) y opcionalmente por user_id (si hay sesión). Es la
     -- única fuente tanto para la popularidad de un producto (Fase 1) como
@@ -247,6 +283,11 @@ function initDatabase() {
     ];
     for (const p of plans) insertPlan.run(...p);
   }
+
+  // El caché de calificaciones por vendedor se reconstruye en cada arranque.
+  // Es barato (un UPDATE con subconsultas) y garantiza que la columna nunca
+  // quede divergiendo de product_ratings, que es la fuente de verdad.
+  recomputeAllSellerRatings();
 
   console.log('🗄️  Base de datos SQLite inicializada');
   return db;
@@ -606,6 +647,42 @@ function runMigrations() {
       ON verificaciones(telefono);
   `);
 
+  // 25. Carrera del estudiante (lista fija de la Universidad de Montemorelos,
+  //     ver validation/carreras.js). Se captura en `verificaciones.carrera`
+  //     al solicitar el código y se copia a `sellers.carrera` al confirmar
+  //     (mismo patrón que `sellers.verified`: bandera rápida para mostrar en
+  //     el perfil sin tener que hacer join contra `verificaciones`).
+  const verifColsCarrera = db.prepare("PRAGMA table_info('verificaciones')").all();
+  if (!verifColsCarrera.some(c => c.name === 'carrera')) {
+    db.exec(`ALTER TABLE verificaciones ADD COLUMN carrera TEXT`);
+  }
+  const sellerColsCarrera = db.prepare("PRAGMA table_info('sellers')").all();
+  if (!sellerColsCarrera.some(c => c.name === 'carrera')) {
+    db.exec(`ALTER TABLE sellers ADD COLUMN carrera TEXT`);
+  }
+
+  // 26. `tipo_verificacion` ('estudiante' | 'empleado'): el mismo flujo de OTP
+  //     por correo sirve a alumnos y a personal de la universidad, y el tipo
+  //     lo declara el cliente al solicitar el código.
+  //
+  //     Va en una columna NUEVA y no en `verificaciones.tipo_cuenta`: esa
+  //     tiene CHECK(tipo_cuenta IN ('estudiante','negocio','particular')), y
+  //     guardar 'empleado' ahí reventaría el INSERT — ampliar un CHECK en
+  //     SQLite obliga a reconstruir la tabla entera. Ambos siguen siendo
+  //     tipo_cuenta='estudiante'; lo que los distingue es esta columna.
+  if (!verifColsCarrera.some(c => c.name === 'tipo_verificacion')) {
+    db.exec(`ALTER TABLE verificaciones ADD COLUMN tipo_verificacion TEXT`);
+    // Las filas que ya existen son todas de alumno: este flujo es lo único
+    // que había antes de que el personal pudiera verificarse.
+    db.exec(`
+      UPDATE verificaciones SET tipo_verificacion = 'estudiante'
+      WHERE tipo_verificacion IS NULL AND tipo_cuenta = 'estudiante'
+    `);
+  }
+  if (!sellerColsCarrera.some(c => c.name === 'tipo_verificacion')) {
+    db.exec(`ALTER TABLE sellers ADD COLUMN tipo_verificacion TEXT`);
+  }
+
   console.log('🔄 Migración de schema completada');
 }
 
@@ -739,6 +816,13 @@ function rowToSeller(row) {
     // Determina el color/etiqueta de la insignia de verificación en la app.
     // 'particular' es lo que la UI llama "externo".
     tipoCuenta: row.tipo_cuenta || 'particular',
+    // Solo se llena para cuentas de estudiante verificadas (ver
+    // routes/verificacion.js). El perfil cae a "Estudiante" cuando es null.
+    carrera: row.carrera || null,
+    // 'estudiante' | 'empleado': distingue al alumno del personal de la
+    // universidad, que comparten tipo_cuenta='estudiante'. El perfil muestra
+    // "Personal UM" cuando vale 'empleado'.
+    tipoVerificacion: row.tipo_verificacion || null,
     businessDescription: row.businessDescription || null,
     businessCategory: row.businessCategory || null,
     businessHours: JSON.parse(row.businessHours || '{}'),
@@ -1031,6 +1115,321 @@ function getSellerRatingStats(sellerId) {
     rating: Math.round((row.average || 0) * 10) / 10,
     reviews: row.count || 0,
   };
+}
+
+// `sellers.rating`/`sellers.reviews` son un caché denormalizado de la query de
+// arriba. No es opcional mantenerlo: el scoring del feed lo lee dentro de SQL
+// (`COALESCE(s.rating, 0)` en getRankedFeed), así que no basta con calcular el
+// promedio al vuelo en las rutas. Estas dos funciones son el único camino por
+// el que ese caché debe escribirse.
+
+function syncSellerRating(sellerId) {
+  const stats = getSellerRatingStats(sellerId);
+  db.prepare('UPDATE sellers SET rating = ?, reviews = ? WHERE id = ?')
+    .run(stats.rating, stats.reviews, sellerId);
+  return stats;
+}
+
+// Recalcula el caché de TODOS los vendedores desde product_ratings. Corre al
+// arrancar: es lo que repara las filas que quedaron con valores inventados
+// (semilla) o desactualizados por escrituras que solo tocaban memoria.
+function recomputeAllSellerRatings() {
+  const stmt = db.prepare(`
+    UPDATE sellers SET
+      rating = COALESCE((
+        SELECT ROUND(AVG(CAST(pr.stars AS REAL)), 1)
+        FROM product_ratings pr
+        JOIN products p ON p.id = pr.product_id
+        WHERE p.seller = sellers.id
+      ), 0),
+      reviews = COALESCE((
+        SELECT COUNT(*)
+        FROM product_ratings pr
+        JOIN products p ON p.id = pr.product_id
+        WHERE p.seller = sellers.id
+      ), 0)
+  `);
+  const info = stmt.run();
+  return info.changes;
+}
+
+// ─── Product Comments ───────────────────────────────────────────
+
+/** Tamaño de página por defecto del hilo de comentarios. */
+const COMENTARIOS_POR_PAGINA = 20;
+
+/** Tope duro: un cliente no puede pedir páginas arbitrariamente grandes. */
+const COMENTARIOS_MAX_POR_PAGINA = 50;
+
+// Proyección del autor: lista blanca, al estilo de routes/public.js. Son
+// exactamente los campos que necesitan `subtituloRol()` e
+// `InsigniaVerificada` en la app (lib/widgets/user_role.dart y badges.dart),
+// ni uno más. Fuera quedan teléfono y correo: un comentario es contenido
+// público y no debe convertir el hilo en un directorio de contacto.
+//
+// created_at se emite como ISO-8601 con 'Z' explícita, no como el
+// 'YYYY-MM-DD HH:MM:SS' crudo que guarda SQLite: ese formato lo interpreta
+// `DateTime.parse` de Dart como hora LOCAL, aunque el valor sea UTC, y el
+// "hace 2 h" saldría corrido por el offset del dispositivo.
+const SELECT_COMENTARIO = `
+  SELECT
+    c.id                  AS id,
+    c.product_id          AS productId,
+    c.user_id             AS userId,
+    c.texto               AS texto,
+    strftime('%Y-%m-%dT%H:%M:%SZ', c.created_at) AS createdAt,
+    -- Formato crudo de SQLite: es contra ESTE valor que compara el WHERE de
+    -- la página siguiente, así que el cursor tiene que llevarlo tal cual.
+    c.created_at          AS createdAtRaw,
+    s.name                AS autorNombre,
+    s.avatarInitials      AS autorIniciales,
+    s.logoUrl             AS autorLogo,
+    s.major               AS autorMajor,
+    s.isBusiness          AS autorEsNegocio,
+    s.verified            AS autorVerificado,
+    s.tipo_cuenta         AS autorTipoCuenta,
+    s.carrera             AS autorCarrera,
+    s.tipo_verificacion   AS autorTipoVerificacion
+  FROM product_comments c
+  LEFT JOIN sellers s ON s.id = c.user_id
+`;
+
+/**
+ * Convierte una fila de [SELECT_COMENTARIO] a la forma que consume la app.
+ * Es la ÚNICA función que arma esta forma, para que la respuesta REST y el
+ * evento de Socket.IO no se puedan desincronizar entre sí.
+ */
+function rowToProductComment(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    productId: row.productId,
+    texto: row.texto,
+    createdAt: row.createdAt,
+    author: {
+      id: row.userId,
+      // Una cuenta borrada deja su comentario en pie pero sin autor que
+      // resolver; el hilo no debe romperse por eso.
+      name: row.autorNombre || 'Usuario',
+      avatarInitials: row.autorIniciales || '??',
+      logoUrl: row.autorLogo || null,
+      major: row.autorMajor || '',
+      isBusiness: !!row.autorEsNegocio,
+      verified: !!row.autorVerificado,
+      tipoCuenta: row.autorTipoCuenta || 'particular',
+      carrera: row.autorCarrera || null,
+      tipoVerificacion: row.autorTipoVerificacion || null,
+    },
+  };
+}
+
+/**
+ * Normaliza el tamaño de página pedido por el cliente.
+ * Un valor ausente, no numérico o fuera de rango cae al default.
+ */
+function normalizarLimiteComentarios(limite) {
+  const n = parseInt(limite, 10);
+  if (!Number.isFinite(n) || n < 1) return COMENTARIOS_POR_PAGINA;
+  return Math.min(n, COMENTARIOS_MAX_POR_PAGINA);
+}
+
+/**
+ * Ejecuta una consulta paginada por keyset sobre product_comments.
+ *
+ * Se pide una fila DE MÁS que el límite: si vuelve, hay página siguiente.
+ * Así no hace falta un COUNT(*) extra por request solo para saber si pintar
+ * el botón "Ver más".
+ *
+ * Keyset y no OFFSET porque el hilo recibe comentarios nuevos por Socket.IO
+ * mientras el usuario pagina: con OFFSET, cada inserción en el tope recorre
+ * la ventana y la página siguiente repetiría filas ya mostradas.
+ */
+function paginarComentarios(sqlBase, params, limite) {
+  const filas = db.prepare(`${sqlBase} LIMIT ?`).all(...params, limite + 1);
+  const hayMas = filas.length > limite;
+  const pagina = hayMas ? filas.slice(0, limite) : filas;
+  const ultima = pagina[pagina.length - 1];
+  return {
+    filas: pagina,
+    // El cursor apunta a la última fila entregada.
+    nextCursor: hayMas && ultima ? `${ultima.createdAtRaw}|${ultima.id}` : null,
+  };
+}
+
+/** Parte un cursor `<created_at>|<id>` en sus dos componentes, o null. */
+function parseCursorComentario(cursor) {
+  if (typeof cursor !== 'string' || !cursor.includes('|')) return null;
+  const separador = cursor.indexOf('|');
+  const createdAt = cursor.slice(0, separador);
+  const id = cursor.slice(separador + 1);
+  if (!createdAt || !id) return null;
+  return { createdAt, id };
+}
+
+/**
+ * Hilo de comentarios de un producto, del más reciente al más antiguo.
+ * Excluye los borrados lógicamente.
+ */
+function getProductComments(productId, { limit, cursor } = {}) {
+  const limite = normalizarLimiteComentarios(limit);
+  const desde = parseCursorComentario(cursor);
+
+  const where = desde
+    ? `WHERE c.product_id = ? AND c.deleted_at IS NULL
+         AND (c.created_at < ? OR (c.created_at = ? AND c.id < ?))`
+    : `WHERE c.product_id = ? AND c.deleted_at IS NULL`;
+  const params = desde
+    ? [productId, desde.createdAt, desde.createdAt, desde.id]
+    : [productId];
+
+  const { filas, nextCursor } = paginarComentarios(
+    `${SELECT_COMENTARIO} ${where} ORDER BY c.created_at DESC, c.id DESC`,
+    params,
+    limite,
+  );
+
+  return { comments: filas.map(rowToProductComment), nextCursor };
+}
+
+/** Cuántos comentarios vivos tiene un producto (el contador del header). */
+function countProductComments(productId) {
+  const row = db.prepare(
+    'SELECT COUNT(*) AS total FROM product_comments WHERE product_id = ? AND deleted_at IS NULL',
+  ).get(productId);
+  return row ? row.total : 0;
+}
+
+/**
+ * Comentarios que OTROS dejaron en las publicaciones de [sellerId] — la
+ * pestaña "Comentarios" del perfil, que existe como prueba social.
+ *
+ * No es el inverso trivial de getProductComments: filtra por el dueño del
+ * producto, no por el autor del comentario, y excluye lo que el propio
+ * dueño escribió en sus publicaciones (elogiarse a uno mismo no es prueba
+ * de nada). Trae título y primera foto del producto para que la tarjeta
+ * pueda navegar al detalle sin una segunda llamada por fila.
+ */
+function getCommentsReceivedBySeller(sellerId, { limit, cursor } = {}) {
+  const limite = normalizarLimiteComentarios(limit);
+  const desde = parseCursorComentario(cursor);
+
+  const filtroCursor = desde
+    ? `AND (c.created_at < ? OR (c.created_at = ? AND c.id < ?))`
+    : '';
+  const params = desde
+    ? [sellerId, sellerId, desde.createdAt, desde.createdAt, desde.id]
+    : [sellerId, sellerId];
+
+  const sql = `
+    SELECT
+      c.id                  AS id,
+      c.product_id          AS productId,
+      c.user_id             AS userId,
+      c.texto               AS texto,
+      strftime('%Y-%m-%dT%H:%M:%SZ', c.created_at) AS createdAt,
+      c.created_at          AS createdAtRaw,
+      s.name                AS autorNombre,
+      s.avatarInitials      AS autorIniciales,
+      s.logoUrl             AS autorLogo,
+      s.major               AS autorMajor,
+      s.isBusiness          AS autorEsNegocio,
+      s.verified            AS autorVerificado,
+      s.tipo_cuenta         AS autorTipoCuenta,
+      s.carrera             AS autorCarrera,
+      s.tipo_verificacion   AS autorTipoVerificacion,
+      p.title               AS productoTitulo,
+      p.images              AS productoImagenes
+    FROM product_comments c
+    JOIN products p ON p.id = c.product_id AND p.seller = ?
+    LEFT JOIN sellers s ON s.id = c.user_id
+    WHERE c.deleted_at IS NULL AND c.user_id != ? ${filtroCursor}
+    ORDER BY c.created_at DESC, c.id DESC
+  `;
+
+  const { filas, nextCursor } = paginarComentarios(sql, params, limite);
+
+  const comments = filas.map(fila => {
+    const base = rowToProductComment(fila);
+    let fotos = [];
+    try {
+      fotos = JSON.parse(fila.productoImagenes || '[]');
+    } catch (_) {
+      // Un `images` corrupto no debe tirar la pestaña entera: la tarjeta se
+      // pinta sin miniatura.
+      fotos = [];
+    }
+    return {
+      ...base,
+      product: {
+        id: fila.productId,
+        title: fila.productoTitulo,
+        image: Array.isArray(fotos) && fotos.length > 0 ? fotos[0] : null,
+      },
+    };
+  });
+
+  return { comments, nextCursor };
+}
+
+/** Cuántos comentarios vivos recibió [sellerId] en sus publicaciones. */
+function countCommentsReceivedBySeller(sellerId) {
+  const row = db.prepare(`
+    SELECT COUNT(*) AS total
+    FROM product_comments c
+    JOIN products p ON p.id = c.product_id AND p.seller = ?
+    WHERE c.deleted_at IS NULL AND c.user_id != ?
+  `).get(sellerId, sellerId);
+  return row ? row.total : 0;
+}
+
+/** Fila cruda de un comentario (incluye los borrados). Para permisos. */
+function getProductCommentRow(commentId) {
+  return db.prepare('SELECT * FROM product_comments WHERE id = ?').get(commentId);
+}
+
+/** Comentario ya en forma de API, por id. Usado tras insertar. */
+function getProductCommentById(commentId) {
+  const fila = db.prepare(`${SELECT_COMENTARIO} WHERE c.id = ?`).get(commentId);
+  return rowToProductComment(fila);
+}
+
+/** Inserta un comentario y devuelve su forma de API, autor incluido. */
+function createProductComment(id, productId, userId, texto) {
+  db.prepare(
+    'INSERT INTO product_comments (id, product_id, user_id, texto) VALUES (?, ?, ?, ?)',
+  ).run(id, productId, userId, texto);
+  return getProductCommentById(id);
+}
+
+/**
+ * Segundos transcurridos desde el último comentario de [userId], o null si
+ * nunca ha comentado.
+ *
+ * El cálculo va entero dentro de SQLite a propósito. `created_at` se guarda
+ * con datetime('now'), que es UTC, pero el proceso corre con TZ=America/
+ * Monterrey (ver index.js): restarlo contra un `new Date()` de Node daría
+ * seis horas de diferencia y el rate limit no frenaría nada.
+ */
+function segundosDesdeUltimoComentario(userId) {
+  const row = db.prepare(`
+    SELECT CAST((julianday('now') - julianday(MAX(created_at))) * 86400.0 AS INTEGER) AS segundos
+    FROM product_comments WHERE user_id = ?
+  `).get(userId);
+  return row && row.segundos != null ? row.segundos : null;
+}
+
+/**
+ * Borrado lógico. Devuelve true solo si esta llamada fue la que lo marcó:
+ * un comentario ya borrado devuelve false, así la ruta no vuelve a emitir
+ * el evento de Socket.IO por un doble tap.
+ */
+function softDeleteProductComment(commentId, actorId) {
+  const info = db.prepare(`
+    UPDATE product_comments
+    SET deleted_at = datetime('now'), deleted_by = ?
+    WHERE id = ? AND deleted_at IS NULL
+  `).run(actorId, commentId);
+  return info.changes > 0;
 }
 
 // ─── Category Interests ─────────────────────────────────────────
@@ -1528,6 +1927,20 @@ module.exports = {
   getProductRatingStats,
   getUserProductRating,
   getSellerRatingStats,
+  syncSellerRating,
+  recomputeAllSellerRatings,
+  // Product comments
+  COMENTARIOS_POR_PAGINA,
+  COMENTARIOS_MAX_POR_PAGINA,
+  createProductComment,
+  getProductComments,
+  countProductComments,
+  getProductCommentById,
+  getProductCommentRow,
+  getCommentsReceivedBySeller,
+  countCommentsReceivedBySeller,
+  segundosDesdeUltimoComentario,
+  softDeleteProductComment,
   // Category Interests
   addCategoryInterest,
   removeCategoryInterest,

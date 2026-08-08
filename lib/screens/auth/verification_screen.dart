@@ -1,17 +1,19 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:provider/provider.dart';
 
 import '../../app_theme.dart';
+import '../../constants/carreras_um.dart';
+import '../../constants/dominios_um.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/location_picker.dart';
 import '../../widgets/otp_input.dart';
 import '../../widgets/static_mini_map.dart';
 import 'account_created_screen.dart';
-import 'login_screen.dart';
 
 /// Pantalla única de verificación de cuenta para los tres tipos.
 ///
@@ -38,14 +40,6 @@ class VerificationScreen extends StatefulWidget {
   @override
   State<VerificationScreen> createState() => _VerificationScreenState();
 }
-
-/// Formato exacto del correo institucional: los 7 dígitos antes del arroba
-/// SON la matrícula, por eso no se pide por separado. Debe coincidir con
-/// `validarCorreoInstitucional` del backend (validation/verificacion.js).
-final RegExp _correoInstitucionalRe = RegExp(r'^\d{7}@alumno\.um\.edu\.mx$');
-
-const _mensajeCorreoInvalido =
-    'Debe ser tu correo institucional';
 
 class _VerificationScreenState extends State<VerificationScreen> {
   bool _enviando = false;
@@ -74,9 +68,21 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
   final _llaveOtp = GlobalKey<OtpInputState>();
 
-  // Estudiante
-  final _correoController = TextEditingController();
-  final _focoCorreo = FocusNode();
+  // Estudiante / personal
+  /// Guarda SOLO lo que va antes del arroba (matrícula o usuario). El correo
+  /// completo se arma en [_validarCorreo] concatenando el dominio elegido.
+  final _matriculaController = TextEditingController();
+  final _focoMatricula = FocusNode();
+
+  /// Dominio elegido en el desplegable. Null = todavía sin elegir, que es lo
+  /// que mantiene el campo de texto bloqueado: hasta saber el dominio no se
+  /// sabe qué formato exigirle a lo que se teclee.
+  DominioUM? _dominio;
+
+  /// Solo se llena cuando el usuario elige una opción exacta de [carrerasUM]
+  /// (ver [_CampoCarrera]); nunca contiene texto libre, así el botón de
+  /// enviar puede usar "es null" para saber si falta seleccionar.
+  String? _carreraSeleccionada;
 
   // Negocio
   final _nombreNegocioController = TextEditingController();
@@ -91,16 +97,18 @@ class _VerificationScreenState extends State<VerificationScreen> {
     super.initState();
     // Validación al perder el foco: mientras el usuario escribe no tiene
     // sentido marcarle en rojo un correo que aún está a medias.
-    _focoCorreo.addListener(() {
-      if (!_focoCorreo.hasFocus) _validarCorreo();
+    _focoMatricula.addListener(() {
+      // `mounted` porque FocusNode.dispose() puede notificar al desenfocar, y
+      // el setState de _validarCorreo reventaría sobre un State ya desmontado.
+      if (mounted && !_focoMatricula.hasFocus) _validarCorreo();
     });
   }
 
   @override
   void dispose() {
     _timerReenvio?.cancel();
-    _correoController.dispose();
-    _focoCorreo.dispose();
+    _matriculaController.dispose();
+    _focoMatricula.dispose();
     _nombreNegocioController.dispose();
     _linkController.dispose();
     _telefonoController.dispose();
@@ -125,10 +133,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
     } on VerificacionException catch (e) {
       if (!mounted) return;
       if (e.sesionInvalidada) {
-        // El token guardado ya no valida contra el JWT_SECRET vigente: no hay
-        // nada que reintentar desde aquí, ni tiene sentido dejar al usuario
-        // dando toques a un formulario que va a seguir devolviendo 401.
-        await _cerrarSesionInvalida(e.mensaje);
+        // El cierre de sesión y el salto al login los hace el manejador
+        // central de ApiService (ver main.dart): aquí solo se evita pintar un
+        // error en una pantalla que ya está siendo desmontada.
         return;
       }
       if (e.yaVerificado) {
@@ -154,19 +161,6 @@ class _VerificationScreenState extends State<VerificationScreen> {
     } finally {
       if (mounted) setState(() => _enviando = false);
     }
-  }
-
-  /// Cierra la sesión local y manda al login. Se llama cuando el backend
-  /// responde `SESSION_INVALIDATED`, es decir cuando el JWT guardado no
-  /// valida contra el secreto vigente.
-  Future<void> _cerrarSesionInvalida(String mensaje) async {
-    await _auth.logout();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensaje)));
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
-      (ruta) => ruta.isFirst,
-    );
   }
 
   void _iniciarCooldownReenvio(int segundos) {
@@ -203,44 +197,97 @@ class _VerificationScreenState extends State<VerificationScreen> {
     });
   }
 
-  /// Normaliza igual que el backend (trim + minúsculas) y comprueba el
-  /// formato. Devuelve el correo listo para enviar, o null si no es válido —
-  /// en cuyo caso deja el campo marcado con el mensaje correspondiente.
+  /// Concatena lo tecleado con el dominio elegido y valida el correo
+  /// COMPLETO, normalizando igual que el backend (trim + minúsculas).
+  /// Devuelve el correo listo para enviar, o null si no es válido — en cuyo
+  /// caso deja el campo marcado con el mensaje correspondiente.
+  ///
+  /// Sin dominio elegido no hay nada que validar: no se sabe qué formato
+  /// exigir, así que devuelve null sin marcar el campo de texto (el aviso que
+  /// toca en ese caso es el del desplegable, ver [_solicitarCodigoEstudiante]).
   ///
   /// [avisarSiVacio] distingue los dos momentos en que se llama: al perder el
   /// foco un campo vacío no merece un aviso en rojo; al pulsar "Enviar
   /// código", sí.
   String? _validarCorreo({bool avisarSiVacio = false}) {
-    final correo = _correoController.text.trim().toLowerCase();
-    final valido = _correoInstitucionalRe.hasMatch(correo);
+    final dominio = _dominio;
+    if (dominio == null) return null;
 
-    if (!valido && correo.isEmpty && !avisarSiVacio) return null;
+    final usuario = _matriculaController.text.trim().toLowerCase();
+    final correo = '$usuario${dominio.sufijo}';
+    final valido = dominio.formatoCorreo.hasMatch(correo);
+
+    if (!valido && usuario.isEmpty && !avisarSiVacio) return null;
 
     setState(() {
       if (valido) {
         // Solo se limpia el aviso de formato: un error que vino del backend
         // ("ese correo ya está registrado") sigue siendo cierto y debe
         // seguir a la vista hasta el siguiente intento.
-        if (_error == _mensajeCorreoInvalido) {
+        if (_error == dominio.mensajeInvalido) {
           _error = null;
           _campoConError = null;
         }
       } else {
         _campoConError = 'correo_institucional';
-        _error = _mensajeCorreoInvalido;
+        _error = dominio.mensajeInvalido;
       }
     });
     return valido ? correo : null;
   }
 
+  /// Reinicia lo que dependía del dominio anterior. Cambiar de alumno a
+  /// personal (o al revés) cambia el formato exigido y si aplica la carrera,
+  /// así que lo ya tecleado deja de tener sentido.
+  void _cambiarDominio(DominioUM? nuevo) {
+    if (nuevo == _dominio) return;
+    setState(() {
+      _dominio = nuevo;
+      _matriculaController.clear();
+      // La carrera no aplica al personal; y si vuelve a alumno, la que
+      // hubiera elegido antes ya no está a la vista, así que se vuelve a
+      // pedir en vez de mandar una selección invisible.
+      _carreraSeleccionada = null;
+      _error = null;
+      _campoConError = null;
+    });
+  }
+
   Future<void> _solicitarCodigoEstudiante() {
+    // Sin dominio no hay correo que armar: es el primer aviso que toca.
+    final dominio = _dominio;
+    if (dominio == null) {
+      setState(() {
+        _campoConError = 'tipo';
+        _error = 'Selecciona tu dominio';
+      });
+      return Future.value();
+    }
+
     final correo = _validarCorreo(avisarSiVacio: true);
-    if (correo == null) return Future.value();
+
+    // La carrera solo aplica al alumno, y debe salir de la lista: no se
+    // acepta texto libre que no coincida exactamente con una opción de
+    // [carrerasUM], para no ensuciar la base con variantes escritas a mano.
+    final carrera = _carreraSeleccionada;
+    final faltaCarrera = dominio.pideCarrera && carrera == null;
+    // Solo se pinta el error de carrera si el correo ya es válido: no tiene
+    // sentido pisar el aviso de _validarCorreo con este.
+    if (correo != null && faltaCarrera) {
+      setState(() {
+        _campoConError = 'carrera';
+        _error = 'Selecciona tu carrera de la lista';
+      });
+    }
+    if (correo == null || faltaCarrera) return Future.value();
     return _ejecutar(() async {
       // La matrícula va embebida en el correo (los 7 dígitos antes del
-      // arroba); el backend la extrae y la guarda.
+      // arroba); el backend la extrae y la guarda. El tipo va explícito para
+      // que el servidor no tenga que deducirlo del dominio.
       final codigoDev = await _auth.solicitarVerificacionEstudiante(
         correoInstitucional: correo,
+        tipo: dominio.tipo,
+        carrera: carrera,
       );
       if (!mounted) return;
       setState(() {
@@ -414,8 +461,11 @@ class _VerificationScreenState extends State<VerificationScreen> {
     );
   }
 
+  // Copy deliberadamente neutro: la misma pantalla sirve a alumnos y a
+  // personal de la universidad, y quien lo distingue es el dominio elegido,
+  // no un texto que haya que mantener en dos versiones.
   String get _titulo => switch (widget.tipo) {
-    AccountType.estudiante => 'Verifica que eres estudiante',
+    AccountType.estudiante => 'Verifica tu cuenta',
     AccountType.negocio => 'Verifica tu negocio',
     AccountType.particular => 'Verifica tu número',
   };
@@ -447,11 +497,14 @@ class _VerificationScreenState extends State<VerificationScreen> {
         // código de ese destino sigue vigente. Para cambiarlo hay que volver
         // al formulario, que es lo que invalida el paso.
         _CampoTexto(
-          controller: esEstudiante ? _correoController : _telefonoController,
-          etiqueta: esEstudiante ? 'Correo institucional' : 'Número de teléfono',
-          icono: esEstudiante
-              ? Icons.alternate_email_rounded
-              : Icons.phone_rounded,
+          controller: esEstudiante ? _matriculaController : _telefonoController,
+          etiqueta: esEstudiante
+              ? (_dominio?.etiquetaCampo ?? 'Correo institucional')
+              : 'Número de teléfono',
+          icono: esEstudiante ? Icons.badge_rounded : Icons.phone_rounded,
+          // Bloqueado pero con el sufijo puesto: se sigue leyendo como el
+          // correo completo al que se mandó el código.
+          sufijo: esEstudiante ? _dominio?.sufijo : null,
           habilitado: false,
         ),
         const SizedBox(height: 22),
@@ -509,20 +562,43 @@ class _VerificationScreenState extends State<VerificationScreen> {
   Widget _buildFormEstudiante() {
     return Column(
       children: [
-        _CampoTexto(
-          controller: _correoController,
-          focusNode: _focoCorreo,
-          etiqueta: 'Correo institucional *',
-          icono: Icons.alternate_email_rounded,
-          tipoTeclado: TextInputType.emailAddress,
-          ayuda: 'Tu matrícula ya va incluida',
+        _CampoCorreoInstitucional(
+          controller: _matriculaController,
+          focusNode: _focoMatricula,
+          dominio: _dominio,
+          onDominioCambiado: _cambiarDominio,
           conError: _campoConError == 'correo_institucional',
-          // Al corregir el correo se limpia el aviso en el momento, sin
+          conErrorDominio: _campoConError == 'tipo',
+          // Al corregir lo tecleado se limpia el aviso en el momento, sin
           // esperar a que el campo pierda el foco.
           onChanged: (_) {
             if (_campoConError == 'correo_institucional') _validarCorreo();
           },
         ),
+
+        // La carrera solo se le pide al alumno: para el personal el campo no
+        // aplica y desaparece por completo, sin dejar hueco.
+        if (_dominio?.pideCarrera ?? false) ...[
+          const SizedBox(height: 18),
+          _CampoCarrera(
+            // Al pasar a personal el campo se quita del árbol por completo
+            // (el `if` de arriba), así que volver a alumno reconstruye el
+            // Autocomplete vacío sin conservar el texto del intento anterior.
+            key: const ValueKey('carrera'),
+            valorInicial: _carreraSeleccionada,
+            conError: _campoConError == 'carrera',
+            onSeleccionada: (carrera) {
+              setState(() {
+                _carreraSeleccionada = carrera;
+                if (_campoConError == 'carrera') {
+                  _campoConError = null;
+                  _error = null;
+                }
+              });
+            },
+          ),
+        ],
+
         const SizedBox(height: 24),
         _BotonPrincipal(
           etiqueta: 'Enviar código',
@@ -618,21 +694,22 @@ class _CampoTexto extends StatelessWidget {
     required this.controller,
     required this.etiqueta,
     required this.icono,
-    this.focusNode,
     this.tipoTeclado,
     this.ayuda,
+    this.sufijo,
     this.conError = false,
     this.habilitado = true,
-    this.onChanged,
   });
 
   final TextEditingController controller;
   final String etiqueta;
   final IconData icono;
-  final FocusNode? focusNode;
   final TextInputType? tipoTeclado;
   final String? ayuda;
-  final ValueChanged<String>? onChanged;
+
+  /// Texto fijo pegado al final del campo (ej. el dominio institucional).
+  /// No forma parte del valor del controller ni es editable.
+  final String? sufijo;
 
   /// Resalta el campo que el backend señaló como causa del rechazo.
   final bool conError;
@@ -644,20 +721,297 @@ class _CampoTexto extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextFormField(
       controller: controller,
-      focusNode: focusNode,
       enabled: habilitado,
       keyboardType: tipoTeclado,
-      onChanged: onChanged,
       decoration: InputDecoration(
         labelText: etiqueta,
         helperText: ayuda,
         prefixIcon: Icon(icono),
+        suffixText: sufijo,
+        // Sin esto Flutter oculta el sufijo mientras el campo está vacío y sin
+        // foco (lo tapa la etiqueta en línea), justo cuando más falta hace
+        // ver que el dominio ya viene puesto.
+        floatingLabelBehavior: sufijo == null ? null : FloatingLabelBehavior.always,
         enabledBorder: conError
             ? const OutlineInputBorder(
                 borderSide: BorderSide(color: AppColors.danger, width: 1.6),
               )
             : null,
       ),
+    );
+  }
+}
+
+/// Campo de correo institucional: usuario + selector de dominio dentro de un
+/// MISMO recuadro, con un divisor sutil entre las dos mitades.
+///
+/// El desplegable ocupa el lugar exacto donde antes iba el sufijo fijo, así
+/// que se sigue leyendo como un solo correo. Mientras no haya dominio elegido
+/// el campo de texto está bloqueado: hasta saber si es alumno o personal no se
+/// sabe qué formato exigirle (7 dígitos vs. nombre.apellido).
+class _CampoCorreoInstitucional extends StatefulWidget {
+  const _CampoCorreoInstitucional({
+    required this.controller,
+    required this.focusNode,
+    required this.dominio,
+    required this.onDominioCambiado,
+    required this.conError,
+    required this.conErrorDominio,
+    this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final DominioUM? dominio;
+  final ValueChanged<DominioUM?> onDominioCambiado;
+
+  /// Resalta la mitad del texto (formato inválido).
+  final bool conError;
+
+  /// Resalta el recuadro por no haber elegido dominio todavía.
+  final bool conErrorDominio;
+
+  final ValueChanged<String>? onChanged;
+
+  @override
+  State<_CampoCorreoInstitucional> createState() =>
+      _CampoCorreoInstitucionalState();
+}
+
+class _CampoCorreoInstitucionalState extends State<_CampoCorreoInstitucional> {
+  @override
+  void initState() {
+    super.initState();
+    // InputDecorator no sabe solo cuándo el TextField de adentro tiene el
+    // foco: se le pasa a mano, y para eso hay que repintar en cada cambio.
+    widget.focusNode.addListener(_repintar);
+  }
+
+  @override
+  void dispose() {
+    widget.focusNode.removeListener(_repintar);
+    super.dispose();
+  }
+
+  void _repintar() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dominio = widget.dominio;
+    final habilitado = dominio != null;
+    final resaltado = widget.conError || widget.conErrorDominio;
+
+    final bordeError = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: AppColors.danger, width: 1.6),
+    );
+
+    return InputDecorator(
+      isFocused: widget.focusNode.hasFocus,
+      decoration: InputDecoration(
+        labelText: '${dominio?.etiquetaCampo ?? 'Correo institucional'} *',
+        prefixIcon: const Icon(Icons.badge_rounded),
+        // El sufijo/desplegable ya está a la vista aunque el campo esté
+        // vacío, así que la etiqueta no debe taparlo bajando a la línea.
+        floatingLabelBehavior: FloatingLabelBehavior.always,
+        // El contenido lo compone la Row de abajo; sin esto el padding por
+        // defecto descuadra el divisor respecto al borde.
+        contentPadding: const EdgeInsets.only(right: 6),
+        enabledBorder: resaltado ? bordeError : null,
+        focusedBorder: resaltado ? bordeError : null,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: widget.controller,
+              focusNode: widget.focusNode,
+              enabled: habilitado,
+              keyboardType: dominio?.tipoTeclado,
+              onChanged: widget.onChanged,
+              // El formato se filtra al teclear según el dominio: así el
+              // usuario no llega siquiera a formar un correo inválido.
+              inputFormatters: [
+                if (dominio == DominioUM.alumno) ...[
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(dominio!.largoMaximo),
+                ] else if (dominio == DominioUM.personal)
+                  // Los dígitos entran a propósito: tanto [formatoCorreo]
+                  // como el backend aceptan nombre.apellido2, y filtrarlos
+                  // aquí dejaba a ese empleado sin poder teclear su usuario.
+                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9.]')),
+              ],
+              decoration: InputDecoration.collapsed(
+                hintText: habilitado ? null : 'Elige tu dominio →',
+                hintStyle: TextStyle(
+                  color: context.colors.muted,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+          Container(
+            width: 1,
+            height: 24,
+            margin: const EdgeInsets.symmetric(horizontal: 8),
+            color: context.colors.muted.withValues(alpha: 0.28),
+          ),
+          _SelectorDominio(
+            valor: dominio,
+            onCambiado: widget.onDominioCambiado,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Desplegable del dominio, sin subrayado ni caja propia: hereda el recuadro
+/// del campo que lo contiene para que las dos mitades se lean como una sola.
+class _SelectorDominio extends StatelessWidget {
+  const _SelectorDominio({required this.valor, required this.onCambiado});
+
+  final DominioUM? valor;
+  final ValueChanged<DominioUM?> onCambiado;
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<DominioUM>(
+        value: valor,
+        isDense: true,
+        borderRadius: BorderRadius.circular(12),
+        icon: Icon(
+          Icons.keyboard_arrow_down_rounded,
+          size: 20,
+          color: context.colors.muted,
+        ),
+        hint: Text(
+          'Seleccionar',
+          style: TextStyle(
+            color: context.colors.muted,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        // Cerrado se muestra el dominio literal completo, que es el punto:
+        // el usuario tiene que poder leer el correo tal cual quedará.
+        selectedItemBuilder: (_) => [
+          for (final d in DominioUM.values)
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                d.sufijo,
+                style: TextStyle(
+                  color: context.colors.ink,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+        ],
+        items: [
+          for (final d in DominioUM.values)
+            DropdownMenuItem(
+              value: d,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(d.emoji, style: const TextStyle(fontSize: 15)),
+                  const SizedBox(width: 8),
+                  Text(
+                    d.sufijo,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
+        ],
+        onChanged: onCambiado,
+      ),
+    );
+  }
+}
+
+/// Autocomplete de carrera: solo acepta valores exactos de [carrerasUM].
+/// Cualquier texto que no coincida deja `onSeleccionada(null)`, así el
+/// formulario no puede enviarse con una carrera inventada o a medio
+/// escribir — mantiene los datos consistentes con la lista fija.
+class _CampoCarrera extends StatefulWidget {
+  const _CampoCarrera({
+    super.key,
+    required this.onSeleccionada,
+    required this.conError,
+    this.valorInicial,
+  });
+
+  final ValueChanged<String?> onSeleccionada;
+  final bool conError;
+  final String? valorInicial;
+
+  @override
+  State<_CampoCarrera> createState() => _CampoCarreraState();
+}
+
+class _CampoCarreraState extends State<_CampoCarrera> {
+  @override
+  Widget build(BuildContext context) {
+    return Autocomplete<String>(
+      initialValue: TextEditingValue(text: widget.valorInicial ?? ''),
+      optionsBuilder: (TextEditingValue value) {
+        if (value.text.isEmpty) return const Iterable<String>.empty();
+        final consulta = normalizarBusquedaCarrera(value.text);
+        return carrerasUM.where(
+          (carrera) => normalizarBusquedaCarrera(carrera).contains(consulta),
+        );
+      },
+      onSelected: widget.onSeleccionada,
+      fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+        return TextFormField(
+          controller: controller,
+          focusNode: focusNode,
+          decoration: InputDecoration(
+            labelText: 'Carrera *',
+            prefixIcon: const Icon(Icons.school_rounded),
+            enabledBorder: widget.conError
+                ? const OutlineInputBorder(
+                    borderSide: BorderSide(color: AppColors.danger, width: 1.6),
+                  )
+                : null,
+          ),
+          onChanged: (texto) {
+            // Cualquier edición invalida la selección previa: solo vuelve a
+            // ser válida si el usuario elige de nuevo una opción de la lista
+            // (ver onSelected), nunca por coincidir el texto "a ojo".
+            widget.onSeleccionada(null);
+          },
+        );
+      },
+      optionsViewBuilder: (context, onSelected, options) {
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 4,
+            borderRadius: BorderRadius.circular(8),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 260),
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                shrinkWrap: true,
+                itemCount: options.length,
+                itemBuilder: (context, index) {
+                  final opcion = options.elementAt(index);
+                  return ListTile(
+                    dense: true,
+                    title: Text(opcion),
+                    onTap: () => onSelected(opcion),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

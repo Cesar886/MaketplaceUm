@@ -6,11 +6,42 @@ import 'package:provider/provider.dart';
 import 'app_theme.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
+import 'screens/auth/login_screen.dart';
 import 'screens/splash_screen.dart';
+import 'services/api_service.dart';
 import 'services/push_service.dart';
+
+/// Llaves globales: el cierre de sesión por token inválido se dispara desde
+/// la capa de red, que no tiene un BuildContext a mano.
+final navigatorKey = GlobalKey<NavigatorState>();
+final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
+/// El backend respondió `SESSION_INVALIDATED` en algún endpoint: el JWT
+/// guardado se firmó con un secreto que ya no es el vigente y no hay forma de
+/// recuperarlo. Se cierra sesión y se manda al login con un mensaje humano,
+/// nunca con el error técnico.
+Future<void> _cerrarSesionExpirada() async {
+  final contexto = navigatorKey.currentContext;
+  if (contexto == null) return;
+
+  await contexto.read<AuthProvider>().logout();
+
+  scaffoldMessengerKey.currentState?.showSnackBar(
+    const SnackBar(content: Text('Tu sesión expiró, inicia sesión de nuevo')),
+  );
+
+  // Se vacía la pila entera: cualquier pantalla que quedara abajo pertenece a
+  // la sesión que acaba de morir y volvería a fallar con 401.
+  navigatorKey.currentState?.pushAndRemoveUntil(
+    MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+    (_) => false,
+  );
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  ApiService.onSesionInvalidada = _cerrarSesionExpirada;
 
   // Inicializar Firebase (necesario antes de usar cualquier servicio Firebase)
   await Firebase.initializeApp();
@@ -40,6 +71,8 @@ class MyApp extends StatelessWidget {
     final theme = context.watch<ThemeProvider>();
     return MaterialApp(
       title: 'Mercadito UM',
+      navigatorKey: navigatorKey,
+      scaffoldMessengerKey: scaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,

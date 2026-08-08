@@ -15,10 +15,34 @@ const DOMINIOS_ESTUDIANTE = (
   .map(d => d.trim().toLowerCase())
   .filter(Boolean);
 
+// Dominios del personal de la universidad (empleados/docentes). Se validan
+// aparte de los de alumno y son DISJUNTOS: 'alumno.um.edu.mx' nunca es igual
+// a 'um.edu.mx', y la comparación es por igualdad exacta, así que un correo
+// no puede pasar por los dos tipos a la vez.
+const DOMINIOS_EMPLEADO = (
+  process.env.VERIFICATION_STAFF_DOMAINS || 'um.edu.mx'
+)
+  .split(',')
+  .map(d => d.trim().toLowerCase())
+  .filter(Boolean);
+
+// Los dos flujos que comparten el endpoint de OTP por correo. El cliente lo
+// manda EXPLÍCITO (no se deduce del dominio) y el servidor comprueba que el
+// correo corresponda al tipo declarado, para que nadie declare un tipo y
+// mande el correo del otro.
+const TIPOS_VERIFICACION = ['estudiante', 'empleado'];
+
 // El correo institucional es <matrícula de 7 dígitos>@<dominio>,
 // ej. 1220326@alumno.um.edu.mx. Los 7 dígitos SON la matrícula, así que el
 // correo prueba ambos datos a la vez.
 const LONGITUD_MATRICULA = 7;
+
+// Usuario del personal: nombre.apellido, nombre.apellido.segundo, y variantes
+// con dígitos (nombre.apellido2). Deliberadamente más tolerante que
+// "exactamente dos partes": el formato real de la UM no está confirmado, y de
+// equivocarse es preferible dejar pasar un correo raro (que igual tiene que
+// recibir el OTP en ese buzón) que bloquear a un empleado legítimo.
+const RE_USUARIO_EMPLEADO = /^[a-zA-Z]+(\.[a-zA-Z0-9]+)*$/;
 
 const MIN_NOMBRE_NEGOCIO = 3;
 const MAX_NOMBRE_NEGOCIO = 80;
@@ -103,6 +127,43 @@ function extraerMatriculaDeCorreo(correo) {
     : null;
 }
 
+/** Valida el correo del personal (<usuario>@um.edu.mx). */
+function validarCorreoEmpleado(correo) {
+  if (typeof correo !== 'string' || !correo.trim()) {
+    return 'Ingresa tu correo institucional';
+  }
+  const partes = partirCorreo(correo);
+  if (!partes) return 'Correo electrónico inválido';
+
+  if (!DOMINIOS_EMPLEADO.includes(partes.dominio)) {
+    return `Debes usar tu correo institucional (@${DOMINIOS_EMPLEADO[0]})`;
+  }
+  if (!RE_USUARIO_EMPLEADO.test(partes.local)) {
+    return 'Tu usuario institucional va como nombre.apellido';
+  }
+  return null;
+}
+
+/**
+ * Valida el correo contra las reglas del tipo DECLARADO por el cliente.
+ *
+ * Es la comprobación que impide declarar `tipo: 'empleado'` mandando un
+ * correo de alumno (o al revés) para saltarse la validación del otro flujo:
+ * cada tipo solo acepta su propio dominio y su propio formato de usuario.
+ */
+function validarCorreoPorTipo(correo, tipo) {
+  return tipo === 'empleado'
+    ? validarCorreoEmpleado(correo)
+    : validarCorreoInstitucional(correo);
+}
+
+/** Devuelve null si el tipo es uno de los dos soportados, o un mensaje. */
+function validarTipoVerificacion(tipo) {
+  return TIPOS_VERIFICACION.includes(tipo)
+    ? null
+    : 'Selecciona tu dominio institucional';
+}
+
 function validarNombreNegocio(nombre) {
   if (typeof nombre !== 'string') return 'Ingresa el nombre del negocio';
   const limpio = nombre.trim();
@@ -178,10 +239,15 @@ function normalizarTelefono(telefono) {
 
 module.exports = {
   validarCorreoInstitucional,
+  validarCorreoEmpleado,
+  validarCorreoPorTipo,
+  validarTipoVerificacion,
   extraerMatriculaDeCorreo,
   validarNombreNegocio,
   validarLinkRedSocial,
   normalizarTelefono,
   DOMINIOS_ESTUDIANTE,
+  DOMINIOS_EMPLEADO,
+  TIPOS_VERIFICACION,
   HOSTS_RED_SOCIAL,
 };

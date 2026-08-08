@@ -27,6 +27,9 @@ const express = require('express');
 const db = require('../database');
 const { generateToken } = require('../auth');
 const { crearRutasVerificacion } = require('./verificacion');
+const { CARRERAS_UM } = require('../validation/carreras');
+
+const CARRERA_VALIDA = CARRERAS_UM[0];
 
 db.initDatabase();
 
@@ -119,6 +122,8 @@ test('un estudiante se verifica con el código enviado a su correo institucional
 
   const solicitud = await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: correo,
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
   });
   assert.strictEqual(solicitud.status, 200);
   assert.strictEqual(solicitud.body.enviado, true);
@@ -136,13 +141,142 @@ test('un estudiante se verifica con el código enviado a su correo institucional
   const fila = filaVerificacion(usuario.id);
   assert.strictEqual(fila.estado, 'verificado');
   assert.strictEqual(fila.matricula, '1220326');
+  assert.strictEqual(fila.carrera, CARRERA_VALIDA);
   assert.ok(fila.fecha_verificacion);
+
+  // La carrera se copia a `sellers` (bandera rápida para el perfil), igual
+  // que `verified`.
+  const sellerRow = db.getDb().prepare('SELECT carrera FROM sellers WHERE id = ?').get(usuario.id);
+  assert.strictEqual(sellerRow.carrera, CARRERA_VALIDA);
 });
+
+test('rechaza una carrera que no está en la lista fija', async () => {
+  const usuario = crearUsuario('estudiante');
+  const res = await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: '1220327@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: 'Licenciatura Inventada',
+  });
+  assert.strictEqual(res.status, 400);
+  assert.strictEqual(res.body.campo, 'carrera');
+  assert.strictEqual(estaVerificado(usuario.id), false);
+});
+
+test('rechaza la solicitud si no se manda carrera', async () => {
+  const usuario = crearUsuario('estudiante');
+  const res = await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: '1220328@alumno.um.edu.mx',
+    tipo: 'estudiante',
+  });
+  assert.strictEqual(res.status, 400);
+  assert.strictEqual(res.body.campo, 'carrera');
+});
+
+// ═══ PERSONAL / EMPLEADO ═════════════════════════════════════
+
+test('el personal se verifica con su correo @um.edu.mx, sin matrícula ni carrera', async () => {
+  const usuario = crearUsuario('estudiante');
+  const correo = 'cesar.herrera@um.edu.mx';
+
+  const solicitud = await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: correo,
+    tipo: 'empleado',
+  });
+  assert.strictEqual(solicitud.status, 200, JSON.stringify(solicitud.body));
+
+  await pedir('/estudiante/confirmar', usuario.token, {
+    codigo_otp: enviados.email.at(-1).codigo,
+  });
+
+  assert.strictEqual(estaVerificado(usuario.id), true);
+  const fila = filaVerificacion(usuario.id);
+  assert.strictEqual(fila.tipo_verificacion, 'empleado');
+  assert.strictEqual(fila.correo_institucional, correo);
+  // El personal no tiene matrícula ni carrera: ambas quedan en null.
+  assert.strictEqual(fila.matricula, null);
+  assert.strictEqual(fila.carrera, null);
+
+  const sellerRow = db
+    .getDb()
+    .prepare('SELECT carrera, tipo_verificacion FROM sellers WHERE id = ?')
+    .get(usuario.id);
+  assert.strictEqual(sellerRow.tipo_verificacion, 'empleado');
+  assert.strictEqual(sellerRow.carrera, null);
+});
+
+test('acepta variantes del usuario del personal (segundo apellido, dígitos)', async () => {
+  for (const local of ['ana.lopez.ruiz', 'juan.perez2', 'soporte']) {
+    const usuario = crearUsuario('estudiante');
+    const res = await pedir('/estudiante/solicitar', usuario.token, {
+      correo_institucional: `${local}@um.edu.mx`,
+      tipo: 'empleado',
+    });
+    assert.strictEqual(res.status, 200, `${local} debía aceptarse`);
+  }
+});
+
+test('rechaza un correo de alumno declarado como empleado', async () => {
+  const usuario = crearUsuario('estudiante');
+  const res = await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: '1220400@alumno.um.edu.mx',
+    tipo: 'empleado',
+  });
+  assert.strictEqual(res.status, 400);
+  assert.strictEqual(res.body.campo, 'correo_institucional');
+  assert.strictEqual(estaVerificado(usuario.id), false);
+});
+
+test('rechaza un correo de empleado declarado como estudiante', async () => {
+  const usuario = crearUsuario('estudiante');
+  const res = await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: 'cesar.herrera@um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
+  });
+  assert.strictEqual(res.status, 400);
+  assert.strictEqual(res.body.campo, 'correo_institucional');
+});
+
+test('rechaza un tipo desconocido o ausente', async () => {
+  const usuario = crearUsuario('estudiante');
+  for (const tipo of ['admin', '', undefined]) {
+    const res = await pedir('/estudiante/solicitar', usuario.token, {
+      correo_institucional: '1220401@alumno.um.edu.mx',
+      carrera: CARRERA_VALIDA,
+      tipo,
+    });
+    assert.strictEqual(res.status, 400, `tipo=${tipo} debía rechazarse`);
+    assert.strictEqual(res.body.campo, 'tipo');
+  }
+});
+
+test('cambiar de alumno a personal borra la matrícula y la carrera del intento previo', async () => {
+  const usuario = crearUsuario('estudiante');
+  await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: '1220402@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
+  });
+  assert.strictEqual(filaVerificacion(usuario.id).matricula, '1220402');
+
+  await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: 'nuevo.empleado@um.edu.mx',
+    tipo: 'empleado',
+  });
+  const fila = filaVerificacion(usuario.id);
+  assert.strictEqual(fila.matricula, null);
+  assert.strictEqual(fila.carrera, null);
+  assert.strictEqual(fila.tipo_verificacion, 'empleado');
+});
+
+// ═══ ESTUDIANTE (continuación) ═══════════════════════════════
 
 test('el código deja de existir en la base después de usarse', async () => {
   const usuario = crearUsuario('estudiante');
   await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1330001@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
   });
   const { codigo } = enviados.email.at(-1);
   await pedir('/estudiante/confirmar', usuario.token, { codigo_otp: codigo });
@@ -156,6 +290,8 @@ test('el mismo código no sirve dos veces', async () => {
   const usuario = crearUsuario('estudiante');
   await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1330002@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
   });
   const { codigo } = enviados.email.at(-1);
   await pedir('/estudiante/confirmar', usuario.token, { codigo_otp: codigo });
@@ -169,6 +305,7 @@ test('rechaza un correo que no es del dominio institucional', async () => {
   const usuario = crearUsuario('estudiante');
   const res = await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1220326@gmail.com',
+    tipo: 'estudiante',
   });
   assert.strictEqual(res.status, 400);
   assert.match(res.body.error, /institucional/i);
@@ -186,6 +323,7 @@ test('rechaza correos con matrícula de longitud distinta a 7 o dominio parecido
   for (const correo_institucional of invalidos) {
     const res = await pedir('/estudiante/solicitar', usuario.token, {
       correo_institucional,
+      tipo: 'estudiante',
     });
     assert.strictEqual(res.status, 400, `${correo_institucional} debía rechazarse`);
     assert.strictEqual(res.body.campo, 'correo_institucional');
@@ -197,6 +335,8 @@ test('normaliza el correo en mayúsculas antes de validar y guardar', async () =
   const usuario = crearUsuario('estudiante');
   const res = await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '  1230001@ALUMNO.UM.EDU.MX  ',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
   });
   assert.strictEqual(res.status, 200);
 
@@ -210,6 +350,8 @@ test('la matrícula se deriva del correo, ignorando la que mande el cliente', as
   const res = await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1230002@alumno.um.edu.mx',
     matricula: '9999999',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
   });
   assert.strictEqual(res.status, 200);
   assert.strictEqual(filaVerificacion(usuario.id).matricula, '1230002');
@@ -217,7 +359,11 @@ test('la matrícula se deriva del correo, ignorando la que mande el cliente', as
 
 test('un código nuevo invalida el anterior', async () => {
   const usuario = crearUsuario('estudiante');
-  const cuerpo = { correo_institucional: '1230003@alumno.um.edu.mx' };
+  const cuerpo = {
+    correo_institucional: '1230003@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
+  };
   await pedir('/estudiante/solicitar', usuario.token, cuerpo);
   const primerCodigo = enviados.email.at(-1).codigo;
 
@@ -237,6 +383,8 @@ test('rechaza un correo institucional ya usado por otra cuenta verificada', asyn
   const correo = '1440001@alumno.um.edu.mx';
   await pedir('/estudiante/solicitar', primero.token, {
     correo_institucional: correo,
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
   });
   await pedir('/estudiante/confirmar', primero.token, {
     codigo_otp: enviados.email.at(-1).codigo,
@@ -245,6 +393,8 @@ test('rechaza un correo institucional ya usado por otra cuenta verificada', asyn
   const segundo = crearUsuario('estudiante');
   const res = await pedir('/estudiante/solicitar', segundo.token, {
     correo_institucional: correo,
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
   });
   assert.strictEqual(res.status, 409);
   assert.match(res.body.error, /ya está registrado|ya esta registrado/i);
@@ -254,6 +404,8 @@ test('rechaza un código incorrecto e informa los intentos restantes', async () 
   const usuario = crearUsuario('estudiante');
   await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1550001@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
   });
   const res = await pedir('/estudiante/confirmar', usuario.token, { codigo_otp: '000000' });
   assert.strictEqual(res.status, 400);
@@ -265,6 +417,8 @@ test('invalida el código tras 5 intentos fallidos de confirmación', async () =
   const usuario = crearUsuario('estudiante');
   await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1550002@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
   });
   const { codigo } = enviados.email.at(-1);
 
@@ -283,6 +437,8 @@ test('bloquea el cuarto envío de código dentro de la ventana de 15 minutos', a
   const usuario = crearUsuario('estudiante');
   const cuerpo = {
     correo_institucional: '1660001@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
   };
   for (let i = 0; i < 3; i++) {
     const ok = await pedir('/estudiante/solicitar', usuario.token, cuerpo);
@@ -295,7 +451,11 @@ test('bloquea el cuarto envío de código dentro de la ventana de 15 minutos', a
 
 test('bloquea el envío a un correo que ya recibió 3 códigos desde otra cuenta', async () => {
   const correo = '1770001@alumno.um.edu.mx';
-  const cuerpo = { correo_institucional: correo };
+  const cuerpo = {
+    correo_institucional: correo,
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
+  };
   const primero = crearUsuario('estudiante');
   for (let i = 0; i < 3; i++) {
     await pedir('/estudiante/solicitar', primero.token, cuerpo);
@@ -440,6 +600,8 @@ test('bloquea el flujo si la cuenta ya está verificada', async () => {
   const usuario = crearUsuario('estudiante', { verificado: true });
   const res = await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1880001@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
   });
   assert.strictEqual(res.status, 409);
   assert.match(res.body.error, /ya está verificada|ya esta verificada/i);
@@ -449,6 +611,8 @@ test('impide que un negocio se verifique por el flujo de estudiante', async () =
   const usuario = crearUsuario('negocio');
   const res = await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1880002@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
   });
   assert.strictEqual(res.status, 403);
 });
@@ -475,6 +639,8 @@ test('ignora un usuario_id mandado en el body y usa el del token', async () => {
 
   await pedir('/estudiante/solicitar', atacante.token, {
     correo_institucional: '1990001@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
     usuario_id: victima.id,
   });
   await pedir('/estudiante/confirmar', atacante.token, {

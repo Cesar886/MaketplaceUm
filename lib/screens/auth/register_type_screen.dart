@@ -34,9 +34,13 @@ class RegisterTypeScreen extends StatelessWidget {
                   children: [
                     _TypeCard(
                       emoji: '🎓',
-                      title: 'Estudiante',
+                      // Alumnos y personal comparten esta tarjeta y el mismo
+                      // tipo_cuenta interno ('estudiante'): lo que los
+                      // distingue es el dominio de correo que eligen al
+                      // verificarse (ver constants/dominios_um.dart).
+                      title: 'Estudiante o personal UM',
                       subtitle:
-                          'Alumno activo de la Universidad de Montemorelos',
+                          'Alumno o empleado de la Universidad de Montemorelos',
                       features: ['Publica libros, apuntes, electrónicos y más'],
                       color: AppColors.teal,
                       onTap: () => _goToForm(context, 'estudiante'),

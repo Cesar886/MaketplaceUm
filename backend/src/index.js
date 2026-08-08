@@ -16,6 +16,16 @@ process.env.TZ = 'America/Monterrey';
 // Si el archivo no existe, dotenv no falla: se usan los valores por defecto.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
+// Confirmación de que el .env llegó al proceso. Va ANTES del require de
+// auth.js a propósito: si JWT_SECRET falta, auth.js lanza al cargarse y sin
+// esta línea el log no diría por qué. Nunca imprime el secreto, solo si está.
+// Un secreto distinto entre restarts invalida todos los tokens ya emitidos,
+// y ese fue justo el incidente de 2026-08.
+console.log(
+  `[boot] JWT_SECRET: ${process.env.JWT_SECRET ? 'OK' : 'FALTA'} — ` +
+  `VERIFICATION_STUDENT_DOMAINS: ${process.env.VERIFICATION_STUDENT_DOMAINS || '(default)'}`,
+);
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -38,6 +48,7 @@ const routes = [
   require('./routes/wanted'),
   require('./routes/feed'),
   require('./routes/verificacion'),
+  require('./routes/public'),
 ];
 
 const app = express();
@@ -186,6 +197,10 @@ app.post('/api/auth/login', (req, res) => {
       avatarInitials: row.avatarInitials,
       isBusiness: !!row.isBusiness,
       major: row.major,
+      // Rol verificado (ver widgets/user_role.dart). Null hasta que la
+      // cuenta pase por verificación; el cliente omite la línea en ese caso.
+      carrera: row.carrera || null,
+      tipoVerificacion: row.tipo_verificacion || null,
     },
   });
 });
@@ -255,6 +270,8 @@ app.post('/api/auth/register', (req, res) => {
         avatarInitials: existingRow.avatarInitials,
         isBusiness: !!existingRow.isBusiness,
         major: existingRow.major,
+        carrera: existingRow.carrera || null,
+        tipoVerificacion: existingRow.tipo_verificacion || null,
       },
       created: false,
     });
@@ -323,6 +340,10 @@ app.post('/api/auth/register', (req, res) => {
       avatarInitials: newSeller.avatarInitials,
       isBusiness: newSeller.isBusiness,
       major: newSeller.major,
+      // Cuenta recién creada: aún no pasó por verificación, así que ambos
+      // van explícitos en null en vez de ausentes.
+      carrera: null,
+      tipoVerificacion: null,
     },
     created: true,
   });

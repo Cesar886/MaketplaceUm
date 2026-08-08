@@ -9,6 +9,7 @@ import '../services/api_service.dart';
 import '../services/recent_products_service.dart';
 import '../widgets/badges.dart';
 import '../widgets/product_card.dart';
+import '../widgets/user_role.dart';
 import 'auth/login_screen.dart';
 import 'auth/verification_screen.dart';
 import 'legal/cookies_screen.dart';
@@ -265,25 +266,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               userName,
                               style: Theme.of(context).textTheme.titleLarge,
                             ),
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Icon(
-                                  _typeIcon(auth.accountType),
-                                  size: 14,
-                                  color: context.colors.muted,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  auth.accountTypeLabel,
-                                  style: TextStyle(
+                            // El ícono acompaña al subtítulo, así que la fila
+                            // entera desaparece cuando no hay rol que mostrar:
+                            // un ícono suelto sin texto no dice nada.
+                            if (_subtituloRol != null) ...[
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Icon(
+                                    _typeIcon(auth.accountType),
+                                    size: 14,
                                     color: context.colors.muted,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13,
                                   ),
-                                ),
-                              ],
-                            ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _subtituloRol!,
+                                    style: TextStyle(
+                                      color: context.colors.muted,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                             const SizedBox(height: 8),
                             if (auth.isVerified)
                               InsigniaVerificada(tipo: auth.accountType),
@@ -324,7 +330,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 16),
 
             // ─── Card de verificación ───────────────────────
-            _VerificationCard(auth: auth),
+            _VerificationCard(auth: auth, onVerificado: _loadListings),
             const SizedBox(height: 16),
 
             // ─── Opciones del perfil ────────────────────────
@@ -493,12 +499,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return Icons.store_rounded;
     }
   }
+
+  /// Bajo el nombre: la carrera, "Personal UM" o la etiqueta de negocio/
+  /// particular. Sale de [subtituloRol] — el mismo cálculo que usan el perfil
+  /// público y el detalle de producto — para que el copy no se desincronice
+  /// entre las tres pantallas.
+  ///
+  /// Null mientras el seller aún no carga (el GET inicial puede tardar o
+  /// fallar) y cuando no hay rol verificado que mostrar; en ambos casos la
+  /// línea se omite en vez de enseñar un genérico.
+  String? get _subtituloRol =>
+      _seller == null ? null : subtituloRol(_seller!);
 }
 
 class _VerificationCard extends StatelessWidget {
-  const _VerificationCard({required this.auth});
+  const _VerificationCard({required this.auth, required this.onVerificado});
 
   final AuthProvider auth;
+
+  /// Recarga el seller del backend. El AuthProvider solo sabe del estado de
+  /// verificación; la carrera y el tipo (alumno/personal) llegan en el seller,
+  /// y sin esto el subtítulo del perfil seguiría mostrando el valor anterior
+  /// hasta volver a abrir la pantalla.
+  final Future<void> Function() onVerificado;
 
   Future<void> _abrirVerificacion(BuildContext context) async {
     final verificado = await Navigator.of(context).push<bool>(
@@ -508,7 +531,11 @@ class _VerificationCard extends StatelessWidget {
     );
     // La pantalla ya actualizó el AuthProvider; esto solo cubre el caso de
     // volver con el gesto de retroceso, donde no hubo resultado.
-    if (verificado != true) await auth.refrescarEstadoVerificacion();
+    if (verificado != true) {
+      await auth.refrescarEstadoVerificacion();
+      return;
+    }
+    await onVerificado();
   }
 
   @override

@@ -189,9 +189,12 @@ function attachRelations(productsList, userId) {
         major: '',
         isBusiness: false,
         logoUrl: null,
-        rating: 0,
-        reviews: 0,
+        // Sin fila en `sellers` el agregado no está cacheado, pero sus
+        // productos sí pueden tener calificaciones: se calculan al vuelo.
+        ...db.getSellerRatingStats(p.seller),
         verified: false,
+        carrera: null,
+        tipoVerificacion: null,
       } : null
     );
 
@@ -535,6 +538,17 @@ function register(app) {
 
       products.splice(productIndex, 1);
       db.deleteProduct(productId);
+
+      // El CASCADE se llevó las calificaciones de este producto, así que el
+      // agregado del vendedor cambió: hay que rehacer el caché o quedaría
+      // contando reseñas que ya no existen.
+      const sellerStats = db.syncSellerRating(product.seller);
+      const sellerIndex = sellers.findIndex(s => s.id === product.seller);
+      if (sellerIndex !== -1) {
+        sellers[sellerIndex].rating = sellerStats.rating;
+        sellers[sellerIndex].reviews = sellerStats.reviews;
+      }
+
       saveData();
       res.json({ success: true, message: 'Producto eliminado' });
     } catch (err) {
@@ -829,8 +843,11 @@ function register(app) {
 
       db.upsertProductRating(productId, userId, stars);
 
-      // Actualizar rating del vendedor
-      const sellerStats = db.getSellerRatingStats(product.seller);
+      // Recalcular el agregado del vendedor sobre TODOS sus productos y
+      // persistirlo. Escribir solo el array en memoria no basta: saveData() no
+      // toca la tabla sellers, así que el promedio se perdía en cada reinicio y
+      // toda lectura seguía devolviendo el valor viejo de la columna.
+      const sellerStats = db.syncSellerRating(product.seller);
       const sellerIndex = sellers.findIndex(s => s.id === product.seller);
       if (sellerIndex !== -1) {
         sellers[sellerIndex].rating = sellerStats.rating;

@@ -10,6 +10,7 @@ import '../widgets/payment_methods.dart';
 import '../widgets/product_card.dart';
 import '../widgets/seller_profile_skeleton.dart';
 import '../widgets/seller_schedule_location_row.dart';
+import '../widgets/user_role.dart';
 import 'product_detail_screen.dart';
 
 /// Perfil público de un vendedor/negocio: nombre, logo, rating y sus
@@ -180,9 +181,9 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
                   ],
                 ],
               ),
-              const SizedBox(height: 6),
-              Text(
-                seller.major,
+              SubtituloRol(
+                seller: seller,
+                espacioArriba: 6,
                 style: TextStyle(
                   color: context.colors.muted,
                   fontWeight: FontWeight.w600,

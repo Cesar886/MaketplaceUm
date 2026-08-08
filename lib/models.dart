@@ -165,6 +165,8 @@ class Seller {
     this.locationLat,
     this.locationLng,
     this.paymentMethods = const [],
+    this.carrera,
+    this.tipoVerificacion,
   });
 
   factory Seller.fromJson(Map<String, dynamic> json) {
@@ -192,6 +194,8 @@ class Seller {
               ?.map((e) => e as String)
               .toList() ??
           const [],
+      carrera: json['carrera'] as String?,
+      tipoVerificacion: json['tipoVerificacion'] as String?,
     );
   }
 
@@ -205,6 +209,17 @@ class Seller {
   final double rating;
   final int reviews;
   final bool verified;
+
+  /// Carrera elegida al verificar como estudiante (lista fija, ver
+  /// `constants/carreras_um.dart`). Null si no es estudiante o si se
+  /// verificó antes de que existiera este campo — el perfil cae a
+  /// "Estudiante" en ese caso.
+  final String? carrera;
+
+  /// 'estudiante' | 'empleado': alumno o personal de la universidad. Ambos
+  /// comparten [tipoCuenta] 'estudiante' y se distinguen por el dominio de
+  /// correo con el que se verificaron.
+  final String? tipoVerificacion;
 
   /// 'estudiante' | 'negocio' | 'particular'. Determina el color y la
   /// etiqueta de [InsigniaVerificada]. 'particular' es lo que la UI llama

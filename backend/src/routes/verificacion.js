@@ -20,13 +20,15 @@ const {
   VIGENCIA_MINUTOS,
 } = require('../services/otp');
 const {
-  validarCorreoInstitucional,
+  validarCorreoPorTipo,
+  validarTipoVerificacion,
   extraerMatriculaDeCorreo,
   validarNombreNegocio,
   validarLinkRedSocial,
   normalizarTelefono,
 } = require('../validation/verificacion');
 const { validateLocation } = require('../validation/sellerProfile');
+const { validarCarrera } = require('../validation/carreras');
 
 // Envío de OTP: 3 solicitudes por ventana. Se cuenta por usuario Y por
 // destino, para que N cuentas no puedan bombardear un correo/teléfono ajeno
@@ -81,9 +83,18 @@ function crearRutasVerificacion({
    * de vendedores (`data.js` la mantiene como array), que si no seguiría
    * sirviendo `verified: false` hasta el próximo reinicio.
    */
-  function marcarVerificado(usuarioId, camposExtra = {}) {
+  /**
+   * @param camposSellers Columnas adicionales a copiar a `sellers` en la
+   * misma transacción (p. ej. `carrera`), además de `verified`. Es el mismo
+   * patrón que `verified`: una bandera rápida en `sellers` para no tener que
+   * hacer join contra `verificaciones` solo para mostrar el dato en el perfil.
+   */
+  function marcarVerificado(usuarioId, camposExtra = {}, camposSellers = {}) {
     const columnas = Object.keys(camposExtra);
     const asignaciones = columnas.map(c => `${c} = @${c}`).join(', ');
+
+    const columnasSellers = Object.keys(camposSellers);
+    const asignacionesSellers = columnasSellers.map(c => `${c} = @${c}`).join(', ');
 
     getDb().transaction(() => {
       getDb()
@@ -102,7 +113,11 @@ function crearRutasVerificacion({
            WHERE usuario_id = @usuarioId`,
         )
         .run({ usuarioId, fecha: ahora(), ...camposExtra });
-      getDb().prepare('UPDATE sellers SET verified = 1 WHERE id = ?').run(usuarioId);
+      getDb()
+        .prepare(
+          `UPDATE sellers SET verified = 1${asignacionesSellers ? ', ' + asignacionesSellers : ''} WHERE id = @usuarioId`,
+        )
+        .run({ usuarioId, ...camposSellers });
     })();
 
     refrescarSellers();
@@ -121,7 +136,16 @@ function crearRutasVerificacion({
         return res.status(404).json({ error: 'Cuenta no encontrada.' });
       }
       if (seller.verified) {
-        return res.status(409).json({ error: 'Tu cuenta ya está verificada.' });
+        // `ya_verificado` es la señal que el cliente usa para distinguir
+        // este 409 (nada que corregir, solo refrescar y cerrar la pantalla)
+        // de los 409 de "correo/teléfono ya registrado en otra cuenta" más
+        // abajo en este archivo, que sí traen un error que el usuario debe
+        // ver y corregir. Antes se distinguían solo por el status code, y
+        // ambos casos comparten 409 — el cliente los confundía.
+        return res.status(409).json({
+          error: 'Tu cuenta ya está verificada.',
+          ya_verificado: true,
+        });
       }
       const tipo = seller.tipo_cuenta || 'particular';
       if (tipo !== tipoEsperado) {
@@ -232,7 +256,9 @@ function crearRutasVerificacion({
     try {
       resultadoEnvio = await adaptador.enviarCodigo(destino, codigo);
     } catch (err) {
-      console.error('Error enviando código de verificación:', err.message);
+      console.error(
+        `[verificacion] Envío fallido (code=${err.code}): ${err.message}`,
+      );
       return res.status(502).json({
         error: 'No pudimos enviar el código en este momento. Inténtalo de nuevo.',
       });
@@ -281,7 +307,7 @@ function crearRutasVerificacion({
   }
 
   /** Valida el código recibido y marca verificado si corresponde. */
-  function confirmarOtp(res, { verificacion, columnaCodigo, columnaExpira }) {
+  function confirmarOtp(res, { verificacion, columnaCodigo, columnaExpira, camposSellers = {} }) {
     const resultado = verificarCodigo(
       typeof res.req.body.codigo_otp === 'string' ? res.req.body.codigo_otp.trim() : '',
       verificacion[columnaCodigo],
@@ -289,7 +315,7 @@ function crearRutasVerificacion({
     );
 
     if (resultado.ok) {
-      marcarVerificado(verificacion.usuario_id);
+      marcarVerificado(verificacion.usuario_id, {}, camposSellers);
       return res.json({
         verificado: true,
         estado: 'verificado',
@@ -349,28 +375,60 @@ function crearRutasVerificacion({
       // correo con espacios no crean filas distintas para la misma persona.
       const correo = String(req.body.correo_institucional ?? '').trim().toLowerCase();
 
+      // El tipo lo declara el cliente EXPLÍCITAMENTE en vez de deducirse del
+      // dominio: así el servidor puede contrastar una cosa contra la otra en
+      // lugar de creerle al formato del correo.
+      const tipo = String(req.body.tipo ?? '').trim();
+      const errorTipo = validarTipoVerificacion(tipo);
+      if (errorTipo) {
+        return res.status(400).json({ error: errorTipo, campo: 'tipo' });
+      }
+      const esEmpleado = tipo === 'empleado';
+
       // La app ya valida el formato, pero un cliente puede llamar al endpoint
-      // directamente: esta es la validación que cuenta.
-      const errorCorreo = validarCorreoInstitucional(correo);
+      // directamente: esta es la validación que cuenta. Se valida contra las
+      // reglas del tipo DECLARADO, así que un correo de alumno enviado como
+      // tipo='empleado' (o al revés) se rechaza en vez de colarse por el
+      // flujo con menos requisitos.
+      const errorCorreo = validarCorreoPorTipo(correo, tipo);
       if (errorCorreo) {
         return res.status(400).json({ error: errorCorreo, campo: 'correo_institucional' });
       }
 
-      // La matrícula ya no llega en el cuerpo: son los 7 dígitos del correo,
-      // extraídos con regex (nunca con substring, que aceptaría cualquier
-      // cosa antes del arroba).
-      const matricula = extraerMatriculaDeCorreo(correo);
-      if (!matricula) {
-        return res.status(400).json({
-          error: 'Tu correo institucional debe empezar con tu matrícula de 7 dígitos',
-          campo: 'correo_institucional',
-        });
+      // Solo el alumno tiene matrícula, y no llega en el cuerpo: son los 7
+      // dígitos del correo, extraídos con regex (nunca con substring, que
+      // aceptaría cualquier cosa antes del arroba). El personal no tiene, así
+      // que se guarda null.
+      let matricula = null;
+      if (!esEmpleado) {
+        matricula = extraerMatriculaDeCorreo(correo);
+        if (!matricula) {
+          return res.status(400).json({
+            error: 'Tu correo institucional debe empezar con tu matrícula de 7 dígitos',
+            campo: 'correo_institucional',
+          });
+        }
+      }
+
+      // La carrera aplica solo al alumno. Para el personal se guarda null y
+      // NO se valida: la app ni siquiera muestra el campo.
+      let carrera = null;
+      if (!esEmpleado) {
+        // La app ya solo deja elegir de la lista fija, pero un cliente puede
+        // llamar al endpoint directamente: esta es la validación que cuenta.
+        carrera = String(req.body.carrera ?? '').trim();
+        const errorCarrera = validarCarrera(carrera);
+        if (errorCarrera) {
+          return res.status(400).json({ error: errorCarrera, campo: 'carrera' });
+        }
       }
 
       // Un correo institucional identifica a una persona: no puede respaldar
       // dos cuentas verificadas. Se comprueba también por matrícula, porque
       // una misma matrícula con dos dominios institucionales distintos sería
-      // la misma persona con dos cuentas.
+      // la misma persona con dos cuentas. Para el personal `matricula` es
+      // null y esa mitad de la condición nunca casa (NULL = NULL no es
+      // verdadero en SQL), así que solo cuenta el correo.
       const yaUsado = getDb()
         .prepare(
           `SELECT correo_institucional FROM verificaciones
@@ -396,7 +454,10 @@ function crearRutasVerificacion({
         columnaCodigo: 'codigo_otp_email',
         columnaExpira: 'codigo_otp_email_expira',
         adaptador: mailer,
-        camposExtra: { matricula },
+        // Se reescriben SIEMPRE los tres, también con null: si alguien pidió
+        // primero un código como alumno y luego cambia a personal, la
+        // matrícula y la carrera de aquel intento tienen que desaparecer.
+        camposExtra: { matricula, carrera, tipo_verificacion: tipo },
       });
     },
   );
@@ -411,6 +472,14 @@ function crearRutasVerificacion({
         verificacion,
         columnaCodigo: 'codigo_otp_email',
         columnaExpira: 'codigo_otp_email_expira',
+        // Copia a `sellers` lo capturado en la solicitud para que el perfil
+        // lo muestre sin join contra `verificaciones`. La carrera va como
+        // null para el personal, que es justo lo que hace que el perfil
+        // muestre "Personal UM" en vez de una carrera.
+        camposSellers: {
+          carrera: verificacion.carrera ?? null,
+          tipo_verificacion: verificacion.tipo_verificacion ?? null,
+        },
       });
     },
   );
