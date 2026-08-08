@@ -13,6 +13,7 @@ import '../services/recent_products_service.dart';
 import '../services/view_cooldown.dart';
 import '../widgets/badges.dart';
 import '../widgets/payment_methods.dart';
+import '../widgets/product_comments_section.dart';
 import '../widgets/product_image_carousel.dart';
 import '../widgets/price_tag.dart';
 import '../widgets/user_role.dart';
@@ -48,9 +49,19 @@ String friendlyErrorMessage(
 }
 
 class ProductDetailScreen extends StatefulWidget {
-  const ProductDetailScreen({super.key, required this.product});
+  const ProductDetailScreen({
+    super.key,
+    required this.product,
+    this.irAComentarios = false,
+  });
 
   final Product product;
+
+  /// Abre la pantalla ya desplazada hasta la sección de comentarios. Lo usan
+  /// el deep link de la notificación push ("comentaron tu publicación") y la
+  /// pestaña "Comentarios" del perfil: en ambos casos se viene POR un
+  /// comentario, y aterrizar arriba del todo obliga a buscarlo a mano.
+  final bool irAComentarios;
 
   @override
   State<ProductDetailScreen> createState() => _ProductDetailScreenState();
@@ -70,6 +81,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   late Product _product;
   double? _lowest30d;
   late final AnimationController _priceTagController;
+
+  /// Ancla de la sección de comentarios para [widget.irAComentarios].
+  final GlobalKey _comentariosKey = GlobalKey();
 
   Product get product => _product;
 
@@ -96,6 +110,28 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     // del historial de precios.
     _refreshProductFromApi();
     _registerViewIfNeeded();
+    if (widget.irAComentarios) _desplazarAComentarios();
+  }
+
+  /// Lleva la vista hasta el hilo de comentarios.
+  ///
+  /// Espera un frame extra tras el primero a propósito: en el primero la
+  /// sección todavía está pintando su esqueleto de carga, que es más corto
+  /// que el contenido real, y el desplazamiento quedaría a media altura
+  /// cuando lleguen los comentarios.
+  void _desplazarAComentarios() {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future<void>.delayed(AppAnimations.medium);
+      if (!mounted) return;
+      final contexto = _comentariosKey.currentContext;
+      if (contexto == null) return;
+      await Scrollable.ensureVisible(
+        contexto,
+        duration: AppAnimations.slow,
+        curve: AppAnimations.easeOut,
+        alignment: 0.1,
+      );
+    });
   }
 
   /// Registra una vista de detalle (fire-and-forget, no bloquea la UI),
@@ -543,6 +579,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       ),
                     ],
                   ),
+                  // ─── Comentarios — no aplica a "se busca" ──────────
+                  // Una publicación "se busca" no es un producto que alguien
+                  // haya comprado, así que un hilo de comentarios ahí no
+                  // respalda a nadie; para eso ya existe responder al post.
+                  if (!product.isWantedPost) ...[
+                    const SizedBox(height: 28),
+                    ProductCommentsSection(
+                      key: _comentariosKey,
+                      productId: product.id,
+                      productOwnerId: product.seller.id,
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   TextButton.icon(
                     onPressed: () {

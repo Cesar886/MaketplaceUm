@@ -1237,4 +1237,111 @@ class ApiService {
     }
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
+
+  // ─── Comentarios ──────────────────────────────────────────
+
+  /// Hilo de comentarios de una publicación. Lectura abierta: no manda token
+  /// y funciona igual sin sesión, que es justo el punto — los comentarios
+  /// son el respaldo social del vendedor ante quien todavía no se registra.
+  ///
+  /// [cursor] viene del `nextCursor` de la página anterior; null pide la
+  /// primera.
+  static Future<ProductCommentPage> getProductComments(
+    String productId, {
+    String? cursor,
+    int? limit,
+  }) async {
+    final res = await _getWithRetry(
+      _uri('/products/$productId/comments', {
+        if (cursor != null) 'cursor': cursor,
+        if (limit != null) 'limit': '$limit',
+      }),
+    );
+    if (res.statusCode != 200) {
+      throw Exception('No se pudieron cargar los comentarios');
+    }
+    return ProductCommentPage.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+
+  /// Publica un comentario. Requiere sesión CON verificación institucional.
+  ///
+  /// El 403 se traduce a [ComentarioNoVerificadoException] en vez de a un
+  /// `Exception` genérico porque la UI reacciona distinto: no es un error
+  /// que mostrar en un snackbar, es la señal de cambiar el input por la
+  /// tarjeta que lleva a verificarse.
+  static Future<ProductComment> postProductComment(
+    String productId,
+    String texto,
+  ) async {
+    final res = await _client.post(
+      _uri('/products/$productId/comments'),
+      headers: _authHeaders,
+      body: jsonEncode({'texto': texto}),
+    );
+
+    if (res.statusCode == 403) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw ComentarioNoVerificadoException(
+        body['error'] as String? ?? 'Verifica tu cuenta para comentar',
+      );
+    }
+    if (res.statusCode != 201) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['error'] ?? 'No se pudo publicar el comentario');
+    }
+
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return ProductComment.fromJson(body['comment'] as Map<String, dynamic>);
+  }
+
+  /// Borra un comentario. El backend solo lo permite al autor o al dueño de
+  /// la publicación, y el borrado es lógico (la fila se marca, no se va).
+  static Future<void> deleteProductComment(
+    String productId,
+    String commentId,
+  ) async {
+    final res = await _client.delete(
+      _uri('/products/$productId/comments/$commentId'),
+      headers: _authHeaders,
+    );
+    if (res.statusCode != 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['error'] ?? 'No se pudo eliminar el comentario');
+    }
+  }
+
+  /// Comentarios que OTROS dejaron en las publicaciones de [userId] — la
+  /// pestaña "Comentarios" del perfil. Ojo: recibidos, no escritos; es
+  /// prueba social del vendedor, no su historial de actividad.
+  static Future<ProductCommentPage> getCommentsForUser(
+    String userId, {
+    String? cursor,
+    int? limit,
+  }) async {
+    final res = await _getWithRetry(
+      _uri('/users/$userId/comments', {
+        if (cursor != null) 'cursor': cursor,
+        if (limit != null) 'limit': '$limit',
+      }),
+    );
+    if (res.statusCode != 200) {
+      throw Exception('No se pudieron cargar los comentarios');
+    }
+    return ProductCommentPage.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+}
+
+/// El backend rechazó el comentario porque la cuenta no está verificada.
+/// Tipo propio para que la UI la distinga de un fallo cualquiera de red.
+class ComentarioNoVerificadoException implements Exception {
+  const ComentarioNoVerificadoException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
 }

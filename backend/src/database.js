@@ -194,7 +194,7 @@ function initDatabase() {
     -- El borrado es lógico: la fila se queda y se marca. Un comentario que
     -- retiró su autor y uno que moderó el dueño del producto son casos
     -- distintos, y si alguien reclama por una publicación hay que poder
-    -- distinguirlos — de ahí `deleted_by` además de `deleted_at`.
+    -- distinguirlos — de ahí deleted_by además de deleted_at.
     --
     -- Sin FOREIGN KEY hacia sellers a propósito: ninguna tabla de esta base
     -- la tiene (messages.sender_id, notifications.user_id, conversations.*

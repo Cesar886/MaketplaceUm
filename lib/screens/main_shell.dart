@@ -79,6 +79,11 @@ class MainShellState extends State<MainShell> {
     } else if (type == 'new_product' && productId != null) {
       // Navegar al detalle del producto
       _openProduct(productId);
+    } else if (type == 'product_comment' && productId != null) {
+      // "Comentaron tu publicación": se abre el detalle YA desplazado al
+      // hilo. Quien toca esta notificación viene a leer el comentario, no a
+      // revisar el producto desde arriba.
+      _openProduct(productId, irAComentarios: true);
     }
   }
 
@@ -122,13 +127,19 @@ class MainShellState extends State<MainShell> {
     );
   }
 
-  Future<void> _openProduct(String productId) async {
+  Future<void> _openProduct(
+    String productId, {
+    bool irAComentarios = false,
+  }) async {
     try {
       final product = await ApiService.getProduct(productId);
       if (!mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => ProductDetailScreen(product: product),
+          builder: (_) => ProductDetailScreen(
+            product: product,
+            irAComentarios: irAComentarios,
+          ),
         ),
       );
     } catch (_) {}

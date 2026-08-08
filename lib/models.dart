@@ -970,3 +970,102 @@ class ChatMessage {
   final bool read;
   final String? imageUrl;
 }
+
+/// Un comentario en una publicación.
+///
+/// [author] es un [Seller] completo a propósito, aunque el backend solo
+/// mande un puñado de campos: así el hilo puede usar `subtituloRol()` e
+/// `InsigniaVerificada` —los mismos widgets que el perfil y el detalle— en
+/// vez de reimplementar el copy del rol y desincronizarse de las otras tres
+/// pantallas. Los campos que el endpoint no manda (teléfono, rating) caen a
+/// los defaults de [Seller.fromJson] y ningún widget del hilo los lee.
+class ProductComment {
+  const ProductComment({
+    required this.id,
+    required this.productId,
+    required this.texto,
+    required this.createdAt,
+    required this.author,
+    this.productTitle,
+    this.productImage,
+  });
+
+  factory ProductComment.fromJson(Map<String, dynamic> json) {
+    final producto = json['product'] as Map<String, dynamic>?;
+    return ProductComment(
+      id: json['id'] as String? ?? '',
+      // En el feed del perfil el id del producto viene dentro de `product`,
+      // que es también de donde salen título y miniatura.
+      productId:
+          json['productId'] as String? ?? producto?['id'] as String? ?? '',
+      texto: json['texto'] as String? ?? '',
+      createdAt: _parseUtc(json['createdAt'] as String?),
+      author: Seller.fromJson(
+        (json['author'] as Map<String, dynamic>?) ?? const {},
+      ),
+      productTitle: producto?['title'] as String?,
+      productImage: producto?['image'] as String?,
+    );
+  }
+
+  /// El backend emite ISO-8601 con 'Z' (ver database.js). Se convierte a
+  /// hora local para que el tiempo relativo cuadre con el reloj del
+  /// dispositivo; si por lo que sea llegara sin zona, se asume UTC en vez de
+  /// local, que es lo que realmente guarda SQLite.
+  static DateTime _parseUtc(String? raw) {
+    if (raw == null || raw.isEmpty) return DateTime.now();
+    final normalizado = raw.contains('T') ? raw : raw.replaceFirst(' ', 'T');
+    final conZona =
+        normalizado.endsWith('Z') ||
+            RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(normalizado)
+        ? normalizado
+        : '${normalizado}Z';
+    return DateTime.tryParse(conZona)?.toLocal() ?? DateTime.now();
+  }
+
+  final String id;
+  final String productId;
+  final String texto;
+  final DateTime createdAt;
+  final Seller author;
+
+  /// Título del producto comentado. Solo lo trae `GET /api/users/:id/comments`
+  /// (la pestaña del perfil); dentro del hilo de un producto es null porque
+  /// ya se sabe en qué publicación estás.
+  final String? productTitle;
+
+  /// Ruta relativa de la primera foto del producto ('/uploads/x.webp'), o
+  /// null si la publicación no tiene fotos. Mismo alcance que [productTitle].
+  final String? productImage;
+}
+
+/// Una página de comentarios: las filas más el cursor de la siguiente.
+class ProductCommentPage {
+  const ProductCommentPage({
+    required this.comments,
+    required this.total,
+    this.nextCursor,
+  });
+
+  factory ProductCommentPage.fromJson(Map<String, dynamic> json) {
+    return ProductCommentPage(
+      comments: ((json['comments'] as List<dynamic>?) ?? const [])
+          .map((e) => ProductComment.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      total: (json['total'] as num?)?.toInt() ?? 0,
+      nextCursor: json['nextCursor'] as String?,
+    );
+  }
+
+  final List<ProductComment> comments;
+
+  /// Total de comentarios vivos, no el tamaño de esta página. Viene en cada
+  /// página para que el contador del header siga siendo correcto después de
+  /// paginar o de borrar uno.
+  final int total;
+
+  /// Null cuando ya no hay más páginas.
+  final String? nextCursor;
+
+  bool get hasMore => nextCursor != null;
+}

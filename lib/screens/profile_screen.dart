@@ -20,6 +20,7 @@ import 'product_detail_screen.dart';
 import 'profile/edit_profile_screen.dart';
 import 'profile/help_screen.dart';
 import 'profile/highlight_plans_screen.dart';
+import 'profile/my_comments_screen.dart';
 import 'profile/safety_tips_screen.dart';
 import 'recent_products_screen.dart';
 
@@ -344,6 +345,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
             ),
+            // Comentarios RECIBIDOS, no escritos: lo que respalda a un
+            // vendedor es lo que otros dijeron de sus publicaciones. Solo
+            // aparece con el id del backend ya resuelto — sin él no hay a
+            // quién consultarle los comentarios.
+            if (auth.backendSellerId != null)
+              _ProfileOption(
+                icon: Icons.mode_comment_rounded,
+                title: 'Comentarios',
+                subtitle: 'Lo que otros comentaron en tus publicaciones',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        MyCommentsScreen(userId: auth.backendSellerId!),
+                  ),
+                ),
+              ),
             _ProfileOption(
               icon: Icons.shield_rounded,
               title: 'Confianza y seguridad',

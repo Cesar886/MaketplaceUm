@@ -6,6 +6,7 @@ import '../app_theme.dart';
 import '../models.dart';
 import '../services/api_service.dart';
 import '../widgets/badges.dart';
+import '../widgets/comments_received_list.dart';
 import '../widgets/payment_methods.dart';
 import '../widgets/product_card.dart';
 import '../widgets/seller_profile_skeleton.dart';
@@ -25,16 +26,30 @@ class SellerProfileScreen extends StatefulWidget {
   State<SellerProfileScreen> createState() => _SellerProfileScreenState();
 }
 
-class _SellerProfileScreenState extends State<SellerProfileScreen> {
+class _SellerProfileScreenState extends State<SellerProfileScreen>
+    with SingleTickerProviderStateMixin {
   Seller? _seller;
   List<Product> _products = [];
   bool _loading = true;
   String? _error;
 
+  late final TabController _tabs = TabController(length: 2, vsync: this);
+
   @override
   void initState() {
     super.initState();
+    // La pestaña no vive en un TabBarView (ver _buildContent), así que el
+    // contenido no se reconstruye solo al cambiarla.
+    _tabs.addListener(() {
+      if (!_tabs.indexIsChanging && mounted) setState(() {});
+    });
     _load();
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -235,9 +250,35 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
           ],
         ],
         const SizedBox(height: 24),
-        Text('Publicaciones', style: AppTypography.heading(16)),
-        const SizedBox(height: 12),
-        if (_products.isEmpty)
+        // Pestañas planas: sin TabBarView a propósito. Un TabBarView necesita
+        // altura acotada y obligaría a anidar un scroll dentro de este
+        // ListView; así la página entera sigue siendo UN solo scroll y el
+        // encabezado del vendedor se va con él, que es como se comportaba
+        // antes de que hubiera pestañas.
+        TabBar(
+          controller: _tabs,
+          labelStyle: AppTypography.heading(14.5),
+          unselectedLabelStyle: AppTypography.body(14.5),
+          labelColor: context.colors.ink,
+          unselectedLabelColor: context.colors.muted,
+          indicatorColor: context.colors.accent,
+          indicatorSize: TabBarIndicatorSize.label,
+          indicatorWeight: 2,
+          dividerColor: context.colors.border.withValues(alpha: 0.5),
+          tabs: const [
+            Tab(text: 'Publicaciones'),
+            Tab(text: 'Comentarios'),
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (_tabs.index == 1)
+          CommentsReceivedList(
+            userId: seller.id,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
+          )
+        else if (_products.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
             child: Center(

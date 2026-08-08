@@ -49,6 +49,7 @@ const routes = [
   require('./routes/feed'),
   require('./routes/verificacion'),
   require('./routes/public'),
+  require('./routes/comments'),
 ];
 
 const app = express();
@@ -93,6 +94,20 @@ io.on('connection', (socket) => {
 
   socket.on('typing:stop', ({ conversationId, userId }) => {
     socket.to(`conv:${conversationId}`).emit('typing:stop', { userId });
+  });
+
+  // Unirse a la sala de un producto: quien tenga abierto ese detalle recibe
+  // los comentarios nuevos sin recargar (ver routes/comments.js). Mismo
+  // patrón que las salas de conversación, con prefijo distinto para que un
+  // id de producto y uno de conversación nunca colisionen en la misma sala.
+  socket.on('join:product', (productId) => {
+    socket.join(`product:${productId}`);
+    console.log(`  → ${socket.id} se unió a product:${productId}`);
+  });
+
+  socket.on('leave:product', (productId) => {
+    socket.leave(`product:${productId}`);
+    console.log(`  → ${socket.id} salió de product:${productId}`);
   });
 
   // Unirse a una sala personal para recibir notificaciones de nuevas conversaciones

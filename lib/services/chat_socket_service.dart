@@ -3,16 +3,22 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
-import 'api_service.dart';
 import '../config/app_config.dart';
 
-/// Servicio para manejar la conexión Socket.IO en tiempo real para el chat.
+/// Servicio para manejar la conexión Socket.IO en tiempo real.
 ///
 /// Se conecta al mismo backend que la API REST y maneja eventos de:
 /// - Mensajes nuevos (new:message)
 /// - Mensajes eliminados (message:deleted)
 /// - Indicador de escritura (typing:start / typing:stop)
 /// - Actualización de conversaciones (conversation:updated)
+/// - Comentarios de producto (new:comment / comment:deleted)
+///
+/// Conserva el nombre `ChatSocketService` aunque ya sirva también a los
+/// comentarios: es UNA sola conexión Socket.IO para toda la app (el backend
+/// distingue por prefijo de sala, `conv:` vs `product:`), y abrir un segundo
+/// socket solo para el detalle de producto sería una conexión de más por
+/// dispositivo a cambio de nada.
 class ChatSocketService {
   ChatSocketService._();
   static final ChatSocketService instance = ChatSocketService._();
@@ -29,9 +35,20 @@ class ChatSocketService {
       StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<String> _convUpdateController =
       StreamController<String>.broadcast();
+  final StreamController<Map<String, dynamic>> _commentController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _commentDeletedController =
+      StreamController<Map<String, dynamic>>.broadcast();
 
   /// Stream de mensajes nuevos: emite { message, conversationId }
   Stream<Map<String, dynamic>> get onNewMessage => _messageController.stream;
+
+  /// Stream de comentarios nuevos: emite { productId, comment }
+  Stream<Map<String, dynamic>> get onNewComment => _commentController.stream;
+
+  /// Stream de comentarios eliminados: emite { productId, commentId }
+  Stream<Map<String, dynamic>> get onCommentDeleted =>
+      _commentDeletedController.stream;
 
   /// Stream de IDs de mensajes eliminados
   Stream<String> get onMessageDeleted => _deletedController.stream;
@@ -44,9 +61,24 @@ class ChatSocketService {
 
   bool get isConnected => _connected;
 
-  /// Inicia la conexión Socket.IO
+  /// Inicia la conexión Socket.IO. Idempotente: se puede llamar desde
+  /// cualquier pantalla que necesite tiempo real, tantas veces como haga
+  /// falta.
   void connect() {
-    if (_socket != null && _connected) return;
+    // El guardia mira `_socket`, NO `_connected`. Con `_connected` bastaba
+    // mientras solo el chat llamaba aquí, pero un segundo llamador (el
+    // detalle de producto, para los comentarios) entra fácilmente mientras
+    // el socket todavía está haciendo el handshake: `_socket` ya existe y
+    // `_connected` sigue en false. En ese caso se volvía a ejecutar todo lo
+    // de abajo, y `io.io()` devuelve el socket YA CACHEADO para esta URI, así
+    // que cada `.on(...)` se sumaba al anterior en vez de reemplazarlo. El
+    // síntoma es cada mensaje y cada comentario apareciendo dos veces.
+    if (_socket != null) {
+      // Existe pero se cayó (p. ej. la app volvió de segundo plano): se
+      // reabre el transporte sin volver a registrar los handlers.
+      if (!_connected) _socket!.connect();
+      return;
+    }
 
     final uri = Uri.parse(AppConfig.socketUrl);
     _socket = io.io(
@@ -97,6 +129,18 @@ class ChatSocketService {
       }
     });
 
+    _socket!.on('new:comment', (data) {
+      if (data is Map<String, dynamic>) {
+        _commentController.add(data);
+      }
+    });
+
+    _socket!.on('comment:deleted', (data) {
+      if (data is Map<String, dynamic>) {
+        _commentDeletedController.add(data);
+      }
+    });
+
     _socket!.onConnectError((_) {
       debugPrint('⚠️ ChatSocket error de conexión');
     });
@@ -112,6 +156,20 @@ class ChatSocketService {
   /// Salir de la sala de una conversación
   void leaveConversation(String conversationId) {
     _socket?.emit('leave:conversation', [conversationId]);
+  }
+
+  /// Unirse a la sala de un producto para recibir sus comentarios en vivo.
+  ///
+  /// Se llama al entrar al detalle y hay que salir en el `dispose` de la
+  /// pantalla: la conexión es única y compartida, así que una sala que no se
+  /// abandona sigue recibiendo eventos de un producto que ya nadie mira.
+  void joinProduct(String productId) {
+    _socket?.emit('join:product', [productId]);
+  }
+
+  /// Salir de la sala de un producto.
+  void leaveProduct(String productId) {
+    _socket?.emit('leave:product', [productId]);
   }
 
   /// Registrar el userId para recibir notificaciones de nuevas conversaciones
@@ -135,9 +193,14 @@ class ChatSocketService {
     });
   }
 
-  /// Desconectar y limpiar recursos
+  /// Desconectar y limpiar recursos.
+  ///
+  /// Usa `dispose()` y no `disconnect()`: este último cierra el transporte
+  /// pero DEJA los listeners puestos, y como `io.io()` devuelve el socket
+  /// cacheado para la misma URI, el siguiente [connect] volvería a
+  /// registrarlos encima de los viejos y cada evento llegaría duplicado.
   void disconnect() {
-    _socket?.disconnect();
+    _socket?.dispose();
     _socket = null;
     _connected = false;
   }
@@ -149,5 +212,7 @@ class ChatSocketService {
     _deletedController.close();
     _typingController.close();
     _convUpdateController.close();
+    _commentController.close();
+    _commentDeletedController.close();
   }
 }
