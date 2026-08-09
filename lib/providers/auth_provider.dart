@@ -499,6 +499,11 @@ class AuthProvider extends ChangeNotifier {
     double? locationLat,
     double? locationLng,
     List<String>? paymentMethods,
+    String? facebookUrl,
+    String? instagramUrl,
+    String? whatsappNumber,
+    String? tiktokUrl,
+    String? twitterUrl,
   }) async {
     if (logoPath != null && _backendSellerId != null) {
       await ApiService.uploadBusinessLogo(
@@ -513,7 +518,12 @@ class AuthProvider extends ChangeNotifier {
         businessCategory != null ||
         businessHours != null ||
         (locationLat != null && locationLng != null) ||
-        paymentMethods != null;
+        paymentMethods != null ||
+        facebookUrl != null ||
+        instagramUrl != null ||
+        whatsappNumber != null ||
+        tiktokUrl != null ||
+        twitterUrl != null;
     if (hasProfileFields && _backendSellerId != null) {
       await ApiService.updateSellerProfile(
         sellerId: _backendSellerId!,
@@ -525,6 +535,11 @@ class AuthProvider extends ChangeNotifier {
         locationLat: locationLat,
         locationLng: locationLng,
         paymentMethods: paymentMethods,
+        facebookUrl: facebookUrl,
+        instagramUrl: instagramUrl,
+        whatsappNumber: whatsappNumber,
+        tiktokUrl: tiktokUrl,
+        twitterUrl: twitterUrl,
       );
     }
     if (name != null || phone != null) {
