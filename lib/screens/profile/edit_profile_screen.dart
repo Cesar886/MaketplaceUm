@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
@@ -8,6 +9,7 @@ import '../../app_theme.dart';
 import '../../models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
+import '../../validation/social_links.dart';
 import '../../widgets/business_hours_editor.dart';
 import '../../widgets/location_picker.dart';
 import '../../widgets/payment_methods.dart';
@@ -36,6 +38,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late Map<int, BusinessHoursRange> _businessHours;
   double? _locationLat;
   double? _locationLng;
+  late final TextEditingController _facebookController;
+  late final TextEditingController _instagramController;
+  late final TextEditingController _whatsappController;
+  late final TextEditingController _tiktokController;
+  late final TextEditingController _twitterController;
   late final Set<String> _selectedPaymentMethods;
   bool _showPaymentMethodsError = false;
 
@@ -53,6 +60,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _businessHours = Map.of(widget.seller.businessHours);
     _locationLat = widget.seller.locationLat;
     _locationLng = widget.seller.locationLng;
+    _facebookController = TextEditingController(
+      text: widget.seller.facebookUrl ?? '',
+    );
+    _instagramController = TextEditingController(
+      text: widget.seller.instagramUrl ?? '',
+    );
+    _whatsappController = TextEditingController(
+      text: widget.seller.whatsappNumber ?? '',
+    );
+    _tiktokController = TextEditingController(
+      text: widget.seller.tiktokUrl ?? '',
+    );
+    _twitterController = TextEditingController(
+      text: widget.seller.twitterUrl ?? '',
+    );
     _selectedPaymentMethods = Set.of(widget.seller.paymentMethods);
     if (_isBusiness) _loadCategories();
   }
@@ -72,6 +94,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _nameController.dispose();
     _phoneController.dispose();
     _descriptionController.dispose();
+    _facebookController.dispose();
+    _instagramController.dispose();
+    _whatsappController.dispose();
+    _tiktokController.dispose();
+    _twitterController.dispose();
     super.dispose();
   }
 
@@ -130,6 +157,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         locationLat: _isBusiness ? _locationLat : null,
         locationLng: _isBusiness ? _locationLng : null,
         paymentMethods: _selectedPaymentMethods.toList(),
+        facebookUrl: _isBusiness ? _facebookController.text.trim() : null,
+        instagramUrl: _isBusiness ? _instagramController.text.trim() : null,
+        whatsappNumber: _isBusiness ? _whatsappController.text.trim() : null,
+        tiktokUrl: _isBusiness ? _tiktokController.text.trim() : null,
+        twitterUrl: _isBusiness ? _twitterController.text.trim() : null,
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -312,6 +344,70 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         ? 'Cambiar ubicación'
                         : 'Elegir ubicación en el mapa',
                   ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'Redes sociales (opcional)',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: context.colors.muted,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _facebookController,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'Facebook',
+                    hintText: 'facebook.com/tunegocio',
+                    prefixIcon: FaIcon(FontAwesomeIcons.facebook, size: 20),
+                  ),
+                  validator: (v) => validateSocialUrl('facebook', v ?? ''),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _instagramController,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'Instagram',
+                    hintText: 'instagram.com/tunegocio',
+                    prefixIcon: FaIcon(FontAwesomeIcons.instagram, size: 20),
+                  ),
+                  validator: (v) => validateSocialUrl('instagram', v ?? ''),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _whatsappController,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'WhatsApp',
+                    hintText: '521XXXXXXXXXX (con código de país)',
+                    prefixIcon: FaIcon(FontAwesomeIcons.whatsapp, size: 20),
+                  ),
+                  validator: (v) => validateWhatsappNumber(v ?? ''),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _tiktokController,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'TikTok',
+                    hintText: 'tiktok.com/@tunegocio',
+                    prefixIcon: FaIcon(FontAwesomeIcons.tiktok, size: 20),
+                  ),
+                  validator: (v) => validateSocialUrl('tiktok', v ?? ''),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _twitterController,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'X / Twitter',
+                    hintText: 'x.com/tunegocio',
+                    prefixIcon: FaIcon(FontAwesomeIcons.xTwitter, size: 20),
+                  ),
+                  validator: (v) => validateSocialUrl('twitter', v ?? ''),
                 ),
               ],
               const SizedBox(height: 20),
