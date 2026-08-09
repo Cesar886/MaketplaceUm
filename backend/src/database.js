@@ -1974,7 +1974,12 @@ function palabrasClaveDeTitulo(titulo) {
 
 /**
  * Productos parecidos al que se está viendo, para "También te puede
- * interesar". Dos tramos por orden de prioridad, en UNA sola consulta:
+ * interesar". La disponibilidad es prioridad, no exclusión: primero se llena
+ * el cupo con productos disponibles y solo si faltan espacios se completa con
+ * no disponibles (vendido/pausado/agotado, ver `SQL_PRODUCTO_ACTIVO`),
+ * siempre después de TODOS los disponibles, nunca intercalados. Dentro de
+ * cada uno de esos dos grupos, dos tramos de relevancia por orden de
+ * prioridad, en UNA sola consulta:
  *
  *   0. misma categoría;
  *   1. si falta cupo, coincidencia de palabras del título.
@@ -2003,6 +2008,7 @@ function getRelatedProducts(product, { limit = 10 } = {}) {
   const rows = db.prepare(`
     WITH product_stats AS (${SQL_STATS_POPULARIDAD})
     SELECT p.*,
+      CASE WHEN ${SQL_PRODUCTO_ACTIVO} THEN 0 ELSE 1 END AS tramoDisponibilidad,
       CASE WHEN p.category = @category THEN 0 ELSE 1 END AS tramo,
       (${SQL_SCORE_RELACIONADOS}) AS score
     FROM products p
@@ -2010,8 +2016,7 @@ function getRelatedProducts(product, { limit = 10 } = {}) {
     WHERE p.id != @productId
       AND (@seller IS NULL OR p.seller IS NULL OR p.seller != @seller)
       AND (p.category = @category OR ${condicionKeywords})
-      AND ${SQL_PRODUCTO_ACTIVO}
-    ORDER BY tramo ASC, score DESC, p.created_at DESC
+    ORDER BY tramoDisponibilidad ASC, tramo ASC, score DESC, p.created_at DESC
     LIMIT @limit
   `).all({
     ...paramsScore(),

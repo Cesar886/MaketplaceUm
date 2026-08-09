@@ -10,8 +10,10 @@
 //  2. El orden por tramos. Primero misma categoría, y solo si falta cupo,
 //     coincidencia de palabras del título. Si el tramo se invirtiera, la
 //     sección seguiría llena y con productos plausibles — solo que peores.
-//  3. El filtro de activos. Recomendar algo vendido o pausado manda al
-//     usuario a un callejón sin salida.
+//  3. La prioridad de disponibilidad. Un producto vendido o pausado no debe
+//     desplazar a uno disponible igual de relevante, pero tampoco hay que
+//     esconderlo del todo: si no hay cupo suficiente de disponibles, debe
+//     aparecer como relleno, siempre después de todos los disponibles.
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -158,19 +160,61 @@ test('un producto con interacciones le gana a uno igual de reciente sin ellas', 
   assert.deepStrictEqual(relacionados, [caliente.id, frio.id]);
 });
 
-test('no recomienda productos vendidos, pausados ni agotados', () => {
+test('vendidos, pausados y agotados solo aparecen como relleno, después de todos los disponibles', () => {
   const actual = sembrarProducto({ id: 'r6_actual', category: 'cat_r6', seller: 's_yo' });
-  const vendido = sembrarProducto({ id: 'r6_vendido', category: 'cat_r6', seller: 's_a', manualStatus: 'sold' });
-  const pausado = sembrarProducto({ id: 'r6_pausado', category: 'cat_r6', seller: 's_b', manualStatus: 'paused' });
-  const agotado = sembrarProducto({ id: 'r6_agotado', category: 'cat_r6', seller: 's_c', stock: 0 });
-  const vivo = sembrarProducto({ id: 'r6_vivo', category: 'cat_r6', seller: 's_d', stock: 3 });
+  // diasAtras distinto para que el orden dentro de "no disponibles" sea
+  // determinista (el más reciente primero, igual que el resto de la sección).
+  const vendido = sembrarProducto({
+    id: 'r6_vendido', category: 'cat_r6', seller: 's_a', manualStatus: 'sold', diasAtras: 3,
+  });
+  const pausado = sembrarProducto({
+    id: 'r6_pausado', category: 'cat_r6', seller: 's_b', manualStatus: 'paused', diasAtras: 2,
+  });
+  const agotado = sembrarProducto({
+    id: 'r6_agotado', category: 'cat_r6', seller: 's_c', stock: 0, diasAtras: 1,
+  });
+  const vivo = sembrarProducto({ id: 'r6_vivo', category: 'cat_r6', seller: 's_d', stock: 3, diasAtras: 0 });
 
   const relacionados = ids(db.getRelatedProducts(actual, { limit: 10 }));
 
-  assert.deepStrictEqual(relacionados, [vivo.id]);
-  for (const fuera of [vendido, pausado, agotado]) {
-    assert.ok(!relacionados.includes(fuera.id));
-  }
+  assert.deepStrictEqual(relacionados, [vivo.id, agotado.id, pausado.id, vendido.id]);
+});
+
+test('si los disponibles ya llenan el cupo, ningún no disponible entra', () => {
+  const actual = sembrarProducto({ id: 'r6b_actual', category: 'cat_r6b', seller: 's_yo' });
+  sembrarProducto({ id: 'r6b_vendido', category: 'cat_r6b', seller: 's_a', manualStatus: 'sold' });
+  const disp1 = sembrarProducto({ id: 'r6b_disp1', category: 'cat_r6b', seller: 's_b', diasAtras: 1 });
+  const disp2 = sembrarProducto({ id: 'r6b_disp2', category: 'cat_r6b', seller: 's_c', diasAtras: 0 });
+
+  const relacionados = ids(db.getRelatedProducts(actual, { limit: 2 }));
+
+  assert.deepStrictEqual(relacionados, [disp2.id, disp1.id]);
+});
+
+test('el relleno de no disponibles respeta el mismo criterio de relación (categoría antes que keyword)', () => {
+  // Título único en todo el archivo: la base se comparte entre tests, así
+  // que reusar palabras de otro test filtraría productos ajenos por keyword.
+  const actual = sembrarProducto({
+    id: 'r6c_actual', title: 'Termo acampar reforzado', category: 'cat_r6c', seller: 's_yo',
+  });
+  const disponibleCategoria = sembrarProducto({
+    id: 'r6c_disp', category: 'cat_r6c', seller: 's_a',
+  });
+  const noDisponibleCategoria = sembrarProducto({
+    id: 'r6c_nodisp_cat', category: 'cat_r6c', seller: 's_b', manualStatus: 'sold',
+  });
+  const noDisponiblePorTitulo = sembrarProducto({
+    id: 'r6c_nodisp_titulo', title: 'Termo acampar plegable', category: 'cat_r6c_otra',
+    seller: 's_c', manualStatus: 'paused',
+  });
+
+  const relacionados = ids(db.getRelatedProducts(actual, { limit: 3 }));
+
+  assert.deepStrictEqual(
+    relacionados,
+    [disponibleCategoria.id, noDisponibleCategoria.id, noDisponiblePorTitulo.id],
+    'disponible primero; entre los no disponibles, misma categoría antes que match por título',
+  );
 });
 
 test('apartado y en negociación sí se recomiendan: siguen a la venta', () => {
