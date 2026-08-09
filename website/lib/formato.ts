@@ -32,11 +32,11 @@ export function etiquetaEstado(producto: ProductoPublico): {
     available_other_day: {
       texto: detalle.next_available_day
         ? `Disponible el ${detalle.next_available_day}`
-        : 'Disponible otro día',
+        : 'Próximamente',
       tono: 'aviso',
     },
     closed: {
-      texto: detalle.opens_at ? `Abre a las ${detalle.opens_at}` : 'Cerrado por ahora',
+      texto: detalle.opens_at ? `Disponible: ${detalle.opens_at}` : 'Cerrado',
       tono: 'neutro',
     },
     reserved: { texto: 'Apartado', tono: 'aviso' },

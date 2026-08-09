@@ -9,7 +9,6 @@ import '../services/api_service.dart';
 import '../services/favorite_products_service.dart';
 import '../services/feed_mixer.dart';
 import '../widgets/app_logo.dart';
-import '../widgets/auto_refresh.dart';
 import '../widgets/badges.dart';
 import '../widgets/home_grid_skeleton.dart';
 import '../widgets/product_card.dart';
@@ -29,7 +28,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen>
-    with AutoRefreshMixin, TickerProviderStateMixin {
+    with TickerProviderStateMixin {
   List<Product> _products = [];
   List<MarketplaceCategory> _categories = [];
   List<HighlightPlan> _highlightPlans = [];
@@ -77,9 +76,6 @@ class _HomeScreenState extends State<HomeScreen>
       curve: Interval(start.clamp(0.0, 1.0), end, curve: AppAnimations.spring),
     ).value;
   }
-
-  @override
-  Future<void> onAutoRefresh() => _loadData(silent: true);
 
   Future<void> _loadData({bool silent = false}) async {
     if (!silent && _products.isEmpty) setState(() => _loading = true);

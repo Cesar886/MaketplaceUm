@@ -160,11 +160,11 @@ class AvailabilityBadge extends StatelessWidget {
       ComputedStatus.availableOtherDay => (
         nextAvailableDay != null
             ? 'Disponible el $nextAvailableDay'
-            : 'Disponible otro día',
+            : 'Próximamente',
         AppColors.orange,
       ),
       ComputedStatus.closed => (
-        opensAt != null ? 'Abre a las $opensAt' : 'Cerrado por ahora',
+        opensAt != null ? 'Disponible: $opensAt' : 'Cerrado',
         context.colors.muted,
       ),
       ComputedStatus.reserved => ('Apartado', AppColors.orange),

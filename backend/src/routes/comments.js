@@ -1,11 +1,11 @@
 // Comentarios públicos en una publicación.
 //
 // Asimetría deliberada de permisos: LEER es abierto (cualquiera, con o sin
-// sesión, incluido un dispositivo anónimo) y ESCRIBIR exige una cuenta con
-// verificación institucional. Los comentarios son el respaldo social de un
-// vendedor dentro del campus; si los pudiera escribir cualquiera no dirían
-// nada, y si hubiera que iniciar sesión para leerlos no servirían de
-// respaldo ante quien todavía no se registra.
+// sesión, incluido un dispositivo anónimo) y ESCRIBIR exige una cuenta
+// verificada. Los comentarios son el respaldo social de un vendedor dentro
+// del campus; si los pudiera escribir cualquiera no dirían nada, y si hubiera
+// que iniciar sesión para leerlos no servirían de respaldo ante quien todavía
+// no se registra.
 
 const db = require('../database');
 const { requireAuth } = require('../auth');
@@ -30,6 +30,24 @@ const LARGO_PREVIEW = 80;
 
 function nuevoIdComentario() {
   return `cmt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * La puerta del feature: comenta cualquier cuenta VERIFICADA, del tipo que
+ * sea — alumno, personal UM, negocio o externo.
+ *
+ * Se mira `sellers.verified` y no `tipo_verificacion` porque esa columna solo
+ * se llena en el flujo institucional (OTP al correo, 'estudiante'|'empleado').
+ * Negocios y externos verifican por SMS y la dejan nula, así que usarla como
+ * puerta los excluiría aun estando verificados. `verified` es la bandera que
+ * ponen los cuatro flujos (routes/verificacion.js → marcarVerificado) y la
+ * misma que el cliente lee en /verificacion/estado, de modo que lo que el
+ * backend permite coincide con lo que la UI ofrece.
+ *
+ * @param seller Fila de `sellers`, o null/undefined si la cuenta ya no existe.
+ */
+function puedeComentar(seller) {
+  return !!(seller && seller.verified);
 }
 
 function register(app) {
@@ -70,7 +88,7 @@ function register(app) {
 
       const autorId = req.user.id;
       const autor = db.getDb()
-        .prepare('SELECT id, name, tipo_verificacion FROM sellers WHERE id = ?')
+        .prepare('SELECT id, name, verified FROM sellers WHERE id = ?')
         .get(autorId);
 
       // Token válido cuya cuenta ya no existe. No es 403: no hay nada que
@@ -79,11 +97,7 @@ function register(app) {
         return res.status(401).json({ error: 'Tu sesión ya no es válida. Inicia sesión de nuevo.' });
       }
 
-      // La puerta del feature. `tipo_verificacion` solo se llena cuando la
-      // cuenta pasó por routes/verificacion.js ('estudiante' | 'empleado'),
-      // así que basta con que no sea nulo — el backend no vuelve a deducir
-      // el rol desde `major`, que es una etiqueta de UI.
-      if (!autor.tipo_verificacion) {
+      if (!puedeComentar(autor)) {
         return res.status(403).json({
           error: 'Verifica tu cuenta para comentar',
           code: 'NO_VERIFICADO',

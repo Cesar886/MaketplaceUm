@@ -16,6 +16,7 @@ class ProductCard extends StatelessWidget {
     this.horizontal = false,
     this.heroEnabled = true,
     this.animationValue,
+    this.dense = false,
   });
 
   final Product product;
@@ -23,6 +24,16 @@ class ProductCard extends StatelessWidget {
   final double? width;
   final bool horizontal;
   final bool heroEnabled;
+
+  /// Versión aligerada: sin descripción y sin contador de vistas.
+  ///
+  /// Para los carruseles del detalle de producto, donde la tarjeta es un
+  /// apoyo y no el contenido principal: ahí lo que se decide de un vistazo
+  /// es foto, precio y nombre, y el resto solo hace la tarjeta más alta y
+  /// más densa de lo que esa decisión necesita. En el feed, en cambio, la
+  /// tarjeta ES la pantalla y esos datos sí ayudan a comparar, así que el
+  /// valor por defecto no cambia nada.
+  final bool dense;
 
   /// 0.0 → invisible, 1.0 → fully visible. Null = sin animación.
   final double? animationValue;
@@ -77,7 +88,11 @@ class ProductCard extends StatelessWidget {
                     product: product,
                     heroEnabled: heroEnabled,
                   )
-                : _GridProductCard(product: product, heroEnabled: heroEnabled),
+                : _GridProductCard(
+                    product: product,
+                    heroEnabled: heroEnabled,
+                    dense: dense,
+                  ),
           ),
         ),
       ),
@@ -86,10 +101,15 @@ class ProductCard extends StatelessWidget {
 }
 
 class _GridProductCard extends StatelessWidget {
-  const _GridProductCard({required this.product, required this.heroEnabled});
+  const _GridProductCard({
+    required this.product,
+    required this.heroEnabled,
+    this.dense = false,
+  });
 
   final Product product;
   final bool heroEnabled;
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
@@ -113,13 +133,15 @@ class _GridProductCard extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: AppTypography.label(13.5, weight: FontWeight.w700),
         ),
-        const SizedBox(height: 2),
-        Text(
-          product.description,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AppTypography.body(11.5, color: context.colors.muted),
-        ),
+        if (!dense) ...[
+          const SizedBox(height: 2),
+          Text(
+            product.description,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.body(11.5, color: context.colors.muted),
+          ),
+        ],
         const Spacer(),
         const SizedBox(height: 6),
         Row(
@@ -132,8 +154,10 @@ class _GridProductCard extends StatelessWidget {
                 style: AppTypography.body(11, color: context.colors.muted),
               ),
             ),
-            ViewsCounter(views: product.views),
-            const SizedBox(width: 6),
+            if (!dense) ...[
+              ViewsCounter(views: product.views),
+              const SizedBox(width: 6),
+            ],
             productStatusBadge(product),
           ],
         ),

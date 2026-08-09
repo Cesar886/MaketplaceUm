@@ -10,6 +10,11 @@ const { validateLocation, validatePaymentMethods } = require('../validation/sell
 // Configuración anti-abuso de ofertas
 const COOLDOWN_HOURS = 72;
 
+// Tope de cada carrusel del detalle (relacionados y otros del vendedor). Es
+// un carrusel horizontal: pasado cierto punto nadie sigue deslizando, y cada
+// producto extra es peso en la misma respuesta que el detalle.
+const RELACIONADOS_MAX = 10;
+
 // ─── Helper para subir imágenes: usa multer directamente ────
 const multer = require('multer');
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
@@ -238,10 +243,38 @@ function register(app) {
   });
 
   // GET /api/products/:id – detalle
+  //
+  // Devuelve el producto MÁS los dos carruseles que la pantalla de detalle
+  // pinta debajo ("También te puede interesar" y "Más de este vendedor"), en
+  // la misma respuesta: son parte del detalle, no una carga aparte, y
+  // pedirlos en tres viajes solo serviría para que aparecieran tarde y a
+  // destiempo. Son dos consultas con LIMIT, no un recorrido por producto.
+  //
+  // Ambos arrays pasan por `attachRelations`, el mismo helper que sirve al
+  // home y al feed, para que el cliente pueda poblar ProductCard con ellos
+  // sin mapear nada distinto. Vacío se devuelve como [] (nunca null): la
+  // pantalla decide ocultar la sección con un `isEmpty`, sin más chequeos.
   app.get('/api/products/:id', (req, res) => {
     const product = products.find(p => p.id === req.params.id);
     if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
-    res.json(attachRelations([product], req.query.userId)[0]);
+
+    const userId = req.query.userId;
+    const detalle = attachRelations([product], userId)[0];
+
+    res.json({
+      ...detalle,
+      relatedProducts: attachRelations(
+        db.getRelatedProducts(product, { limit: RELACIONADOS_MAX }),
+        userId,
+      ),
+      sellerOtherProducts: attachRelations(
+        db.getSellerOtherProducts(product.seller, {
+          excludeProductId: product.id,
+          limit: RELACIONADOS_MAX,
+        }),
+        userId,
+      ),
+    });
   });
 
   // POST /api/products/:id/view – registra una vista de detalle. Conteo

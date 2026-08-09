@@ -13,6 +13,7 @@ import '../services/recent_products_service.dart';
 import '../services/view_cooldown.dart';
 import '../widgets/badges.dart';
 import '../widgets/payment_methods.dart';
+import '../widgets/product_carousel_section.dart';
 import '../widgets/product_comments_section.dart';
 import '../widgets/product_image_carousel.dart';
 import '../widgets/price_tag.dart';
@@ -81,6 +82,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   late Product _product;
   double? _lowest30d;
   late final AnimationController _priceTagController;
+
+  /// Los dos carruseles del detalle. Llegan en la misma respuesta que el
+  /// producto ([ApiService.getProductDetail]), así que comparten su estado de
+  /// carga: no hay un spinner propio por sección.
+  List<Product> _relacionados = const [];
+  List<Product> _otrosDelVendedor = const [];
+  bool _cargandoDetalle = true;
 
   /// Ancla de la sección de comentarios para [widget.irAComentarios].
   final GlobalKey _comentariosKey = GlobalKey();
@@ -179,6 +187,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   /// se refresca el post (estado abierta/resuelta, etc.).
   Future<void> _refreshProductFromApi() async {
     if (product.isWantedPost) {
+      // Un "se busca" no lleva carruseles: no hay producto parecido que
+      // recomendar ni catálogo del vendedor que enseñar.
+      if (mounted) setState(() => _cargandoDetalle = false);
       try {
         final fresh = await ApiService.getWantedPost(product.id);
         if (!mounted) return;
@@ -194,15 +205,30 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
         isLoggedIn: auth.isLoggedIn,
         backendSellerId: auth.backendSellerId,
       );
-      final fresh = await ApiService.getProduct(product.id, userId: userId);
+      final fresh = await ApiService.getProductDetail(product.id, userId: userId);
       if (!mounted) return;
       setState(() {
-        _product = fresh;
+        _product = fresh.product;
+        _relacionados = fresh.relatedProducts;
+        _otrosDelVendedor = fresh.sellerOtherProducts;
+        _cargandoDetalle = false;
       });
       _fetchPriceHistory();
     } catch (_) {
-      // Si falla, mantenemos los datos locales
+      // Si falla, mantenemos los datos locales y las secciones nuevas
+      // simplemente no aparecen: son un extra, no el contenido de la
+      // pantalla, y un mensaje de error ahí abajo solo daría ruido.
+      if (mounted) setState(() => _cargandoDetalle = false);
     }
+  }
+
+  /// Abre otra publicación desde uno de los carruseles. Va como push (no
+  /// como reemplazo) para que el botón de atrás devuelva a la publicación
+  /// desde la que se saltó, que es de donde venía el interés.
+  void _abrirPublicacion(Product otro) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => ProductDetailScreen(product: otro)),
+    );
   }
 
   @override
@@ -540,6 +566,22 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         });
                       },
                     ),
+                    // ─── También te puede interesar ─────────────────
+                    // Se omite entera si no hay nada relacionado: ni el
+                    // encabezado ni el espacio, para no dejar un hueco.
+                    if (_cargandoDetalle || _relacionados.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      ProductCarouselSection(
+                        title: 'También te puede interesar',
+                        products: _relacionados,
+                        loading: _cargandoDetalle,
+                        onProductTap: _abrirPublicacion,
+                        // El mismo padding lateral que envuelve a toda la
+                        // columna del detalle: la fila lo recupera para que
+                        // las tarjetas entren y salgan por el borde.
+                        bleed: 18,
+                      ),
+                    ],
                   ],
                   const SizedBox(height: 24),
                   _SectionHeader(
@@ -547,7 +589,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                     label: product.isWantedPost ? 'Publicado por' : 'Vendedor',
                   ),
                   const SizedBox(height: 10),
-                  _SellerCard(seller: product.seller),
+                  _SellerCard(
+                    seller: product.seller,
+                    otherProducts: _otrosDelVendedor,
+                    onProductTap: _abrirPublicacion,
+                  ),
                   const SizedBox(height: 24),
                   // ─── Compartir ──────────────────────────────────────
                   const _SectionHeader(
@@ -1159,9 +1205,21 @@ class _ResolveWantedButtonState extends State<_ResolveWantedButton> {
 }
 
 class _SellerCard extends StatelessWidget {
-  const _SellerCard({required this.seller});
+  const _SellerCard({
+    required this.seller,
+    this.otherProducts = const [],
+    required this.onProductTap,
+  });
 
   final Seller seller;
+
+  /// Otras publicaciones activas de este vendedor. Van DENTRO de la tarjeta,
+  /// no en un bloque aparte debajo: son parte de conocer al vendedor, y como
+  /// sección propia competirían con "También te puede interesar" en vez de
+  /// complementarla. Vacío = la tarjeta se queda exactamente como estaba.
+  final List<Product> otherProducts;
+
+  final void Function(Product product) onProductTap;
 
   /// El link "Ver ubicación y horarios" solo tiene sentido si el perfil del
   /// vendedor tiene algo que mostrar ahí — evita llevar a una pantalla sin
@@ -1352,6 +1410,23 @@ class _SellerCard extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+            ],
+            // ─── Más publicaciones de este vendedor ─────────────────
+            // Sin esqueleto de carga, a diferencia de "También te puede
+            // interesar": la tarjeta del vendedor ya está llena de contenido
+            // real, y un shimmer dentro haría parecer que la tarjeta entera
+            // sigue cargando. Aparece cuando llega la respuesta o no aparece.
+            if (otherProducts.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Container(height: 1, color: context.colors.border),
+              const SizedBox(height: 14),
+              ProductCarouselSection(
+                title: 'Más de ${seller.name}',
+                icon: Icons.storefront_rounded,
+                products: otherProducts,
+                onProductTap: onProductTap,
+                compact: true,
               ),
             ],
           ],

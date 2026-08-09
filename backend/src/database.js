@@ -187,9 +187,9 @@ function initDatabase() {
 
     CREATE INDEX IF NOT EXISTS idx_product_ratings_product ON product_ratings(product_id);
 
-    -- Comentarios públicos en una publicación. Escribir exige cuenta con
-    -- verificación institucional (tipo_verificacion no nulo, ver
-    -- routes/comments.js); leer es abierto y no requiere sesión.
+    -- Comentarios públicos en una publicación. Escribir exige cuenta
+    -- verificada (sellers.verified = 1, sea alumno, personal UM, negocio o
+    -- externo; ver routes/comments.js); leer es abierto y no requiere sesión.
     --
     -- El borrado es lógico: la fila se queda y se marca. Un comentario que
     -- retiró su autor y uno que moderó el dueño del producto son casos
@@ -1894,6 +1894,163 @@ function getFeedRanked({ deviceId, userId, limit = 60, offset = 0 }) {
   }));
 }
 
+// ─── Relacionados (detalle de producto) ─────────────────────────
+
+/**
+ * Un producto se considera "activo" para recomendar si sigue a la venta hoy.
+ *
+ * 'reserved' y 'negotiating' SÍ entran: son estados de una venta en curso que
+ * todavía puede caerse, y el feed tampoco los esconde. Lo que se excluye es
+ * lo que deja al usuario en un callejón sin salida: vendido, pausado por el
+ * vendedor y sin inventario. Los estados temporales (fuera de horario, "solo
+ * los martes") no se filtran aquí: se recalculan en cada lectura y mañana el
+ * producto vuelve a estar disponible.
+ */
+const SQL_PRODUCTO_ACTIVO = `
+  (p.manual_status IS NULL OR p.manual_status NOT IN ('sold', 'paused'))
+  AND (p.status IS NULL OR p.status != 'sold')
+  AND (p.stock_quantity IS NULL OR p.stock_quantity > 0)
+`;
+
+/**
+ * Score sin personalizar: recencia + popularidad, con los mismos pesos del
+ * feed. No lleva afinidad por device_id (el bloque de relacionados no depende
+ * de quién mira, sino de qué producto se está viendo) ni calidad del
+ * vendedor, que en esta sección sesgaría el resultado hacia las mismas
+ * tiendas grandes una y otra vez.
+ */
+const SQL_SCORE_RELACIONADOS = `
+  MAX(0, @recencyBase - @recencyDecayPerDay * (julianday('now') - julianday(p.created_at)))
+  + @wViews * COALESCE(ps.vistas, 0)
+  + @wFavoritos * COALESCE(ps.favoritos, 0)
+  + @wContactos * COALESCE(ps.contactos, 0)
+`;
+
+const SQL_STATS_POPULARIDAD = `
+  SELECT
+    product_id,
+    SUM(CASE WHEN tipo = 'vista' THEN 1 ELSE 0 END) AS vistas,
+    SUM(CASE WHEN tipo = 'favorito' THEN 1 ELSE 0 END) AS favoritos,
+    SUM(CASE WHEN tipo = 'contacto' THEN 1 ELSE 0 END) AS contactos
+  FROM interacciones_dispositivo
+  WHERE created_at >= datetime('now', '-' || @popularityWindowDays || ' days')
+  GROUP BY product_id
+`;
+
+/** Parámetros de score comunes a las dos consultas de esta sección. */
+function paramsScore() {
+  const w = FEED_WEIGHTS;
+  return {
+    popularityWindowDays: w.POPULARITY_WINDOW_DAYS,
+    recencyBase: w.RECENCY_BASE,
+    recencyDecayPerDay: w.RECENCY_DECAY_PER_DAY,
+    wViews: w.W_VIEWS,
+    wFavoritos: w.W_FAVORITOS,
+    wContactos: w.W_CONTACTOS,
+  };
+}
+
+/** Palabras del título largas como para significar algo al buscar parecidos. */
+const LARGO_MINIMO_KEYWORD = 4;
+const MAX_KEYWORDS = 6;
+
+/**
+ * Extrae las palabras del título que sirven como señal de parecido.
+ *
+ * El corte por longitud hace de lista de stopwords sin tener que mantener
+ * una: en español las que aparecen en medio catálogo ("de", "la", "con",
+ * "por") son cortas, y las que de verdad identifican un producto
+ * ("calculadora", "bicicleta") no. Sin este filtro, el tramo de keywords
+ * llenaría la sección de ruido en cuanto la categoría no diera cupo.
+ */
+function palabrasClaveDeTitulo(titulo) {
+  return [...new Set(
+    String(titulo || '')
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter(palabra => palabra.length >= LARGO_MINIMO_KEYWORD),
+  )].slice(0, MAX_KEYWORDS);
+}
+
+/**
+ * Productos parecidos al que se está viendo, para "También te puede
+ * interesar". Dos tramos por orden de prioridad, en UNA sola consulta:
+ *
+ *   0. misma categoría;
+ *   1. si falta cupo, coincidencia de palabras del título.
+ *
+ * Excluye siempre el producto actual y todo lo del mismo vendedor: eso va en
+ * `getSellerOtherProducts`, y repetirlo en los dos carruseles se ve como un
+ * bug. Dentro de cada tramo ordena por score (recencia + popularidad).
+ *
+ * @param product Producto actual, ya normalizado (id, category, seller, title).
+ * @returns Productos vía rowToProduct — el shape que espera attachRelations.
+ */
+function getRelatedProducts(product, { limit = 10 } = {}) {
+  if (!product) return [];
+
+  const keywords = palabrasClaveDeTitulo(product.title);
+  // Un OR de LIKEs, uno por palabra. Van como parámetros nombrados (@kw0,
+  // @kw1...) y no interpolados, para que un título con comillas o con un %
+  // no se convierta en inyección ni en un comodín accidental.
+  const condicionKeywords = keywords.length
+    ? keywords.map((_, i) => `LOWER(p.title) LIKE @kw${i} ESCAPE '\\'`).join(' OR ')
+    : '0';
+  const paramsKeywords = Object.fromEntries(
+    keywords.map((palabra, i) => [`kw${i}`, `%${escaparLike(palabra)}%`]),
+  );
+
+  const rows = db.prepare(`
+    WITH product_stats AS (${SQL_STATS_POPULARIDAD})
+    SELECT p.*,
+      CASE WHEN p.category = @category THEN 0 ELSE 1 END AS tramo,
+      (${SQL_SCORE_RELACIONADOS}) AS score
+    FROM products p
+    LEFT JOIN product_stats ps ON ps.product_id = p.id
+    WHERE p.id != @productId
+      AND (@seller IS NULL OR p.seller IS NULL OR p.seller != @seller)
+      AND (p.category = @category OR ${condicionKeywords})
+      AND ${SQL_PRODUCTO_ACTIVO}
+    ORDER BY tramo ASC, score DESC, p.created_at DESC
+    LIMIT @limit
+  `).all({
+    ...paramsScore(),
+    ...paramsKeywords,
+    productId: product.id,
+    seller: product.seller || null,
+    category: product.category || null,
+    limit,
+  });
+
+  return rows.map(rowToProduct);
+}
+
+/** Escapa los comodines de LIKE para que un título con % o _ no los active. */
+function escaparLike(texto) {
+  return texto.replace(/[\\%_]/g, c => `\\${c}`);
+}
+
+/**
+ * Las otras publicaciones activas del mismo vendedor, de la más reciente a la
+ * más vieja. Sin score de popularidad a propósito: aquí el usuario ya decidió
+ * que le interesa ESTE vendedor, y lo que espera ver es su catálogo al día,
+ * no un ranking.
+ */
+function getSellerOtherProducts(sellerId, { excludeProductId = null, limit = 10 } = {}) {
+  if (!sellerId) return [];
+
+  const rows = db.prepare(`
+    SELECT p.* FROM products p
+    WHERE p.seller = @sellerId
+      AND (@excludeProductId IS NULL OR p.id != @excludeProductId)
+      AND ${SQL_PRODUCTO_ACTIVO}
+    ORDER BY p.created_at DESC, p.id DESC
+    LIMIT @limit
+  `).all({ sellerId, excludeProductId, limit });
+
+  return rows.map(rowToProduct);
+}
+
 module.exports = {
   initDatabase,
   getDb,
@@ -1983,4 +2140,7 @@ module.exports = {
   limpiarInteraccionesAntiguas,
   linkDeviceToUser,
   getFeedRanked,
+  // Relacionados (detalle de producto)
+  getRelatedProducts,
+  getSellerOtherProducts,
 };

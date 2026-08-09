@@ -649,6 +649,46 @@ class Product {
       paymentMethods ?? seller.paymentMethods;
 }
 
+/// El detalle de una publicación: el producto más los dos carruseles que
+/// GET /products/:id devuelve en la MISMA respuesta.
+///
+/// Van juntos a propósito: son parte del detalle, no una carga aparte, y
+/// pedirlos por separado los haría aparecer a destiempo bajo el contenido ya
+/// pintado. Ambas listas llegan siempre (vacías si no hay nada), así que la
+/// pantalla decide con `isEmpty` y no con chequeos de nulos.
+class ProductDetail {
+  const ProductDetail({
+    required this.product,
+    this.relatedProducts = const [],
+    this.sellerOtherProducts = const [],
+  });
+
+  factory ProductDetail.fromJson(Map<String, dynamic> json) {
+    List<Product> parseList(String key) {
+      final raw = json[key];
+      if (raw is! List) return const [];
+      return raw
+          .whereType<Map<String, dynamic>>()
+          .map(Product.fromJson)
+          .toList(growable: false);
+    }
+
+    return ProductDetail(
+      product: Product.fromJson(json),
+      relatedProducts: parseList('relatedProducts'),
+      sellerOtherProducts: parseList('sellerOtherProducts'),
+    );
+  }
+
+  final Product product;
+
+  /// Publicaciones parecidas, de OTROS vendedores.
+  final List<Product> relatedProducts;
+
+  /// Otras publicaciones activas del mismo vendedor.
+  final List<Product> sellerOtherProducts;
+}
+
 class CartItem {
   const CartItem({
     required this.id,

@@ -628,7 +628,8 @@ class TarjetaVerificaParaComentar extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Solo alumnos y personal UM verificados pueden dejar comentarios.',
+            'Solo las cuentas verificadas —alumnos, personal UM, negocios y '
+            'externos— pueden dejar comentarios.',
             style: TextStyle(fontSize: 13, color: context.colors.muted),
           ),
           const SizedBox(height: 4),

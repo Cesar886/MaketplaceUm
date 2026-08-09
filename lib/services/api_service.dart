@@ -451,6 +451,20 @@ class ApiService {
     return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  /// El mismo endpoint que [getProduct], pero conservando los carruseles que
+  /// vienen en la respuesta (relacionados y otros del vendedor). Lo usa la
+  /// pantalla de detalle; el resto de la app, que solo quiere el producto,
+  /// se queda con [getProduct] y los ignora.
+  static Future<ProductDetail> getProductDetail(
+    String id, {
+    String? userId,
+  }) async {
+    final query = userId != null ? {'userId': userId} : null;
+    final res = await _getWithRetry(_uri('/products/$id', query));
+    if (res.statusCode != 200) throw Exception('Product not found');
+    return ProductDetail.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
   /// Registra una vista de detalle de producto. Conteo simple: el backend
   /// no incrementa si [userId] es el dueño de la publicación. Pensado para
   /// llamarse fire-and-forget (sin await bloqueante en la UI) desde la
