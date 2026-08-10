@@ -293,6 +293,7 @@ function register(app) {
       // SQLite directo), así que hay que reflejar el incremento ahí también
       // o quedaría desactualizado hasta el próximo reinicio del servidor.
       product.views = (product.views || 0) + 1;
+      db.trackCategoryEngagement(product.category, 'product_view');
     }
     res.status(204).end();
   });
@@ -383,6 +384,8 @@ function register(app) {
 
           products.unshift(newProduct);
           saveData();
+
+          db.trackCategoryEngagement(category, 'publish');
 
           // ─── Notificar a usuarios interesados en esta categoría ──
           const interestedUsers = db.getUsersInterestedInCategory(category);

@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../app_theme.dart';
 import '../models.dart';
 import '../services/api_service.dart';
 import '../widgets/auto_refresh.dart';
 import '../widgets/product_card.dart';
-import '../widgets/section_header.dart';
 import 'product_detail_screen.dart';
 
 class OffersScreen extends StatefulWidget {
@@ -67,32 +65,11 @@ class _OffersScreenState extends State<OffersScreen> with AutoRefreshMixin {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Ofertas',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Precios especiales publicados por esta semana.',
-                    style: TextStyle(
-                      color: context.colors.muted,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  _OfferHeroBand(offers: _offers.take(3).toList()),
-                  const SizedBox(height: 16),
                   _OfferCategoryChips(
                     categories: _categories,
                     selectedCategoryId: _selectedCategoryId,
                     onSelected: (id) =>
                         setState(() => _selectedCategoryId = id),
-                  ),
-                  const SizedBox(height: 18),
-                  SectionHeader(
-                    title: _loading
-                        ? 'Cargando...'
-                        : '${filtered.length} ofertas activas',
                   ),
                 ],
               ),
@@ -136,111 +113,6 @@ class _OffersScreenState extends State<OffersScreen> with AutoRefreshMixin {
   }
 }
 
-class _OfferHeroBand extends StatelessWidget {
-  const _OfferHeroBand({required this.offers});
-
-  final List<Product> offers;
-
-  @override
-  Widget build(BuildContext context) {
-    if (offers.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: context.colors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.orange.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.local_offer_rounded,
-                  color: AppColors.orange,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Precios de oportunidad',
-                  style: TextStyle(
-                    color: context.colors.ink,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.orange.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: AppColors.orange.withValues(alpha: 0.18),
-                  ),
-                ),
-                child: const Text(
-                  'Hasta -25%',
-                  style: TextStyle(
-                    color: AppColors.orange,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          for (final product in offers)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 7),
-              child: Row(
-                children: [
-                  Icon(
-                    product.category.icon,
-                    color: AppColors.primary,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      product.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: context.colors.ink,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    Product.formatPrice(product.price),
-                    style: TextStyle(
-                      color: context.colors.accent,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 class _OfferCategoryChips extends StatelessWidget {
   const _OfferCategoryChips({
     required this.categories,
@@ -259,15 +131,6 @@ class _OfferCategoryChips extends StatelessWidget {
       child: ListView(
         scrollDirection: Axis.horizontal,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ChoiceChip(
-              selected: selectedCategoryId == null,
-              label: const Text('Todas'),
-              avatar: const Icon(Icons.sell_rounded, size: 18),
-              onSelected: (_) => onSelected(null),
-            ),
-          ),
           for (final category in categories)
             Padding(
               padding: const EdgeInsets.only(right: 8),
@@ -275,7 +138,8 @@ class _OfferCategoryChips extends StatelessWidget {
                 selected: selectedCategoryId == category.id,
                 label: Text(category.name),
                 avatar: Icon(category.icon, size: 18, color: category.color),
-                onSelected: (_) => onSelected(category.id),
+                onSelected: (selected) =>
+                    onSelected(selected ? category.id : null),
               ),
             ),
         ],

@@ -19,6 +19,9 @@ class AppColors {
   static const champagne = Color(0xFFFAF3E0); // Fondo premium badge
   static const orange = Color(0xFFA84B37); // Terracota — reservado/negociando
   static const teal = Color(0xFF1F6B62); // Teal secundario
+  static const verifiedBlue = Color(
+    0xFF3897F0,
+  ); // Azul de verificación estilo Meta/Instagram
 
   // ─── Base ────────────────────────────────────────────────
   static const background = Color(0xFFFAFAF8); // Papel — neutro, casi blanco

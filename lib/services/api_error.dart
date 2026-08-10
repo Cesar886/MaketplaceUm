@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../config/app_config.dart';
+
 /// Manejo central de errores de red: clasifica cualquier excepción y produce
 /// un mensaje apto para enseñarle a una persona.
 ///
@@ -168,16 +170,39 @@ String mensajeDeError(
   return texto;
 }
 
-/// Registra el error real. Solo en debug: en release no se imprime nada, para
-/// que el detalle técnico no acabe en los logs del dispositivo, que son
-/// legibles por otras apps en Android.
-///
-/// Cuando haya un servicio de reporte (Crashlytics/Sentry), este es el único
-/// sitio que hay que tocar para empezar a mandárselo.
+/// Registra el error real: por consola solo en debug (en release no se
+/// imprime nada, para que el detalle técnico no acabe en los logs del
+/// dispositivo, que son legibles por otras apps en Android) y siempre hacia
+/// el backend, para poder diagnosticar sin depender de que alguien reporte
+/// el problema. El usuario nunca ve nada de esto.
 void registrarErrorTecnico(String contexto, Object error, [StackTrace? stack]) {
-  if (!kDebugMode) return;
-  debugPrint('⚠️  $contexto: $error');
-  if (stack != null) debugPrint(stack.toString());
+  if (kDebugMode) {
+    debugPrint('⚠️  $contexto: $error');
+    if (stack != null) debugPrint(stack.toString());
+  }
+  _reportarErrorABackend(contexto, error, stack);
+}
+
+/// Envía el detalle técnico a POST /api/client-errors. Fire-and-forget: si el
+/// backend no responde, no hay red o lo que sea, se ignora sin más — nunca
+/// debe tapar ni retrasar el error original que ya está manejando la
+/// pantalla que llamó a [registrarErrorTecnico].
+void _reportarErrorABackend(String contexto, Object error, StackTrace? stack) {
+  final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/client-errors');
+  unawaited(
+    http
+        .post(
+          uri,
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'contexto': contexto,
+            'error': error.toString(),
+            if (stack != null) 'stack': stack.toString(),
+            'plataforma': defaultTargetPlatform.name,
+          }),
+        )
+        .catchError((_) => http.Response('', 0)),
+  );
 }
 
 /// Excepciones que significan "no se pudo hablar con el servidor".

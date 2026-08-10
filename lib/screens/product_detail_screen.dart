@@ -21,7 +21,6 @@ import '../widgets/price_tag.dart';
 import '../widgets/user_role.dart';
 import '../widgets/views_counter.dart';
 import 'auth/login_screen.dart';
-import 'main_shell.dart';
 import 'chat_screen.dart';
 import 'home_screen.dart';
 import 'publish_product_screen.dart';

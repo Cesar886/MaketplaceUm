@@ -246,6 +246,33 @@ function initDatabase() {
 
     CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
     CREATE INDEX IF NOT EXISTS idx_products_seller ON products(seller);
+
+    -- Búsquedas ejecutadas por los usuarios (al presionar buscar/enter, no
+    -- por tecla). Agregado estadístico puro para alimentar "trending
+    -- searches": solo texto + timestamp, sin device_id/user_id.
+    CREATE TABLE IF NOT EXISTS search_queries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      query_text TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_search_queries_created ON search_queries(created_at);
+    CREATE INDEX IF NOT EXISTS idx_search_queries_text ON search_queries(query_text, created_at);
+
+    -- Eventos de engagement por categoría (publicar/tocar ícono/ver
+    -- producto), usados para ordenar dinámicamente los íconos de categoría
+    -- en home y búsqueda por actividad reciente. Sin device_id/user_id a
+    -- propósito: es agregado puro para ranking de categorías, no
+    -- personalización.
+    CREATE TABLE IF NOT EXISTS category_engagement_events (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      category_id TEXT NOT NULL,
+      event_type  TEXT NOT NULL CHECK(event_type IN ('publish', 'icon_tap', 'product_view')),
+      created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_category_engagement_category_created
+      ON category_engagement_events(category_id, created_at);
   `);
 
   // ─── Migración desde schema legacy ─────────────────────────
@@ -2056,6 +2083,106 @@ function getSellerOtherProducts(sellerId, { excludeProductId = null, limit = 10 
   return rows.map(rowToProduct);
 }
 
+const SEARCH_QUERY_MIN_LEN = 2;
+const SEARCH_QUERY_MAX_LEN = 60;
+
+function normalizeSearchQuery(text) {
+  return String(text ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/** Registra una búsqueda ejecutada. Descarta ruido (vacía, muy corta/larga). */
+function recordSearchQuery(text) {
+  const normalized = normalizeSearchQuery(text);
+  if (normalized.length < SEARCH_QUERY_MIN_LEN || normalized.length > SEARCH_QUERY_MAX_LEN) {
+    return false;
+  }
+  db.prepare('INSERT INTO search_queries (query_text) VALUES (?)').run(normalized);
+  return true;
+}
+
+/** Términos más buscados en los últimos `days` días, de más a menos frecuente. */
+function getTrendingSearches({ days, limit }) {
+  return db.prepare(`
+    SELECT query_text AS queryText, COUNT(*) AS count
+    FROM search_queries
+    WHERE created_at >= datetime('now', '-' || ? || ' days')
+    GROUP BY query_text
+    ORDER BY count DESC, MAX(created_at) DESC
+    LIMIT ?
+  `).all(days, limit);
+}
+
+// ─── Category Engagement (orden dinámico de íconos de categoría) ─────────
+// Pesos y ventana viven en un solo lugar para poder tunearlos sin tocar la
+// query. Ventana corta a propósito: una categoría popular hace un mes no
+// debe seguir arriba si ya nadie la toca.
+const CATEGORY_ENGAGEMENT_WEIGHTS = {
+  publish: 10,       // señal fuerte: alguien generó oferta real
+  product_view: 3,   // señal media: interés en un producto concreto
+  icon_tap: 1,        // señal débil: curiosidad/navegación
+};
+const CATEGORY_ENGAGEMENT_WINDOW_DAYS = 14;
+const CATEGORY_RANKED_CACHE_TTL_MS = 20 * 60 * 1000;
+
+let categoriesRankedCache = null; // { data, expiresAt }
+
+/**
+ * Registra un evento de engagement de categoría (publish/icon_tap/
+ * product_view). Best-effort a propósito: se difiere con setImmediate para
+ * no sumar latencia a la respuesta que disparó el evento, y cualquier error
+ * se traga (nunca debe tumbar la acción principal del usuario).
+ */
+function trackCategoryEngagement(categoryId, eventType) {
+  if (!categoryId || !eventType) return;
+  setImmediate(() => {
+    try {
+      db.prepare(`
+        INSERT INTO category_engagement_events (category_id, event_type, created_at)
+        VALUES (?, ?, datetime('now'))
+      `).run(categoryId, eventType);
+    } catch (err) {
+      console.error('trackCategoryEngagement falló:', err.message);
+    }
+  });
+}
+
+/**
+ * Todas las categorías ordenadas por score de engagement (ventana de
+ * CATEGORY_ENGAGEMENT_WINDOW_DAYS días) descendente. Las que no tuvieron
+ * actividad reciente quedan con score 0 al final, no se excluyen. Cacheado
+ * en memoria del proceso: esto no requiere tiempo real exacto.
+ */
+function getCategoriesRanked() {
+  if (categoriesRankedCache && categoriesRankedCache.expiresAt > Date.now()) {
+    return categoriesRankedCache.data;
+  }
+
+  const eventTypes = Object.keys(CATEGORY_ENGAGEMENT_WEIGHTS);
+  const scoreExpr = eventTypes
+    .map(() => `SUM(CASE WHEN e.event_type = ? THEN ? ELSE 0 END)`)
+    .join(' + ');
+  const weightParams = eventTypes.flatMap((type) => [type, CATEGORY_ENGAGEMENT_WEIGHTS[type]]);
+
+  const rows = db.prepare(`
+    SELECT c.id, c.name, c.emoji, c.icon, c.color,
+           (${scoreExpr}) AS score
+    FROM categories c
+    LEFT JOIN category_engagement_events e
+      ON e.category_id = c.id
+      AND e.created_at >= datetime('now', ?)
+    GROUP BY c.id
+    ORDER BY score DESC, c.id ASC
+  `).all(...weightParams, `-${CATEGORY_ENGAGEMENT_WINDOW_DAYS} days`);
+
+  categoriesRankedCache = { data: rows, expiresAt: Date.now() + CATEGORY_RANKED_CACHE_TTL_MS };
+  return rows;
+}
+
+/** Solo para tests: fuerza a que la próxima getCategoriesRanked() recalcule. */
+function invalidateCategoriesRankedCache() {
+  categoriesRankedCache = null;
+}
+
 module.exports = {
   initDatabase,
   getDb,
@@ -2148,4 +2275,14 @@ module.exports = {
   // Relacionados (detalle de producto)
   getRelatedProducts,
   getSellerOtherProducts,
+  // Search trending
+  normalizeSearchQuery,
+  recordSearchQuery,
+  getTrendingSearches,
+  // Category engagement (orden dinámico de categorías)
+  CATEGORY_ENGAGEMENT_WEIGHTS,
+  CATEGORY_ENGAGEMENT_WINDOW_DAYS,
+  trackCategoryEngagement,
+  getCategoriesRanked,
+  invalidateCategoriesRankedCache,
 };

@@ -50,6 +50,8 @@ const routes = [
   require('./routes/verificacion'),
   require('./routes/public'),
   require('./routes/comments'),
+  require('./routes/search'),
+  require('./routes/clientErrors'),
 ];
 
 const app = express();

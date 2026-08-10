@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -5,6 +8,7 @@ import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/anonymous_id.dart';
+import '../services/api_error.dart';
 import '../services/api_service.dart';
 import '../services/favorite_products_service.dart';
 import '../services/feed_mixer.dart';
@@ -12,7 +16,6 @@ import '../widgets/app_logo.dart';
 import '../widgets/badges.dart';
 import '../widgets/home_grid_skeleton.dart';
 import '../widgets/product_card.dart';
-import '../widgets/section_header.dart';
 import '../widgets/wanted_post_card.dart';
 import 'main_shell.dart';
 import 'product_detail_screen.dart';
@@ -34,6 +37,7 @@ class _HomeScreenState extends State<HomeScreen>
   List<HighlightPlan> _highlightPlans = [];
   List<Seller> _sellers = [];
   List<WantedPost> _wantedPosts = [];
+  List<String> _trendingSearches = [];
   bool _loading = true;
   bool _hasPublished = false;
   String? _error;
@@ -90,7 +94,7 @@ class _HomeScreenState extends State<HomeScreen>
       if (!mounted) return;
       final results = await Future.wait([
         ApiService.getFeed(deviceId: deviceId, userId: backendUserId),
-        ApiService.getCategories(),
+        ApiService.getCategoriesRanked(),
       ]);
       if (!mounted) return;
 
@@ -120,6 +124,15 @@ class _HomeScreenState extends State<HomeScreen>
         // Si falla, seguimos con lista vacía
       }
 
+      // Términos de búsqueda en tendencia, para el placeholder rotativo del
+      // buscador (no bloqueante: sin ellos, el buscador cae al hint estático).
+      List<String> loadedTrendingSearches = [];
+      try {
+        loadedTrendingSearches = await ApiService.getTrendingSearches();
+      } catch (_) {
+        // Si falla, seguimos con lista vacía
+      }
+
       // Verificar si el usuario ha publicado artículos
       bool hasPublished = false;
       if (auth.isLoggedIn) {
@@ -137,6 +150,7 @@ class _HomeScreenState extends State<HomeScreen>
         _highlightPlans = loadedHighlightPlans;
         _sellers = loadedSellers;
         _wantedPosts = loadedWantedPosts;
+        _trendingSearches = loadedTrendingSearches;
         _hasPublished = hasPublished;
         _loading = false;
         _error = null;
@@ -145,16 +159,20 @@ class _HomeScreenState extends State<HomeScreen>
       _staggerController.forward(from: 0);
       // Cargar contador de favoritos (no bloqueante)
       _loadFavoriteCount();
-    } catch (e) {
+    } catch (e, stack) {
       if (!mounted) return;
+      // El detalle técnico (ej. "ClientException: Connection closed...") ya
+      // se reintentó automáticamente en ApiService antes de llegar aquí, y
+      // acá se queda en el backend: al usuario solo le llega el mensaje
+      // amigable de mensajeDeError.
       setState(() {
         _loading = false;
-        // Mensaje amigable en vez del texto técnico crudo de la excepción
-        // (ej. "ClientException: Connection closed..."), que ya se
-        // reintentó automáticamente en ApiService antes de llegar aquí.
-        _error =
-            'No pudimos cargar el inicio. Revisa tu conexión e '
-            'intenta de nuevo.';
+        _error = mensajeDeError(
+          e,
+          stack: stack,
+          fallback: 'No pudimos cargar el inicio. Revisa tu conexión e '
+              'intenta de nuevo.',
+        );
       });
     }
   }
@@ -289,12 +307,16 @@ class _HomeScreenState extends State<HomeScreen>
                       ],
                     ),
                     const SizedBox(height: 14),
-                    _SearchBox(onTap: () => _openSearch(context)),
+                    _SearchBox(
+                      trendingTerms: _trendingSearches,
+                      onTap: (term) => _openSearch(context, term),
+                    ),
                     const SizedBox(height: 18),
                     _CategoryScroller(
                       categories: _categories,
                       selectedCategoryId: _selectedCategoryId,
                       onCategoryTap: (id) {
+                        ApiService.registerCategoryTap(id);
                         if (_selectedCategoryId == id) {
                           // Tap en la misma categoría → limpiar filtro
                           setState(() => _selectedCategoryId = null);
@@ -326,18 +348,6 @@ class _HomeScreenState extends State<HomeScreen>
                   child: _HighlightPlansBanner(plans: _highlightPlans),
                 ),
               ),
-
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
-                child: SectionHeader(
-                  title: 'Para ti',
-                  actionLabel: 'Ordenar',
-                  onAction: () =>
-                      _showMockMessage(context, 'Ordenamiento visual'),
-                ),
-              ),
-            ),
             // ─── Feed mixto: productos + búsquedas + negocios ──────
             // El orden interno de cada tipo respeta el ranking que ya trae
             // del backend (score de /api/feed, recencia de /api/wanted,
@@ -550,16 +560,12 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  void _openSearch(BuildContext context) {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute<void>(builder: (_) => const SearchScreen()));
-  }
-
-  void _showMockMessage(BuildContext context, String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+  void _openSearch(BuildContext context, String? term) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SearchScreen(initialQuery: term),
+      ),
+    );
   }
 }
 
@@ -779,34 +785,91 @@ class _CategoryFilterChipState extends State<_CategoryFilterChip> {
   }
 }
 
-class _SearchBox extends StatelessWidget {
-  const _SearchBox({required this.onTap});
+class _SearchBox extends StatefulWidget {
+  const _SearchBox({required this.onTap, this.trendingTerms = const []});
 
-  final VoidCallback onTap;
+  /// Recibe el término actualmente mostrado en el placeholder, o `null` si
+  /// se está mostrando el hint genérico (sin términos trending todavía).
+  final ValueChanged<String?> onTap;
+  final List<String> trendingTerms;
+
+  @override
+  State<_SearchBox> createState() => _SearchBoxState();
+}
+
+class _SearchBoxState extends State<_SearchBox> {
+  static const _rotationInterval = Duration(seconds: 3);
+
+  Timer? _timer;
+  int _index = 0;
+
+  @override
+  void didUpdateWidget(covariant _SearchBox oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!listEquals(oldWidget.trendingTerms, widget.trendingTerms)) {
+      _index = 0;
+      _restartTimer();
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _restartTimer();
+  }
+
+  void _restartTimer() {
+    _timer?.cancel();
+    if (widget.trendingTerms.length < 2) return;
+    _timer = Timer.periodic(_rotationInterval, (_) {
+      setState(() => _index = (_index + 1) % widget.trendingTerms.length);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String? get _currentTerm =>
+      widget.trendingTerms.isEmpty
+          ? null
+          : widget.trendingTerms[_index % widget.trendingTerms.length];
 
   @override
   Widget build(BuildContext context) {
+    final term = _currentTerm;
+
     return Material(
       color: context.colors.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(28),
         side: BorderSide(color: context.colors.border),
       ),
       child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+        onTap: () => widget.onTap(term),
+        borderRadius: BorderRadius.circular(28),
         child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          padding: EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           child: Row(
             children: [
               Icon(Icons.search_rounded, color: context.colors.muted),
               SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  'Buscar libros, laptops, tutorias...',
-                  style: TextStyle(
-                    color: context.colors.muted,
-                    fontWeight: FontWeight.w500,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 250),
+                  child: Text(
+                    term != null
+                        ? "Buscar '$term'..."
+                        : 'Buscar libros, laptops, tutorias...',
+                    key: ValueKey(term),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: context.colors.muted,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ),

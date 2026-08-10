@@ -74,11 +74,11 @@ class StatusBadge extends StatelessWidget {
 /// en el perfil, en las tarjetas de publicaciones y en cualquier otro lugar
 /// donde aparezca su nombre — solo si `seller.verified == true`.
 ///
-/// Los tres tipos comparten el MISMO ícono de check a propósito: el color
-/// comunica de qué tipo de cuenta se trata sin sugerir que una es "más
-/// confiable" que otra. Verificarse significa lo mismo en los tres casos
-/// (el backend comprobó automáticamente un dato real de contacto), solo
-/// cambia qué dato se comprobó.
+/// Los tres tipos comparten el MISMO ícono de check y el MISMO color azul
+/// (estilo Meta/Instagram/Facebook) a propósito: verificarse significa lo
+/// mismo en los tres casos (el backend comprobó automáticamente un dato
+/// real de contacto), solo cambia qué dato se comprobó y la etiqueta que
+/// se muestra en la variante no compacta.
 class InsigniaVerificada extends StatelessWidget {
   const InsigniaVerificada({
     super.key,
@@ -112,11 +112,12 @@ class InsigniaVerificada extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (color, etiqueta) = switch (_tipoEfectivo) {
-      AccountType.estudiante => (AppColors.primary, 'Estudiante verificado'),
-      AccountType.negocio => (AppColors.teal, 'Negocio verificado'),
-      AccountType.particular => (AppColors.muted, 'Verificado'),
+    final etiqueta = switch (_tipoEfectivo) {
+      AccountType.estudiante => 'Estudiante verificado',
+      AccountType.negocio => 'Negocio verificado',
+      AccountType.particular => 'Verificado',
     };
+    const color = AppColors.verifiedBlue;
 
     // En modo compacto (tarjetas de producto, listas) solo cabe el ícono: la
     // etiqueta completa competiría con el título del producto.

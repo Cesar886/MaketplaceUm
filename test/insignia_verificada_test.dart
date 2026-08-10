@@ -23,21 +23,30 @@ void main() {
     }
   });
 
-  testWidgets('colorea de azul la insignia de estudiante', (tester) async {
+  // El color NO distingue tipos de cuenta a propósito: los tres verificados
+  // comparten el mismo azul (estilo Meta/Instagram) para no sugerir que una
+  // cuenta es "más confiable" que otra. Lo único que cambia es la etiqueta.
+  testWidgets('usa el mismo azul de verificación para los tres tipos', (
+    tester,
+  ) async {
+    for (final tipo in AccountType.values) {
+      await montar(tester, InsigniaVerificada(tipo: tipo));
+      expect(iconoDe(tester).color, AppColors.verifiedBlue);
+    }
+  });
+
+  testWidgets('etiqueta a un estudiante verificado', (tester) async {
     await montar(tester, const InsigniaVerificada(tipo: AccountType.estudiante));
-    expect(iconoDe(tester).color, AppColors.primary);
     expect(find.text('Estudiante verificado'), findsOneWidget);
   });
 
-  testWidgets('colorea de teal la insignia de negocio', (tester) async {
+  testWidgets('etiqueta a un negocio verificado', (tester) async {
     await montar(tester, const InsigniaVerificada(tipo: AccountType.negocio));
-    expect(iconoDe(tester).color, AppColors.teal);
     expect(find.text('Negocio verificado'), findsOneWidget);
   });
 
-  testWidgets('usa un color neutro para la cuenta externa', (tester) async {
+  testWidgets('usa la etiqueta genérica para la cuenta externa', (tester) async {
     await montar(tester, const InsigniaVerificada(tipo: AccountType.particular));
-    expect(iconoDe(tester).color, AppColors.muted);
     expect(find.text('Verificado'), findsOneWidget);
   });
 
@@ -70,13 +79,15 @@ void main() {
     tester,
   ) async {
     await montar(tester, const InsigniaVerificada.desdeTipo('negocio'));
-    expect(iconoDe(tester).color, AppColors.teal);
+    expect(find.text('Negocio verificado'), findsOneWidget);
   });
 
-  testWidgets('un tipo de cuenta desconocido cae al estilo neutro', (
+  testWidgets('un tipo de cuenta desconocido cae a la etiqueta neutra', (
     tester,
   ) async {
     await montar(tester, const InsigniaVerificada.desdeTipo('marciano'));
-    expect(iconoDe(tester).color, AppColors.muted);
+    expect(find.text('Verificado'), findsOneWidget);
+    expect(find.text('Negocio verificado'), findsNothing);
+    expect(find.text('Estudiante verificado'), findsNothing);
   });
 }

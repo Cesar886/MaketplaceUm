@@ -31,7 +31,7 @@ class HelpScreen extends StatelessWidget {
     ),
     (
       '¿Cómo contacto a soporte?',
-      'Escríbenos a soporte@mercaditoum.com y te responderemos en un '
+      'Escríbenos a soporte@mercaditoum.site y te responderemos en un '
           'plazo máximo de 48 horas hábiles.',
     ),
   ];

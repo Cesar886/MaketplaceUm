@@ -417,6 +417,61 @@ class ApiService {
         .toList();
   }
 
+  /// Todas las categorías ordenadas por actividad reciente de la comunidad
+  /// (publicaciones, vistas de producto, toques de ícono). Fuente única de
+  /// orden para los íconos de categoría en home y búsqueda.
+  static Future<List<MarketplaceCategory>> getCategoriesRanked() async {
+    final res = await _getWithRetry(_uri('/categories/ranked'));
+    if (res.statusCode != 200) throw Exception('Error fetching ranked categories');
+    final List<dynamic> data = jsonDecode(res.body) as List<dynamic>;
+    return data
+        .map((e) => MarketplaceCategory.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Registra que se tocó el ícono de una categoría (señal de interés,
+  /// peso bajo en el score de orden). Fire-and-forget: nunca debe bloquear
+  /// ni fallar de forma visible la navegación que disparó el toque.
+  static Future<void> registerCategoryTap(String categoryId) async {
+    try {
+      await _client.post(_uri('/categories/$categoryId/tap'));
+    } catch (_) {
+      // Best-effort: si falla, simplemente no se contó este toque.
+    }
+  }
+
+  // ─── Search ─────────────────────────────────────────────
+
+  /// Términos más buscados por la comunidad en los últimos días (backend
+  /// decide la ventana y el límite). Puede devolver [] si no hay data
+  /// suficiente todavía — el llamador debe caer a un placeholder estático.
+  static Future<List<String>> getTrendingSearches() async {
+    final res = await _getWithRetry(_uri('/search/trending'));
+    if (res.statusCode != 200) {
+      throw Exception('Error fetching trending searches');
+    }
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return (body['terms'] as List<dynamic>).cast<String>();
+  }
+
+  /// Registra una búsqueda ejecutada por el usuario (al presionar
+  /// buscar/enter, nunca por cada tecla). Fire-and-forget a propósito: una
+  /// búsqueda del usuario nunca debe fallar ni demorarse porque el tracking
+  /// no pudo llegar al servidor.
+  static void recordSearchQuery(String text) {
+    final trimmed = text.trim();
+    if (trimmed.length < 2 || trimmed.length > 60) return;
+    unawaited(
+      _client
+          .post(
+            _uri('/search/track'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'query': trimmed}),
+          )
+          .catchError((_) => http.Response('', 500)),
+    );
+  }
+
   // ─── Products ───────────────────────────────────────────
   static Future<List<Product>> getProducts({
     String? category,

@@ -8,9 +8,10 @@ import '../widgets/product_card.dart';
 import 'product_detail_screen.dart';
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key, this.initialCategoryId});
+  const SearchScreen({super.key, this.initialCategoryId, this.initialQuery});
 
   final String? initialCategoryId;
+  final String? initialQuery;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -32,6 +33,10 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
   void initState() {
     super.initState();
     _selectedCategoryId = widget.initialCategoryId;
+    if (widget.initialQuery != null && widget.initialQuery!.isNotEmpty) {
+      _queryController.text = widget.initialQuery!;
+      ApiService.recordSearchQuery(widget.initialQuery!);
+    }
     _loadData();
   }
 
@@ -42,7 +47,7 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
     try {
       final results = await Future.wait([
         ApiService.getProducts(),
-        ApiService.getCategories(),
+        ApiService.getCategoriesRanked(),
       ]);
       if (!mounted) return;
       setState(() {
@@ -132,6 +137,7 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
           TextField(
             controller: _queryController,
             onChanged: (_) => setState(() {}),
+            onSubmitted: (value) => ApiService.recordSearchQuery(value),
             textInputAction: TextInputAction.search,
             textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(
@@ -304,8 +310,10 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                         size: 18,
                         color: category.color,
                       ),
-                      onSelected: (_) =>
-                          setState(() => _selectedCategoryId = category.id),
+                      onSelected: (_) {
+                        ApiService.registerCategoryTap(category.id);
+                        setState(() => _selectedCategoryId = category.id);
+                      },
                     ),
                   ),
               ],
@@ -315,13 +323,8 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
 
           // ─── Resultados header ──────────────────────────────
           Row(
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              Expanded(
-                child: Text(
-                  _loading ? 'Cargando...' : '${results.length} resultados',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
               if (!_loading && results.isNotEmpty)
                 DropdownButton<double>(
                   value: _sortValue,
