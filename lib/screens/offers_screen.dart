@@ -73,7 +73,7 @@ class _OffersScreenState extends State<OffersScreen> with AutoRefreshMixin {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Precios especiales publicados por estudiantes esta semana.',
+                    'Precios especiales publicados por esta semana.',
                     style: TextStyle(
                       color: context.colors.muted,
                       fontWeight: FontWeight.w500,

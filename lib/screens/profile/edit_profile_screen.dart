@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../app_theme.dart';
 import '../../models.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/api_error.dart';
 import '../../services/api_service.dart';
 import '../../widgets/business_hours_editor.dart';
 import '../../widgets/location_picker.dart';
@@ -133,12 +134,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);
-    } catch (e) {
+    } catch (e, stack) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error al guardar: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            mensajeDeError(
+              e,
+              stack: stack,
+              fallback: 'No se pudieron guardar los cambios. Intenta de nuevo.',
+            ),
+          ),
+        ),
+      );
     }
   }
 

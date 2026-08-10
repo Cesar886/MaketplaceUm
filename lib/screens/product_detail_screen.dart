@@ -7,6 +7,7 @@ import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/anonymous_id.dart';
+import '../services/api_error.dart';
 import '../services/api_service.dart';
 import '../services/favorite_products_service.dart';
 import '../services/recent_products_service.dart';
@@ -29,24 +30,17 @@ import 'seller_profile_screen.dart';
 import 'wanted_post_screen.dart';
 
 /// Convierte cualquier excepción en un mensaje apto para mostrar al usuario.
-/// Nunca se debe mostrar un stack trace o el texto crudo de una excepción
-/// (p. ej. errores de SQL) directamente en la UI.
+///
+/// Se conserva el nombre porque ya lo usan varios puntos de esta pantalla,
+/// pero la lógica vive en `services/api_error.dart`: la versión anterior
+/// filtraba con una lista negra de nombres de excepción, que dejaba pasar
+/// todo lo que no estuviera en la lista (un `HandshakeException`, o un
+/// `ClientException` con la IP y el puerto dentro).
 String friendlyErrorMessage(
   Object error, {
   String fallback = 'Ocurrió un error. Intenta de nuevo.',
 }) {
-  var message = error.toString();
-  if (message.startsWith('Exception: ')) {
-    message = message.substring('Exception: '.length);
-  }
-  final looksTechnical =
-      message.isEmpty ||
-      message.length > 140 ||
-      RegExp(
-        r'SQLITE|constraint|SocketException|FormatException|_TypeError|Instance of',
-        caseSensitive: false,
-      ).hasMatch(message);
-  return looksTechnical ? fallback : message;
+  return mensajeDeError(error, fallback: fallback);
 }
 
 class ProductDetailScreen extends StatefulWidget {

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
+import '../services/api_error.dart';
 import '../services/api_service.dart';
 import '../widgets/location_picker.dart';
 import '../widgets/payment_methods.dart';
@@ -241,12 +242,16 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
           ),
         );
       }
-    } catch (e) {
+    } catch (e, stack) {
       if (!mounted) return;
       _showError(
-        _isEditing
-            ? 'Error al guardar los cambios: $e'
-            : 'Error al publicar: $e',
+        mensajeDeError(
+          e,
+          stack: stack,
+          fallback: _isEditing
+              ? 'No se pudieron guardar los cambios. Intenta de nuevo.'
+              : 'No se pudo publicar. Intenta de nuevo.',
+        ),
       );
     } finally {
       if (mounted) setState(() => _publishing = false);

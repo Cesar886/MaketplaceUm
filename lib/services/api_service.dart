@@ -5,15 +5,23 @@ import 'package:http/http.dart' as http;
 
 import '../models.dart';
 import '../config/app_config.dart';
+import 'api_error.dart';
 
 /// Cliente HTTP que vigila TODAS las respuestas del backend en busca de un
 /// 401 `SESSION_INVALIDATED`, sin que cada endpoint tenga que acordarse de
-/// comprobarlo.
+/// comprobarlo, y que traduce los fallos de red antes de que salgan de aquí.
 ///
 /// Ese 401 significa que el JWT guardado se firmó con un `JWT_SECRET` que ya
 /// no es el vigente (ver `backend/src/auth.js`): la firma no valida y el
 /// token no es recuperable por ningún reintento. Se dispara una sola vez
 /// [ApiService.onSesionInvalidada], que cierra sesión y manda al login.
+///
+/// La traducción de errores va AQUÍ y no en cada método porque este `send`
+/// es el único sitio por el que pasan las 50 y pico llamadas del servicio:
+/// puesto aquí, ninguna puede olvidarse. Lo que sale es siempre una
+/// [ApiException] con mensaje presentable — nunca el `SocketException` con
+/// la IP y el puerto del servidor, que es justo lo que se estaba pintando en
+/// la pantalla de chat.
 class _SessionAwareClient extends http.BaseClient {
   _SessionAwareClient(this._inner);
 
@@ -21,7 +29,17 @@ class _SessionAwareClient extends http.BaseClient {
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    final res = await _inner.send(request);
+    final http.StreamedResponse res;
+    try {
+      res = await _inner.send(request);
+    } on ApiException {
+      rethrow;
+    } catch (error, stack) {
+      // Socket cerrado, DNS que no resuelve, TLS roto, timeout del sistema:
+      // todo eso muere aquí y se convierte en un mensaje seguro. El detalle
+      // real queda en el log de debug.
+      throw ApiException.deRed(error, stack: stack);
+    }
     if (res.statusCode != 401) return res;
 
     // El cuerpo de una respuesta en streaming solo puede leerse una vez, así
@@ -173,8 +191,11 @@ class ApiService {
     for (var attempt = 1; ; attempt++) {
       try {
         return await _client.get(uri, headers: headers);
-      } on http.ClientException {
-        if (attempt >= maxAttempts) rethrow;
+      } on ApiException catch (e) {
+        // El cliente ya tradujo el fallo de red. Se reintenta solo lo que
+        // puede arreglarse solo (conexión cortada, timeout, 5xx pasajero);
+        // un error definitivo se propaga sin gastar tres intentos.
+        if (!e.valeLaPenaReintentar || attempt >= maxAttempts) rethrow;
       }
       await Future.delayed(Duration(milliseconds: 300 * attempt));
     }

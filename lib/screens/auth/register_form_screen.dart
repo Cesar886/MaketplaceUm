@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../app_theme.dart';
 import '../../models.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/api_error.dart';
 import '../../services/api_service.dart';
 import '../../widgets/business_hours_editor.dart';
 import '../../widgets/location_picker.dart';
@@ -235,11 +236,19 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
           ),
         ),
       );
-    } catch (e) {
+    } catch (e, stack) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.toString())));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            mensajeDeError(
+              e,
+              stack: stack,
+              fallback: 'No se pudo completar el registro. Intenta de nuevo.',
+            ),
+          ),
+        ),
+      );
     }
   }
 

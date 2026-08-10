@@ -8,6 +8,7 @@ import '../app_theme.dart';
 import '../mock_data.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
+import '../services/api_error.dart';
 import '../services/api_service.dart';
 import '../widgets/badges.dart';
 import '../widgets/location_picker.dart';
@@ -351,12 +352,16 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           const SnackBar(content: Text('Producto publicado exitosamente')),
         );
       }
-    } catch (e) {
+    } catch (e, stack) {
       if (!mounted) return;
       _showError(
-        _isEditing
-            ? 'Error al guardar los cambios: $e'
-            : 'Error al publicar: $e',
+        mensajeDeError(
+          e,
+          stack: stack,
+          fallback: _isEditing
+              ? 'No se pudieron guardar los cambios. Intenta de nuevo.'
+              : 'No se pudo publicar el producto. Intenta de nuevo.',
+        ),
       );
     } finally {
       if (mounted) setState(() => _publishing = false);
@@ -398,8 +403,11 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     if (newPrice != null && newPrice != product.price) {
       try {
         await ApiService.updateProduct(product.id, newPrice);
-      } catch (e) {
-        warnings.add('El precio no se pudo actualizar: $e');
+      } catch (e, stack) {
+        warnings.add(
+          'El precio no se pudo actualizar: '
+          '${mensajeDeError(e, stack: stack, fallback: 'intenta de nuevo.')}',
+        );
       }
     }
 
@@ -414,8 +422,11 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           quantity: stockQuantity,
           resetDaily: stockResetDaily,
         );
-      } catch (e) {
-        warnings.add('El stock no se pudo actualizar: $e');
+      } catch (e, stack) {
+        warnings.add(
+          'El stock no se pudo actualizar: '
+          '${mensajeDeError(e, stack: stack, fallback: 'intenta de nuevo.')}',
+        );
       }
     }
 

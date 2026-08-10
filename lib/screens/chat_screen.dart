@@ -9,6 +9,7 @@ import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/anonymous_id.dart';
+import '../services/api_error.dart';
 import '../services/api_service.dart';
 import '../services/chat_socket_service.dart';
 import 'product_detail_screen.dart';
@@ -290,11 +291,19 @@ class _ChatScreenState extends State<ChatScreen> {
               conversationId: _currentConvId,
             );
       _applySendResult(result);
-    } catch (e) {
+    } catch (e, stack) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error al enviar: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            mensajeDeError(
+              e,
+              stack: stack,
+              fallback: 'No se pudo enviar el mensaje. Intenta de nuevo.',
+            ),
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -322,11 +331,19 @@ class _ChatScreenState extends State<ChatScreen> {
         conversationId: isNewConversation ? null : _currentConvId,
       );
       _applySendResult(result);
-    } catch (e) {
+    } catch (e, stack) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error al enviar la imagen: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            mensajeDeError(
+              e,
+              stack: stack,
+              fallback: 'No se pudo enviar la imagen. Intenta de nuevo.',
+            ),
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _sendingImage = false);
     }
@@ -391,11 +408,19 @@ class _ChatScreenState extends State<ChatScreen> {
           );
         }
       });
-    } catch (e) {
+    } catch (e, stack) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error al eliminar: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            mensajeDeError(
+              e,
+              stack: stack,
+              fallback: 'No se pudo eliminar el mensaje. Intenta de nuevo.',
+            ),
+          ),
+        ),
+      );
     }
   }
 
