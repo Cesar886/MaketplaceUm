@@ -859,10 +859,14 @@ class _SearchBoxState extends State<_SearchBox> {
               Expanded(
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 250),
+                  // El backend ya garantiza contenido dinámico: si nadie ha
+                  // buscado todavía, devuelve las categorías con producto
+                  // activo. Este texto fijo solo se ve sin red o con el
+                  // catálogo vacío — nunca en operación normal.
                   child: Text(
                     term != null
                         ? "Buscar '$term'..."
-                        : 'Buscar libros, laptops, tutorias...',
+                        : 'Buscar en Mercadito UM...',
                     key: ValueKey(term),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

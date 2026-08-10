@@ -13,10 +13,17 @@ function register(app) {
   app.get('/api/search/trending', (_req, res) => {
     const now = Date.now();
     if (!trendingCache.data || now >= trendingCache.expiresAt) {
-      const rows = db.getTrendingSearches({
+      let rows = db.getTrendingSearches({
         days: TRENDING_WINDOW_DAYS,
         limit: TRENDING_LIMIT,
       });
+      // Arranque en frío: sin búsquedas registradas el placeholder se
+      // quedaría en el texto fijo para siempre. Se cae a categorías reales
+      // del catálogo, que ya son dinámicas (dependen de qué hay publicado)
+      // y se reemplazan solas en cuanto haya búsquedas de verdad.
+      if (rows.length === 0) {
+        rows = db.getFallbackSearchTerms({ limit: TRENDING_LIMIT });
+      }
       trendingCache = {
         data: rows.map(r => r.queryText),
         expiresAt: now + TRENDING_CACHE_MS,

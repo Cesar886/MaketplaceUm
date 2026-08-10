@@ -127,6 +127,46 @@ test('GET /api/search/trending cachea: no recalcula hasta que expira', async () 
   assert.deepStrictEqual(segunda.terms, ['cacheado'], 'debió servir desde caché');
 });
 
+// ─── Arranque en frío: fallback a categorías del catálogo ──────
+
+test('sin búsquedas registradas, cae a categorías con producto activo', async () => {
+  resetTrendingCache();
+  db.getDb().exec('DELETE FROM search_queries');
+
+  const raw = db.getDb();
+  raw.exec(`DELETE FROM products; DELETE FROM categories;`);
+  raw.prepare('INSERT INTO categories (id, name) VALUES (?, ?)').run('c_libros', 'Libros');
+  raw.prepare('INSERT INTO categories (id, name) VALUES (?, ?)').run('c_tec', 'Tecnología');
+  raw.prepare('INSERT INTO categories (id, name) VALUES (?, ?)').run('c_vacia', 'Sin nada');
+
+  const insertar = (id, categoria) =>
+    raw
+      .prepare('INSERT INTO products (id, title, price, category) VALUES (?, ?, 100, ?)')
+      .run(id, `Producto ${id}`, categoria);
+
+  insertar('p1', 'c_tec');
+  insertar('p2', 'c_tec');
+  insertar('p3', 'c_libros');
+
+  const res = await fetch(`${baseUrl}/api/search/trending`);
+  const body = await res.json();
+
+  // Ordenadas por cuántos productos activos tiene cada una; la categoría
+  // sin producto no se sugiere (buscarla dejaría la lista vacía).
+  assert.deepStrictEqual(body.terms, ['Tecnología', 'Libros']);
+});
+
+test('las búsquedas reales le ganan al fallback de categorías', async () => {
+  resetTrendingCache();
+  db.getDb().exec('DELETE FROM search_queries');
+  sembrarBusqueda('bicicleta', 0);
+
+  const res = await fetch(`${baseUrl}/api/search/trending`);
+  const body = await res.json();
+
+  assert.deepStrictEqual(body.terms, ['bicicleta']);
+});
+
 // ─── POST /api/search/track ────────────────────────────────────
 
 test('POST /api/search/track responde 400 sin query', async () => {

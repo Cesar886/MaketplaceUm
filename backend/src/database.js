@@ -2112,6 +2112,27 @@ function getTrendingSearches({ days, limit }) {
   `).all(days, limit);
 }
 
+/**
+ * Términos de respaldo cuando todavía nadie ha buscado nada (app recién
+ * desplegada, o una semana sin búsquedas).
+ *
+ * Son los nombres de las categorías que de verdad tienen producto activo,
+ * de la más surtida a la menos. Se eligen sobre los títulos de producto a
+ * propósito: caben en un placeholder, y `SearchScreen` filtra por nombre de
+ * categoría además de por título, así que tocar la sugerencia siempre
+ * devuelve resultados en vez de dejar la lista vacía.
+ */
+function getFallbackSearchTerms({ limit }) {
+  return db.prepare(`
+    SELECT c.name AS queryText, COUNT(p.id) AS count
+    FROM categories c
+    JOIN products p ON p.category = c.id AND ${SQL_PRODUCTO_ACTIVO}
+    GROUP BY c.id
+    ORDER BY count DESC, c.name ASC
+    LIMIT ?
+  `).all(limit);
+}
+
 // ─── Category Engagement (orden dinámico de íconos de categoría) ─────────
 // Pesos y ventana viven en un solo lugar para poder tunearlos sin tocar la
 // query. Ventana corta a propósito: una categoría popular hace un mes no
@@ -2279,6 +2300,7 @@ module.exports = {
   normalizeSearchQuery,
   recordSearchQuery,
   getTrendingSearches,
+  getFallbackSearchTerms,
   // Category engagement (orden dinámico de categorías)
   CATEGORY_ENGAGEMENT_WEIGHTS,
   CATEGORY_ENGAGEMENT_WINDOW_DAYS,
