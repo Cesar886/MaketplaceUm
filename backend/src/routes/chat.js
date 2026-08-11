@@ -150,6 +150,7 @@ function register(app) {
           id: otherUser.id,
           name: otherUser.name,
           avatarInitials: otherUser.avatarInitials || '',
+          logoUrl: otherUser.logoUrl || null,
           // Mismo par de campos que sirve `rowToSeller`, para que el chat
           // pueda mostrar el subtítulo de rol sin una llamada extra a
           // /api/sellers/:id. Hoy la UI del chat aún no lo pinta.

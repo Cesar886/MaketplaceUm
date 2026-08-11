@@ -157,7 +157,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
       }
     } catch (_) {
       if (!mounted) return;
-      setState(() => _error = 'No hay conexión con el servidor. Inténtalo de nuevo.');
+      setState(
+        () => _error = 'No hay conexión con el servidor. Inténtalo de nuevo.',
+      );
     } finally {
       if (mounted) setState(() => _enviando = false);
     }
@@ -351,7 +353,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
         // Rechazo: el backend dice qué campo corregir y el usuario reintenta
         // desde la misma pantalla, sin volver a empezar.
         setState(() {
-          _error = _auth.motivoRechazo ?? 'No pudimos verificar los datos de tu negocio.';
+          _error =
+              _auth.motivoRechazo ??
+              'No pudimos verificar los datos de tu negocio.';
           _campoConError = _auth.campoRechazado;
         });
       }
@@ -436,13 +440,16 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   mensaje:
                       'Modo desarrollo: el servidor no tiene configurado el '
                       'envío, tu código es $_codigoDev',
-                  color: AppColors.gold,
+                  color: context.colors.gold,
                   icono: Icons.build_rounded,
                 ),
                 const SizedBox(height: 16),
               ],
 
-              if (_esperandoCodigo) _buildIngresoCodigo() else _buildFormulario(),
+              if (_esperandoCodigo)
+                _buildIngresoCodigo()
+              else
+                _buildFormulario(),
 
               const SizedBox(height: 28),
 
@@ -473,8 +480,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
   String get _descripcion => switch (widget.tipo) {
     AccountType.estudiante =>
       'Te enviaremos un código a tu correo institucional.',
-    AccountType.negocio =>
-      ' Verificamos tu negocio.',
+    AccountType.negocio => ' Verificamos tu negocio.',
     AccountType.particular =>
       'Te enviaremos un código por SMS. La verificación es automática.',
   };
@@ -540,7 +546,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
         ),
         const SizedBox(height: 4),
         TextButton(
-          onPressed: (_enviando || _segundosReenvio > 0) ? null : _reenviarCodigo,
+          onPressed: (_enviando || _segundosReenvio > 0)
+              ? null
+              : _reenviarCodigo,
           child: Text(
             _segundosReenvio > 0
                 ? '¿No te llegó? Reenviar en ${_segundosReenvio}s'
@@ -549,9 +557,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
         ),
         TextButton(
           onPressed: _enviando ? null : _volverAlFormulario,
-          child: Text(
-            esEstudiante ? 'Cambiar el correo' : 'Cambiar el número',
-          ),
+          child: Text(esEstudiante ? 'Cambiar el correo' : 'Cambiar el número'),
         ),
       ],
     );
@@ -731,7 +737,9 @@ class _CampoTexto extends StatelessWidget {
         // Sin esto Flutter oculta el sufijo mientras el campo está vacío y sin
         // foco (lo tapa la etiqueta en línea), justo cuando más falta hace
         // ver que el dominio ya viene puesto.
-        floatingLabelBehavior: sufijo == null ? null : FloatingLabelBehavior.always,
+        floatingLabelBehavior: sufijo == null
+            ? null
+            : FloatingLabelBehavior.always,
         enabledBorder: conError
             ? const OutlineInputBorder(
                 borderSide: BorderSide(color: AppColors.danger, width: 1.6),

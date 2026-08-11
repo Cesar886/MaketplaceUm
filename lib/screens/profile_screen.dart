@@ -525,8 +525,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Null mientras el seller aún no carga (el GET inicial puede tardar o
   /// fallar) y cuando no hay rol verificado que mostrar; en ambos casos la
   /// línea se omite en vez de enseñar un genérico.
-  String? get _subtituloRol =>
-      _seller == null ? null : subtituloRol(_seller!);
+  String? get _subtituloRol => _seller == null ? null : subtituloRol(_seller!);
 }
 
 class _VerificationCard extends StatelessWidget {
@@ -561,9 +560,11 @@ class _VerificationCard extends StatelessWidget {
       return Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: AppColors.teal.withValues(alpha: 0.08),
+          color: context.colors.accent.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.teal.withValues(alpha: 0.22)),
+          border: Border.all(
+            color: context.colors.accent.withValues(alpha: 0.22),
+          ),
         ),
         child: Row(
           children: [
@@ -611,11 +612,11 @@ class _VerificationCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: (rechazada ? AppColors.danger : AppColors.teal)
+          color: (rechazada ? AppColors.danger : context.colors.accent)
               .withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: (rechazada ? AppColors.danger : AppColors.teal)
+            color: (rechazada ? AppColors.danger : context.colors.accent)
                 .withValues(alpha: 0.22),
           ),
         ),
@@ -629,7 +630,7 @@ class _VerificationCard extends StatelessWidget {
               ),
               child: Icon(
                 rechazada ? Icons.gpp_bad_rounded : Icons.badge_rounded,
-                color: rechazada ? AppColors.danger : AppColors.teal,
+                color: rechazada ? AppColors.danger : context.colors.accent,
               ),
             ),
             const SizedBox(width: 12),
@@ -638,7 +639,9 @@ class _VerificationCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    rechazada ? 'Corrige tu verificación' : 'Verifica tu cuenta',
+                    rechazada
+                        ? 'Corrige tu verificación'
+                        : 'Verifica tu cuenta',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 3),
@@ -735,7 +738,7 @@ class _ProfileMetric extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Icon(icon, color: AppColors.gold),
+        Icon(icon, color: context.colors.gold),
         const SizedBox(height: 6),
         Text(
           value,

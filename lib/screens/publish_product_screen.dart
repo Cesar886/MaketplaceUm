@@ -1165,7 +1165,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   Color _statusColor(ManualStatus status) {
     switch (status) {
       case ManualStatus.reserved:
-        return AppColors.orange;
+        return context.colors.gold;
       case ManualStatus.sold:
         return AppColors.danger;
       case ManualStatus.negotiating:
@@ -1367,10 +1367,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
             ),
           ],
         ),
-        if (_isEditing) ...[
-          const SizedBox(height: 12),
-          _buildStatusSection(),
-        ],
+        if (_isEditing) ...[const SizedBox(height: 12), _buildStatusSection()],
         const SizedBox(height: 20),
         _buildAvailabilityRulesSection(),
         const SizedBox(height: 12),
@@ -1707,7 +1704,7 @@ class _PlanCard extends StatelessWidget {
               : context.colors.background,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: selected ? AppColors.orange : context.colors.border,
+            color: selected ? context.colors.gold : context.colors.border,
             width: selected ? 1.5 : 1,
           ),
         ),
@@ -1717,7 +1714,7 @@ class _PlanCard extends StatelessWidget {
               selected
                   ? Icons.radio_button_checked_rounded
                   : Icons.radio_button_off_rounded,
-              color: selected ? AppColors.orange : context.colors.muted,
+              color: selected ? context.colors.gold : context.colors.muted,
             ),
             const SizedBox(width: 10),
             Expanded(

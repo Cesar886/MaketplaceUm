@@ -106,10 +106,7 @@ class _HoursSummary extends StatelessWidget {
               children: [
                 Text(
                   'Horario de hoy',
-                  style: AppTypography.label(
-                    12,
-                    color: context.colors.muted,
-                  ),
+                  style: AppTypography.label(12, color: context.colors.muted),
                 ),
                 if (isOpen != null) ...[
                   const SizedBox(width: 8),

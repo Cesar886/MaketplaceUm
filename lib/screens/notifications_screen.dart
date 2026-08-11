@@ -244,7 +244,7 @@ class _NotificationTile extends StatelessWidget {
         return AppColors.primary;
       case 'new_chat':
       case 'new_message':
-        return AppColors.teal;
+        return context.colors.accent;
       default:
         return context.colors.muted;
     }

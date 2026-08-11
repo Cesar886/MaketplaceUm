@@ -964,6 +964,7 @@ class ChatUser {
     required this.id,
     required this.name,
     this.avatarInitials = '',
+    this.logoUrl,
   });
 
   factory ChatUser.fromJson(Map<String, dynamic> json) {
@@ -971,12 +972,14 @@ class ChatUser {
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? '',
       avatarInitials: json['avatarInitials'] as String? ?? '',
+      logoUrl: json['logoUrl'] as String?,
     );
   }
 
   final String id;
   final String name;
   final String avatarInitials;
+  final String? logoUrl;
 }
 
 class ChatMessage {

@@ -4,60 +4,109 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'widgets/edge_swipe_back.dart';
 
-/// Sistema "Puesto de Barrio": azul piedra pastel como ancla premium, fondo
-/// neutro casi blanco (sin tinte arenoso), cempasúchil como único acento
-/// de firma. Ver docs de diseño para justificación de cada valor.
+/// Sistema "Navy + Oro": el navy es el ancla fría de confianza (header,
+/// nav, marca) y el oro es el ÚNICO color cálido del sistema, reservado
+/// para lo que debe atraer el ojo y termina en una compra: precio, botón de
+/// publicar y badge de descuento.
+///
+/// La regla que sostiene todo: si algo es oro, es porque queremos que lo
+/// mires. Si el oro se reparte entre decoración e información, deja de
+/// funcionar como señal y la pantalla vuelve a sentirse plantilla.
 class AppColors {
-  // ─── Paleta principal ────────────────────────────────────
-  static const primary = Color(0xFF3D5C70); // Azul Piedra — ancla de marca
+  // ─── Primario — Navy ─────────────────────────────────────
+  static const primary = Color(0xFF1B2A4A); // Navy base — marca, nav activo
   static const primaryDark = Color(
-    0xFF1E313C,
-  ); // Azul Noche — headers, nav, overlays
-  static const amber = Color(0xFFE3A008); // Cempasúchil — signature accent
-  static const amberDark = Color(0xFF3D2600); // Texto sobre cempasúchil
-  static const gold = Color(0xFFB8863B); // Dorado — featured/premium
-  static const champagne = Color(0xFFFAF3E0); // Fondo premium badge
-  static const orange = Color(0xFFA84B37); // Terracota — reservado/negociando
-  static const teal = Color(0xFF1F6B62); // Teal secundario
+    0xFF14213A,
+  ); // Navy oscuro — hover/pressed, headers, overlays
+  static const primaryLight = Color(
+    0xFF2E3F5C,
+  ); // Navy claro — bordes sutiles, íconos inactivos
+  // Íconos/labels inactivos DENTRO de la barra navy: primaryLight es un
+  // color de superficie, sobre navy no alcanza a leerse como texto.
+  static const onPrimaryMuted = Color(0xFF93A2BC);
+
+  // ─── Acento — Oro ────────────────────────────────────────
+  // Único acento cálido: precio, FAB de publicar, badges de oferta.
+  static const gold = Color(0xFFD4A02C); // Oro base — el acento vivo
+  static const goldDark = Color(0xFFB07D12); // Hover/pressed, bordes
+  static const goldSoft = Color(
+    0xFFF7E7C0,
+  ); // Oro muy claro — bordes de badge, chip activo
+  static const goldTint = Color(
+    0xFFFDF4E2,
+  ); // Fondo de badge/banner oro (pendiente, premium)
+  // Latón para TEXTO PEQUEÑO sobre superficies claras: el oro base sobre
+  // blanco da 2.4:1 y es ilegible. Sigue siendo oro y no café — 40° de tono
+  // y 79% de saturación, contra los 24°/42% de un cobre.
+  static const goldText = Color(0xFF8A6210);
+  // Lo que va ENCIMA de un relleno de oro es NAVY, no blanco: navy sobre oro
+  // da 6.0:1 y blanco apenas 2.4:1. Eso es lo que deja al oro quedarse en su
+  // versión brillante dentro de badges, botones y etiqueta de precio, en vez
+  // de tener que oscurecerse hasta parecer café.
+  static const onGold = primary;
+
   static const verifiedBlue = Color(
     0xFF3897F0,
   ); // Azul de verificación estilo Meta/Instagram
 
   // ─── Base ────────────────────────────────────────────────
-  static const background = Color(0xFFFAFAF8); // Papel — neutro, casi blanco
-  static const surface = Color(0xFFFFFFFF); // Blanco limpio
-  static const surfaceMuted = Color(0xFFF1F1EE); // Surface muted (neutro)
-  static const ink = Color(0xFF1B1A16); // Tinta
-  static const muted = Color(0xFF6E6B64); // Texto secundario
-  static const border = Color(0xFFE4E2DC); // Border (neutro sutil)
-  static const premiumBorder = Color(0xFFD9C68A);
+  static const background = Color(0xFFFAFAF8); // Blanco cálido, no blanco puro
+  static const surface = Color(0xFFFFFFFF); // Tarjetas
+  static const surfaceMuted = Color(0xFFF2F1EE); // Surface muted (neutro)
+  static const ink = Color(0xFF1A1A1D); // Texto principal (casi negro)
+  // Texto secundario. Se usa a 11-12px en los metadatos de tarjeta (fecha,
+  // vistas, descripción), así que tiene que aguantar AA a ese tamaño: el
+  // #8A8A85 del que salió esta paleta daba 3.3:1 sobre el fondo.
+  static const muted = Color(0xFF6F6F6A);
+  // Gris de texto pequeño sobre fondos ya grises (badge "Agotado" sobre
+  // neutralBg): ahí [muted] se queda en 4.3:1, apenas por debajo del mínimo.
+  static const mutedStrong = Color(0xFF63635F);
+  static const border = Color(0xFFE8E6E1); // Bordes/separadores sutiles
 
-  // ─── Estados ─────────────────────────────────────────────
-  static const danger = Color(0xFFB23A2E);
-  static const success = Color(0xFF2F7D5C);
+  // ─── Estados semánticos ──────────────────────────────────
+  // Sin verdes/rojos puros: desentonan con navy+oro. Verde apagado casi
+  // sage para disponible, y el mismo oro reutilizado para pendiente.
+  static const success = Color(0xFF4A6B5C); // Disponible
+  static const successBg = Color(0xFFE4EBE7);
+  static const danger = Color(0xFFA6483C); // Ladrillo apagado, no rojo puro
+  static const neutralBg = Color(0xFFEDEDEB); // No disponible / inactivo
+
+  // Premium/destacado: mismo oro, diferenciado del badge de oferta por
+  // tratamiento (fondo crema + borde) y no por tono.
+  static const premiumBorder = goldSoft;
 
   // ─── Oscuro ──────────────────────────────────────────────
   // Jerarquía por elevación (fondo < surface < surfaceElevated) en vez de
   // un solo gris plano — así las tarjetas se separan del fondo sin
-  // depender de sombras, que casi no se ven sobre fondo oscuro.
-  static const darkBackground = Color(0xFF0D1317); // teñido de azul, casi negro
-  static const darkSurface = Color(0xFF161F26); // tarjetas estándar
+  // depender de sombras, que casi no se ven sobre fondo oscuro. Los grises
+  // van teñidos de navy para que el modo oscuro siga leyéndose como la
+  // misma marca.
+  static const darkBackground = Color(0xFF0E1420); // navy casi negro
+  static const darkSurface = Color(0xFF17202E); // tarjetas estándar
   static const darkSurfaceElevated = Color(
-    0xFF1E2A32,
+    0xFF1F2A3A,
   ); // modales, sheets, banners destacados
-  static const darkSurfaceMuted = Color(0xFF1B262D); // fondos de sección/inputs
-  static const darkInk = Color(0xFFEDEFF2);
-  static const darkMuted = Color(0xFF97A3AC);
+  static const darkSurfaceMuted = Color(0xFF1A2432); // fondos de sección/inputs
+  static const darkInk = Color(0xFFECEEF2);
+  static const darkMuted = Color(0xFF959FAF);
   static const darkBorder = Color(
-    0xFF2B3942,
+    0xFF2C3849,
   ); // con suficiente presencia para separar tarjetas
-  // Reemplaza a primaryDark cuando se usa como color de ícono/texto sobre
-  // una superficie neutra (no como fondo de AppBar/nav): primaryDark es
-  // casi negro y se pierde sobre fondos ya oscuros.
-  static const primaryAccentDark = Color(0xFF8FB6CB);
-  // Reemplaza a champagne (fondo de badges/banners "premium") en oscuro.
-  static const darkPremiumBg = Color(0xFF2C2412);
-  static const darkPremiumBorder = Color(0xFF4A3C1E);
+  // Reemplaza a primary/primaryDark cuando se usa como color de
+  // ícono/texto sobre una superficie neutra (no como fondo de AppBar/nav):
+  // el navy es casi negro y se pierde sobre fondos ya oscuros.
+  static const primaryAccentDark = Color(0xFF9FB6D6);
+  // Sobre fondo oscuro el oro base ya contrasta bien (6.9:1), pero esta
+  // variante aclarada le devuelve el brillo que pierde sin blanco alrededor.
+  static const goldOnDark = Color(0xFFE3B84E);
+  // Los estados semánticos también se aclaran en oscuro por la misma razón
+  // que el oro: el tono claro conserva la identidad, el oscuro se pierde.
+  static const successOnDark = Color(0xFF7FA593);
+  static const darkSuccessBg = Color(0xFF1B2A24);
+  static const dangerOnDark = Color(0xFFD98577);
+  // Reemplaza a goldTint (fondo de badges/banners "premium") en oscuro.
+  static const darkPremiumBg = Color(0xFF2B2312);
+  static const darkPremiumBorder = Color(0xFF4E4222);
 }
 
 /// Set de colores neutros que sí cambian según el tema activo (a diferencia
@@ -73,10 +122,17 @@ class AppColorSet {
     required this.surfaceMuted,
     required this.ink,
     required this.muted,
+    required this.mutedStrong,
     required this.border,
     required this.accent,
+    required this.gold,
     required this.premiumBg,
     required this.premiumBorder,
+    required this.success,
+    required this.successBg,
+    required this.pendingBg,
+    required this.neutralBg,
+    required this.danger,
   });
 
   final Color background;
@@ -85,10 +141,34 @@ class AppColorSet {
   final Color surfaceMuted;
   final Color ink;
   final Color muted;
+
+  /// Gris legible para texto pequeño sobre superficies grises/tintadas,
+  /// donde [muted] queda por debajo del contraste mínimo.
+  final Color mutedStrong;
   final Color border;
   final Color accent;
+
+  /// Oro legible como TEXTO/ÍCONO sobre una superficie del tema actual.
+  /// Para oro como RELLENO sólido (FAB, badge, botón) usar [AppColors.gold]
+  /// con [AppColors.onGold] encima: ahí el fondo es el oro mismo y no
+  /// depende del tema.
+  final Color gold;
   final Color premiumBg;
   final Color premiumBorder;
+
+  /// Fondos de los tres estados semánticos (disponible / pendiente / no
+  /// disponible). Son colores propios y no el foreground con alpha: un
+  /// verde sage al 8% sobre fondo cálido se ensucia y deja de distinguirse
+  /// del gris de "no disponible", que es justo la diferencia que el badge
+  /// tiene que comunicar.
+  final Color success;
+  final Color successBg;
+  final Color pendingBg;
+  final Color neutralBg;
+
+  /// Ladrillo apagado legible sobre la superficie del tema actual. Para
+  /// rellenos sólidos de error usar [AppColors.danger].
+  final Color danger;
 
   static const light = AppColorSet(
     background: AppColors.background,
@@ -97,10 +177,17 @@ class AppColorSet {
     surfaceMuted: AppColors.surfaceMuted,
     ink: AppColors.ink,
     muted: AppColors.muted,
+    mutedStrong: AppColors.mutedStrong,
     border: AppColors.border,
-    accent: AppColors.primaryDark,
-    premiumBg: AppColors.champagne,
+    accent: AppColors.primary,
+    gold: AppColors.goldText,
+    premiumBg: AppColors.goldTint,
     premiumBorder: AppColors.premiumBorder,
+    success: AppColors.success,
+    successBg: AppColors.successBg,
+    pendingBg: AppColors.goldTint,
+    neutralBg: AppColors.neutralBg,
+    danger: AppColors.danger,
   );
 
   static const dark = AppColorSet(
@@ -110,10 +197,19 @@ class AppColorSet {
     surfaceMuted: AppColors.darkSurfaceMuted,
     ink: AppColors.darkInk,
     muted: AppColors.darkMuted,
+    // En oscuro el gris de texto ya tiene contraste de sobra sobre los
+    // fondos de sección, así que no hace falta una segunda variante.
+    mutedStrong: AppColors.darkMuted,
     border: AppColors.darkBorder,
     accent: AppColors.primaryAccentDark,
+    gold: AppColors.goldOnDark,
     premiumBg: AppColors.darkPremiumBg,
     premiumBorder: AppColors.darkPremiumBorder,
+    success: AppColors.successOnDark,
+    successBg: AppColors.darkSuccessBg,
+    pendingBg: AppColors.darkPremiumBg,
+    neutralBg: AppColors.darkSurfaceMuted,
+    danger: AppColors.dangerOnDark,
   );
 }
 
@@ -203,9 +299,9 @@ class AppShadows {
     ),
   ];
 
-  static List<BoxShadow> get amber => [
+  static List<BoxShadow> get gold => [
     BoxShadow(
-      color: AppColors.amber.withValues(alpha: 0.28),
+      color: AppColors.goldDark.withValues(alpha: 0.34),
       blurRadius: 12,
       offset: const Offset(0, 4),
     ),
@@ -217,11 +313,15 @@ class AppTheme {
     final base = GoogleFonts.workSansTextTheme();
     final scheme = ColorScheme.fromSeed(seedColor: AppColors.primary).copyWith(
       primary: AppColors.primary,
-      secondary: AppColors.teal,
-      tertiary: AppColors.gold,
+      onPrimary: Colors.white,
+      secondary: AppColors.gold,
+      onSecondary: AppColors.onGold,
+      tertiary: AppColors.goldText,
       surface: AppColors.surface,
       surfaceContainerHighest: AppColors.surfaceMuted,
       outline: AppColors.border,
+      outlineVariant: AppColors.border,
+      error: AppColors.danger,
     );
 
     return ThemeData(
@@ -272,8 +372,8 @@ class AppTheme {
         centerTitle: false,
         elevation: 0,
         scrolledUnderElevation: 0,
-        backgroundColor: AppColors.primaryDark,
-        foregroundColor: AppColors.background,
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         // Fondo oscuro del AppBar → íconos claros en la barra de estado.
         // Explícito (no auto-detectado) para que sea consistente sin
@@ -282,10 +382,10 @@ class AppTheme {
         titleTextStyle: GoogleFonts.baloo2(
           fontSize: 19,
           fontWeight: FontWeight.w700,
-          color: AppColors.background,
+          color: Colors.white,
         ),
-        iconTheme: const IconThemeData(color: AppColors.background),
-        actionsIconTheme: const IconThemeData(color: AppColors.background),
+        iconTheme: const IconThemeData(color: Colors.white),
+        actionsIconTheme: const IconThemeData(color: Colors.white),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -309,8 +409,13 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
+          // El botón lleno es la acción — y toda acción es oro con etiqueta
+          // navy. El navy sólido se queda para el cromo (header, nav), así
+          // nunca compiten.
+          backgroundColor: AppColors.gold,
+          foregroundColor: AppColors.onGold,
+          disabledBackgroundColor: AppColors.gold.withValues(alpha: 0.38),
+          disabledForegroundColor: AppColors.onGold.withValues(alpha: 0.55),
           elevation: 0,
           minimumSize: const Size.fromHeight(52),
           shape: RoundedRectangleBorder(
@@ -325,7 +430,7 @@ class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.primary,
-          side: const BorderSide(color: AppColors.border),
+          side: const BorderSide(color: AppColors.primaryLight),
           minimumSize: const Size.fromHeight(48),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -335,7 +440,9 @@ class AppTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.surface,
-        selectedColor: AppColors.primary.withValues(alpha: 0.10),
+        // Chip activo en oro muy claro: marca la selección con el color de
+        // acento sin gastar oro sólido, que está reservado a precio y CTA.
+        selectedColor: AppColors.goldTint,
         side: const BorderSide(color: AppColors.border),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         labelStyle: GoogleFonts.workSans(
@@ -365,12 +472,18 @@ class AppTheme {
           seedColor: AppColors.primary,
           brightness: Brightness.dark,
         ).copyWith(
-          primary: AppColors.primary,
-          secondary: AppColors.teal,
+          // En oscuro el navy base se confunde con el fondo, así que el rol
+          // de "primary" lo toma la variante aclarada.
+          primary: AppColors.primaryAccentDark,
+          onPrimary: AppColors.primaryDark,
+          secondary: AppColors.goldOnDark,
+          onSecondary: AppColors.primaryDark,
           tertiary: AppColors.gold,
           surface: AppColors.darkSurface,
           surfaceContainerHighest: AppColors.darkSurfaceMuted,
           outline: AppColors.darkBorder,
+          outlineVariant: AppColors.darkBorder,
+          error: AppColors.danger,
         );
 
     return ThemeData(
@@ -433,13 +546,21 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+          borderSide: const BorderSide(
+            color: AppColors.primaryAccentDark,
+            width: 1.5,
+          ),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
+          // El botón lleno es la acción — y toda acción es oro con etiqueta
+          // navy. El navy sólido se queda para el cromo (header, nav), así
+          // nunca compiten.
+          backgroundColor: AppColors.gold,
+          foregroundColor: AppColors.onGold,
+          disabledBackgroundColor: AppColors.gold.withValues(alpha: 0.38),
+          disabledForegroundColor: AppColors.onGold.withValues(alpha: 0.55),
           elevation: 0,
           minimumSize: const Size.fromHeight(52),
           shape: RoundedRectangleBorder(
@@ -453,7 +574,7 @@ class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.primary,
+          foregroundColor: AppColors.primaryAccentDark,
           side: const BorderSide(color: AppColors.darkBorder),
           minimumSize: const Size.fromHeight(48),
           shape: RoundedRectangleBorder(
@@ -464,7 +585,7 @@ class AppTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.darkSurface,
-        selectedColor: AppColors.primary.withValues(alpha: 0.20),
+        selectedColor: AppColors.darkPremiumBg,
         side: const BorderSide(color: AppColors.darkBorder),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         labelStyle: GoogleFonts.workSans(

@@ -198,7 +198,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
         isLoggedIn: auth.isLoggedIn,
         backendSellerId: auth.backendSellerId,
       );
-      final fresh = await ApiService.getProductDetail(product.id, userId: userId);
+      final fresh = await ApiService.getProductDetail(
+        product.id,
+        userId: userId,
+      );
       if (!mounted) return;
       setState(() {
         _product = fresh.product;
@@ -220,7 +223,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   /// desde la que se saltó, que es de donde venía el interés.
   void _abrirPublicacion(Product otro) {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => ProductDetailScreen(product: otro)),
+      MaterialPageRoute<void>(
+        builder: (_) => ProductDetailScreen(product: otro),
+      ),
     );
   }
 
@@ -695,7 +700,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 IconButton.outlined(
                   onPressed: () => _openWhatsapp(context),
                   icon: const FaIcon(FontAwesomeIcons.whatsapp),
-                  color: AppColors.teal,
+                  color: context.colors.accent,
                   tooltip: 'Contactar por WhatsApp',
                 ),
               ],
@@ -1337,7 +1342,9 @@ class _SellerCard extends StatelessWidget {
                             ),
                             decoration: BoxDecoration(
                               color: hasReviews
-                                  ? AppColors.gold.withValues(alpha: 0.12)
+                                  ? context.colors.gold.withValues(
+                                      alpha: 0.12,
+                                    )
                                   : context.colors.surfaceMuted,
                               borderRadius: BorderRadius.circular(999),
                             ),
@@ -1349,7 +1356,7 @@ class _SellerCard extends StatelessWidget {
                                       ? Icons.star_rounded
                                       : Icons.star_border_rounded,
                                   color: hasReviews
-                                      ? AppColors.gold
+                                      ? context.colors.gold
                                       : context.colors.muted,
                                   size: 14,
                                 ),
@@ -1442,7 +1449,7 @@ class _CompactRating extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: AppColors.gold.withValues(alpha: 0.12),
+        color: context.colors.gold.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -1451,7 +1458,7 @@ class _CompactRating extends StatelessWidget {
           Icon(
             hasReviews ? Icons.star_rounded : Icons.star_border_rounded,
             size: 15,
-            color: AppColors.gold,
+            color: context.colors.gold,
           ),
           if (hasReviews) ...[
             const SizedBox(width: 3),
@@ -1600,7 +1607,7 @@ class _InteractiveStarRatingState extends State<_InteractiveStarRating> {
                     child: Icon(
                       filled ? Icons.star_rounded : Icons.star_border_rounded,
                       size: 32,
-                      color: AppColors.gold,
+                      color: context.colors.gold,
                     ),
                   ),
                 );

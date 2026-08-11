@@ -153,19 +153,21 @@ class _MaxDiscountHeader extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: AppColors.orange.withValues(alpha: 0.08),
+          color: context.colors.gold.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.orange.withValues(alpha: 0.18)),
+          border: Border.all(
+            color: context.colors.gold.withValues(alpha: 0.18),
+          ),
         ),
         child: Row(
           children: [
-            const Icon(Icons.local_offer_rounded, color: AppColors.orange),
+            Icon(Icons.local_offer_rounded, color: context.colors.gold),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 'Hasta -$maxDiscount% de descuento',
-                style: const TextStyle(
-                  color: AppColors.orange,
+                style: TextStyle(
+                  color: context.colors.gold,
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
                 ),

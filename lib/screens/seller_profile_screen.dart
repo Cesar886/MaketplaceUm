@@ -139,7 +139,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                     icon: const FaIcon(FontAwesomeIcons.whatsapp),
                     label: const Text('Contactar por WhatsApp'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.teal,
+                      backgroundColor: context.colors.accent,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
@@ -208,9 +208,9 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.star_rounded,
-                    color: AppColors.gold,
+                    color: context.colors.gold,
                     size: 18,
                   ),
                   const SizedBox(width: 3),
@@ -241,10 +241,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
             if (seller.paymentMethods.isNotEmpty) const SizedBox(height: 20),
           ],
           if (seller.paymentMethods.isNotEmpty) ...[
-            Text(
-              'Métodos de pago aceptados',
-              style: AppTypography.heading(16),
-            ),
+            Text('Métodos de pago aceptados', style: AppTypography.heading(16)),
             const SizedBox(height: 10),
             PaymentMethodsChips(methods: seller.paymentMethods),
           ],

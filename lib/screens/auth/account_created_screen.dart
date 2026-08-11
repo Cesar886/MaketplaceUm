@@ -70,18 +70,18 @@ class AccountCreatedScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: AppColors.teal.withValues(alpha: 0.08),
+                  color: context.colors.accent.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: AppColors.teal.withValues(alpha: 0.18),
+                    color: context.colors.accent.withValues(alpha: 0.18),
                   ),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.lightbulb_rounded,
-                      color: AppColors.teal,
+                      color: context.colors.accent,
                       size: 20,
                     ),
                     const SizedBox(width: 10),

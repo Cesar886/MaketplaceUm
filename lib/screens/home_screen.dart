@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
@@ -30,8 +31,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   List<Product> _products = [];
   List<MarketplaceCategory> _categories = [];
   List<HighlightPlan> _highlightPlans = [];
@@ -170,7 +170,8 @@ class _HomeScreenState extends State<HomeScreen>
         _error = mensajeDeError(
           e,
           stack: stack,
-          fallback: 'No pudimos cargar el inicio. Revisa tu conexión e '
+          fallback:
+              'No pudimos cargar el inicio. Revisa tu conexión e '
               'intenta de nuevo.',
         );
       });
@@ -265,21 +266,27 @@ class _HomeScreenState extends State<HomeScreen>
         : _products.where((p) => p.category.id == _selectedCategoryId).toList();
     final recent = filtered.where((p) => !p.isFeatured).toList();
 
+    // El header navy se dibuja HASTA el borde superior (top: false) y se
+    // come el inset de la barra de estado él mismo. Es lo que hace que la
+    // marca se lea como una banda de la app y no como un logo suelto sobre
+    // fondo blanco de plantilla.
     return SafeArea(
       key: const ValueKey('home-content'),
+      top: false,
       child: RefreshIndicator(
         onRefresh: _loadData,
         child: CustomScrollView(
           slivers: [
             SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
+              child: _NavyHeader(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        const Expanded(child: AppLogo(size: 44)),
+                        const Expanded(
+                          child: AppLogo(size: 44, textColor: Colors.white),
+                        ),
                         _ScanQrButton(
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute<void>(
@@ -309,9 +316,21 @@ class _HomeScreenState extends State<HomeScreen>
                     const SizedBox(height: 14),
                     _SearchBox(
                       trendingTerms: _trendingSearches,
-                      onTap: (term) => _openSearch(context, term),
+                      onTap: () => _openSearch(context),
                     ),
-                    const SizedBox(height: 18),
+                  ],
+                ),
+              ),
+            ),
+            // Las categorías salen de la banda navy: son contenido
+            // navegable, no cromo de marca, y sobre el fondo claro se
+            // distinguen de lo que es header fijo.
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     _CategoryScroller(
                       categories: _categories,
                       selectedCategoryId: _selectedCategoryId,
@@ -560,11 +579,9 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  void _openSearch(BuildContext context, String? term) {
+  void _openSearch(BuildContext context) {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => SearchScreen(initialQuery: term),
-      ),
+      MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
     );
   }
 }
@@ -666,6 +683,92 @@ class _HighlightPlanChip extends StatelessWidget {
   }
 }
 
+/// Banda navy del home: marca + búsqueda sobre fondo sólido, extendida por
+/// debajo de la barra de estado.
+///
+/// Lleva su propio [AnnotatedRegion] porque el shell declara íconos oscuros
+/// para las pestañas de fondo claro; sobre esta banda oscura harían falta
+/// claros, y el anidado más profundo es el que gana en la región que cubre.
+class _NavyHeader extends StatelessWidget {
+  const _NavyHeader({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      // Solo la mitad de arriba: la barra de navegación de abajo la sigue
+      // declarando el shell, que es quien la pinta.
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: AppColors.primary,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: AppColors.primary,
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
+        ),
+        padding: EdgeInsets.fromLTRB(
+          18,
+          MediaQuery.paddingOf(context).top + 14,
+          18,
+          18,
+        ),
+        child: child,
+      ),
+    );
+  }
+}
+
+/// Botón de ícono del header: contorno claro sobre el navy, para que los
+/// tres (QR, campana, favoritos) se lean como un grupo y no como tres
+/// controles sueltos de distinto peso.
+class _HeaderIconButton extends StatelessWidget {
+  const _HeaderIconButton({
+    required this.icon,
+    required this.onTap,
+    this.tooltip,
+    this.badgeCount = 0,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final String? tooltip;
+  final int badgeCount;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget content = Icon(icon, size: 20, color: Colors.white);
+
+    if (badgeCount > 0) {
+      content = Badge.count(
+        count: badgeCount,
+        backgroundColor: AppColors.gold,
+        textColor: AppColors.onGold,
+        child: content,
+      );
+    }
+
+    return Tooltip(
+      message: tooltip ?? '',
+      child: Material(
+        color: Colors.white.withValues(alpha: 0.10),
+        shape: CircleBorder(
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(width: 40, height: 40, child: Center(child: content)),
+        ),
+      ),
+    );
+  }
+}
+
 class _FavHeaderButton extends StatelessWidget {
   const _FavHeaderButton({required this.itemCount, required this.onTap});
 
@@ -674,14 +777,11 @@ class _FavHeaderButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton.outlined(
-      onPressed: onTap,
-      icon: Badge.count(
-        count: itemCount,
-        isLabelVisible: itemCount > 0,
-        backgroundColor: AppColors.danger,
-        child: const Icon(Icons.favorite_outline_rounded),
-      ),
+    return _HeaderIconButton(
+      icon: Icons.favorite_outline_rounded,
+      tooltip: 'Favoritos',
+      badgeCount: itemCount,
+      onTap: onTap,
     );
   }
 }
@@ -788,9 +888,7 @@ class _CategoryFilterChipState extends State<_CategoryFilterChip> {
 class _SearchBox extends StatefulWidget {
   const _SearchBox({required this.onTap, this.trendingTerms = const []});
 
-  /// Recibe el término actualmente mostrado en el placeholder, o `null` si
-  /// se está mostrando el hint genérico (sin términos trending todavía).
-  final ValueChanged<String?> onTap;
+  final VoidCallback onTap;
   final List<String> trendingTerms;
 
   @override
@@ -832,10 +930,9 @@ class _SearchBoxState extends State<_SearchBox> {
     super.dispose();
   }
 
-  String? get _currentTerm =>
-      widget.trendingTerms.isEmpty
-          ? null
-          : widget.trendingTerms[_index % widget.trendingTerms.length];
+  String? get _currentTerm => widget.trendingTerms.isEmpty
+      ? null
+      : widget.trendingTerms[_index % widget.trendingTerms.length];
 
   @override
   Widget build(BuildContext context) {
@@ -848,7 +945,7 @@ class _SearchBoxState extends State<_SearchBox> {
         side: BorderSide(color: context.colors.border),
       ),
       child: InkWell(
-        onTap: () => widget.onTap(term),
+        onTap: widget.onTap,
         borderRadius: BorderRadius.circular(28),
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: 18, vertical: 14),
@@ -865,7 +962,7 @@ class _SearchBoxState extends State<_SearchBox> {
                   // catálogo vacío — nunca en operación normal.
                   child: Text(
                     term != null
-                        ? "Buscar '$term'..."
+                        ? "$term"
                         : 'Buscar en Mercadito UM...',
                     key: ValueKey(term),
                     maxLines: 1,
@@ -1064,10 +1161,10 @@ class _BusinessCard extends StatelessWidget {
                                 ),
                               ),
                               const SizedBox(width: 4),
-                              const Icon(
+                              Icon(
                                 Icons.star_rounded,
                                 size: 14,
-                                color: AppColors.gold,
+                                color: context.colors.gold,
                               ),
                               const SizedBox(width: 2),
                               Text(
@@ -1206,18 +1303,15 @@ class _NotificationBellState extends State<_NotificationBell> {
     final auth = context.watch<AuthProvider>();
     if (!auth.isLoggedIn) return const SizedBox.shrink();
 
-    return IconButton.outlined(
-      onPressed: () {
+    return _HeaderIconButton(
+      icon: Icons.notifications_outlined,
+      tooltip: 'Notificaciones',
+      badgeCount: _unreadCount,
+      onTap: () {
         widget.onTap();
         // Reset local count after opening
         setState(() => _unreadCount = 0);
       },
-      icon: Badge.count(
-        count: _unreadCount,
-        isLabelVisible: _unreadCount > 0,
-        backgroundColor: AppColors.primary,
-        child: const Icon(Icons.notifications_outlined),
-      ),
     );
   }
 }
@@ -1230,10 +1324,10 @@ class _ScanQrButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton.outlined(
-      onPressed: onTap,
-      icon: const Icon(Icons.qr_code_scanner_rounded),
+    return _HeaderIconButton(
+      icon: Icons.qr_code_scanner_rounded,
       tooltip: 'Escanear QR',
+      onTap: onTap,
     );
   }
 }

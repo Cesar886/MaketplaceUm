@@ -7,9 +7,13 @@ import '../models.dart';
 
 /// Etiqueta de precio tipo "colgante de puesto" — el elemento firma de MercadoUm.
 ///
-/// En oferta: etiqueta cempasúchil con ojal perforado y ligera rotación,
-/// como una etiqueta de cartulina amarrada con hilo. Sin oferta: precio
-/// plano en Baloo 2.
+/// El precio SIEMPRE es oro: es lo primero que el ojo debe encontrar en
+/// cada tarjeta, y la consistencia de ese color entre todas las pantallas
+/// es lo que lo vuelve un ancla de lectura en vez de un adorno.
+///
+/// En oferta sube de intensidad: etiqueta de oro sólido con texto navy,
+/// ojal perforado y ligera rotación, como una etiqueta de cartulina
+/// amarrada con hilo. Sin oferta: precio plano en latón, sin contenedor.
 class PriceTag extends StatelessWidget {
   const PriceTag({super.key, required this.product, this.large = false});
 
@@ -64,14 +68,14 @@ class _PriceTagContent extends StatelessWidget {
     final discountSize = large ? 13.0 : 11.0;
 
     if (!hasOffer) {
-      // Sin oferta: precio plano, sin contenedor
+      // Sin oferta: precio plano en latón, sin contenedor.
       return Text(
         Product.formatPrice(product.price),
-        style: AppTypography.price(priceSize, color: context.colors.ink),
+        style: AppTypography.price(priceSize, color: context.colors.gold),
       );
     }
 
-    // Con oferta: etiqueta de puesto — colgante cempasúchil con ojal, rotada.
+    // Con oferta: etiqueta de puesto — colgante de oro con ojal, rotada.
     final holeSize = large ? 8.0 : 6.0;
     return Transform.rotate(
       angle: -3 * math.pi / 180,
@@ -80,9 +84,9 @@ class _PriceTagContent extends StatelessWidget {
         children: [
           DecoratedBox(
             decoration: BoxDecoration(
-              color: AppColors.amber,
+              color: AppColors.gold,
               borderRadius: BorderRadius.circular(large ? 10 : 8),
-              boxShadow: large ? AppShadows.amber : null,
+              boxShadow: large ? AppShadows.gold : null,
             ),
             child: Padding(
               padding: EdgeInsets.only(
@@ -99,7 +103,7 @@ class _PriceTagContent extends StatelessWidget {
                     Product.formatPrice(product.price),
                     style: AppTypography.price(
                       priceSize,
-                      color: AppColors.amberDark,
+                      color: AppColors.onGold,
                     ),
                   ),
                   if (product.previousPrice != null) ...[
@@ -108,7 +112,10 @@ class _PriceTagContent extends StatelessWidget {
                       Product.formatPrice(product.previousPrice!),
                       style: AppTypography.body(
                         oldPriceSize,
-                        color: AppColors.amberDark.withValues(alpha: 0.60),
+                        // 0.86 es el punto donde el precio anterior todavía
+                        // se lee (4.8:1 sobre el oro) pero ya cedió jerarquía
+                        // al precio nuevo. Más abajo deja de ser legible.
+                        color: AppColors.onGold.withValues(alpha: 0.86),
                       ).copyWith(decoration: TextDecoration.lineThrough),
                     ),
                     if (product.discountLabel != null) ...[
@@ -118,7 +125,7 @@ class _PriceTagContent extends StatelessWidget {
                         style: AppTypography.label(
                           discountSize,
                           weight: FontWeight.w800,
-                          color: AppColors.amberDark,
+                          color: AppColors.onGold,
                         ),
                       ),
                     ],
@@ -138,10 +145,9 @@ class _PriceTagContent extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: context.colors.surface,
                   shape: BoxShape.circle,
-                  border: Border.all(
-                    color: AppColors.amberDark.withValues(alpha: 0.35),
-                    width: 1,
-                  ),
+                  // El ojal es un hueco: se define con el latón, no con un
+                  // borde claro que se perdería sobre el oro.
+                  border: Border.all(color: AppColors.goldText, width: 1),
                 ),
               ),
             ),

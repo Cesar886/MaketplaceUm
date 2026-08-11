@@ -197,7 +197,16 @@ class MainShellState extends State<MainShell> {
     // Explícito porque, sin AppBar propio, Flutter no lo recalcula solo
     // al volver aquí desde una pantalla con header oscuro.
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark,
+      // Arriba, fondo claro → íconos oscuros. Abajo, la barra de navegación
+      // navy se extiende por debajo de la barra del sistema, así que ahí los
+      // íconos tienen que ser claros: un solo preset no cubre los dos lados.
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+        systemNavigationBarColor: AppColors.primary,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
       child: Scaffold(
         body: IndexedStack(
           index: _currentIndex,
@@ -206,56 +215,63 @@ class MainShellState extends State<MainShell> {
               HeroMode(enabled: i == _currentIndex, child: _pages[i]),
           ],
         ),
-        bottomNavigationBar: SafeArea(
-          top: false,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: context.colors.surface,
-              border: Border(
-                top: BorderSide(color: context.colors.border, width: 0.8),
+        // Barra navy sólida: es el marco frío contra el que el "+" de oro se
+        // vuelve el único punto cálido de la pantalla, e imposible de no ver
+        // (6:1 contra el navy). Sobre una barra blanca ese mismo botón
+        // compite con las tarjetas; sobre navy no compite con nada.
+        bottomNavigationBar: Container(
+          color: AppColors.primary,
+          child: SafeArea(
+            top: false,
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                color: AppColors.primary,
+                border: Border(
+                  top: BorderSide(color: AppColors.primaryLight, width: 0.8),
+                ),
               ),
-            ),
-            child: SizedBox(
-              height: 66,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _NavItem(
-                    icon: Icons.home_outlined,
-                    selectedIcon: Icons.home_rounded,
-                    label: 'Inicio',
-                    index: 0,
-                    currentIndex: _currentIndex,
-                    onTap: selectTab,
-                    badge: _unreadNotifCount > 0 ? _unreadNotifCount : null,
-                  ),
-                  _NavItem(
-                    icon: Icons.local_offer_outlined,
-                    selectedIcon: Icons.local_offer_rounded,
-                    label: 'Ofertas',
-                    index: 1,
-                    currentIndex: _currentIndex,
-                    onTap: selectTab,
-                  ),
-                  _PublishFab(onTap: () => _showPublishMenu(context)),
-                  _NavItem(
-                    icon: Icons.chat_outlined,
-                    selectedIcon: Icons.chat_rounded,
-                    label: 'Chat',
-                    index: 4,
-                    currentIndex: _currentIndex,
-                    onTap: selectTab,
-                    badge: _unreadChatCount > 0 ? _unreadChatCount : null,
-                  ),
-                  _NavItem(
-                    icon: Icons.person_outline_rounded,
-                    selectedIcon: Icons.person_rounded,
-                    label: 'Perfil',
-                    index: 5,
-                    currentIndex: _currentIndex,
-                    onTap: selectTab,
-                  ),
-                ],
+              child: SizedBox(
+                height: 66,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _NavItem(
+                      icon: Icons.home_outlined,
+                      selectedIcon: Icons.home_rounded,
+                      label: 'Inicio',
+                      index: 0,
+                      currentIndex: _currentIndex,
+                      onTap: selectTab,
+                      badge: _unreadNotifCount > 0 ? _unreadNotifCount : null,
+                    ),
+                    _NavItem(
+                      icon: Icons.local_offer_outlined,
+                      selectedIcon: Icons.local_offer_rounded,
+                      label: 'Ofertas',
+                      index: 1,
+                      currentIndex: _currentIndex,
+                      onTap: selectTab,
+                    ),
+                    _PublishFab(onTap: () => _showPublishMenu(context)),
+                    _NavItem(
+                      icon: Icons.chat_outlined,
+                      selectedIcon: Icons.chat_rounded,
+                      label: 'Chat',
+                      index: 4,
+                      currentIndex: _currentIndex,
+                      onTap: selectTab,
+                      badge: _unreadChatCount > 0 ? _unreadChatCount : null,
+                    ),
+                    _NavItem(
+                      icon: Icons.person_outline_rounded,
+                      selectedIcon: Icons.person_rounded,
+                      label: 'Perfil',
+                      index: 5,
+                      currentIndex: _currentIndex,
+                      onTap: selectTab,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -286,8 +302,11 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Sobre la barra navy los estados se separan por luminosidad, no por
+    // tono: blanco para la pestaña activa y un navy claro para las demás.
+    // El oro no participa aquí — en esta barra pertenece solo al "+".
     final selected = index == currentIndex;
-    final color = selected ? AppColors.primary : context.colors.muted;
+    final color = selected ? Colors.white : AppColors.onPrimaryMuted;
 
     Widget iconWidget = Icon(
       selected ? selectedIcon : icon,
@@ -298,7 +317,8 @@ class _NavItem extends StatelessWidget {
     if (badge != null && badge! > 0) {
       iconWidget = Badge.count(
         count: badge!,
-        backgroundColor: AppColors.primary,
+        backgroundColor: AppColors.gold,
+        textColor: AppColors.onGold,
         child: iconWidget,
       );
     }
@@ -350,18 +370,14 @@ class _PublishFab extends StatelessWidget {
         onTap: onTap,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: AppColors.amber,
+            color: AppColors.gold,
             shape: BoxShape.circle,
-            boxShadow: AppShadows.amber,
+            boxShadow: AppShadows.gold,
           ),
           child: const SizedBox(
             width: 52,
             height: 52,
-            child: Icon(
-              Icons.add_rounded,
-              color: AppColors.amberDark,
-              size: 28,
-            ),
+            child: Icon(Icons.add_rounded, color: AppColors.onGold, size: 28),
           ),
         ),
       ),

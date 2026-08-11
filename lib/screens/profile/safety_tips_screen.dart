@@ -62,10 +62,10 @@ class SafetyTipsScreen extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: AppColors.teal.withValues(alpha: 0.08),
+                      color: context.colors.accent.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Icon(icon, color: AppColors.teal),
+                    child: Icon(icon, color: context.colors.accent),
                   ),
                   const SizedBox(width: 14),
                   Expanded(

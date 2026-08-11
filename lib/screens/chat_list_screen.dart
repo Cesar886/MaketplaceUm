@@ -236,14 +236,20 @@ class _ConversationTile extends StatelessWidget {
               CircleAvatar(
                 radius: 24,
                 backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-                child: Text(
-                  otherUser?.avatarInitials ?? '?',
-                  style: TextStyle(
-                    color: context.colors.accent,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                  ),
-                ),
+                backgroundImage:
+                    otherUser?.logoUrl != null && otherUser!.logoUrl!.isNotEmpty
+                    ? NetworkImage('${ApiService.baseUrl}${otherUser.logoUrl}')
+                    : null,
+                child: otherUser?.logoUrl == null || otherUser!.logoUrl!.isEmpty
+                    ? Text(
+                        otherUser?.avatarInitials ?? '?',
+                        style: TextStyle(
+                          color: context.colors.accent,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                        ),
+                      )
+                    : null,
               ),
               const SizedBox(width: 12),
               Expanded(

@@ -24,7 +24,11 @@ const double kCommentDividerIndent = _kAvatarSize + _kAvatarGap + 4;
 /// subió uno. Mismo tratamiento que el perfil: fondo del color de marca al
 /// 12% e iniciales en el color de acento.
 class CommentAvatar extends StatelessWidget {
-  const CommentAvatar({super.key, required this.author, this.size = _kAvatarSize});
+  const CommentAvatar({
+    super.key,
+    required this.author,
+    this.size = _kAvatarSize,
+  });
 
   final Seller author;
   final double size;
@@ -63,11 +67,7 @@ class CommentAvatar extends StatelessWidget {
 /// Sin tarjeta ni borde: lo que separa un comentario del siguiente es el
 /// aire y un divisor de un pixel, siguiendo la línea del resto de la app.
 class CommentTile extends StatelessWidget {
-  const CommentTile({
-    super.key,
-    required this.comment,
-    this.onDelete,
-  });
+  const CommentTile({super.key, required this.comment, this.onDelete});
 
   final ProductComment comment;
 
@@ -164,8 +164,10 @@ class _MenuComentario extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.delete_outline_rounded,
-                  color: AppColors.danger),
+              leading: const Icon(
+                Icons.delete_outline_rounded,
+                color: AppColors.danger,
+              ),
               title: const Text(
                 'Eliminar comentario',
                 style: TextStyle(
@@ -177,8 +179,10 @@ class _MenuComentario extends StatelessWidget {
               onTap: () => Navigator.of(sheetContext).pop(true),
             ),
             ListTile(
-              leading: Icon(Icons.close_rounded,
-                  color: sheetContext.colors.muted),
+              leading: Icon(
+                Icons.close_rounded,
+                color: sheetContext.colors.muted,
+              ),
               title: const Text('Cancelar'),
               onTap: () => Navigator.of(sheetContext).pop(false),
             ),

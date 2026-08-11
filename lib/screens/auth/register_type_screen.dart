@@ -42,7 +42,7 @@ class RegisterTypeScreen extends StatelessWidget {
                       subtitle:
                           'Alumno o empleado de la Universidad de Montemorelos',
                       features: ['Publica libros, apuntes, electrónicos y más'],
-                      color: AppColors.teal,
+                      color: context.colors.accent,
                       onTap: () => _goToForm(context, 'estudiante'),
                     ),
                     const SizedBox(height: 12),
@@ -54,7 +54,7 @@ class RegisterTypeScreen extends StatelessWidget {
                         'Vende comida, papelería, servicios y más',
                         'Confirmación manual por administrador',
                       ],
-                      color: AppColors.gold,
+                      color: context.colors.gold,
                       onTap: () => _goToForm(context, 'negocio'),
                     ),
                     const SizedBox(height: 12),
@@ -66,7 +66,7 @@ class RegisterTypeScreen extends StatelessWidget {
                         'Ofrece hospedaje, servicios y productos',
                         'Verifica tu identidad opcionalmente',
                       ],
-                      color: AppColors.orange,
+                      color: context.colors.gold,
                       onTap: () => _goToForm(context, 'particular'),
                     ),
                   ],
@@ -157,12 +157,12 @@ class _TypeCard extends StatelessWidget {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Padding(
-                          padding: EdgeInsets.only(top: 2, right: 6),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2, right: 6),
                           child: Icon(
                             Icons.check_rounded,
                             size: 16,
-                            color: AppColors.teal,
+                            color: context.colors.accent,
                           ),
                         ),
                         Expanded(

@@ -33,14 +33,14 @@ class WantedPostCard extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
           side: BorderSide(
-            color: AppColors.teal.withValues(alpha: 0.35),
+            color: context.colors.accent.withValues(alpha: 0.35),
             width: 1.5,
           ),
         ),
         child: InkWell(
           onTap: onTap,
-          splashColor: AppColors.teal.withValues(alpha: 0.06),
-          highlightColor: AppColors.teal.withValues(alpha: 0.03),
+          splashColor: context.colors.accent.withValues(alpha: 0.06),
+          highlightColor: context.colors.accent.withValues(alpha: 0.03),
           child: Padding(
             padding: const EdgeInsets.all(10),
             child: Column(
@@ -51,14 +51,13 @@ class WantedPostCard extends StatelessWidget {
                   child: AspectRatio(
                     aspectRatio: 4 / 3.4,
                     child: Container(
-                      color: (category?.color ?? AppColors.teal).withValues(
-                        alpha: 0.10,
-                      ),
+                      color: (category?.color ?? context.colors.accent)
+                          .withValues(alpha: 0.10),
                       alignment: Alignment.center,
                       child: Icon(
                         category?.icon ?? Icons.category_rounded,
                         size: 34,
-                        color: category?.color ?? AppColors.teal,
+                        color: category?.color ?? context.colors.accent,
                       ),
                     ),
                   ),
@@ -132,7 +131,7 @@ class _SeBuscaTag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: AppColors.teal.withValues(alpha: 0.12),
+        color: context.colors.accent.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
@@ -140,7 +139,7 @@ class _SeBuscaTag extends StatelessWidget {
         style: AppTypography.label(
           12,
           weight: FontWeight.w800,
-          color: AppColors.teal,
+          color: context.colors.accent,
         ),
       ),
     );

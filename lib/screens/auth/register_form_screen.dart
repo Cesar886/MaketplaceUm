@@ -460,7 +460,9 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
             color: context.colors.surface,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: _logoFile != null ? AppColors.teal : context.colors.border,
+              color: _logoFile != null
+                  ? context.colors.accent
+                  : context.colors.border,
             ),
           ),
           child: Row(
@@ -499,7 +501,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color: _logoFile != null
-                        ? AppColors.teal
+                        ? context.colors.accent
                         : context.colors.ink,
                   ),
                 ),

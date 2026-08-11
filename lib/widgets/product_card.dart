@@ -60,9 +60,9 @@ class ProductCard extends StatelessWidget {
   Widget _buildCard(BuildContext context) {
     final hasAccent = product.isOffer || product.isFeatured;
     final borderColor = product.isOffer
-        ? AppColors.amber.withValues(alpha: 0.35)
+        ? AppColors.gold
         : product.isFeatured
-        ? AppColors.gold.withValues(alpha: 0.35)
+        ? context.colors.premiumBorder
         : Colors.transparent;
 
     return DecoratedBox(

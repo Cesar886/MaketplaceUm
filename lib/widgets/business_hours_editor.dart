@@ -52,8 +52,8 @@ class _BusinessHoursEditorState extends State<BusinessHoursEditor> {
     // Copiar el horario de otro día ya configurado, si existe.
     final reference = _hours.values.isNotEmpty ? _hours.values.first : null;
     setState(() {
-      _hours[day] = reference ??
-          const BusinessHoursRange(open: '09:00', close: '18:00');
+      _hours[day] =
+          reference ?? const BusinessHoursRange(open: '09:00', close: '18:00');
     });
     widget.onChanged(Map.of(_hours));
   }
@@ -102,11 +102,7 @@ class _BusinessHoursEditorState extends State<BusinessHoursEditor> {
       children: [
         Row(
           children: [
-            Icon(
-              Icons.schedule_rounded,
-              size: 16,
-              color: context.colors.muted,
-            ),
+            Icon(Icons.schedule_rounded, size: 16, color: context.colors.muted),
             const SizedBox(width: 6),
             const Expanded(
               child: Text(

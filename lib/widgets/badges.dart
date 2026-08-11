@@ -11,11 +11,16 @@ class FeaturedBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Destacado y oferta comparten el oro a propósito (es el único acento
+    // del sistema), pero NO el tratamiento: destacado va en crema con texto
+    // latón, oferta va en oro sólido con texto navy. Así el descuento
+    // siempre pesa más en la jerarquía visual que el "patrocinado".
     return _Badge(
       icon: Icons.star_rounded,
       label: 'Destacado',
-      foreground: AppColors.gold,
+      foreground: context.colors.gold,
       background: context.colors.premiumBg,
+      border: context.colors.premiumBorder,
       compact: compact,
     );
   }
@@ -29,12 +34,49 @@ class OfferBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Oro sólido con texto navy: el descuento es la razón por la que alguien
+    // se detiene en la tarjeta, así que se lee como una etiqueta pegada al
+    // producto y no como un texto flotando encima de la foto.
     return _Badge(
       icon: Icons.local_offer_rounded,
       label: label ?? 'Oferta',
-      foreground: AppColors.orange,
-      background: AppColors.orange.withValues(alpha: 0.08),
+      foreground: AppColors.onGold,
+      background: AppColors.gold,
       compact: compact,
+    );
+  }
+}
+
+/// Etiqueta de descuento anclada a la esquina superior izquierda de la foto.
+///
+/// A diferencia de [OfferBadge] (píldora suelta que puede ir en cualquier
+/// fila), esta va pegada al borde: solo redondea las dos esquinas interiores,
+/// así se lee como una etiqueta adherida al producto y no como un elemento
+/// flotando encima de la imagen.
+class OfferCornerTag extends StatelessWidget {
+  const OfferCornerTag({super.key, required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: const BoxDecoration(
+        color: AppColors.gold,
+        borderRadius: BorderRadius.only(
+          bottomRight: Radius.circular(10),
+          topLeft: Radius.circular(10),
+        ),
+      ),
+      child: Text(
+        label,
+        style: AppTypography.label(
+          11,
+          weight: FontWeight.w800,
+          color: AppColors.onGold,
+        ),
+      ),
     );
   }
 }
@@ -46,16 +88,17 @@ class StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = switch (status) {
-      ListingStatus.active => AppColors.success,
-      ListingStatus.featured => AppColors.gold,
-      ListingStatus.expired => AppColors.danger,
+    final c = context.colors;
+    final (Color color, Color background) = switch (status) {
+      ListingStatus.active => (c.success, c.successBg),
+      ListingStatus.featured => (c.gold, c.premiumBg),
+      ListingStatus.expired => (c.danger, c.neutralBg),
     };
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
+        color: background,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -90,12 +133,13 @@ class InsigniaVerificada extends StatelessWidget {
   /// Variante para construir la insignia con el `tipoCuenta` tal como llega
   /// del backend ('estudiante' | 'negocio' | 'particular'), sin tener que
   /// mapear el string a [AccountType] en cada call site.
-  const InsigniaVerificada.desdeTipo(String tipoCuenta, {
+  const InsigniaVerificada.desdeTipo(
+    String tipoCuenta, {
     super.key,
     this.compact = false,
     this.size = 16,
-  })  : _tipoCrudo = tipoCuenta,
-        tipo = AccountType.particular;
+  }) : _tipoCrudo = tipoCuenta,
+       tipo = AccountType.particular;
 
   final AccountType tipo;
   final bool compact;
@@ -107,8 +151,9 @@ class InsigniaVerificada extends StatelessWidget {
 
   /// Un tipo desconocido cae a 'particular', el estilo más neutro: nunca se
   /// le atribuye a una cuenta un nivel de verificación que no tiene.
-  AccountType get _tipoEfectivo =>
-      _tipoCrudo == null ? tipo : (_tipoCrudo.toAccountType ?? AccountType.particular);
+  AccountType get _tipoEfectivo => _tipoCrudo == null
+      ? tipo
+      : (_tipoCrudo.toAccountType ?? AccountType.particular);
 
   @override
   Widget build(BuildContext context) {
@@ -155,29 +200,39 @@ class AvailabilityBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (String label, Color foreground) = switch (status) {
-      ComputedStatus.available => ('Disponible', AppColors.success),
-      ComputedStatus.soldOut => ('Agotado', context.colors.muted),
+    final c = context.colors;
+    // Tres familias, no ocho colores: disponible (sage), pendiente/con fecha
+    // (oro) y no disponible (gris). Ocho tonos distintos obligarían a leer
+    // el texto para saber si puedo comprar; tres se distinguen de reojo.
+    final (String label, Color foreground, Color background) = switch (status) {
+      ComputedStatus.available => ('Disponible', c.success, c.successBg),
+      ComputedStatus.soldOut => ('Agotado', c.mutedStrong, c.neutralBg),
       ComputedStatus.availableOtherDay => (
         nextAvailableDay != null
             ? 'Disponible el $nextAvailableDay'
             : 'Próximamente',
-        AppColors.orange,
+        c.gold,
+        c.pendingBg,
       ),
       ComputedStatus.closed => (
         opensAt != null ? 'Disponible: $opensAt' : 'Cerrado',
-        context.colors.muted,
+        c.gold,
+        c.pendingBg,
       ),
-      ComputedStatus.reserved => ('Apartado', AppColors.orange),
-      ComputedStatus.negotiating => ('En negociación', AppColors.primary),
-      ComputedStatus.sold => ('Vendido', context.colors.muted),
-      ComputedStatus.paused => ('Pausado', context.colors.muted),
+      ComputedStatus.reserved => ('Apartado', c.gold, c.pendingBg),
+      ComputedStatus.negotiating => (
+        'En negociación',
+        c.accent,
+        c.surfaceMuted,
+      ),
+      ComputedStatus.sold => ('Vendido', c.mutedStrong, c.neutralBg),
+      ComputedStatus.paused => ('Pausado', c.mutedStrong, c.neutralBg),
     };
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
       decoration: BoxDecoration(
-        color: foreground.withValues(alpha: 0.08),
+        color: background,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -204,8 +259,8 @@ class OpenStatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (Color foreground, Color background) = isOpen
-        ? (AppColors.success, AppColors.success.withValues(alpha: 0.08))
-        : (context.colors.muted, context.colors.muted.withValues(alpha: 0.08));
+        ? (context.colors.success, context.colors.successBg)
+        : (context.colors.mutedStrong, context.colors.neutralBg);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
@@ -243,6 +298,7 @@ class _Badge extends StatelessWidget {
     required this.foreground,
     required this.background,
     required this.compact,
+    this.border,
   });
 
   final IconData icon;
@@ -250,17 +306,19 @@ class _Badge extends StatelessWidget {
   final Color foreground;
   final Color background;
   final bool compact;
+  final Color? border;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: compact ? 6 : 8,
+        horizontal: compact ? 7 : 9,
         vertical: compact ? 3 : 4,
       ),
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(999),
+        border: border == null ? null : Border.all(color: border!),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

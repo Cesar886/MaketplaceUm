@@ -128,7 +128,7 @@ class _StatsRow extends StatelessWidget {
           child: _StatCard(
             label: 'Destacadas',
             value: '$featured',
-            color: AppColors.gold,
+            color: context.colors.gold,
           ),
         ),
         const SizedBox(width: 10),
@@ -286,7 +286,7 @@ class _MyListingTile extends StatelessWidget {
                     status == ListingStatus.featured ? 'Extender' : 'Destacar',
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.orange,
+                    backgroundColor: context.colors.gold,
                   ),
                 ),
               ),

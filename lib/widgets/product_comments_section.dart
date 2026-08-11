@@ -91,9 +91,7 @@ class _ProductCommentsSectionState extends State<ProductCommentsSection> {
       final crudo = evento['comment'];
       if (crudo is! Map) return;
 
-      final nuevo = ProductComment.fromJson(
-        Map<String, dynamic>.from(crudo),
-      );
+      final nuevo = ProductComment.fromJson(Map<String, dynamic>.from(crudo));
       // El autor ya lo insertó localmente al recibir la respuesta del POST;
       // sin este filtro lo vería duplicado cuando le llegue su propio evento.
       if (_comentarios.any((c) => c.id == nuevo.id)) return;
@@ -242,7 +240,9 @@ class _ProductCommentsSectionState extends State<ProductCommentsSection> {
 
   void _avisar(String mensaje) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensaje)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(mensaje)));
   }
 
   /// Puede borrar el autor del comentario o el dueño de la publicación.
@@ -280,7 +280,9 @@ class _ProductCommentsSectionState extends State<ProductCommentsSection> {
           Center(
             child: TextButton(
               onPressed: _cargandoMas ? null : _cargarMas,
-              style: TextButton.styleFrom(foregroundColor: context.colors.accent),
+              style: TextButton.styleFrom(
+                foregroundColor: context.colors.accent,
+              ),
               child: _cargandoMas
                   ? const SizedBox(
                       width: 16,
@@ -439,10 +441,7 @@ class _AparicionSuaveState extends State<_AparicionSuave>
   Widget build(BuildContext context) {
     return FadeTransition(
       opacity: _curva,
-      child: SlideTransition(
-        position: _desplazamiento,
-        child: widget.child,
-      ),
+      child: SlideTransition(position: _desplazamiento, child: widget.child),
     );
   }
 }
@@ -493,7 +492,10 @@ class _EstadoError extends StatelessWidget {
               style: TextStyle(color: context.colors.muted),
             ),
             const SizedBox(height: 8),
-            TextButton(onPressed: onReintentar, child: const Text('Reintentar')),
+            TextButton(
+              onPressed: onReintentar,
+              child: const Text('Reintentar'),
+            ),
           ],
         ),
       ),
@@ -538,8 +540,10 @@ class _CampoComentario extends StatelessWidget {
               isDense: true,
               filled: true,
               fillColor: context.colors.surfaceMuted,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide(color: context.colors.border),
@@ -550,7 +554,10 @@ class _CampoComentario extends StatelessWidget {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: context.colors.accent, width: 1.4),
+                borderSide: BorderSide(
+                  color: context.colors.accent,
+                  width: 1.4,
+                ),
               ),
             ),
           ),
@@ -569,8 +576,9 @@ class _CampoComentario extends StatelessWidget {
                   onPressed: habilitado ? onEnviar : null,
                   style: IconButton.styleFrom(
                     backgroundColor: AppColors.primary,
-                    disabledBackgroundColor:
-                        context.colors.muted.withValues(alpha: 0.2),
+                    disabledBackgroundColor: context.colors.muted.withValues(
+                      alpha: 0.2,
+                    ),
                   ),
                   icon: enviando
                       ? const SizedBox(
@@ -616,7 +624,11 @@ class TarjetaVerificaParaComentar extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.shield_outlined, size: 18, color: context.colors.accent),
+              Icon(
+                Icons.shield_outlined,
+                size: 18,
+                color: context.colors.accent,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -641,11 +653,11 @@ class TarjetaVerificaParaComentar extends StatelessWidget {
               onPressed: !auth.isLoggedIn
                   ? null
                   : () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) =>
-                              VerificationScreen(tipo: auth.accountType),
-                        ),
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            VerificationScreen(tipo: auth.accountType),
                       ),
+                    ),
               style: TextButton.styleFrom(
                 foregroundColor: context.colors.accent,
                 padding: const EdgeInsets.symmetric(horizontal: 8),

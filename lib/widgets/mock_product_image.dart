@@ -55,20 +55,17 @@ class MockProductImage extends StatelessWidget {
                 );
               },
             ),
-            if (showFeaturedBadge && (product.isOffer || product.isFeatured))
+            if (showFeaturedBadge && product.isOffer)
               Positioned(
+                left: 0,
+                top: 0,
+                child: OfferCornerTag(label: product.discountLabel ?? 'Oferta'),
+              ),
+            if (showFeaturedBadge && product.isFeatured)
+              const Positioned(
                 right: 8,
                 top: 8,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    if (product.isOffer)
-                      OfferBadge(label: product.discountLabel, compact: true),
-                    if (product.isOffer && product.isFeatured)
-                      const SizedBox(height: 6),
-                    if (product.isFeatured) const FeaturedBadge(compact: true),
-                  ],
-                ),
+                child: FeaturedBadge(compact: true),
               ),
           ],
         ),
@@ -107,13 +104,17 @@ class CategoryImagePlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tintAmount = 0.08 + (photoIndex * 0.03).clamp(0, 0.09);
+    // El placeholder es ausencia de foto, no un producto más: se dibuja con
+    // un ícono lineal fino en navy muy tenue sobre el fondo neutro cálido.
+    // El bloque gris sólido de antes competía con las fotos reales de la
+    // grilla y hacía que la pantalla se leyera como una plantilla a medio
+    // llenar.
     final background = Color.lerp(
-      context.colors.surface,
+      context.colors.surfaceMuted,
       product.imageColor,
-      tintAmount,
+      0.05 + (photoIndex * 0.02).clamp(0, 0.06),
     )!;
-    final accent = Color.lerp(product.imageColor, context.colors.accent, 0.14)!;
+    final accent = context.colors.accent;
 
     return ClipRRect(
       borderRadius: borderRadius,
@@ -122,45 +123,28 @@ class CategoryImagePlaceholder extends StatelessWidget {
         width: double.infinity,
         decoration: BoxDecoration(
           color: background,
-          border: Border.all(color: accent.withValues(alpha: 0.10)),
+          border: Border.all(color: accent.withValues(alpha: 0.08)),
         ),
         child: Stack(
           children: [
-            Positioned(
-              right: -20,
-              bottom: -26,
+            Center(
               child: Icon(
                 product.imageIcon,
-                size: 128,
-                color: accent.withValues(alpha: 0.07),
+                size: 40,
+                color: accent.withValues(alpha: 0.15),
               ),
             ),
-            Center(
-              child: Container(
-                width: 58,
-                height: 58,
-                decoration: BoxDecoration(
-                  color: context.colors.surface.withValues(alpha: 0.72),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: accent.withValues(alpha: 0.12)),
-                ),
-                child: Icon(product.imageIcon, size: 32, color: accent),
-              ),
-            ),
-            if (showFeaturedBadge && (product.isOffer || product.isFeatured))
+            if (showFeaturedBadge && product.isOffer)
               Positioned(
+                left: 0,
+                top: 0,
+                child: OfferCornerTag(label: product.discountLabel ?? 'Oferta'),
+              ),
+            if (showFeaturedBadge && product.isFeatured)
+              const Positioned(
                 right: 8,
                 top: 8,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    if (product.isOffer)
-                      OfferBadge(label: product.discountLabel, compact: true),
-                    if (product.isOffer && product.isFeatured)
-                      const SizedBox(height: 6),
-                    if (product.isFeatured) const FeaturedBadge(compact: true),
-                  ],
-                ),
+                child: FeaturedBadge(compact: true),
               ),
           ],
         ),

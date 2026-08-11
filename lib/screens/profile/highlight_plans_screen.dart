@@ -75,10 +75,10 @@ class _HighlightPlansScreenState extends State<HighlightPlansScreen> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppColors.gold.withValues(alpha: 0.1),
+                  color: context.colors.gold.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.star_rounded, color: AppColors.gold),
+                child: Icon(Icons.star_rounded, color: context.colors.gold),
               ),
               const SizedBox(width: 14),
               Expanded(
