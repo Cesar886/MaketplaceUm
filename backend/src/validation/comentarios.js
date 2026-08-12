@@ -1,4 +1,5 @@
-// Validación y saneado del texto de un comentario de producto.
+// Validación y saneado de texto libre escrito por usuarios: comentarios de
+// producto y, con los mismos criterios, preguntas y respuestas.
 //
 // Igual que validation/sellerProfile.js, cada función devuelve
 // `{ error }` o `{ value }` en vez de lanzar, para que la ruta decida el
@@ -18,7 +19,7 @@ const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 const ETIQUETA_HTML = /<\/?[a-zA-Z][^>]*>/g;
 
 /**
- * Sanea el texto de un comentario y valida su longitud.
+ * Sanea un texto libre y valida su longitud.
  *
  * Sobre XSS: la app es Flutter y un `Text` NO interpreta HTML, así que el
  * riesgo real no está en el cliente actual sino en cualquier consumidor que
@@ -27,12 +28,23 @@ const ETIQUETA_HTML = /<\/?[a-zA-Z][^>]*>/g;
  * renderice HTML con este texto DEBE escaparlo de todos modos. Lo que sí se
  * garantiza es que lo guardado es texto plano, sin marcado ni control chars.
  *
+ * Los mensajes de error se arman con `campo` porque van directos a la UI:
+ * "La pregunta no puede estar vacía" en el hilo de preguntas, no un
+ * "El comentario..." heredado de otra sección.
+ *
  * @param {unknown} entrada texto crudo del cliente
+ * @param {{campo?: {articulo: string, nombre: string}, largoMaximo?: number}} opciones
  * @returns {{error: string} | {value: string}}
  */
-function sanitizarComentario(entrada) {
+function sanitizarTexto(entrada, opciones = {}) {
+  const { articulo = 'El', nombre = 'comentario' } = opciones.campo || {};
+  const largoMaximo = opciones.largoMaximo || LARGO_MAXIMO;
+  // Concordancia de género: "La pregunta es requerida" / "El comentario es
+  // requerido". Se deduce del artículo en vez de pedir otro parámetro más.
+  const femenino = articulo.toLowerCase() === 'la';
+
   if (typeof entrada !== 'string') {
-    return { error: 'El comentario es requerido.' };
+    return { error: `${articulo} ${nombre} es ${femenino ? 'requerida' : 'requerido'}.` };
   }
 
   const limpio = entrada
@@ -45,13 +57,40 @@ function sanitizarComentario(entrada) {
     .trim();
 
   if (limpio.length === 0) {
-    return { error: 'El comentario no puede estar vacío.' };
+    return { error: `${articulo} ${nombre} no puede estar ${femenino ? 'vacía' : 'vacío'}.` };
   }
-  if (limpio.length > LARGO_MAXIMO) {
-    return { error: `El comentario no puede pasar de ${LARGO_MAXIMO} caracteres.` };
+  if (limpio.length > largoMaximo) {
+    return { error: `${articulo} ${nombre} no puede pasar de ${largoMaximo} caracteres.` };
   }
 
   return { value: limpio };
 }
 
-module.exports = { sanitizarComentario, LARGO_MAXIMO };
+/** Texto de un comentario de producto. */
+function sanitizarComentario(entrada) {
+  return sanitizarTexto(entrada, {
+    campo: { articulo: 'El', nombre: 'comentario' },
+  });
+}
+
+/** Texto de una pregunta pública sobre un producto. */
+function sanitizarPregunta(entrada) {
+  return sanitizarTexto(entrada, {
+    campo: { articulo: 'La', nombre: 'pregunta' },
+  });
+}
+
+/** Texto de la respuesta del vendedor a una pregunta. */
+function sanitizarRespuesta(entrada) {
+  return sanitizarTexto(entrada, {
+    campo: { articulo: 'La', nombre: 'respuesta' },
+  });
+}
+
+module.exports = {
+  sanitizarTexto,
+  sanitizarComentario,
+  sanitizarPregunta,
+  sanitizarRespuesta,
+  LARGO_MAXIMO,
+};

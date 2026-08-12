@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:http/http.dart' as http;
 
 import '../models.dart';
@@ -114,7 +115,22 @@ class VerificacionException implements Exception {
 class ApiService {
   ApiService._();
 
-  static final _client = _SessionAwareClient(http.Client());
+  static http.Client _client = _SessionAwareClient(http.Client());
+
+  /// Sustituye el cliente HTTP. Solo para tests de widget: el binding de
+  /// `flutter_test` intercepta HttpClient y devuelve 400 a cualquier
+  /// petición real, así que una pantalla que consulta la API solo se puede
+  /// probar de punta a punta inyectando un cliente falso aquí.
+  @visibleForTesting
+  static set clienteDePrueba(http.Client cliente) {
+    _client = cliente;
+  }
+
+  /// Devuelve el cliente real, para deshacer [clienteDePrueba] al terminar.
+  @visibleForTesting
+  static void restaurarCliente() {
+    _client = _SessionAwareClient(http.Client());
+  }
 
   /// El mismo cliente HTTP, para módulos que viven fuera de esta clase
   /// (`lib/features/payments/`). Se expone en vez de dejar que creen su
@@ -1036,6 +1052,11 @@ class ApiService {
     List<String>? paymentMethods,
     Object? colorAcento = _sinCambio,
     Object? productoFijadoId = _sinCambio,
+    String? facebookUrl,
+    String? instagramUrl,
+    String? whatsappNumber,
+    String? tiktokUrl,
+    String? twitterUrl,
   }) async {
     final body = <String, dynamic>{};
     if (name != null) body['name'] = name;
@@ -1057,6 +1078,11 @@ class ApiService {
     if (!identical(productoFijadoId, _sinCambio)) {
       body['productoFijadoId'] = productoFijadoId;
     }
+    if (facebookUrl != null) body['facebookUrl'] = facebookUrl;
+    if (instagramUrl != null) body['instagramUrl'] = instagramUrl;
+    if (whatsappNumber != null) body['whatsappNumber'] = whatsappNumber;
+    if (tiktokUrl != null) body['tiktokUrl'] = tiktokUrl;
+    if (twitterUrl != null) body['twitterUrl'] = twitterUrl;
     final res = await _client.patch(
       _uri('/sellers/$sellerId'),
       headers: _authHeaders,
@@ -1465,6 +1491,98 @@ class ApiService {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       throw Exception(body['error'] ?? 'No se pudo eliminar el comentario');
     }
+  }
+
+  // ─── Preguntas y respuestas ───────────────────────────────────
+
+  /// Las 2-3 preguntas que se asoman en el detalle del producto. Público:
+  /// no manda sesión y el backend no la pide.
+  static Future<ProductQuestionPage> getProductQuestionsPreview(
+    String productId, {
+    int limit = 3,
+  }) async {
+    final res = await _getWithRetry(
+      _uri('/products/$productId/questions', {
+        'preview': 'true',
+        'limit': '$limit',
+      }),
+    );
+    if (res.statusCode != 200) {
+      throw Exception('No se pudieron cargar las preguntas');
+    }
+    return ProductQuestionPage.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+
+  /// Página del listado completo. [soloPendientes] es el chip que usa el
+  /// dueño para ir directo a lo que le falta por responder.
+  static Future<ProductQuestionPage> getProductQuestions(
+    String productId, {
+    String? cursor,
+    int? limit,
+    bool soloPendientes = false,
+  }) async {
+    final res = await _getWithRetry(
+      _uri('/products/$productId/questions', {
+        if (cursor != null) 'cursor': cursor,
+        if (limit != null) 'limit': '$limit',
+        if (soloPendientes) 'filter': 'pending',
+      }),
+    );
+    if (res.statusCode != 200) {
+      throw Exception('No se pudieron cargar las preguntas');
+    }
+    return ProductQuestionPage.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+
+  /// Publica una pregunta. Requiere sesión, pero NO verificación: preguntar
+  /// es pedir un dato, no opinar sobre alguien.
+  ///
+  /// El 403 llega cuando el backend detecta que quien pregunta es el dueño
+  /// de la publicación — caso que la UI ya evita, y que se traduce igual
+  /// por si el estado del cliente estuviera desfasado.
+  static Future<ProductQuestion> askProductQuestion(
+    String productId,
+    String texto,
+  ) async {
+    final res = await _client.post(
+      _uri('/products/$productId/questions'),
+      headers: _authHeaders,
+      body: jsonEncode({'texto': texto}),
+    );
+
+    if (res.statusCode != 201) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['error'] ?? 'No se pudo publicar la pregunta');
+    }
+
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return ProductQuestion.fromJson(body['question'] as Map<String, dynamic>);
+  }
+
+  /// Responde (o corrige la respuesta de) una pregunta. El backend solo lo
+  /// permite al dueño de la publicación: el cliente esconde el input, esto
+  /// es lo que lo hace cumplir.
+  static Future<ProductQuestion> answerProductQuestion(
+    String questionId,
+    String texto,
+  ) async {
+    final res = await _client.post(
+      _uri('/questions/$questionId/answer'),
+      headers: _authHeaders,
+      body: jsonEncode({'texto': texto}),
+    );
+
+    if (res.statusCode != 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['error'] ?? 'No se pudo guardar la respuesta');
+    }
+
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return ProductQuestion.fromJson(body['question'] as Map<String, dynamic>);
   }
 
   /// Comentarios que OTROS dejaron en las publicaciones de [userId] — la

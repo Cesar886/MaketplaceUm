@@ -199,6 +199,65 @@ function validateColorAcento(colorAcento) {
   return null;
 }
 
+const MAX_SOCIAL_URL_LENGTH = 200;
+const WHATSAPP_NUMBER_REGEX = /^\d{10,15}$/;
+
+const SOCIAL_PLATFORMS = ['facebook', 'instagram', 'tiktok', 'twitter'];
+
+const SOCIAL_URL_HOSTS = {
+  facebook: new Set(['facebook.com', 'www.facebook.com', 'fb.com', 'm.facebook.com']),
+  instagram: new Set(['instagram.com', 'www.instagram.com']),
+  tiktok: new Set(['tiktok.com', 'www.tiktok.com']),
+  twitter: new Set(['twitter.com', 'www.twitter.com', 'x.com', 'www.x.com']),
+};
+
+const SOCIAL_URL_LABELS = {
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  tiktok: 'TikTok',
+  twitter: 'X/Twitter',
+};
+
+// Link de red social del negocio: opcional. '' limpia el campo (vuelve a
+// NULL). El hostname se compara por igualdad exacta contra una lista fija
+// (no "contiene"): un "contiene" dejaría pasar
+// https://facebook.com.evil.example/ porque la substring "facebook.com"
+// aparece en un hostname que en realidad no es de Facebook.
+function validateSocialUrl(platform, url) {
+  if (url === undefined || url === null || url === '') return { value: null };
+  if (typeof url !== 'string') {
+    return { error: `El link de ${SOCIAL_URL_LABELS[platform]} no es válido` };
+  }
+  const trimmed = url.trim();
+  if (trimmed.length > MAX_SOCIAL_URL_LENGTH) {
+    return { error: `El link de ${SOCIAL_URL_LABELS[platform]} no puede superar ${MAX_SOCIAL_URL_LENGTH} caracteres` };
+  }
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return { error: `El link de ${SOCIAL_URL_LABELS[platform]} no es una dirección web válida` };
+  }
+  if (parsed.protocol !== 'https:') {
+    return { error: `El link de ${SOCIAL_URL_LABELS[platform]} debe empezar con https://` };
+  }
+  if (!SOCIAL_URL_HOSTS[platform].has(parsed.hostname.toLowerCase())) {
+    return { error: `El link debe ser de ${SOCIAL_URL_LABELS[platform]}` };
+  }
+  return { value: trimmed };
+}
+
+// Número de WhatsApp del negocio: opcional. Solo dígitos con código de país
+// incluido (ej. "5215512345678"), sin '+'/espacios/guiones. '' limpia el
+// campo. Ver el design doc para por qué no se guarda la URL wa.me completa.
+function validateWhatsappNumber(number) {
+  if (number === undefined || number === null || number === '') return { value: null };
+  if (typeof number !== 'string' || !WHATSAPP_NUMBER_REGEX.test(number.trim())) {
+    return { error: 'El número de WhatsApp debe tener solo dígitos con código de país (10 a 15 dígitos)' };
+  }
+  return { value: number.trim() };
+}
+
 module.exports = {
   MIN_NAME_LENGTH,
   MAX_NAME_LENGTH,
@@ -207,6 +266,7 @@ module.exports = {
   VALID_PAYMENT_METHODS,
   VALID_ACCENT_IDS,
   validateColorAcento,
+  SOCIAL_PLATFORMS,
   validateName,
   validateEmail,
   validatePassword,
@@ -216,4 +276,6 @@ module.exports = {
   validateBusinessHours,
   validateLocation,
   validatePaymentMethods,
+  validateSocialUrl,
+  validateWhatsappNumber,
 };
