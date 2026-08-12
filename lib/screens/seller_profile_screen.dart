@@ -168,10 +168,14 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                   height: 50,
                   child: ElevatedButton.icon(
                     onPressed: _openWhatsapp,
-                    icon: const FaIcon(FontAwesomeIcons.whatsapp),
+                    icon: const FaIcon(
+                      FontAwesomeIcons.whatsapp,
+                      color: Colors.white,
+                    ),
                     label: const Text('Contactar por WhatsApp'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: context.colors.accent,
+                      backgroundColor: context.colors.primary,
+                      foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
@@ -196,137 +200,161 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
         seller.hasLocation ||
         seller.paymentMethods.isNotEmpty;
     return ListView(
-      padding: const EdgeInsets.all(18),
+      // Sin padding aquí: el banner necesita llegar a las tres esquinas
+      // visibles del body (izquierda, derecha, arriba) sin el margen que un
+      // padding externo le metería. El resto del contenido recupera su
+      // padding de 18 más abajo, ya fuera del banner.
+      padding: EdgeInsets.zero,
       children: [
-        Center(
-          child: Column(
-            children: [
-              SizedBox(
-                width: double.infinity,
-                child: ProfileBanner(
-                  color: colorDeBannerDeVendedor(
-                    seller,
-                    Theme.of(context).brightness,
+        SizedBox(
+          width: double.infinity,
+          child: ProfileBanner(
+            color: colorDeBannerDeVendedor(
+              seller,
+              Theme.of(context).brightness,
+            ),
+            fadeTo: context.colors.background,
+            // El fade ahora arranca DESPUÉS de los badges (ver comentario en
+            // ProfileBanner): con nombre + calificación + descripción +
+            // badges dentro de `child`, el color sólido ya cubre todo ese
+            // bloque solo, y esta franja queda pegada justo debajo, antes de
+            // la sección de mapa.
+            extraFade: 40,
+            // Esquinas superiores cuadradas: el banner está pegado al borde
+            // superior del body, así que redondearlas ahí se vería como una
+            // esquina flotando en el aire. Las inferiores sí se redondean
+            // porque ahí el banner sí termina en medio del contenido.
+            borderRadius: const BorderRadius.only(
+              bottomLeft: Radius.circular(18),
+              bottomRight: Radius.circular(18),
+            ),
+            child: Padding(
+              // Top de 28 (no 12) para que el avatar no quede colgando del
+              // borde superior del banner/AppBar: lo baja lo suficiente para
+              // leerse centrado dentro del área de color.
+              padding: const EdgeInsets.fromLTRB(18, 28, 18, 14),
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 40,
+                    backgroundColor: context.colors.primary.withValues(
+                      alpha: 0.12,
+                    ),
+                    backgroundImage: seller.logoUrl != null
+                        ? NetworkImage(ApiService.baseUrl + seller.logoUrl!)
+                        : null,
+                    child: seller.logoUrl == null
+                        ? Text(
+                            seller.avatarInitials,
+                            style: TextStyle(
+                              color: context.colors.primary,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 22,
+                            ),
+                          )
+                        : null,
                   ),
-                  fadeTo: context.colors.background,
-                  child: Center(
-                    // Ver la nota del anillo en profile_screen: el borde va
-                    // en un contenedor exterior porque el CircleAvatar
-                    // recorta su hijo.
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: acentoLinea, width: 3),
-                      ),
-                      child: CircleAvatar(
-                        radius: 40,
-                        backgroundColor: context.colors.primary.withValues(
-                          alpha: 0.12,
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        seller.name,
+                        style: AppTypography.heading(
+                          21,
+                          color: context.colors.ink,
                         ),
-                        backgroundImage: seller.logoUrl != null
-                            ? NetworkImage(ApiService.baseUrl + seller.logoUrl!)
-                            : null,
-                        child: seller.logoUrl == null
-                            ? Text(
-                                seller.avatarInitials,
-                                style: TextStyle(
-                                  color: context.colors.primary,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 22,
-                                ),
-                              )
-                            : null,
                       ),
+                      if (seller.verified) ...[
+                        const SizedBox(width: 6),
+                        InsigniaVerificada.desdeTipo(
+                          seller.tipoCuenta,
+                          compact: true,
+                          size: 20,
+                        ),
+                      ],
+                    ],
+                  ),
+                  SubtituloRol(
+                    seller: seller,
+                    espacioArriba: 6,
+                    style: TextStyle(
+                      color: context.colors.muted,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    seller.name,
-                    style: AppTypography.heading(21, color: context.colors.ink),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.star_rounded,
+                        color: context.colors.accent,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        seller.reviews > 0
+                            ? '${seller.rating.toStringAsFixed(1)} (${seller.reviews})'
+                            : 'Sin calificaciones',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ],
                   ),
-                  if (seller.verified) ...[
-                    const SizedBox(width: 6),
-                    InsigniaVerificada.desdeTipo(
-                      seller.tipoCuenta,
-                      compact: true,
-                      size: 20,
+                  if (seller.businessDescription != null &&
+                      seller.businessDescription!.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      seller.businessDescription!,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: context.colors.muted),
+                    ),
+                  ],
+                  if (seller.respondeRapido || seller.rachaSemanas > 1) ...[
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.center,
+                      children: [
+                        if (seller.respondeRapido) const RespondeRapidoBadge(),
+                        // Una sola ventana no es una racha: todo el que
+                        // publicó algo esta semana tendría el badge y
+                        // dejaría de significar constancia.
+                        if (seller.rachaSemanas > 1)
+                          RachaBadge(semanas: seller.rachaSemanas),
+                      ],
                     ),
                   ],
                 ],
               ),
-              SubtituloRol(
-                seller: seller,
-                espacioArriba: 6,
-                style: TextStyle(
-                  color: context.colors.muted,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.star_rounded,
-                    color: context.colors.accent,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 3),
-                  Text(
-                    seller.reviews > 0
-                        ? '${seller.rating.toStringAsFixed(1)} (${seller.reviews})'
-                        : 'Sin calificaciones',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ],
-              ),
-              if (seller.businessDescription != null &&
-                  seller.businessDescription!.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(
-                  seller.businessDescription!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: context.colors.muted),
-                ),
-              ],
-              if (seller.respondeRapido || seller.rachaSemanas > 1) ...[
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  alignment: WrapAlignment.center,
-                  children: [
-                    if (seller.respondeRapido) const RespondeRapidoBadge(),
-                    // Una sola ventana no es una racha: todo el que publicó
-                    // algo esta semana tendría el badge y dejaría de
-                    // significar constancia.
-                    if (seller.rachaSemanas > 1)
-                      RachaBadge(semanas: seller.rachaSemanas),
-                  ],
-                ),
-              ],
-            ],
+            ),
           ),
         ),
         if (hasOperationalInfo) ...[
           const SizedBox(height: 28),
           if (seller.businessHours.isNotEmpty || seller.hasLocation) ...[
-            SellerScheduleAndLocationRow(seller: seller),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: SellerScheduleAndLocationRow(seller: seller),
+            ),
             if (seller.paymentMethods.isNotEmpty) const SizedBox(height: 20),
           ],
           if (seller.paymentMethods.isNotEmpty) ...[
-            Text(
-              'Métodos de pago aceptados',
-              style: AppTypography.heading(16, color: context.colors.ink),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Métodos de pago aceptados',
+                    style: AppTypography.heading(16, color: context.colors.ink),
+                  ),
+                  const SizedBox(height: 10),
+                  PaymentMethodsChips(methods: seller.paymentMethods),
+                ],
+              ),
             ),
-            const SizedBox(height: 10),
-            PaymentMethodsChips(methods: seller.paymentMethods),
           ],
         ],
         const SizedBox(height: 24),
@@ -357,97 +385,123 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
           ],
         ),
         const SizedBox(height: 16),
-        if (_tabs.index == 1)
-          CommentsReceivedList(
-            userId: seller.id,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: EdgeInsets.zero,
-          )
-        else if (_products.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 24),
-            child: Center(
-              child: Text(
-                'Sin publicaciones activas',
-                style: TextStyle(color: context.colors.muted),
-              ),
-            ),
-          )
-        else
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = constraints.maxWidth >= 720 ? 3 : 2;
-              return GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _products.length,
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: columns,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: columns == 3 ? 0.72 : 0.64,
-                ),
-                itemBuilder: (context, index) {
-                  final product = _products[index];
-                  final card = ProductCard(
-                    product: product,
-                    heroEnabled: false,
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => ProductDetailScreen(product: product),
+        // IndexedStack y no Offstage: con Offstage, el hijo oculto reporta
+        // tamaño CERO a este ListView, así que la altura total del scroll
+        // saltaba entre la de la grilla de productos y la (mucho más corta)
+        // lista de comentarios cada vez que se cambiaba de pestaña — eso era
+        // lo que empujaba el scroll de vuelta arriba. IndexedStack sí
+        // mantiene montados ambos bloques (mismo motivo que antes: no perder
+        // el estado ya cargado), pero se dimensiona con la altura del hijo
+        // más grande de los dos SIEMPRE, sin importar cuál esté visible, así
+        // que la altura del scroll no cambia al cambiar de pestaña.
+        IndexedStack(
+          index: _tabs.index,
+          children: [
+            _products.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 24,
+                    ),
+                    child: Center(
+                      child: Text(
+                        'Sin publicaciones activas',
+                        style: TextStyle(color: context.colors.muted),
                       ),
                     ),
-                  );
-                  if (product.id != seller.productoFijadoId) return card;
-                  // La etiqueta explica por qué esta publicación va primero;
-                  // sin ella el orden se lee como aleatorio. Va superpuesta
-                  // y no apilada encima: la celda del grid tiene proporción
-                  // fija, así que una fila extra le robaría altura a la
-                  // tarjeta y podría desbordarla.
-                  return Stack(
-                    children: [
-                      Positioned.fill(child: card),
-                      Positioned(
-                        top: 6,
-                        right: 6,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: context.colors.surface,
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: context.colors.border),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.push_pin_rounded,
-                                size: 11,
-                                color: acentoLinea,
+                  )
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      final columns = constraints.maxWidth >= 720 ? 3 : 2;
+                      return GridView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _products.length,
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: columns,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                          childAspectRatio: columns == 3 ? 0.72 : 0.64,
+                        ),
+                        itemBuilder: (context, index) {
+                          final product = _products[index];
+                          final card = ProductCard(
+                            product: product,
+                            heroEnabled: false,
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    ProductDetailScreen(product: product),
                               ),
-                              const SizedBox(width: 3),
-                              Text(
-                                'Fijado',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: context.colors.ink,
+                            ),
+                          );
+                          if (product.id != seller.productoFijadoId) {
+                            return card;
+                          }
+                          // La etiqueta explica por qué esta publicación va
+                          // primero; sin ella el orden se lee como aleatorio.
+                          // Va superpuesta y no apilada encima: la celda del
+                          // grid tiene proporción fija, así que una fila
+                          // extra le robaría altura a la tarjeta y podría
+                          // desbordarla.
+                          return Stack(
+                            children: [
+                              Positioned.fill(child: card),
+                              Positioned(
+                                top: 6,
+                                right: 6,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 7,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: context.colors.surface,
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color: context.colors.border,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.push_pin_rounded,
+                                        size: 11,
+                                        color: acentoLinea,
+                                      ),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        'Fijado',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          color: context.colors.ink,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              );
-            },
-          ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+            CommentsReceivedList(
+              userId: seller.id,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              // Mismo padding lateral que usa el resto del perfil (nombre,
+              // descripción, mapa, métodos de pago): 18, para que la lista
+              // de comentarios quede alineada con el resto del contenido en
+              // vez de pegarse a las orillas de la pantalla.
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+            ),
+          ],
+        ),
       ],
     );
   }

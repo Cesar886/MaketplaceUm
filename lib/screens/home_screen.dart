@@ -985,7 +985,7 @@ class _SearchBoxState extends State<_SearchBox> {
   }
 }
 
-class _CategoryScroller extends StatelessWidget {
+class _CategoryScroller extends StatefulWidget {
   const _CategoryScroller({
     required this.categories,
     this.selectedCategoryId,
@@ -997,19 +997,61 @@ class _CategoryScroller extends StatelessWidget {
   final void Function(String)? onCategoryTap;
 
   @override
+  State<_CategoryScroller> createState() => _CategoryScrollerState();
+}
+
+class _CategoryScrollerState extends State<_CategoryScroller> {
+  final _controller = ScrollController();
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Arranque leve y automático hacia la izquierda para insinuar que la
+    // fila es desplazable: muchas categorías quedan fuera de pantalla y sin
+    // esta pista una fila de íconos se lee como estática.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startAutoScroll());
+  }
+
+  void _startAutoScroll() {
+    if (!mounted || !_controller.hasClients) return;
+    if (_controller.position.maxScrollExtent <= 0) return;
+    _timer = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted || !_controller.hasClients) return;
+      final target = (_controller.offset + 40).clamp(
+        0.0,
+        _controller.position.maxScrollExtent,
+      );
+      _controller.animateTo(
+        target,
+        duration: const Duration(milliseconds: 900),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: 72,
       child: ListView.separated(
+        controller: _controller,
         scrollDirection: Axis.horizontal,
-        itemCount: categories.length,
+        itemCount: widget.categories.length,
         padding: const EdgeInsets.only(left: 2),
         separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
-          final category = categories[index];
-          final selected = category.id == selectedCategoryId;
+          final category = widget.categories[index];
+          final selected = category.id == widget.selectedCategoryId;
           return InkWell(
-            onTap: () => onCategoryTap?.call(category.id),
+            onTap: () => widget.onCategoryTap?.call(category.id),
             borderRadius: BorderRadius.circular(8),
             child: SizedBox(
               width: 58,
@@ -1030,7 +1072,14 @@ class _CategoryScroller extends StatelessWidget {
                         width: selected ? 2 : 1,
                       ),
                     ),
-                    child: Icon(category.icon, color: category.color, size: 22),
+                    child: Icon(
+                      category.icon,
+                      color: normalizeCategoryColor(
+                        category.color,
+                        Theme.of(context).brightness,
+                      ),
+                      size: 22,
+                    ),
                   ),
                   const SizedBox(height: 5),
                   Text(
@@ -1199,7 +1248,7 @@ class _BusinessCard extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                 child: SizedBox(
-                  height: 110,
+                  height: 175,
                   child: Row(
                     children: [
                       Expanded(
@@ -1213,9 +1262,11 @@ class _BusinessCard extends StatelessWidget {
                               final product = displayProducts[index];
                               return ProductCard(
                                 product: product,
-                                width: 118,
+                                width: 130,
                                 onTap: () => onProductTap(product),
                                 heroEnabled: false,
+                                dense: true,
+                                showPrice: false,
                               );
                             }
                             // ─── "Ver todo" minimal ───────────────

@@ -10,6 +10,7 @@ import '../services/anonymous_id.dart';
 import '../services/api_service.dart';
 import '../services/chat_socket_service.dart';
 import 'chat_screen.dart';
+import 'main_shell.dart';
 
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
@@ -183,6 +184,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
                         ),
                       );
                       _load();
+                      // Además del listado, el badge de la barra inferior:
+                      // se calculó antes de abrir el chat y ahí sigue con el
+                      // conteo viejo.
+                      if (context.mounted) {
+                        context
+                            .findAncestorStateOfType<MainShellState>()
+                            ?.recargarContadores();
+                      }
                     },
                   );
                 },

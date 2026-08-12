@@ -892,6 +892,22 @@ function runMigrations() {
     );
   `);
 
+  // 31. Responder a un mensaje concreto del chat (estilo WhatsApp).
+  //     Nullable: la enorme mayoría de los mensajes no son respuesta.
+  //     ON DELETE SET NULL y no CASCADE: si el mensaje citado desapareciera,
+  //     la respuesta debe sobrevivir sin cita, no borrarse con él. En la
+  //     práctica el borrado del chat es lógico (se reemplaza el texto por
+  //     '[Mensaje eliminado]'), así que la cita sigue existiendo y muestra
+  //     ese placeholder, igual que la burbuja original.
+  const msgColsReply = db.prepare("PRAGMA table_info('messages')").all();
+  const hasReplyTo = msgColsReply.some(c => c.name === 'reply_to_message_id');
+  if (!hasReplyTo) {
+    db.exec(`
+      ALTER TABLE messages ADD COLUMN reply_to_message_id TEXT DEFAULT NULL
+        REFERENCES messages(id) ON DELETE SET NULL
+    `);
+  }
+
   console.log('🔄 Migración de schema completada');
 }
 
@@ -1855,6 +1871,26 @@ function markAllNotificationsRead(userId) {
   db.prepare('UPDATE notifications SET read = 1 WHERE user_id = ? AND read = 0').run(userId);
 }
 
+/** Marca como leídas las notificaciones in-app de una conversación concreta.
+ *
+ *  Abrir un chat ya marca sus *mensajes* como leídos, pero cada mensaje deja
+ *  además una fila en `notifications` (ver notifyNewMessage) que alimenta el
+ *  badge de la campana. Sin esto, el contador sigue subiendo aunque el usuario
+ *  ya haya leído la conversación.
+ *
+ *  El `conversationId` vive dentro del JSON de `data`, de ahí el json_extract.
+ *  Retorna cuántas filas se marcaron, para que quien llame sepa si hace falta
+ *  refrescar el badge. */
+function markNotificationsReadForConversation(userId, conversationId) {
+  const info = db.prepare(`
+    UPDATE notifications SET read = 1
+    WHERE user_id = ?
+      AND read = 0
+      AND json_extract(data, '$.conversationId') = ?
+  `).run(userId, conversationId);
+  return info.changes;
+}
+
 function getUnreadNotificationCount(userId) {
   const row = db.prepare(
     'SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND read = 0'
@@ -2042,11 +2078,11 @@ function unregisterAllPushTokensForUser(userId) {
 
 // ─── Messages ───────────────────────────────────────────────────
 
-function createMessage(id, conversationId, senderId, text, imageUrl = null) {
+function createMessage(id, conversationId, senderId, text, imageUrl = null, replyToMessageId = null) {
   db.prepare(`
-    INSERT INTO messages (id, conversation_id, sender_id, text, image_url, created_at, read)
-    VALUES (?, ?, ?, ?, ?, datetime('now'), 0)
-  `).run(id, conversationId, senderId, text, imageUrl);
+    INSERT INTO messages (id, conversation_id, sender_id, text, image_url, reply_to_message_id, created_at, read)
+    VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 0)
+  `).run(id, conversationId, senderId, text, imageUrl, replyToMessageId);
   updateConversationPreview(conversationId, imageUrl ? '📷 Foto' : text);
 
   // El recálculo va aquí y no en la ruta para que valga también para los
@@ -2059,10 +2095,14 @@ function createMessage(id, conversationId, senderId, text, imageUrl = null) {
   }
 }
 
-function getMessages(conversationId) {
-  return db.prepare(
-    'SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC'
-  ).all(conversationId).map(row => ({
+/** Da forma a una fila de `messages` tal como la consume el cliente.
+ *
+ *  `replyTo` viene resuelto (no solo el id) para que la burbuja pueda pintar
+ *  la cita sin una petición extra por mensaje. Los alias `reply_*` los produce
+ *  el LEFT JOIN de [getMessages]; cuando la fila no trae join (emisión por
+ *  socket de un mensaje recién creado) se resuelve con [getRepliedMessage]. */
+function rowToMessage(row, replyTo = undefined) {
+  return {
     id: row.id,
     conversationId: row.conversation_id,
     senderId: row.sender_id,
@@ -2070,7 +2110,61 @@ function getMessages(conversationId) {
     imageUrl: row.image_url || null,
     createdAt: row.created_at,
     read: !!row.read,
-  }));
+    replyToMessageId: row.reply_to_message_id || null,
+    replyTo: replyTo !== undefined
+      ? replyTo
+      : (row.reply_id
+        ? {
+            id: row.reply_id,
+            senderId: row.reply_sender_id,
+            text: row.reply_text,
+            imageUrl: row.reply_image_url || null,
+          }
+        : null),
+  };
+}
+
+function getMessages(conversationId) {
+  // LEFT JOIN y no una consulta por mensaje: un chat de 200 mensajes con
+  // respuestas haría 200 SELECT extra.
+  return db.prepare(`
+    SELECT m.*,
+           r.id         AS reply_id,
+           r.sender_id  AS reply_sender_id,
+           r.text       AS reply_text,
+           r.image_url  AS reply_image_url
+    FROM messages m
+    LEFT JOIN messages r ON r.id = m.reply_to_message_id
+    WHERE m.conversation_id = ?
+    ORDER BY m.created_at ASC
+  `).all(conversationId).map(row => rowToMessage(row));
+}
+
+/** Devuelve el resumen del mensaje citado, o null si no existe. */
+function getRepliedMessage(messageId) {
+  if (!messageId) return null;
+  const row = db.prepare(
+    'SELECT id, sender_id, text, image_url FROM messages WHERE id = ?'
+  ).get(messageId);
+  if (!row) return null;
+  return {
+    id: row.id,
+    senderId: row.sender_id,
+    text: row.text,
+    imageUrl: row.image_url || null,
+  };
+}
+
+/** ¿Este mensaje existe y pertenece a esta conversación?
+ *
+ *  Sirve para rechazar una respuesta que cite un mensaje de otro chat: sin
+ *  esta comprobación, un cliente podría filtrar el texto de una conversación
+ *  ajena haciendo que se pinte como cita dentro de la suya. */
+function messageBelongsToConversation(messageId, conversationId) {
+  const row = db.prepare(
+    'SELECT 1 AS ok FROM messages WHERE id = ? AND conversation_id = ?'
+  ).get(messageId, conversationId);
+  return !!row;
 }
 
 function markConversationMessagesRead(conversationId, userId) {
@@ -2616,6 +2710,7 @@ module.exports = {
   getNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  markNotificationsReadForConversation,
   getUnreadNotificationCount,
   // Conversations
   createConversation,
@@ -2640,6 +2735,8 @@ module.exports = {
   // Messages
   createMessage,
   getMessages,
+  getRepliedMessage,
+  messageBelongsToConversation,
   markConversationMessagesRead,
   deleteMessage,
   // Feed Ranking

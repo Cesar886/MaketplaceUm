@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
@@ -11,6 +12,8 @@ import '../services/anonymous_id.dart';
 import '../services/api_error.dart';
 import '../services/api_service.dart';
 import '../services/chat_socket_service.dart';
+import '../services/notification_cleaner.dart';
+import '../utils/fecha_monterrey.dart';
 import 'product_detail_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -31,7 +34,7 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final ChatSocketService _socket = ChatSocketService.instance;
@@ -45,6 +48,17 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _otherTyping = false;
   Product? _displayProduct;
 
+  /// Mensaje que se está respondiendo, o null si se escribe un mensaje suelto.
+  ChatMessage? _replyingTo;
+
+  /// Mensaje resaltado momentáneamente tras saltar a él desde una cita.
+  String? _mensajeResaltado;
+  Timer? _resaltadoTimer;
+
+  /// Una key por mensaje, para poder hacer scroll hasta él desde su cita.
+  /// Se limpian junto con la lista al cambiar de conversación.
+  final Map<String, GlobalKey> _messageKeys = {};
+
   // Para debounce del evento typing:stop
   Timer? _typingTimer;
   static const _typingDebounce = Duration(seconds: 2);
@@ -56,9 +70,36 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _currentConvId = widget.conversationId;
     _displayProduct = widget.product;
     _initAsync();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Con el chat abierto pero la app en segundo plano, los mensajes nuevos
+    // sí generan notificación. Al volver, el usuario está mirando justamente
+    // esa conversación, así que las notificaciones ya no aplican.
+    if (state == AppLifecycleState.resumed) {
+      _limpiarNotificacionesDelChat();
+    }
+  }
+
+  /// Borra de la bandeja del sistema las notificaciones de esta conversación
+  /// y marca como leídas sus notificaciones in-app (el badge de la campana).
+  ///
+  /// Los *mensajes* ya se marcan leídos solos: el GET de mensajes lo hace en
+  /// el backend. Lo que faltaba era esto.
+  ///
+  /// Cubre por igual la entrada normal al chat y el deep link desde una
+  /// notificación con la app cerrada, porque en los dos casos se monta este
+  /// mismo widget y corre este mismo `initState`.
+  Future<void> _limpiarNotificacionesDelChat() async {
+    final convId = _currentConvId;
+    if (convId == null || convId.isEmpty) return;
+    await limpiarNotificacionesDeConversacion(convId);
+    await ApiService.markNotificationsReadForConversation(convId);
   }
 
   /// Si nos abrieron solo con productId (p. ej. desde la lista de chats o
@@ -96,6 +137,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     _setupSocketListeners();
+    _limpiarNotificacionesDelChat();
     if (mounted) _loadMessages();
   }
 
@@ -118,6 +160,9 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       });
       _scrollToBottom();
+      // El mensaje se está leyendo en pantalla: si además llegó como push
+      // (carrera entre el socket y FCM), esa notificación sobra.
+      _limpiarNotificacionesDelChat();
     });
 
     _delSub = _socket.onMessageDeleted.listen((messageId) {
@@ -125,15 +170,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         final idx = _messages.indexWhere((m) => m.id == messageId);
         if (idx >= 0) {
-          _messages[idx] = ChatMessage(
-            id: _messages[idx].id,
-            conversationId: _messages[idx].conversationId,
-            senderId: _messages[idx].senderId,
-            text: '[Mensaje eliminado]',
-            createdAt: _messages[idx].createdAt,
-            read: _messages[idx].read,
-            imageUrl: null,
-          );
+          _messages[idx] = _messages[idx].comoEliminado();
         }
       });
     });
@@ -166,7 +203,10 @@ class _ChatScreenState extends State<ChatScreen> {
       if (_currentConvId != null && _currentConvId!.isNotEmpty) {
         _socket.joinConversation(_currentConvId!);
       }
+      _limpiarNotificacionesDelChat();
       _messages = [];
+      _messageKeys.clear();
+      _replyingTo = null;
       _loading = true;
       setState(() {});
       _loadMessages();
@@ -175,7 +215,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _typingTimer?.cancel();
+    _resaltadoTimer?.cancel();
     _msgSub?.cancel();
     _delSub?.cancel();
     _typingSub?.cancel();
@@ -234,6 +276,70 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  /// Activa el modo respuesta sobre [msg] (llamado desde el swipe).
+  void _empezarRespuesta(ChatMessage msg) {
+    if (msg.text == '[Mensaje eliminado]') return;
+    setState(() => _replyingTo = msg);
+  }
+
+  void _cancelarRespuesta() {
+    setState(() => _replyingTo = null);
+  }
+
+  /// Desplaza la lista hasta el mensaje citado y lo resalta un momento.
+  ///
+  /// La lista es un [ListView.builder], así que un mensaje lejano puede no
+  /// estar construido y su [GlobalKey] no tener contexto. En ese caso se salta
+  /// primero a una posición estimada por su índice y se reintenta en el frame
+  /// siguiente, cuando ya existe.
+  Future<void> _saltarAMensaje(String messageId) async {
+    final index = _messages.indexWhere((m) => m.id == messageId);
+    if (index < 0) {
+      // El citado ya no está en la lista cargada (chat recortado o borrado).
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se encontró el mensaje original')),
+      );
+      return;
+    }
+
+    Future<bool> intentar() async {
+      final ctx = _messageKeys[messageId]?.currentContext;
+      if (ctx == null) return false;
+      await Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+        alignment: 0.3,
+      );
+      return true;
+    }
+
+    if (!await intentar()) {
+      // Aproximación por índice: suficiente para meter el mensaje en el
+      // viewport y que el builder lo construya.
+      if (_scrollController.hasClients && _messages.isNotEmpty) {
+        final destino =
+            _scrollController.position.maxScrollExtent *
+            (index / _messages.length);
+        await _scrollController.animateTo(
+          destino.clamp(0.0, _scrollController.position.maxScrollExtent),
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await intentar();
+    }
+
+    if (!mounted) return;
+    setState(() => _mensajeResaltado = messageId);
+    _resaltadoTimer?.cancel();
+    _resaltadoTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _mensajeResaltado = null);
+    });
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients && _messages.isNotEmpty) {
@@ -263,7 +369,15 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _textController.text.trim();
     if (text.isEmpty || _sending) return;
 
-    setState(() => _sending = true);
+    // Se captura y se limpia ANTES de la petición: el campo de texto ya se
+    // vació, y dejar la barra de "respondiendo a" colgada mientras vuela el
+    // request se lee como si el envío no hubiera tomado la cita.
+    final replyToId = _replyingTo?.id;
+
+    setState(() {
+      _sending = true;
+      _replyingTo = null;
+    });
     _textController.clear();
 
     // Asegurar que se envía typing:stop
@@ -281,6 +395,7 @@ class _ChatScreenState extends State<ChatScreen> {
               sellerId: widget.sellerId!,
               text: text,
               senderId: _userId,
+              replyToMessageId: replyToId,
             )
           : await ApiService.sendMessage(
               productId: widget.productId ?? '',
@@ -288,6 +403,7 @@ class _ChatScreenState extends State<ChatScreen> {
               text: text,
               senderId: _userId,
               conversationId: _currentConvId,
+              replyToMessageId: replyToId,
             );
       _applySendResult(result);
     } catch (e, stack) {
@@ -318,7 +434,11 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     if (picked == null || !mounted) return;
 
-    setState(() => _sendingImage = true);
+    final replyToId = _replyingTo?.id;
+    setState(() {
+      _sendingImage = true;
+      _replyingTo = null;
+    });
     try {
       final isNewConversation =
           widget.sellerId != null && _currentConvId == widget.conversationId;
@@ -328,6 +448,7 @@ class _ChatScreenState extends State<ChatScreen> {
         productId: widget.productId,
         sellerId: widget.sellerId,
         conversationId: isNewConversation ? null : _currentConvId,
+        replyToMessageId: replyToId,
       );
       _applySendResult(result);
     } catch (e, stack) {
@@ -396,15 +517,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         final idx = _messages.indexOf(msg);
         if (idx >= 0) {
-          _messages[idx] = ChatMessage(
-            id: msg.id,
-            conversationId: msg.conversationId,
-            senderId: msg.senderId,
-            text: '[Mensaje eliminado]',
-            createdAt: msg.createdAt,
-            read: msg.read,
-            imageUrl: null,
-          );
+          _messages[idx] = msg.comoEliminado();
         }
       });
     } catch (e, stack) {
@@ -512,15 +625,32 @@ class _ChatScreenState extends State<ChatScreen> {
                       }
                       final msg = _messages[index];
                       final isMine = msg.senderId == currentUserId;
-                      final canDelete =
-                          isMine && msg.text != '[Mensaje eliminado]';
-                      return _MessageBubble(
+                      final estaBorrado = msg.text == '[Mensaje eliminado]';
+                      final canDelete = isMine && !estaBorrado;
+                      final key = _messageKeys.putIfAbsent(
+                        msg.id,
+                        GlobalKey.new,
+                      );
+                      final burbuja = _MessageBubble(
+                        key: key,
                         message: msg,
                         isMine: isMine,
                         showSender:
                             index == 0 ||
                             _messages[index - 1].senderId != msg.senderId,
                         onDelete: canDelete ? () => _deleteMessage(msg) : null,
+                        resaltado: _mensajeResaltado == msg.id,
+                        onTapCita: msg.replyTo == null
+                            ? null
+                            : () => _saltarAMensaje(msg.replyTo!.id),
+                        citaEsMia: msg.replyTo?.senderId == currentUserId,
+                      );
+                      // Un mensaje borrado no se puede responder: la cita
+                      // mostraría solo el placeholder.
+                      if (estaBorrado) return burbuja;
+                      return _SwipeToReply(
+                        onReply: () => _empezarRespuesta(msg),
+                        child: burbuja,
                       );
                     },
                   ),
@@ -531,55 +661,264 @@ class _ChatScreenState extends State<ChatScreen> {
               color: context.colors.surface,
               border: Border(top: BorderSide(color: context.colors.border)),
             ),
-            child: Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              // La barra de "respondiendo a" ocupa todo el ancho del input;
+              // sin esto quedaría centrada y encogida al tamaño del texto.
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                IconButton(
-                  onPressed: _sendingImage ? null : _pickAndSendImage,
-                  icon: _sendingImage
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.image_outlined),
-                ),
-                Expanded(
-                  child: TextField(
-                    controller: _textController,
-                    textInputAction: TextInputAction.send,
-                    textCapitalization: TextCapitalization.sentences,
-                    onSubmitted: (_) => _sendMessage(),
-                    onChanged: _onTextChanged,
-                    minLines: 1,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      hintText: 'Escribe un mensaje...',
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
+                if (_replyingTo != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _QuotedMessage(
+                      replyTo: RepliedMessage(
+                        id: _replyingTo!.id,
+                        senderId: _replyingTo!.senderId,
+                        text: _replyingTo!.text,
+                        imageUrl: _replyingTo!.imageUrl,
                       ),
-                      border: OutlineInputBorder(),
+                      esMio: _replyingTo!.senderId == currentUserId,
+                      onClose: _cancelarRespuesta,
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                IconButton.filled(
-                  onPressed: _sending ? null : _sendMessage,
-                  icon: _sending
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: _sendingImage ? null : _pickAndSendImage,
+                      icon: _sendingImage
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.image_outlined),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: _textController,
+                        textInputAction: TextInputAction.send,
+                        textCapitalization: TextCapitalization.sentences,
+                        onSubmitted: (_) => _sendMessage(),
+                        onChanged: _onTextChanged,
+                        minLines: 1,
+                        maxLines: 4,
+                        decoration: const InputDecoration(
+                          hintText: 'Escribe un mensaje...',
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
                           ),
-                        )
-                      : const Icon(Icons.send_rounded),
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filled(
+                      onPressed: _sending ? null : _sendMessage,
+                      icon: _sending
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.send_rounded),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Deslizar horizontalmente una burbuja para responderla, como en WhatsApp.
+///
+/// Se implementa a mano con un [GestureDetector] en vez de traer
+/// `flutter_slidable`: aquí no hay acciones que revelar ni panel que quede
+/// abierto, solo un desplazamiento con resorte y un umbral. `Dismissible`
+/// tampoco sirve, porque su gesto termina descartando el widget.
+///
+/// El arrastre se limita a la derecha y se amortigua conforme avanza, para que
+/// el gesto tenga tope y no se sienta que la burbuja se puede llevar lejos.
+class _SwipeToReply extends StatefulWidget {
+  const _SwipeToReply({required this.child, required this.onReply});
+
+  final Widget child;
+  final VoidCallback onReply;
+
+  @override
+  State<_SwipeToReply> createState() => _SwipeToReplyState();
+}
+
+class _SwipeToReplyState extends State<_SwipeToReply>
+    with SingleTickerProviderStateMixin {
+  /// Cuánto hay que arrastrar para que se active la respuesta al soltar.
+  static const double _umbral = 56;
+
+  /// Tope duro del desplazamiento visual.
+  static const double _maxArrastre = 80;
+
+  late final AnimationController _volver = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 200),
+  );
+
+  double _offset = 0;
+  bool _pasoUmbral = false;
+
+  @override
+  void dispose() {
+    _volver.dispose();
+    super.dispose();
+  }
+
+  void _onUpdate(DragUpdateDetails d) {
+    final nuevo = (_offset + d.delta.dx).clamp(0.0, _maxArrastre);
+    // El háptico se dispara UNA vez, al cruzar el umbral: es la señal de que
+    // soltar ahora sí va a responder. Repetirlo en cada frame vibraría todo
+    // el arrastre.
+    if (!_pasoUmbral && nuevo >= _umbral) {
+      _pasoUmbral = true;
+      HapticFeedback.selectionClick();
+    } else if (_pasoUmbral && nuevo < _umbral) {
+      _pasoUmbral = false;
+    }
+    setState(() => _offset = nuevo);
+  }
+
+  void _onEnd(DragEndDetails _) {
+    final activar = _offset >= _umbral;
+    setState(() {
+      _offset = 0;
+      _pasoUmbral = false;
+    });
+    if (activar) widget.onReply();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progreso = (_offset / _umbral).clamp(0.0, 1.0);
+
+    return GestureDetector(
+      // El arrastre horizontal no compite con el scroll vertical de la lista.
+      onHorizontalDragUpdate: _onUpdate,
+      onHorizontalDragEnd: _onEnd,
+      onHorizontalDragCancel: () => setState(() {
+        _offset = 0;
+        _pasoUmbral = false;
+      }),
+      child: Stack(
+        alignment: Alignment.centerLeft,
+        children: [
+          // El ícono asoma por detrás conforme la burbuja se corre.
+          Opacity(
+            opacity: progreso,
+            child: Transform.scale(
+              scale: 0.6 + (progreso * 0.4),
+              child: Icon(
+                Icons.reply_rounded,
+                size: 22,
+                color: context.colors.muted,
+              ),
+            ),
+          ),
+          Transform.translate(offset: Offset(_offset, 0), child: widget.child),
+        ],
+      ),
+    );
+  }
+}
+
+/// La cita de un mensaje: la barra vertical de color + autor + resumen.
+///
+/// Se usa en dos sitios con la misma forma, y a propósito: la barra sobre el
+/// campo de texto y la cita dentro de la burbuja tienen que verse como la
+/// misma cosa para que se entienda que una se convierte en la otra.
+class _QuotedMessage extends StatelessWidget {
+  const _QuotedMessage({
+    required this.replyTo,
+    required this.esMio,
+    this.sobreBurbujaPropia = false,
+    this.onTap,
+    this.onClose,
+  });
+
+  final RepliedMessage replyTo;
+
+  /// Si el mensaje CITADO es del usuario actual (decide el "Tú" / "Comprador").
+  final bool esMio;
+
+  /// La cita va dentro de una burbuja propia (fondo primario) → colores claros.
+  final bool sobreBurbujaPropia;
+
+  final VoidCallback? onTap;
+  final VoidCallback? onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorTexto = sobreBurbujaPropia
+        ? Colors.white.withValues(alpha: 0.85)
+        : context.colors.muted;
+    final colorAutor = sobreBurbujaPropia
+        ? Colors.white
+        : context.colors.accent;
+    final fondo = sobreBurbujaPropia
+        ? Colors.white.withValues(alpha: 0.15)
+        : context.colors.muted.withValues(alpha: 0.10);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+        decoration: BoxDecoration(
+          color: fondo,
+          borderRadius: BorderRadius.circular(8),
+          border: Border(left: BorderSide(color: colorAutor, width: 3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    esMio ? 'Tú' : 'Comprador',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: colorAutor,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    replyTo.resumen,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12.5, color: colorTexto),
+                  ),
+                ],
+              ),
+            ),
+            if (onClose != null)
+              IconButton(
+                onPressed: onClose,
+                icon: const Icon(Icons.close_rounded, size: 18),
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.only(left: 8),
+                tooltip: 'Cancelar respuesta',
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -763,10 +1102,14 @@ class _ProductBar extends StatelessWidget {
 
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
+    super.key,
     required this.message,
     required this.isMine,
     this.showSender = false,
     this.onDelete,
+    this.resaltado = false,
+    this.onTapCita,
+    this.citaEsMia = false,
   });
 
   final ChatMessage message;
@@ -774,14 +1117,33 @@ class _MessageBubble extends StatelessWidget {
   final bool showSender;
   final VoidCallback? onDelete;
 
+  /// Se acaba de saltar a este mensaje desde una cita: destello temporal.
+  final bool resaltado;
+
+  /// Tocar la cita salta al mensaje original.
+  final VoidCallback? onTapCita;
+
+  /// Si el mensaje CITADO lo escribió el usuario actual.
+  final bool citaEsMia;
+
   @override
   Widget build(BuildContext context) {
     final isDeleted = message.text == '[Mensaje eliminado]';
     final hasImage = !isDeleted && message.imageUrl != null;
     final hasText = !isDeleted && message.text.isNotEmpty;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      margin: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+      decoration: BoxDecoration(
+        // Destello al llegar aquí desde una cita: sin él, el scroll deja al
+        // usuario mirando la lista sin saber cuál de las burbujas era.
+        color: resaltado
+            ? context.colors.accent.withValues(alpha: 0.18)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: GestureDetector(
         onLongPress: onDelete,
         child: Column(
@@ -837,6 +1199,16 @@ class _MessageBubble extends StatelessWidget {
                     ? CrossAxisAlignment.end
                     : CrossAxisAlignment.start,
                 children: [
+                  if (!isDeleted && message.replyTo != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: _QuotedMessage(
+                        replyTo: message.replyTo!,
+                        esMio: citaEsMia,
+                        sobreBurbujaPropia: isMine,
+                        onTap: onTapCita,
+                      ),
+                    ),
                   if (hasImage)
                     Padding(
                       padding: EdgeInsets.only(bottom: hasText ? 6 : 0),
@@ -893,7 +1265,7 @@ class _MessageBubble extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          _formatTime(message.createdAt),
+                          horaMonterrey(message.createdAt),
                           style: TextStyle(
                             color: isMine
                                 ? Colors.white.withValues(alpha: 0.7)
@@ -921,17 +1293,6 @@ class _MessageBubble extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  String _formatTime(String iso) {
-    try {
-      final dt = DateTime.parse(iso).toLocal();
-      final hour = dt.hour.toString().padLeft(2, '0');
-      final minute = dt.minute.toString().padLeft(2, '0');
-      return '$hour:$minute';
-    } catch (_) {
-      return '';
-    }
   }
 
   void _openFullImage(BuildContext context, String imageUrl) {

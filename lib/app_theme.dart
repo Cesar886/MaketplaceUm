@@ -448,6 +448,86 @@ class AccentSwatch {
       opciones.firstWhere((s) => s.id == id, orElse: () => defecto);
 }
 
+/// Normaliza el color de una categoría para que TODAS pesen visualmente lo
+/// mismo sobre la superficie del tema activo.
+///
+/// Los hex de categoría vienen del backend (`/api/categories`) y no de esta
+/// paleta, así que llegan sin ninguna disciplina: saturaciones de 18% (Otros
+/// `#607D8B`) a 95% (Apuntes `#D97706`), y contrastes de 3.09:1 (Servicios)
+/// a 5.13:1 (Libros) sobre blanco. Esa dispersión de 1.66x es exactamente lo
+/// que hace que unas categorías se lean "apagadas" al lado de otras sin que
+/// nadie lo haya decidido.
+///
+/// En oscuro era peor (2.54x) porque la versión anterior clampeaba la
+/// LIGHTNESS al rango 0.6-0.85, y lightness igual no es peso percibido
+/// igual: a la misma lightness un cian pesa mucho más que un morado. Por eso
+/// Electrónicos terminaba en cian neón `#52E0D1` a 8.23:1 mientras Ropa ni
+/// se tocaba y se quedaba en 3.24:1, la más apagada de las ocho.
+///
+/// Lo que se normaliza aquí es el CONTRASTE, no la lightness: se conserva el
+/// matiz del backend (es lo que identifica a la categoría), se capa la
+/// saturación al mismo techo de 55% que ya usa [AccentSwatch] (es lo que
+/// evita que el naranja de Apuntes aterrice en neón) y se resuelve la
+/// lightness por tono hasta dar en el contraste objetivo. Resultado: 1.02x
+/// de dispersión en claro y 1.03x en oscuro.
+///
+/// No se unificaron a la familia navy a propósito: el ícono ya carga la
+/// identidad de la categoría y el color es señal secundaria, pero ocho tiles
+/// en variaciones de un mismo navy se vuelven indistinguibles de un vistazo
+/// y se pierde el escaneo rápido, que es para lo que existe esa fila.
+Color normalizeCategoryColor(Color base, Brightness brightness) {
+  final oscuro = brightness == Brightness.dark;
+  // Superficie sobre la que se dibuja el ícono en cada tema (el tile de
+  // categoría y la tarjeta de producto usan `colors.surface`, no el fondo).
+  final fondo = oscuro ? AppColors.darkSurface : AppColors.surface;
+  // En oscuro se apunta un poco más alto porque el ícono va a 14-22px sobre
+  // una superficie elevada, donde el mismo ratio se percibe más débil.
+  final objetivo = oscuro ? 5.0 : 4.6;
+
+  final hsl = HSLColor.fromColor(base);
+  final saturacion = hsl.saturation.clamp(0.0, 0.55);
+
+  double contraste(double lightness) {
+    final color = hsl
+        .withSaturation(saturacion)
+        .withLightness(lightness)
+        .toColor();
+    final a = color.computeLuminance();
+    final b = fondo.computeLuminance();
+    final (alta, baja) = a > b ? (a, b) : (b, a);
+    return (alta + 0.05) / (baja + 0.05);
+  }
+
+  // Sobre fondo claro el contraste BAJA al subir la lightness y sobre fondo
+  // oscuro SUBE, así que la búsqueda binaria arranca del rango y la
+  // dirección de cada tema. 20 iteraciones dejan el error de lightness por
+  // debajo de 1/2^20, muy por debajo de lo que un canal de 8 bits distingue.
+  var lo = oscuro ? 0.45 : 0.05;
+  var hi = oscuro ? 0.95 : 0.60;
+  for (var i = 0; i < 20; i++) {
+    final medio = (lo + hi) / 2;
+    final sobra = contraste(medio) > objetivo;
+    if (oscuro) {
+      if (sobra) {
+        hi = medio;
+      } else {
+        lo = medio;
+      }
+    } else {
+      if (sobra) {
+        lo = medio;
+      } else {
+        hi = medio;
+      }
+    }
+  }
+
+  return hsl
+      .withSaturation(saturacion)
+      .withLightness((lo + hi) / 2)
+      .toColor();
+}
+
 extension AppColorsContext on BuildContext {
   /// La paleta viaja dentro del ThemeData como [ThemeExtension], no en un
   /// provider aparte: así cambiar de swatch repinta TODA la app por el mismo

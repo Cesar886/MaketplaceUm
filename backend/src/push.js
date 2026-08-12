@@ -104,6 +104,22 @@ async function sendPush(userIds, title, body, data = {}) {
 
   console.log(`📨 Enviando push a ${tokens.length} dispositivo(s) para ${userIds.length} usuario(s)`);
 
+  // ─── Agrupación por conversación ─────────────────────────────────
+  // Cuando el push pertenece a un chat, sus notificaciones tienen que ser
+  // localizables después para poder borrarlas al abrir esa conversación.
+  //
+  // El `tag` de Android lleva prefijo común + sufijo único a propósito:
+  //   - con el prefijo, la app puede recorrer las notificaciones activas y
+  //     cancelar las de un chat concreto (ver notification_cleaner.dart);
+  //   - con el sufijo único, dos mensajes seguidos NO se reemplazan entre sí
+  //     y se siguen apilando, que es el comportamiento actual y es deseado.
+  // Un `tag` fijo por conversación rompería justo eso.
+  const conversationId = data.conversationId ? String(data.conversationId) : null;
+  const threadId = conversationId ? `chat_${conversationId}` : null;
+  const androidTag = threadId
+    ? `${threadId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+    : undefined;
+
   // Construir payload base
   const messageBase = {
     notification: {
@@ -119,6 +135,9 @@ async function sendPush(userIds, title, body, data = {}) {
           alert: { title, body },
           sound: 'default',
           badge: 1,
+          // Agrupa las notificaciones del mismo chat en un solo hilo de iOS
+          // y permite ubicarlas para borrarlas al abrir la conversación.
+          ...(threadId ? { 'thread-id': threadId } : {}),
         },
       },
     },
@@ -128,6 +147,7 @@ async function sendPush(userIds, title, body, data = {}) {
         channelId: 'mercadito_um_default',
         notificationPriority: 'PRIORITY_HIGH',
         defaultSound: true,
+        ...(androidTag ? { tag: androidTag } : {}),
         // Silueta blanca sobre transparente (android/app/.../drawable-*/ic_notification.png).
         // Ya está como default en el manifest, pero se declara explícito
         // acá para que quede claro sin tener que ir a leer el manifest.

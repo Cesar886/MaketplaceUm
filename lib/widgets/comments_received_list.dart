@@ -292,7 +292,7 @@ class _TarjetaComentarioRecibido extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.symmetric(vertical: 18),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

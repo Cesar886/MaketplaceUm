@@ -340,7 +340,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       Icon(
                         product.category.icon,
                         size: 13,
-                        color: product.category.color,
+                        color: normalizeCategoryColor(
+                          product.category.color,
+                          Theme.of(context).brightness,
+                        ),
                       ),
                       const SizedBox(width: 4),
                       Text(
@@ -348,7 +351,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: product.category.color,
+                          // Único sitio donde el color de categoría se usa
+                          // como TEXTO y no como línea. Normalizado queda en
+                          // 4.57:1, que pasa AA para texto normal — antes,
+                          // con el hex crudo del backend, Servicios daba
+                          // 3.09:1 y no pasaba.
+                          color: normalizeCategoryColor(
+                            product.category.color,
+                            Theme.of(context).brightness,
+                          ),
                         ),
                       ),
                     ],
@@ -1126,7 +1137,7 @@ class _BudgetTag extends StatelessWidget {
     }
     return Text(
       label,
-      style: AppTypography.heading(18, color: context.colors.accent),
+      style: AppTypography.heading(18, color: AppColors.primaryDark),
     );
   }
 }

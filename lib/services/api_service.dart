@@ -1178,6 +1178,25 @@ class ApiService {
     await _client.patch(_uri('/notifications/read-all'), headers: _authHeaders);
   }
 
+  /// Marca como leídas las notificaciones in-app de una conversación.
+  ///
+  /// Se llama al abrir el chat. Los usuarios anónimos no tienen bandeja de
+  /// notificaciones (el endpoint pide sesión), así que un 401 aquí es un caso
+  /// normal y no un error: por eso no se lanza nada.
+  static Future<void> markNotificationsReadForConversation(
+    String conversationId,
+  ) async {
+    try {
+      await _client.patch(
+        _uri('/notifications/read-by-conversation'),
+        headers: _authHeaders,
+        body: jsonEncode({'conversationId': conversationId}),
+      );
+    } catch (_) {
+      // Limpiar el badge es mejor-esfuerzo: no debe romper la apertura del chat.
+    }
+  }
+
   // ─── Push Tokens (FCM) ─────────────────────────────────────────
 
   static Future<void> registerPushToken(String fcmToken) async {
@@ -1306,6 +1325,7 @@ class ApiService {
     required String text,
     required String senderId,
     String? conversationId,
+    String? replyToMessageId,
   }) async {
     final body = <String, dynamic>{
       'productId': productId,
@@ -1315,6 +1335,9 @@ class ApiService {
     };
     if (conversationId != null && conversationId.isNotEmpty) {
       body['conversationId'] = conversationId;
+    }
+    if (replyToMessageId != null && replyToMessageId.isNotEmpty) {
+      body['replyToMessageId'] = replyToMessageId;
     }
     final res = await _client.post(
       _uri('/chat/send'),
@@ -1347,6 +1370,7 @@ class ApiService {
     String? productId,
     String? sellerId,
     String? conversationId,
+    String? replyToMessageId,
   }) async {
     final request = http.MultipartRequest('POST', _uri('/chat/send-image'));
     request.fields['senderId'] = senderId;
@@ -1354,6 +1378,9 @@ class ApiService {
     if (sellerId != null) request.fields['sellerId'] = sellerId;
     if (conversationId != null && conversationId.isNotEmpty) {
       request.fields['conversationId'] = conversationId;
+    }
+    if (replyToMessageId != null && replyToMessageId.isNotEmpty) {
+      request.fields['replyToMessageId'] = replyToMessageId;
     }
     request.files.add(await http.MultipartFile.fromPath('image', imagePath));
 

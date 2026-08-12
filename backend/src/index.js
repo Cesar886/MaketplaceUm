@@ -72,7 +72,20 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+// Los archivos de /uploads son inmutables por construcción: el nombre lo
+// genera multer como `product_${Date.now()}_${random}` en cada subida, así
+// que cambiar la foto de un producto produce un archivo NUEVO con otra URL y
+// la vieja nunca cambia de contenido. Eso es justo la precondición de
+// `immutable`, y permite el año completo que recomienda el RFC 8246 en vez
+// del `max-age=0` anterior — que obligaba a revalidar cada foto en cada
+// scroll contra un servidor que entrega estáticos a ~20 KB/s.
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, '..', 'uploads'), {
+    maxAge: '365d',
+    immutable: true,
+  })
+);
 
 // ─── Socket.IO ──────────────────────────────────────────────
 // Compartir la instancia io para que las rutas puedan emitir eventos

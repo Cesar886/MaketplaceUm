@@ -9,6 +9,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../app_theme.dart';
 import 'api_service.dart';
 import 'fcm/android_notification_channel.dart';
+import 'notification_cleaner.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PushService — Notificaciones push
@@ -144,11 +145,24 @@ class PushService {
 
       if (title == null && body == null) return;
 
+      // Si el push pertenece a un chat, la notificación se etiqueta con el
+      // prefijo de esa conversación para que se pueda cancelar al abrirla
+      // (ver notification_cleaner.dart). El tag es único por notificación:
+      // uno fijo por chat haría que Android reemplazara la anterior en vez de
+      // apilarlas.
+      final convId = message.data['conversationId'] as String?;
+      final tag = (convId != null && convId.isNotEmpty)
+          ? tagDeConversacion(convId)
+          : null;
+      final threadId = (convId != null && convId.isNotEmpty)
+          ? prefijoConversacion(convId)
+          : null;
+
       localNotificationsPlugin.show(
         message.hashCode,
         title ?? 'Mercadito UM',
         body ?? '',
-        const NotificationDetails(
+        NotificationDetails(
           android: AndroidNotificationDetails(
             kNotificationChannelId,
             kNotificationChannelName,
@@ -159,11 +173,14 @@ class PushService {
             enableVibration: true,
             icon: 'ic_notification',
             color: AppColors.primary,
+            tag: tag,
+            groupKey: threadId,
           ),
           iOS: DarwinNotificationDetails(
             presentAlert: true,
             presentBadge: true,
             presentSound: true,
+            threadIdentifier: threadId,
           ),
         ),
         payload: message.data.isNotEmpty ? jsonEncode(message.data) : null,

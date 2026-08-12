@@ -42,7 +42,7 @@ class MainShellState extends State<MainShell> {
   @override
   void initState() {
     super.initState();
-    _loadUnreadCounts();
+    recargarContadores();
 
     // Manejar taps en notificaciones push
     PushService.instance.onNotificationTap = (data) {
@@ -69,13 +69,19 @@ class MainShellState extends State<MainShell> {
     final productId = data['productId'] as String?;
 
     if ((type == 'new_chat' || type == 'new_message') && convId != null) {
-      // Navegar al chat
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) =>
-              ChatScreen(conversationId: convId, productId: productId ?? ''),
-        ),
-      );
+      // Navegar al chat. Al volver hay que refrescar los badges: el chat ya
+      // marcó todo como leído en el servidor, pero estos contadores se
+      // cargaron antes de abrirlo.
+      Navigator.of(context)
+          .push(
+            MaterialPageRoute<void>(
+              builder: (_) =>
+                  ChatScreen(conversationId: convId, productId: productId ?? ''),
+            ),
+          )
+          .then((_) {
+            if (mounted) recargarContadores();
+          });
     } else if (type == 'new_product' && productId != null) {
       // Navegar al detalle del producto
       _openProduct(productId);
@@ -142,7 +148,15 @@ class MainShellState extends State<MainShell> {
     } catch (_) {}
   }
 
-  Future<void> _loadUnreadCounts() async {
+  /// Recarga los badges de chats y notificaciones.
+  ///
+  /// Es público porque las pantallas que abren un chat tienen que llamarlo al
+  /// volver: abrir la conversación marca sus mensajes y notificaciones como
+  /// leídos en el servidor, pero el badge de esta barra se calculó antes y se
+  /// quedaba mostrando el número viejo hasta que el usuario cambiaba de
+  /// pestaña. Se alcanza con `findAncestorStateOfType<MainShellState>()`,
+  /// igual que hace HomeScreen para cambiar de pestaña.
+  Future<void> recargarContadores() async {
     try {
       String userId;
       final auth = context.read<AuthProvider>();
@@ -167,7 +181,7 @@ class MainShellState extends State<MainShell> {
   void selectTab(int index) {
     setState(() => _currentIndex = index);
     // Recargar contadores al navegar a chats o notificaciones
-    if (index == 4 || index == 0) _loadUnreadCounts();
+    if (index == 4 || index == 0) recargarContadores();
   }
 
   @override
@@ -184,7 +198,7 @@ class MainShellState extends State<MainShell> {
         .push(
           MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()),
         )
-        .then((_) => _loadUnreadCounts());
+        .then((_) => recargarContadores());
   }
 
   @override
@@ -302,13 +316,23 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Sobre la barra navy los estados se separan por luminosidad, no por
-    // tono: blanco para la pestaña activa y un navy claro para las demás.
-    // El oro no participa aquí — en esta barra pertenece solo al "+".
+    // Sobre la barra los estados se separan por LUMINOSIDAD, no por tono:
+    // solo el ítem activo va al foreground pleno y los demás se apagan.
+    //
+    // El acento del tema no puede participar aquí: con el swatch navy
+    // `colors.accent` es #1B2A4A, exactamente el color de esta barra, así que
+    // un "activo en color de acento" desaparecería en 2 de los 8 swatches.
+    // Todo lo que se dibuje sobre la barra tiene que derivar de [onPrimary],
+    // que es el único foreground que la paleta garantiza legible sobre
+    // [primary] sea cual sea el swatch elegido.
+    //
+    // El inactivo baja de 62% a 55% (#989FAE sobre navy, 5.35:1 — sigue
+    // holgadamente sobre AA) para que la navegación deje de competir con las
+    // categorías y con el contenido de las tarjetas.
     final selected = index == currentIndex;
     final color = selected
-        ? Colors.white
-        : context.colors.onPrimary.withValues(alpha: 0.62);
+        ? context.colors.onPrimary
+        : context.colors.onPrimary.withValues(alpha: 0.55);
 
     Widget iconWidget = Icon(
       selected ? selectedIcon : icon,
@@ -317,10 +341,15 @@ class _NavItem extends StatelessWidget {
     );
 
     if (badge != null && badge! > 0) {
+      // El badge iba en `colors.primary`, que es el color de ESTA barra:
+      // 1.00:1, un contador invisible. Va en el ladrillo semántico, que es lo
+      // único de la paleta que se lee tanto sobre la barra navy (3.4:1) como
+      // sobre un swatch pastel, y que además es el registro correcto para un
+      // "tienes algo pendiente".
       iconWidget = Badge.count(
         count: badge!,
-        backgroundColor: context.colors.primary,
-        textColor: context.colors.onPrimary,
+        backgroundColor: AppColors.danger,
+        textColor: Colors.white,
         child: iconWidget,
       );
     }
@@ -370,10 +399,29 @@ class _PublishFab extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: GestureDetector(
         onTap: onTap,
+        // El "+" se pinta INVERTIDO respecto a la barra: relleno en
+        // [onPrimary] y el glifo en [primary], al revés que todo lo demás.
+        //
+        // Antes usaba `colors.primary` para el relleno — el mismo color que
+        // la barra que lo contiene, 1.00:1: el botón era literalmente
+        // invisible y solo lo delataba su sombra. Es el resto de cuando el
+        // FAB era `AppColors.gold`; al pasar todo a la paleta por contexto,
+        // el oro se mapeó a `primary` y nadie miró que ahí `primary` ya era
+        // el fondo.
+        //
+        // La inversión da 14.22:1 contra la barra navy — el máximo alcanzable
+        // — y es el ÚNICO elemento de la barra que invierte la relación
+        // relleno/foreground, que es lo que lo separa de las cinco pestañas y
+        // lo deja como la acción principal. Además sale gratis en los ocho
+        // swatches: sobre barra pastel se vuelve un círculo navy con el "+"
+        // pastel, sin una sola rama condicional.
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: context.colors.primary,
+            color: context.colors.onPrimary,
             shape: BoxShape.circle,
+            // La sombra se queda en el color de la barra: sobre la barra no
+            // se ve (es su mismo tono) pero asienta el círculo contra el
+            // borde superior y contra el contenido que pasa por debajo.
             boxShadow: AppShadows.accent(context.colors.primary),
           ),
           child: SizedBox(
@@ -381,7 +429,7 @@ class _PublishFab extends StatelessWidget {
             height: 52,
             child: Icon(
               Icons.add_rounded,
-              color: context.colors.onPrimary,
+              color: context.colors.primary,
               size: 28,
             ),
           ),

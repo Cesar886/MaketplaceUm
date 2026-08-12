@@ -22,6 +22,23 @@ function register(app) {
     res.json({ success: true });
   });
 
+  // PATCH /api/notifications/read-by-conversation - marcar como leídas las de
+  // un chat. Lo llama la app al abrir la conversación: los mensajes ya se
+  // marcan leídos solos al pedirlos, pero las notificaciones in-app que
+  // alimentan el badge de la campana no, y el contador se quedaba inflado.
+  app.patch('/api/notifications/read-by-conversation', requireAuth, (req, res) => {
+    const { conversationId } = req.body;
+    if (!conversationId) {
+      return res.status(400).json({ error: 'conversationId es requerido' });
+    }
+    const marcadas = db.markNotificationsReadForConversation(req.user.id, conversationId);
+    res.json({
+      success: true,
+      marcadas,
+      unreadCount: db.getUnreadNotificationCount(req.user.id),
+    });
+  });
+
   // GET /api/notifications/unread-count - obtener solo el conteo
   app.get('/api/notifications/unread-count', requireAuth, (req, res) => {
     const count = db.getUnreadNotificationCount(req.user.id);

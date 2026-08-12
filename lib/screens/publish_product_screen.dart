@@ -1373,7 +1373,14 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                       value: category.id,
                       child: Row(
                         children: [
-                          Icon(category.icon, color: category.color, size: 20),
+                          Icon(
+                            category.icon,
+                            color: normalizeCategoryColor(
+                              category.color,
+                              Theme.of(context).brightness,
+                            ),
+                            size: 20,
+                          ),
                           const SizedBox(width: 10),
                           Text(category.name),
                         ],

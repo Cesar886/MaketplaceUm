@@ -33,6 +33,23 @@ const upload = multer({
 });
 
 /**
+ * Ancho máximo al que se guarda una foto de producto.
+ *
+ * Convertir a WebP sin redimensionar dejaba las fotos a resolución nativa de
+ * cámara: una foto de 12 MP salía como WebP de 1.4 MB para pintarse en una
+ * tarjeta de ~180 px de ancho. Con el servidor sirviendo estáticos a ~20 KB/s
+ * eso son ~60 s por imagen, y como `Image.network` en Flutter no tiene
+ * timeout, la tarjeta se quedaba con el spinner girando ese minuto entero sin
+ * caer nunca al placeholder (el 200 OK llega, solo que tardísimo).
+ *
+ * 1280 px cubre el uso más exigente que tiene hoy una foto de producto — el
+ * carrusel a pantalla completa en el detalle — con margen para pantallas a
+ * 3x, y recorta el peso en un orden de magnitud. `withoutEnlargement` evita
+ * que una foto ya pequeña se estire y termine pesando MÁS que el original.
+ */
+const MAX_IMAGE_WIDTH = 1280;
+
+/**
  * Convierte una imagen a WebP usando sharp.
  * Borra el archivo original y devuelve la ruta pública del .webp.
  */
@@ -42,6 +59,8 @@ async function convertToWebp(filePath) {
   const publicPath = '/uploads/' + parsed.name + '.webp';
 
   await sharp(filePath)
+    .rotate() // respeta la orientación EXIF antes de redimensionar
+    .resize({ width: MAX_IMAGE_WIDTH, withoutEnlargement: true })
     .webp({ quality: 80 })
     .toFile(webpPath);
 

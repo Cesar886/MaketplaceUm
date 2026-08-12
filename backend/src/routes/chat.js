@@ -66,6 +66,25 @@ function resolveConversation({ conversationId, productId, sellerId, userId }) {
   return { conversation };
 }
 
+/** Valida el mensaje citado de una respuesta.
+ *
+ *  Retorna un string con el error, o null si todo bien (incluido el caso
+ *  normal de que no haya cita).
+ *
+ *  Se exige que el citado sea de la MISMA conversación: sin eso, un cliente
+ *  podría citar el id de un mensaje de un chat ajeno y la burbuja mostraría
+ *  su texto al otro usuario, filtrando una conversación privada. */
+function validarCita(replyToMessageId, conversationId) {
+  if (!replyToMessageId) return null;
+  if (typeof replyToMessageId !== 'string') {
+    return 'replyToMessageId inválido';
+  }
+  if (!db.messageBelongsToConversation(replyToMessageId, conversationId)) {
+    return 'El mensaje citado no existe en esta conversación';
+  }
+  return null;
+}
+
 /** Notifica al otro usuario de la conversación (push + notificación in-app + socket). */
 function notifyNewMessage(app, conversation, senderId, previewText) {
   const otherUserId = conversation.buyer_id === senderId ? conversation.seller_id : conversation.buyer_id;
@@ -106,6 +125,11 @@ function notifyNewMessage(app, conversation, senderId, previewText) {
         imageUrl: newMsg.imageUrl,
         createdAt: newMsg.createdAt,
         read: false,
+        // La cita viaja resuelta en el evento y no solo como id: si el otro
+        // usuario tuviera que recargar el chat para ver a qué se respondió,
+        // la respuesta en tiempo real llegaría coja.
+        replyToMessageId: newMsg.replyToMessageId,
+        replyTo: newMsg.replyTo,
       },
       conversationId: conversation.id,
     });
@@ -187,7 +211,7 @@ function register(app) {
 
   // POST /api/chat/send - enviar un mensaje de texto (anónimo, no requiere auth)
   app.post('/api/chat/send', (req, res) => {
-    const { productId, sellerId, text, conversationId } = req.body;
+    const { productId, sellerId, text, conversationId, replyToMessageId } = req.body;
     const userId = req.body.senderId;
 
     if (!userId) {
@@ -200,9 +224,12 @@ function register(app) {
     const { conversation, error } = resolveConversation({ conversationId, productId, sellerId, userId });
     if (error) return res.status(error.status).json({ error: error.error });
 
+    const replyError = validarCita(replyToMessageId, conversation.id);
+    if (replyError) return res.status(400).json({ error: replyError });
+
     const trimmedText = text.trim();
     const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    db.createMessage(msgId, conversation.id, userId, trimmedText);
+    db.createMessage(msgId, conversation.id, userId, trimmedText, null, replyToMessageId || null);
 
     const messages = notifyNewMessage(app, conversation, userId, trimmedText.slice(0, 100));
     res.status(201).json({ messages, conversationId: conversation.id });
@@ -220,7 +247,7 @@ function register(app) {
         return res.status(400).json({ error: 'No se envió ninguna imagen' });
       }
 
-      const { productId, sellerId, conversationId } = req.body;
+      const { productId, sellerId, conversationId, replyToMessageId } = req.body;
       const userId = req.body.senderId;
 
       if (!userId) {
@@ -234,6 +261,12 @@ function register(app) {
         return res.status(error.status).json({ error: error.error });
       }
 
+      const replyError = validarCita(replyToMessageId, conversation.id);
+      if (replyError) {
+        fs.unlink(req.file.path, () => {});
+        return res.status(400).json({ error: replyError });
+      }
+
       let imageUrl;
       try {
         imageUrl = await convertToWebp(req.file.path);
@@ -244,7 +277,7 @@ function register(app) {
       }
 
       const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      db.createMessage(msgId, conversation.id, userId, '', imageUrl);
+      db.createMessage(msgId, conversation.id, userId, '', imageUrl, replyToMessageId || null);
 
       const messages = notifyNewMessage(app, conversation, userId, '📷 Foto');
       res.status(201).json({ messages, conversationId: conversation.id });

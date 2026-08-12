@@ -175,8 +175,7 @@ class _MaxDiscountHeader extends StatelessWidget {
             ),
             Text(
               '${offers.length} ${offers.length == 1 ? 'oferta' : 'ofertas'}',
-              style: TextStyle(
-                color: context.colors.muted,
+              style: const TextStyle(
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -211,7 +210,14 @@ class _OfferCategoryChips extends StatelessWidget {
               child: ChoiceChip(
                 selected: selectedCategoryId == category.id,
                 label: Text(category.name),
-                avatar: Icon(category.icon, size: 18, color: category.color),
+                avatar: Icon(
+                  category.icon,
+                  size: 18,
+                  color: normalizeCategoryColor(
+                    category.color,
+                    Theme.of(context).brightness,
+                  ),
+                ),
                 onSelected: (selected) {
                   // Solo cuenta como interés cuando se selecciona; volver a
                   // tocar para deseleccionar no es una señal de curiosidad.

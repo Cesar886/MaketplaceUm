@@ -308,7 +308,10 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                       avatar: Icon(
                         category.icon,
                         size: 18,
-                        color: category.color,
+                        color: normalizeCategoryColor(
+                          category.color,
+                          Theme.of(context).brightness,
+                        ),
                       ),
                       onSelected: (_) {
                         ApiService.registerCategoryTap(category.id);

@@ -221,7 +221,10 @@ class _RecentProductTile extends StatelessWidget {
                         Icon(
                           product.category.icon,
                           size: 14,
-                          color: product.category.color,
+                          color: normalizeCategoryColor(
+                            product.category.color,
+                            Theme.of(context).brightness,
+                          ),
                         ),
                         const SizedBox(width: 4),
                         Expanded(

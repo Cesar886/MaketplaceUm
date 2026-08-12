@@ -17,6 +17,7 @@ class ProductCard extends StatelessWidget {
     this.heroEnabled = true,
     this.animationValue,
     this.dense = false,
+    this.showPrice = true,
   });
 
   final Product product;
@@ -24,6 +25,11 @@ class ProductCard extends StatelessWidget {
   final double? width;
   final bool horizontal;
   final bool heroEnabled;
+
+  /// Oculta el precio y el espacio que reserva. Para carruseles donde la
+  /// tarjeta es solo una vitrina (p.ej. "productos de este vendedor") y el
+  /// precio no aporta al propósito de esa sección.
+  final bool showPrice;
 
   /// Versión aligerada: sin descripción y sin contador de vistas.
   ///
@@ -87,11 +93,13 @@ class ProductCard extends StatelessWidget {
                 ? _HorizontalProductCard(
                     product: product,
                     heroEnabled: heroEnabled,
+                    showPrice: showPrice,
                   )
                 : _GridProductCard(
                     product: product,
                     heroEnabled: heroEnabled,
                     dense: dense,
+                    showPrice: showPrice,
                   ),
           ),
         ),
@@ -105,11 +113,13 @@ class _GridProductCard extends StatelessWidget {
     required this.product,
     required this.heroEnabled,
     this.dense = false,
+    this.showPrice = true,
   });
 
   final Product product;
   final bool heroEnabled;
   final bool dense;
+  final bool showPrice;
 
   @override
   Widget build(BuildContext context) {
@@ -125,8 +135,7 @@ class _GridProductCard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        PriceTag(product: product),
-        const SizedBox(height: 4),
+        if (showPrice) ...[PriceTag(product: product), const SizedBox(height: 4)],
         Text(
           product.title,
           maxLines: 2,
@@ -174,10 +183,12 @@ class _HorizontalProductCard extends StatelessWidget {
   const _HorizontalProductCard({
     required this.product,
     required this.heroEnabled,
+    this.showPrice = true,
   });
 
   final Product product;
   final bool heroEnabled;
+  final bool showPrice;
 
   @override
   Widget build(BuildContext context) {
@@ -198,8 +209,10 @@ class _HorizontalProductCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              PriceTag(product: product),
-              const SizedBox(height: 5),
+              if (showPrice) ...[
+                PriceTag(product: product),
+                const SizedBox(height: 5),
+              ],
               Text(
                 product.title,
                 maxLines: 2,
@@ -223,7 +236,10 @@ class _HorizontalProductCard extends StatelessWidget {
                   Icon(
                     product.category.icon,
                     size: 14,
-                    color: product.category.color,
+                    color: normalizeCategoryColor(
+                      product.category.color,
+                      Theme.of(context).brightness,
+                    ),
                   ),
                   const SizedBox(width: 4),
                   Expanded(

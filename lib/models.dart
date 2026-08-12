@@ -1012,6 +1012,42 @@ class ChatUser {
   final String? logoUrl;
 }
 
+/// El mensaje al que responde otro, resumido para pintar la cita.
+///
+/// Es una vista reducida y no un [ChatMessage] completo a propósito: la cita
+/// solo necesita saber de quién era y qué decía. El backend la manda ya
+/// resuelta dentro de cada mensaje (LEFT JOIN, ver `getMessages`), así que la
+/// burbuja no dispara ninguna petición extra para pintarla.
+class RepliedMessage {
+  const RepliedMessage({
+    required this.id,
+    required this.senderId,
+    required this.text,
+    this.imageUrl,
+  });
+
+  factory RepliedMessage.fromJson(Map<String, dynamic> json) {
+    return RepliedMessage(
+      id: json['id'] as String? ?? '',
+      senderId: json['senderId'] as String? ?? '',
+      text: json['text'] as String? ?? '',
+      imageUrl: json['imageUrl'] as String?,
+    );
+  }
+
+  final String id;
+  final String senderId;
+  final String text;
+  final String? imageUrl;
+
+  /// Qué mostrar en una sola línea dentro de la cita.
+  String get resumen {
+    if (text.isNotEmpty) return text;
+    if (imageUrl != null) return '📷 Foto';
+    return '';
+  }
+}
+
 class ChatMessage {
   const ChatMessage({
     required this.id,
@@ -1021,9 +1057,11 @@ class ChatMessage {
     required this.createdAt,
     this.read = false,
     this.imageUrl,
+    this.replyTo,
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    final reply = json['replyTo'] as Map<String, dynamic>?;
     return ChatMessage(
       id: json['id'] as String? ?? '',
       conversationId: json['conversationId'] as String? ?? '',
@@ -1032,6 +1070,7 @@ class ChatMessage {
       createdAt: json['createdAt'] as String? ?? '',
       read: json['read'] as bool? ?? false,
       imageUrl: json['imageUrl'] as String?,
+      replyTo: reply == null ? null : RepliedMessage.fromJson(reply),
     );
   }
 
@@ -1042,6 +1081,26 @@ class ChatMessage {
   final String createdAt;
   final bool read;
   final String? imageUrl;
+
+  /// El mensaje citado, si este es una respuesta.
+  final RepliedMessage? replyTo;
+
+  /// Copia con el texto reemplazado por el placeholder de borrado.
+  ///
+  /// Existe para que el borrado (por acción propia o por evento de socket) no
+  /// tenga que reconstruir el mensaje campo por campo: hacerlo a mano ya
+  /// perdía silenciosamente cualquier campo nuevo, que es justo lo que le
+  /// habría pasado a `replyTo`.
+  ChatMessage comoEliminado() => ChatMessage(
+    id: id,
+    conversationId: conversationId,
+    senderId: senderId,
+    text: '[Mensaje eliminado]',
+    createdAt: createdAt,
+    read: read,
+    imageUrl: null,
+    replyTo: replyTo,
+  );
 }
 
 /// Un comentario en una publicación.
