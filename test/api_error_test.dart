@@ -76,7 +76,9 @@ void main() {
     test('un timeout pide reintentar, no revisar la conexión', () {
       // Distinguirlos importa: si el servidor tarda, decirle al usuario que
       // revise su wifi lo manda a buscar un problema que no tiene.
-      final mensaje = mensajeDeError(TimeoutException('tardó', const Duration(seconds: 15)));
+      final mensaje = mensajeDeError(
+        TimeoutException('tardó', const Duration(seconds: 15)),
+      );
 
       expect(mensaje, contains('tardando'));
       esperarSinFugas(mensaje);
@@ -93,7 +95,9 @@ void main() {
       final lote = <Object>[
         socketReal,
         const SocketException('Failed host lookup: api.mercadito.um'),
-        http.ClientException('Connection closed before full header was received'),
+        http.ClientException(
+          'Connection closed before full header was received',
+        ),
         const HttpException('Invalid statusCode: 500'),
         TimeoutException('sin respuesta'),
         const HandshakeException('handshake'),
@@ -132,13 +136,19 @@ void main() {
         mensajeDelServidor: '<html><head><title>502 Bad Gateway</title>',
       );
 
-      expect(e.mensaje, 'Algo salió mal de nuestro lado, intenta en unos minutos.');
+      expect(
+        e.mensaje,
+        'Algo salió mal de nuestro lado, intenta en unos minutos.',
+      );
       expect(e.mensaje, isNot(contains('html')));
       expect(e.categoria, CategoriaError.servidor);
     });
 
     test('excepcionDeRespuesta lee el error de un JSON de 4xx', () {
-      final res = http.Response('{"error":"Ya calificaste este producto"}', 409);
+      final res = http.Response(
+        '{"error":"Ya calificaste este producto"}',
+        409,
+      );
 
       final e = excepcionDeRespuesta(res);
 
@@ -163,7 +173,10 @@ void main() {
     test('un 4xx sin cuerpo usa el contexto de quien llama', () {
       final res = http.Response('', 400);
 
-      final e = excepcionDeRespuesta(res, fallback: 'No se pudo enviar el mensaje.');
+      final e = excepcionDeRespuesta(
+        res,
+        fallback: 'No se pudo enviar el mensaje.',
+      );
 
       expect(e.mensaje, 'No se pudo enviar el mensaje.');
     });
@@ -199,8 +212,10 @@ void main() {
         reason: 'un 5xx puede ser pasajero',
       );
       expect(
-        ApiException.deRespuesta(400, mensajeDelServidor: 'Falta el texto')
-            .valeLaPenaReintentar,
+        ApiException.deRespuesta(
+          400,
+          mensajeDelServidor: 'Falta el texto',
+        ).valeLaPenaReintentar,
         isFalse,
         reason: 'reintentar un 400 da exactamente el mismo 400',
       );
@@ -209,7 +224,9 @@ void main() {
 
   group('mensajes propios de la app', () {
     test('un mensaje redactado por la app se respeta', () {
-      final mensaje = mensajeDeError(Exception('El comentario no puede estar vacío.'));
+      final mensaje = mensajeDeError(
+        Exception('El comentario no puede estar vacío.'),
+      );
 
       expect(mensaje, 'El comentario no puede estar vacío.');
     });

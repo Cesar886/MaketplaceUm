@@ -327,10 +327,10 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                           ),
                         );
                       },
-                      child: const Text(
+                      child: Text(
                         'Inicia sesión',
                         style: TextStyle(
-                          color: AppColors.primary,
+                          color: context.colors.primary,
                           fontWeight: FontWeight.w700,
                           decoration: TextDecoration.underline,
                         ),
@@ -484,12 +484,12 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.08),
+                    color: context.colors.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.add_photo_alternate_rounded,
-                    color: AppColors.primary,
+                    color: context.colors.primary,
                   ),
                 ),
               const SizedBox(width: 12),
@@ -600,10 +600,10 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: AppColors.primary.withValues(alpha: 0.08),
+            color: context.colors.primary.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(icon, size: 20, color: AppColors.primary),
+          child: Icon(icon, size: 20, color: context.colors.primary),
         ),
         const SizedBox(width: 10),
         Text(title, style: Theme.of(context).textTheme.titleMedium),
@@ -741,7 +741,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
           Checkbox(
             value: _acceptedTerms,
             onChanged: (v) => setState(() => _acceptedTerms = v ?? false),
-            activeColor: AppColors.primary,
+            activeColor: context.colors.primary,
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             visualDensity: VisualDensity.compact,
           ),
@@ -767,10 +767,10 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                             builder: (_) => const TermsScreen(),
                           ),
                         ),
-                        child: const Text(
+                        child: Text(
                           'Términos y Condiciones',
                           style: TextStyle(
-                            color: AppColors.primary,
+                            color: context.colors.primary,
                             fontWeight: FontWeight.w700,
                             decoration: TextDecoration.underline,
                           ),
@@ -787,10 +787,10 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                             builder: (_) => const PrivacyScreen(),
                           ),
                         ),
-                        child: const Text(
+                        child: Text(
                           'Política de Privacidad',
                           style: TextStyle(
-                            color: AppColors.primary,
+                            color: context.colors.primary,
                             fontWeight: FontWeight.w700,
                             decoration: TextDecoration.underline,
                           ),

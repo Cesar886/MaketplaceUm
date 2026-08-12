@@ -277,7 +277,10 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Ubicación (opcional)', style: AppTypography.heading(15)),
+        Text(
+          'Ubicación (opcional)',
+          style: AppTypography.heading(15, color: context.colors.ink),
+        ),
         const SizedBox(height: 10),
         if (_hasSavedSellerLocation) ...[
           RadioListTile<_LocationChoice>(
@@ -338,7 +341,10 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Métodos de pago (opcional)', style: AppTypography.heading(15)),
+        Text(
+          'Métodos de pago (opcional)',
+          style: AppTypography.heading(15, color: context.colors.ink),
+        ),
         const SizedBox(height: 4),
         Text(
           _sellerPaymentMethods.isEmpty
@@ -482,7 +488,9 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
           const SizedBox(height: 24),
           FilledButton(
             onPressed: _publishing ? null : _publish,
-            style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+            style: FilledButton.styleFrom(
+              backgroundColor: context.colors.primary,
+            ),
             child: _publishing
                 ? const SizedBox(
                     width: 20,

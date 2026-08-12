@@ -39,7 +39,10 @@ class OtpInputState extends State<OtpInput> {
   @override
   void initState() {
     super.initState();
-    _controllers = List.generate(widget.longitud, (_) => TextEditingController());
+    _controllers = List.generate(
+      widget.longitud,
+      (_) => TextEditingController(),
+    );
     _focos = List.generate(widget.longitud, (_) => FocusNode());
   }
 
@@ -136,23 +139,27 @@ class OtpInputState extends State<OtpInput> {
                 keyboardType: TextInputType.number,
                 // El autofill del SMS entrega el código completo a un solo
                 // campo; _alCambiar lo reparte.
-                autofillHints: i == 0 ? const [AutofillHints.oneTimeCode] : null,
+                autofillHints: i == 0
+                    ? const [AutofillHints.oneTimeCode]
+                    : null,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                style: AppTypography.heading(22),
+                style: AppTypography.heading(22, color: context.colors.ink),
                 decoration: InputDecoration(
                   counterText: '',
                   contentPadding: const EdgeInsets.symmetric(vertical: 14),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                     borderSide: BorderSide(
-                      color: lleno ? AppColors.primary : context.colors.border,
+                      color: lleno
+                          ? context.colors.primary
+                          : context.colors.border,
                       width: lleno ? 1.6 : 1,
                     ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(
-                      color: AppColors.primary,
+                    borderSide: BorderSide(
+                      color: context.colors.primary,
                       width: 1.8,
                     ),
                   ),

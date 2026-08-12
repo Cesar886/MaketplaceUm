@@ -13,6 +13,7 @@ const {
   validateBusinessHours,
   validateLocation,
   validatePaymentMethods,
+  validateColorAcento,
 } = require('../validation/sellerProfile');
 
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
@@ -39,14 +40,40 @@ function register(app) {
   // El email es privado: solo se incluye en la respuesta si quien pide el
   // perfil es el propio dueño (Bearer token cuyo sub coincide con :id).
   // El resto de campos, incluido phone, ya son públicos vía rowToSeller.
+  // Métricas que se calculan al vuelo en vez de cachearse en la fila: la
+  // racha cambia sola con el paso del tiempo (una semana sin publicar la
+  // rompe sin que nadie escriba nada), así que un caché estaría mintiendo
+  // hasta el siguiente evento que lo refrescara.
+  function conMetricas(seller) {
+    return {
+      ...seller,
+      rachaSemanas: db.computeRachaPublicaciones(seller.id),
+      respondeRapido:
+        seller.medianResponseMinutes !== null &&
+        seller.medianResponseMinutes <= db.FEED_WEIGHTS.FAST_REPLY_MAX_MINUTES,
+      // El producto fijado se verifica al leer: si se borró o ya no es del
+      // vendedor, se devuelve null en vez de un ID colgante que el cliente
+      // tendría que resolver a una tarjeta vacía.
+      productoFijadoId: productoFijadoVigente(seller),
+    };
+  }
+
+  function productoFijadoVigente(seller) {
+    if (!seller.productoFijadoId) return null;
+    const row = db.getDb()
+      .prepare('SELECT seller FROM products WHERE id = ?')
+      .get(seller.productoFijadoId);
+    return row && row.seller === seller.id ? seller.productoFijadoId : null;
+  }
+
   app.get('/api/sellers/:id', optionalAuth, (req, res) => {
     const seller = sellers.find(s => s.id === req.params.id);
     if (!seller) return res.status(404).json({ error: 'Vendedor no encontrado' });
     if (req.user && req.user.id === seller.id) {
       const rawRow = db.getDb().prepare('SELECT email FROM sellers WHERE id = ?').get(seller.id);
-      return res.json({ ...seller, email: rawRow.email || null });
+      return res.json({ ...conMetricas(seller), email: rawRow.email || null });
     }
-    res.json(seller);
+    res.json(conMetricas(seller));
   });
 
   // PATCH /api/sellers/:id — editar el propio perfil (usuario o negocio).
@@ -59,7 +86,7 @@ function register(app) {
     const seller = sellers.find(s => s.id === req.params.id);
     if (!seller) return res.status(404).json({ error: 'Vendedor no encontrado' });
 
-    const { name, phone, businessDescription, businessCategory, businessHours, locationLat, locationLng, paymentMethods } = req.body;
+    const { name, phone, businessDescription, businessCategory, businessHours, locationLat, locationLng, paymentMethods, colorAcento, productoFijadoId } = req.body;
 
     // ─── Validar todo antes de escribir nada (evita estado a medias) ──
     if (name !== undefined) {
@@ -78,6 +105,30 @@ function register(app) {
       const paymentMethodsResult = validatePaymentMethods(paymentMethods, { required: true });
       if (paymentMethodsResult.error) return res.status(400).json({ error: paymentMethodsResult.error });
       normalizedPaymentMethods = paymentMethodsResult.value;
+    }
+
+    // Personalización del perfil. A diferencia de descripción/horario, NO
+    // está restringida a negocios: cualquier vendedor puede elegir su color
+    // y fijar una publicación.
+    const colorError = validateColorAcento(colorAcento);
+    if (colorError) return res.status(400).json({ error: colorError });
+
+    // Fijar exige ser dueño del producto. Sin esta comprobación, cualquiera
+    // podría fijar la publicación de otro en su propio perfil y presentarla
+    // como suya.
+    if (productoFijadoId !== undefined && productoFijadoId !== null) {
+      if (typeof productoFijadoId !== 'string') {
+        return res.status(400).json({ error: 'productoFijadoId inválido' });
+      }
+      const producto = db.getDb()
+        .prepare('SELECT seller FROM products WHERE id = ?')
+        .get(productoFijadoId);
+      if (!producto) {
+        return res.status(400).json({ error: 'La publicación no existe' });
+      }
+      if (producto.seller !== seller.id) {
+        return res.status(403).json({ error: 'Esa publicación no es tuya' });
+      }
     }
 
     let normalizedHours;
@@ -116,6 +167,13 @@ function register(app) {
     if (normalizedPaymentMethods !== undefined) {
       updateSellerField(seller.id, 'paymentMethods', JSON.stringify(normalizedPaymentMethods));
     }
+    if (colorAcento !== undefined) {
+      // null limpia el campo y devuelve el perfil al color de marca.
+      updateSellerField(seller.id, 'colorAcento', colorAcento);
+    }
+    if (productoFijadoId !== undefined) {
+      updateSellerField(seller.id, 'producto_fijado_id', productoFijadoId);
+    }
     if (seller.isBusiness) {
       if (businessDescription !== undefined) {
         updateSellerField(seller.id, 'businessDescription', businessDescription.trim());
@@ -134,7 +192,7 @@ function register(app) {
 
     const updated = sellers.find(s => s.id === req.params.id);
     const rawRow = db.getDb().prepare('SELECT phone, email FROM sellers WHERE id = ?').get(req.params.id);
-    res.json({ ...updated, phone: rawRow.phone || null, email: rawRow.email || null });
+    res.json({ ...conMetricas(updated), phone: rawRow.phone || null, email: rawRow.email || null });
   });
 
   // Borra un archivo de /uploads referenciado por una URL pública tipo

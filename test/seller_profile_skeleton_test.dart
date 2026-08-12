@@ -18,7 +18,8 @@ void main() {
       );
 
       final circleFinder = find.byWidgetPredicate(
-        (w) => w is Container &&
+        (w) =>
+            w is Container &&
             w.decoration is BoxDecoration &&
             (w.decoration as BoxDecoration).shape == BoxShape.circle,
       );

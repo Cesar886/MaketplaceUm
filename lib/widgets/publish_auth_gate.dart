@@ -27,12 +27,12 @@ class PublishAuthGate extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 64, color: AppColors.primary),
+            Icon(icon, size: 64, color: context.colors.primary),
             const SizedBox(height: 20),
             Text(
               title,
               textAlign: TextAlign.center,
-              style: AppTypography.heading(18),
+              style: AppTypography.heading(18, color: context.colors.ink),
             ),
             const SizedBox(height: 10),
             Text(

@@ -21,6 +21,12 @@ class _MyListingsScreenState extends State<MyListingsScreen>
   List<Product> _listings = [];
   bool _loading = true;
 
+  /// Publicación fijada en el perfil. Vive aquí y no en el tile para que al
+  /// fijar una se desmarque la anterior en la misma pasada: solo puede haber
+  /// una fijada a la vez.
+  String? _fijadoId;
+  bool _fijando = false;
+
   @override
   void initState() {
     super.initState();
@@ -38,15 +44,56 @@ class _MyListingsScreenState extends State<MyListingsScreen>
       return;
     }
     try {
-      final listings = await ApiService.getProducts(seller: sellerId);
+      final results = await Future.wait([
+        ApiService.getProducts(seller: sellerId),
+        ApiService.getSeller(sellerId),
+      ]);
       if (!mounted) return;
       setState(() {
-        _listings = listings;
+        _listings = results[0] as List<Product>;
+        _fijadoId = (results[1] as Seller).productoFijadoId;
         _loading = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
+    }
+  }
+
+  /// Fija la publicación, o la desfija si ya lo estaba. El backend acepta
+  /// null como "desfijar" y valida que el producto sea de quien lo manda.
+  Future<void> _alternarFijado(Product product) async {
+    final sellerId = context.read<AuthProvider>().backendSellerId;
+    if (sellerId == null || _fijando) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final desfijar = _fijadoId == product.id;
+
+    setState(() => _fijando = true);
+    try {
+      final actualizado = await ApiService.updateSellerProfile(
+        sellerId: sellerId,
+        productoFijadoId: desfijar ? null : product.id,
+      );
+      if (!mounted) return;
+      setState(() => _fijadoId = actualizado.productoFijadoId);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            desfijar
+                ? 'Publicación desfijada'
+                : 'Publicación fijada en tu perfil',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo cambiar la publicación fijada.'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _fijando = false);
     }
   }
 
@@ -87,7 +134,11 @@ class _MyListingsScreenState extends State<MyListingsScreen>
             _StatsRow(listings: _listings),
             const SizedBox(height: 18),
             for (final product in _listings) ...[
-              _MyListingTile(product: product),
+              _MyListingTile(
+                product: product,
+                fijado: product.id == _fijadoId,
+                onFijar: _fijando ? null : () => _alternarFijado(product),
+              ),
               const SizedBox(height: 12),
             ],
           ],
@@ -128,7 +179,7 @@ class _StatsRow extends StatelessWidget {
           child: _StatCard(
             label: 'Destacadas',
             value: '$featured',
-            color: context.colors.gold,
+            color: context.colors.accent,
           ),
         ),
         const SizedBox(width: 10),
@@ -192,9 +243,18 @@ class _StatCard extends StatelessWidget {
 }
 
 class _MyListingTile extends StatelessWidget {
-  const _MyListingTile({required this.product});
+  const _MyListingTile({
+    required this.product,
+    required this.fijado,
+    required this.onFijar,
+  });
 
   final Product product;
+  final bool fijado;
+
+  /// null mientras hay un cambio de fijado en vuelo, para no encimar dos
+  /// PATCH cuyo orden de llegada no está garantizado.
+  final VoidCallback? onFijar;
 
   @override
   Widget build(BuildContext context) {
@@ -240,6 +300,14 @@ class _MyListingTile extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
+                        if (fijado) ...[
+                          Icon(
+                            Icons.push_pin_rounded,
+                            size: 15,
+                            color: context.colors.accent,
+                          ),
+                          const SizedBox(width: 6),
+                        ],
                         StatusBadge(status: status),
                       ],
                     ),
@@ -268,6 +336,17 @@ class _MyListingTile extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
+              // Fijar es la única de las tres acciones que ya toca el
+              // backend de verdad; renovar y destacar siguen simuladas.
+              IconButton(
+                onPressed: onFijar,
+                tooltip: fijado ? 'Quitar de tu perfil' : 'Fijar en tu perfil',
+                icon: Icon(
+                  fijado ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                  color: fijado ? context.colors.accent : context.colors.muted,
+                ),
+              ),
+              const SizedBox(width: 4),
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: () =>
@@ -286,7 +365,7 @@ class _MyListingTile extends StatelessWidget {
                     status == ListingStatus.featured ? 'Extender' : 'Destacar',
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: context.colors.gold,
+                    backgroundColor: context.colors.accent,
                   ),
                 ),
               ),

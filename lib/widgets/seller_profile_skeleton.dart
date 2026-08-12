@@ -22,11 +22,10 @@ class SellerProfileSkeleton extends StatelessWidget {
           Center(
             child: Column(
               children: [
-                const ShimmerBox(
-                  width: 80,
-                  height: 80,
-                  shape: BoxShape.circle,
-                ),
+                // 92 = avatar de 80 + 3px de padding + 3px del anillo de
+                // acento por lado. Si el anillo cambia de grosor, este número
+                // cambia con él o la cabecera salta al terminar de cargar.
+                const ShimmerBox(width: 92, height: 92, shape: BoxShape.circle),
                 const SizedBox(height: 12),
                 const ShimmerBox(width: 140, height: 19, borderRadius: 4),
                 const SizedBox(height: 8),

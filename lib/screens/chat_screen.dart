@@ -680,7 +680,9 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
 
 void _navigateToListing(BuildContext context, Product product) {
   Navigator.of(context).push(
-    MaterialPageRoute<void>(builder: (_) => ProductDetailScreen(product: product)),
+    MaterialPageRoute<void>(
+      builder: (_) => ProductDetailScreen(product: product),
+    ),
   );
 }
 
@@ -693,7 +695,7 @@ class _ProductBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: context.colors.premiumBg,
+      color: context.colors.accentTint,
       child: InkWell(
         onTap: onTap,
         child: Container(
@@ -818,7 +820,7 @@ class _MessageBubble extends StatelessWidget {
                 color: isDeleted
                     ? context.colors.muted.withValues(alpha: 0.12)
                     : isMine
-                    ? AppColors.primary
+                    ? context.colors.primary
                     : context.colors.surface,
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(16),
@@ -935,7 +937,8 @@ class _MessageBubble extends StatelessWidget {
   void _openFullImage(BuildContext context, String imageUrl) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => _FullImageViewer(imageUrl: '${ApiService.baseUrl}$imageUrl'),
+        builder: (_) =>
+            _FullImageViewer(imageUrl: '${ApiService.baseUrl}$imageUrl'),
         fullscreenDialog: true,
       ),
     );

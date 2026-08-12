@@ -94,10 +94,7 @@ class MainShellState extends State<MainShell> {
         child: Wrap(
           children: [
             ListTile(
-              leading: const Icon(
-                Icons.sell_outlined,
-                color: AppColors.primary,
-              ),
+              leading: Icon(Icons.sell_outlined, color: context.colors.primary),
               title: const Text('Publicar producto'),
               subtitle: const Text('Vende algo que ya tienes'),
               onTap: () {
@@ -106,9 +103,9 @@ class MainShellState extends State<MainShell> {
               },
             ),
             ListTile(
-              leading: const Icon(
+              leading: Icon(
                 Icons.search_rounded,
-                color: AppColors.primary,
+                color: context.colors.primary,
               ),
               title: const Text('Publicar búsqueda'),
               subtitle: const Text('Di qué estás buscando y te notificamos'),
@@ -200,11 +197,11 @@ class MainShellState extends State<MainShell> {
       // Arriba, fondo claro → íconos oscuros. Abajo, la barra de navegación
       // navy se extiende por debajo de la barra del sistema, así que ahí los
       // íconos tienen que ser claros: un solo preset no cubre los dos lados.
-      value: const SystemUiOverlayStyle(
+      value: SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.dark,
         statusBarBrightness: Brightness.light,
-        systemNavigationBarColor: AppColors.primary,
+        systemNavigationBarColor: context.colors.primary,
         systemNavigationBarIconBrightness: Brightness.light,
       ),
       child: Scaffold(
@@ -220,14 +217,17 @@ class MainShellState extends State<MainShell> {
         // (6:1 contra el navy). Sobre una barra blanca ese mismo botón
         // compite con las tarjetas; sobre navy no compite con nada.
         bottomNavigationBar: Container(
-          color: AppColors.primary,
+          color: context.colors.primary,
           child: SafeArea(
             top: false,
             child: DecoratedBox(
-              decoration: const BoxDecoration(
-                color: AppColors.primary,
+              decoration: BoxDecoration(
+                color: context.colors.primary,
                 border: Border(
-                  top: BorderSide(color: AppColors.primaryLight, width: 0.8),
+                  top: BorderSide(
+                    color: context.colors.accentTintBorder,
+                    width: 0.8,
+                  ),
                 ),
               ),
               child: SizedBox(
@@ -306,7 +306,9 @@ class _NavItem extends StatelessWidget {
     // tono: blanco para la pestaña activa y un navy claro para las demás.
     // El oro no participa aquí — en esta barra pertenece solo al "+".
     final selected = index == currentIndex;
-    final color = selected ? Colors.white : AppColors.onPrimaryMuted;
+    final color = selected
+        ? Colors.white
+        : context.colors.onPrimary.withValues(alpha: 0.62);
 
     Widget iconWidget = Icon(
       selected ? selectedIcon : icon,
@@ -317,8 +319,8 @@ class _NavItem extends StatelessWidget {
     if (badge != null && badge! > 0) {
       iconWidget = Badge.count(
         count: badge!,
-        backgroundColor: AppColors.gold,
-        textColor: AppColors.onGold,
+        backgroundColor: context.colors.primary,
+        textColor: context.colors.onPrimary,
         child: iconWidget,
       );
     }
@@ -370,14 +372,18 @@ class _PublishFab extends StatelessWidget {
         onTap: onTap,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: AppColors.gold,
+            color: context.colors.primary,
             shape: BoxShape.circle,
-            boxShadow: AppShadows.gold,
+            boxShadow: AppShadows.accent(context.colors.primary),
           ),
-          child: const SizedBox(
+          child: SizedBox(
             width: 52,
             height: 52,
-            child: Icon(Icons.add_rounded, color: AppColors.onGold, size: 28),
+            child: Icon(
+              Icons.add_rounded,
+              color: context.colors.onPrimary,
+              size: 28,
+            ),
           ),
         ),
       ),

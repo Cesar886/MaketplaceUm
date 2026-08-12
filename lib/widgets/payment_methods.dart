@@ -20,11 +20,7 @@ const List<PaymentMethodOption> kPaymentMethodCatalog = [
     'Transferencia',
     Icons.account_balance_rounded,
   ),
-  PaymentMethodOption(
-    'paypal',
-    'PayPal',
-    Icons.account_balance_wallet_rounded,
-  ),
+  PaymentMethodOption('paypal', 'PayPal', Icons.account_balance_wallet_rounded),
   PaymentMethodOption('cripto', 'Cripto', Icons.currency_bitcoin_rounded),
 ];
 
@@ -80,23 +76,23 @@ class PaymentMethodsSelector extends StatelessWidget {
                   option.icon,
                   size: 18,
                   color: selected.contains(option.id)
-                      ? AppColors.primary
+                      ? context.colors.primary
                       : context.colors.muted,
                 ),
                 label: Text(option.label),
                 selected: selected.contains(option.id),
                 showCheckmark: true,
-                checkmarkColor: AppColors.primary,
-                selectedColor: AppColors.primary.withValues(alpha: 0.12),
+                checkmarkColor: context.colors.primary,
+                selectedColor: context.colors.primary.withValues(alpha: 0.12),
                 labelStyle: TextStyle(
                   fontWeight: FontWeight.w600,
                   color: selected.contains(option.id)
-                      ? AppColors.primary
+                      ? context.colors.primary
                       : context.colors.ink,
                 ),
                 side: BorderSide(
                   color: selected.contains(option.id)
-                      ? AppColors.primary.withValues(alpha: 0.4)
+                      ? context.colors.primary.withValues(alpha: 0.4)
                       : (showError
                             ? AppColors.danger.withValues(alpha: 0.5)
                             : context.colors.border),

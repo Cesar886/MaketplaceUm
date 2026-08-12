@@ -60,9 +60,9 @@ class ProductCard extends StatelessWidget {
   Widget _buildCard(BuildContext context) {
     final hasAccent = product.isOffer || product.isFeatured;
     final borderColor = product.isOffer
-        ? AppColors.gold
+        ? context.colors.primary
         : product.isFeatured
-        ? context.colors.premiumBorder
+        ? context.colors.accentTintBorder
         : Colors.transparent;
 
     return DecoratedBox(
@@ -79,8 +79,8 @@ class ProductCard extends StatelessWidget {
         ),
         child: InkWell(
           onTap: onTap,
-          splashColor: AppColors.primary.withValues(alpha: 0.06),
-          highlightColor: AppColors.primary.withValues(alpha: 0.03),
+          splashColor: context.colors.primary.withValues(alpha: 0.06),
+          highlightColor: context.colors.primary.withValues(alpha: 0.03),
           child: Padding(
             padding: const EdgeInsets.all(10),
             child: horizontal
@@ -131,7 +131,11 @@ class _GridProductCard extends StatelessWidget {
           product.title,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: AppTypography.label(13.5, weight: FontWeight.w700),
+          style: AppTypography.label(
+            13.5,
+            weight: FontWeight.w700,
+            color: context.colors.ink,
+          ),
         ),
         if (!dense) ...[
           const SizedBox(height: 2),
@@ -200,7 +204,11 @@ class _HorizontalProductCard extends StatelessWidget {
                 product.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: AppTypography.label(13.5, weight: FontWeight.w700),
+                style: AppTypography.label(
+                  13.5,
+                  weight: FontWeight.w700,
+                  color: context.colors.ink,
+                ),
               ),
               const SizedBox(height: 3),
               Text(

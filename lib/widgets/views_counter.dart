@@ -21,11 +21,7 @@ class ViewsCounter extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
-          Icons.visibility_outlined,
-          size: large ? 16 : 12,
-          color: color,
-        ),
+        Icon(Icons.visibility_outlined, size: large ? 16 : 12, color: color),
         const SizedBox(width: 3),
         Text(
           formatCompactNumber(views),

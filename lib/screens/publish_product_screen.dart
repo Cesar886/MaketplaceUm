@@ -598,7 +598,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Reglas de disponibilidad', style: AppTypography.heading(15)),
+        Text(
+          'Reglas de disponibilidad',
+          style: AppTypography.heading(15, color: context.colors.ink),
+        ),
         const SizedBox(height: 4),
         Text(
           'El badge que ven los demás se calcula solo a partir de estas reglas (y del horario del negocio, si aplica).',
@@ -661,13 +664,13 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                 label: Text(_dayNames[i], style: const TextStyle(fontSize: 12)),
                 selected: selected,
                 showCheckmark: false,
-                selectedColor: AppColors.primary.withValues(alpha: 0.12),
+                selectedColor: context.colors.primary.withValues(alpha: 0.12),
                 labelStyle: TextStyle(
-                  color: selected ? AppColors.primary : context.colors.ink,
+                  color: selected ? context.colors.primary : context.colors.ink,
                 ),
                 side: BorderSide(
                   color: selected
-                      ? AppColors.primary.withValues(alpha: 0.4)
+                      ? context.colors.primary.withValues(alpha: 0.4)
                       : context.colors.border,
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -709,14 +712,17 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                   color: context.colors.surfaceMuted,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.inventory_2_rounded,
-                  color: AppColors.primary,
+                  color: context.colors.primary,
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text('Inventario', style: AppTypography.heading(15)),
+                child: Text(
+                  'Inventario',
+                  style: AppTypography.heading(15, color: context.colors.ink),
+                ),
               ),
             ],
           ),
@@ -733,7 +739,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
             ),
             value: _isStockLimited,
             onChanged: (val) => setState(() => _isStockLimited = val),
-            activeColor: AppColors.primary,
+            activeColor: context.colors.primary,
           ),
           if (_isStockLimited) ...[
             const SizedBox(height: 10),
@@ -759,7 +765,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
               ),
               value: _autoResetStock,
               onChanged: (val) => setState(() => _autoResetStock = val),
-              activeColor: AppColors.primary,
+              activeColor: context.colors.primary,
             ),
           ],
         ],
@@ -786,16 +792,16 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                   color: context.colors.surfaceMuted,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.add_box_rounded,
-                  color: AppColors.primary,
+                  color: context.colors.primary,
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   'Extras opcionales',
-                  style: AppTypography.heading(15),
+                  style: AppTypography.heading(15, color: context.colors.ink),
                 ),
               ),
               Container(
@@ -908,7 +914,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
               Material(
                 color: _extras.length >= 8
                     ? context.colors.border
-                    : AppColors.primary.withValues(alpha: 0.08),
+                    : context.colors.primary.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(8),
                 child: InkWell(
                   onTap: _extras.length >= 8 ? null : _addExtra,
@@ -919,7 +925,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                       Icons.add_rounded,
                       color: _extras.length >= 8
                           ? context.colors.muted
-                          : AppColors.primary,
+                          : context.colors.primary,
                       size: 22,
                     ),
                   ),
@@ -1035,7 +1041,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Ubicación (opcional)', style: AppTypography.heading(15)),
+        Text(
+          'Ubicación (opcional)',
+          style: AppTypography.heading(15, color: context.colors.ink),
+        ),
         const SizedBox(height: 10),
         if (_hasSavedSellerLocation) ...[
           RadioListTile<_LocationChoice>(
@@ -1096,7 +1105,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Métodos de pago', style: AppTypography.heading(15)),
+        Text(
+          'Métodos de pago',
+          style: AppTypography.heading(15, color: context.colors.ink),
+        ),
         const SizedBox(height: 4),
         Text(
           _sellerPaymentMethods.isEmpty
@@ -1165,11 +1177,11 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   Color _statusColor(ManualStatus status) {
     switch (status) {
       case ManualStatus.reserved:
-        return context.colors.gold;
+        return context.colors.accent;
       case ManualStatus.sold:
         return AppColors.danger;
       case ManualStatus.negotiating:
-        return AppColors.primary;
+        return context.colors.primary;
       case ManualStatus.paused:
         return context.colors.muted;
     }
@@ -1198,7 +1210,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Gestión de venta', style: AppTypography.heading(15)),
+        Text(
+          'Gestión de venta',
+          style: AppTypography.heading(15, color: context.colors.ink),
+        ),
         const SizedBox(height: 4),
         Text(
           _currentStatus != null
@@ -1266,7 +1281,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       padding: EdgeInsets.fromLTRB(18, 18, 18, _isEditing ? 12 : 24),
       children: [
         if (!_isEditing) ...[
-          Text('Publicar producto', style: AppTypography.heading(22)),
+          Text(
+            'Publicar producto',
+            style: AppTypography.heading(22, color: context.colors.ink),
+          ),
           const SizedBox(height: 6),
           Text(
             'Completa la información básica para publicar tu producto en el marketplace.',
@@ -1276,7 +1294,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
         ],
 
         // ─── Fotos ──────────────────────────────────────
-        Text('Fotos', style: AppTypography.heading(15)),
+        Text(
+          'Fotos',
+          style: AppTypography.heading(15, color: context.colors.ink),
+        ),
         const SizedBox(height: 10),
         SizedBox(
           height: 110,
@@ -1427,21 +1448,21 @@ class _AddPhotoTile extends StatelessWidget {
         if (value == 'camera') onPickCamera();
       },
       itemBuilder: (_) => [
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'gallery',
           child: Row(
             children: [
-              Icon(Icons.photo_library_rounded, color: AppColors.primary),
+              Icon(Icons.photo_library_rounded, color: context.colors.primary),
               SizedBox(width: 10),
               Text('Galería'),
             ],
           ),
         ),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'camera',
           child: Row(
             children: [
-              Icon(Icons.camera_alt_rounded, color: AppColors.primary),
+              Icon(Icons.camera_alt_rounded, color: context.colors.primary),
               SizedBox(width: 10),
               Text('Cámara'),
             ],
@@ -1451,9 +1472,11 @@ class _AddPhotoTile extends StatelessWidget {
       child: Container(
         width: 104,
         decoration: BoxDecoration(
-          color: AppColors.primary.withValues(alpha: 0.08),
+          color: context.colors.primary.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.primary.withValues(alpha: 0.28)),
+          border: Border.all(
+            color: context.colors.primary.withValues(alpha: 0.28),
+          ),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1462,7 +1485,7 @@ class _AddPhotoTile extends StatelessWidget {
               hasImages
                   ? Icons.add_photo_alternate_rounded
                   : Icons.add_a_photo_rounded,
-              color: AppColors.primary,
+              color: context.colors.primary,
             ),
             const SizedBox(height: 8),
             Padding(
@@ -1472,10 +1495,10 @@ class _AddPhotoTile extends StatelessWidget {
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.primary,
+                  color: context.colors.primary,
                 ),
               ),
             ),
@@ -1628,13 +1651,13 @@ class _HighlightSection extends StatelessWidget {
                   color: context.colors.surfaceMuted,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.star_rounded, color: AppColors.primary),
+                child: Icon(Icons.star_rounded, color: context.colors.primary),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   'Destaca tu publicación',
-                  style: AppTypography.heading(15),
+                  style: AppTypography.heading(15, color: context.colors.ink),
                 ),
               ),
               Container(
@@ -1700,11 +1723,11 @@ class _PlanCard extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: selected
-              ? AppColors.primary.withValues(alpha: 0.08)
+              ? context.colors.primary.withValues(alpha: 0.08)
               : context.colors.background,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: selected ? context.colors.gold : context.colors.border,
+            color: selected ? context.colors.accent : context.colors.border,
             width: selected ? 1.5 : 1,
           ),
         ),
@@ -1714,7 +1737,7 @@ class _PlanCard extends StatelessWidget {
               selected
                   ? Icons.radio_button_checked_rounded
                   : Icons.radio_button_off_rounded,
-              color: selected ? context.colors.gold : context.colors.muted,
+              color: selected ? context.colors.accent : context.colors.muted,
             ),
             const SizedBox(width: 10),
             Expanded(

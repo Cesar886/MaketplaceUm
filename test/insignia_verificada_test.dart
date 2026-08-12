@@ -7,7 +7,9 @@ import 'package:mercadito_um/widgets/badges.dart';
 void main() {
   Future<void> montar(WidgetTester tester, Widget hijo) {
     return tester.pumpWidget(
-      MaterialApp(home: Scaffold(body: Center(child: hijo))),
+      MaterialApp(
+        home: Scaffold(body: Center(child: hijo)),
+      ),
     );
   }
 
@@ -36,7 +38,10 @@ void main() {
   });
 
   testWidgets('etiqueta a un estudiante verificado', (tester) async {
-    await montar(tester, const InsigniaVerificada(tipo: AccountType.estudiante));
+    await montar(
+      tester,
+      const InsigniaVerificada(tipo: AccountType.estudiante),
+    );
     expect(find.text('Estudiante verificado'), findsOneWidget);
   });
 
@@ -45,8 +50,13 @@ void main() {
     expect(find.text('Negocio verificado'), findsOneWidget);
   });
 
-  testWidgets('usa la etiqueta genérica para la cuenta externa', (tester) async {
-    await montar(tester, const InsigniaVerificada(tipo: AccountType.particular));
+  testWidgets('usa la etiqueta genérica para la cuenta externa', (
+    tester,
+  ) async {
+    await montar(
+      tester,
+      const InsigniaVerificada(tipo: AccountType.particular),
+    );
     expect(find.text('Verificado'), findsOneWidget);
   });
 
@@ -61,19 +71,20 @@ void main() {
     expect(find.text('Estudiante verificado'), findsNothing);
   });
 
-  testWidgets('la variante compacta respeta el tamaño pedido por el call site', (
-    tester,
-  ) async {
-    await montar(
-      tester,
-      const InsigniaVerificada(
-        tipo: AccountType.negocio,
-        compact: true,
-        size: 18,
-      ),
-    );
-    expect(iconoDe(tester).size, 18);
-  });
+  testWidgets(
+    'la variante compacta respeta el tamaño pedido por el call site',
+    (tester) async {
+      await montar(
+        tester,
+        const InsigniaVerificada(
+          tipo: AccountType.negocio,
+          compact: true,
+          size: 18,
+        ),
+      );
+      expect(iconoDe(tester).size, 18);
+    },
+  );
 
   testWidgets('construye la insignia a partir del tipo de cuenta del backend', (
     tester,

@@ -580,9 +580,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _openSearch(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const SearchScreen()));
   }
 }
 
@@ -611,7 +611,7 @@ class _HighlightPlansBanner extends StatelessWidget {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.12),
+                  color: context.colors.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
@@ -699,16 +699,16 @@ class _NavyHeader extends StatelessWidget {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       // Solo la mitad de arriba: la barra de navegación de abajo la sigue
       // declarando el shell, que es quien la pinta.
-      value: const SystemUiOverlayStyle(
+      value: SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.light,
         statusBarBrightness: Brightness.dark,
-        systemNavigationBarColor: AppColors.primary,
+        systemNavigationBarColor: context.colors.primary,
         systemNavigationBarIconBrightness: Brightness.light,
       ),
       child: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.primary,
+        decoration: BoxDecoration(
+          color: context.colors.primary,
           borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
         ),
         padding: EdgeInsets.fromLTRB(
@@ -746,8 +746,8 @@ class _HeaderIconButton extends StatelessWidget {
     if (badgeCount > 0) {
       content = Badge.count(
         count: badgeCount,
-        backgroundColor: AppColors.gold,
-        textColor: AppColors.onGold,
+        backgroundColor: context.colors.primary,
+        textColor: context.colors.onPrimary,
         child: content,
       );
     }
@@ -842,9 +842,11 @@ class _CategoryFilterChipState extends State<_CategoryFilterChip> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.08),
+        color: context.colors.primary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.22)),
+        border: Border.all(
+          color: context.colors.primary.withValues(alpha: 0.22),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -867,7 +869,9 @@ class _CategoryFilterChipState extends State<_CategoryFilterChip> {
                   ? Icons.notifications_active_rounded
                   : Icons.notifications_none_rounded,
               size: 18,
-              color: _isFollowing ? AppColors.primary : context.colors.muted,
+              color: _isFollowing
+                  ? context.colors.primary
+                  : context.colors.muted,
             ),
           ),
           const SizedBox(width: 4),
@@ -961,9 +965,7 @@ class _SearchBoxState extends State<_SearchBox> {
                   // activo. Este texto fijo solo se ve sin red o con el
                   // catálogo vacío — nunca en operación normal.
                   child: Text(
-                    term != null
-                        ? "$term"
-                        : 'Buscar en Mercadito UM...',
+                    term != null ? "$term" : 'Buscar en Mercadito UM...',
                     key: ValueKey(term),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -974,7 +976,7 @@ class _SearchBoxState extends State<_SearchBox> {
                   ),
                 ),
               ),
-              Icon(Icons.tune_rounded, color: AppColors.primary),
+              Icon(Icons.tune_rounded, color: context.colors.primary),
             ],
           ),
         ),
@@ -1018,12 +1020,12 @@ class _CategoryScroller extends StatelessWidget {
                     height: 44,
                     decoration: BoxDecoration(
                       color: selected
-                          ? AppColors.primary.withValues(alpha: 0.10)
+                          ? context.colors.primary.withValues(alpha: 0.10)
                           : context.colors.surface,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
                         color: selected
-                            ? AppColors.primary
+                            ? context.colors.primary
                             : context.colors.border,
                         width: selected ? 2 : 1,
                       ),
@@ -1039,7 +1041,9 @@ class _CategoryScroller extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                      color: selected ? AppColors.primary : context.colors.ink,
+                      color: selected
+                          ? context.colors.primary
+                          : context.colors.ink,
                     ),
                   ),
                 ],
@@ -1092,7 +1096,7 @@ class _BusinessCard extends StatelessWidget {
                   children: [
                     CircleAvatar(
                       radius: 24,
-                      backgroundColor: AppColors.primary.withValues(
+                      backgroundColor: context.colors.primary.withValues(
                         alpha: 0.08,
                       ),
                       child:
@@ -1164,7 +1168,7 @@ class _BusinessCard extends StatelessWidget {
                               Icon(
                                 Icons.star_rounded,
                                 size: 14,
-                                color: context.colors.gold,
+                                color: context.colors.accent,
                               ),
                               const SizedBox(width: 2),
                               Text(
@@ -1225,7 +1229,7 @@ class _BusinessCard extends StatelessWidget {
                                   child: Container(
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(12),
-                                      color: AppColors.primary.withValues(
+                                      color: context.colors.primary.withValues(
                                         alpha: 0.04,
                                       ),
                                     ),

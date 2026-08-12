@@ -49,8 +49,7 @@ enum CategoriaError {
   desconocido,
 }
 
-const String _mensajeSinConexion =
-    'Revisa tu conexión e intenta de nuevo.';
+const String _mensajeSinConexion = 'Revisa tu conexión e intenta de nuevo.';
 const String _mensajeTimeout =
     'La conexión está tardando demasiado. Intenta de nuevo.';
 const String _mensajeServidor =
@@ -97,7 +96,9 @@ class ApiException implements Exception {
         ? CategoriaError.servidor
         : CategoriaError.desconocido;
 
-    final mensaje = esCliente && mensajeDelServidor != null &&
+    final mensaje =
+        esCliente &&
+            mensajeDelServidor != null &&
             mensajeDelServidor.trim().isNotEmpty
         ? mensajeDelServidor.trim()
         : _mensajePorCategoria(categoria);

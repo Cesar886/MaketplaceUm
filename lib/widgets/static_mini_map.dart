@@ -70,8 +70,12 @@ class StaticMiniMap extends StatelessWidget {
                     // Desplaza el tile escalado para que el punto exacto
                     // lat/lng quede centrado en el contenedor, sin importar
                     // el tamaño de este.
-                    final left = constraints.maxWidth / 2 - tile.dxFraction * displaySize;
-                    final top = constraints.maxHeight / 2 - tile.dyFraction * displaySize;
+                    final left =
+                        constraints.maxWidth / 2 -
+                        tile.dxFraction * displaySize;
+                    final top =
+                        constraints.maxHeight / 2 -
+                        tile.dyFraction * displaySize;
                     return Stack(
                       children: [
                         Positioned(
@@ -90,7 +94,8 @@ class StaticMiniMap extends StatelessWidget {
                               headers: kIsWeb
                                   ? null
                                   : const {
-                                      'User-Agent': 'MercaditoUM/1.0 (Flutter app)',
+                                      'User-Agent':
+                                          'MercaditoUM/1.0 (Flutter app)',
                                     },
                             ),
                             fit: BoxFit.cover,
@@ -101,7 +106,11 @@ class StaticMiniMap extends StatelessWidget {
                         const Center(
                           child: Padding(
                             padding: EdgeInsets.only(bottom: 18),
-                            child: Icon(Icons.location_on, color: Colors.red, size: 34),
+                            child: Icon(
+                              Icons.location_on,
+                              color: Colors.red,
+                              size: 34,
+                            ),
                           ),
                         ),
                       ],
@@ -123,7 +132,13 @@ class StaticMiniMap extends StatelessWidget {
                     children: [
                       Icon(Icons.map_outlined, size: 16),
                       SizedBox(width: 6),
-                      Text('Ver en Maps', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text(
+                        'Ver en Maps',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -160,7 +175,9 @@ class _EmptyPlaceholder extends StatelessWidget {
       alignment: Alignment.center,
       child: Icon(
         Icons.location_off_outlined,
-        color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+        color: Theme.of(
+          context,
+        ).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
         size: 28,
       ),
     );
@@ -187,8 +204,7 @@ class _TilePixel {
     final n = pow(2, zoom).toDouble();
     final latRad = lat * pi / 180;
     final worldX = (lng + 180) / 360 * n;
-    final worldY =
-        (1 - (log(tan(latRad) + 1 / cos(latRad)) / pi)) / 2 * n;
+    final worldY = (1 - (log(tan(latRad) + 1 / cos(latRad)) / pi)) / 2 * n;
 
     final xTile = worldX.floor();
     final yTile = worldY.floor();

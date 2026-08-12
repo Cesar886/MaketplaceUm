@@ -25,7 +25,7 @@ class SectionHeader extends StatelessWidget {
           TextButton(
             onPressed: onAction,
             style: TextButton.styleFrom(
-              foregroundColor: AppColors.primary,
+              foregroundColor: context.colors.primary,
               visualDensity: VisualDensity.compact,
             ),
             child: Text(

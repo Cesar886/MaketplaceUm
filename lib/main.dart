@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'app_theme.dart';
+import 'providers/accent_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/auth/login_screen.dart';
@@ -57,6 +58,7 @@ void main() async {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => AccentProvider()),
       ],
       child: const MyApp(),
     ),
@@ -69,13 +71,17 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeProvider>();
+    // El swatch entra en el ThemeData completo, no en un provider que cada
+    // widget tenga que mirar: al cambiarlo, MaterialApp reconstruye el tema y
+    // la app entera se repinta por el mismo camino que el modo oscuro.
+    final swatch = context.watch<AccentProvider>().swatch;
     return MaterialApp(
       title: 'Mercadito UM',
       navigatorKey: navigatorKey,
       scaffoldMessengerKey: scaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
+      theme: AppTheme.light(swatch),
+      darkTheme: AppTheme.dark(swatch),
       themeMode: theme.themeMode,
       // Los layouts de la app (tiles de tamaño fijo, chips, etc.) no están
       // diseñados para una escala de fuente del sistema sin límite: un ajuste

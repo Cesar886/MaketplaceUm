@@ -27,9 +27,7 @@ class ProductCardSkeleton extends StatelessWidget {
       child: Material(
         color: context.colors.surface,
         clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         child: Padding(
           padding: const EdgeInsets.all(10),
           child: AppShimmer(

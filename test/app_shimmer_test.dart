@@ -17,9 +17,7 @@ void main() {
     expect(find.byType(ShimmerBox), findsOneWidget);
   });
 
-  testWidgets('ShimmerBox applies the requested border radius', (
-    tester,
-  ) async {
+  testWidgets('ShimmerBox applies the requested border radius', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(

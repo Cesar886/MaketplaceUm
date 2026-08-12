@@ -67,20 +67,24 @@ void main() {
 
   test('negocio y particular conservan su etiqueta de registro', () {
     expect(
-      subtituloRol(construir(
-        tipoCuenta: 'negocio',
-        verified: true,
-        major: 'Negocio • Establecimiento',
-      )),
+      subtituloRol(
+        construir(
+          tipoCuenta: 'negocio',
+          verified: true,
+          major: 'Negocio • Establecimiento',
+        ),
+      ),
       'Negocio • Establecimiento',
     );
     // Sin verificar tampoco cambia: `major` no depende de la verificación.
     expect(
-      subtituloRol(construir(
-        tipoCuenta: 'particular',
-        verified: false,
-        major: 'Particular',
-      )),
+      subtituloRol(
+        construir(
+          tipoCuenta: 'particular',
+          verified: false,
+          major: 'Particular',
+        ),
+      ),
       'Particular',
     );
   });

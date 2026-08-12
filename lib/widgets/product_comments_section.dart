@@ -337,7 +337,7 @@ class _Encabezado extends StatelessWidget {
           // El contador se omite mientras carga en vez de mostrar "(0)", que
           // se leería como "no hay comentarios" justo antes de aparecer.
           cargando ? 'Comentarios' : 'Comentarios ($total)',
-          style: AppTypography.heading(16),
+          style: AppTypography.heading(16, color: context.colors.ink),
         ),
       ],
     );
@@ -575,7 +575,7 @@ class _CampoComentario extends StatelessWidget {
                 return IconButton.filled(
                   onPressed: habilitado ? onEnviar : null,
                   style: IconButton.styleFrom(
-                    backgroundColor: AppColors.primary,
+                    backgroundColor: context.colors.primary,
                     disabledBackgroundColor: context.colors.muted.withValues(
                       alpha: 0.2,
                     ),
@@ -616,7 +616,7 @@ class TarjetaVerificaParaComentar extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.05),
+        color: context.colors.primary.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -633,7 +633,7 @@ class TarjetaVerificaParaComentar extends StatelessWidget {
               Expanded(
                 child: Text(
                   'Verifica tu cuenta para comentar',
-                  style: AppTypography.heading(14.5),
+                  style: AppTypography.heading(14.5, color: context.colors.ink),
                 ),
               ),
             ],

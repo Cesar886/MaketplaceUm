@@ -46,7 +46,9 @@ class _SessionAwareClient extends http.BaseClient {
     // que se materializa y se reconstruye la respuesta para que quien llamó
     // la reciba intacta y pueda seguir generando su propio mensaje de error.
     final bytes = await res.stream.toBytes();
-    if (utf8.decode(bytes, allowMalformed: true).contains('SESSION_INVALIDATED')) {
+    if (utf8
+        .decode(bytes, allowMalformed: true)
+        .contains('SESSION_INVALIDATED')) {
       ApiService.notificarSesionInvalidada();
     }
     return http.StreamedResponse(
@@ -113,6 +115,21 @@ class ApiService {
   ApiService._();
 
   static final _client = _SessionAwareClient(http.Client());
+
+  /// El mismo cliente HTTP, para módulos que viven fuera de esta clase
+  /// (`lib/features/payments/`). Se expone en vez de dejar que creen su
+  /// propio `http.Client` para que TODAS las llamadas al backend sigan
+  /// pasando por la detección de `SESSION_INVALIDATED` y por la traducción
+  /// de errores de red — un cliente aparte se saltaría las dos cosas.
+  static http.Client get client => _client;
+
+  /// Cabeceras con el JWT del usuario. Misma razón que [client]: que nadie
+  /// tenga que reconstruir el header de autorización por su cuenta.
+  static Map<String, String> get authHeaders => _authHeaders;
+
+  /// Construye una URL de la API (`$baseUrl/api$path`).
+  static Uri apiUri(String path, [Map<String, String>? query]) =>
+      _uri(path, query);
 
   /// Se invoca cuando el backend responde `SESSION_INVALIDATED` en cualquier
   /// endpoint. La app lo engancha en `main.dart` para cerrar sesión y llevar
@@ -348,7 +365,9 @@ class ApiService {
   static Future<Map<String, dynamic>> confirmarVerificacionEstudiante(
     String codigoOtp,
   ) {
-    return _postVerificacion('/estudiante/confirmar', {'codigo_otp': codigoOtp});
+    return _postVerificacion('/estudiante/confirmar', {
+      'codigo_otp': codigoOtp,
+    });
   }
 
   /// Verifica un negocio. A diferencia de los flujos con OTP, resuelve en una
@@ -422,7 +441,8 @@ class ApiService {
   /// orden para los íconos de categoría en home y búsqueda.
   static Future<List<MarketplaceCategory>> getCategoriesRanked() async {
     final res = await _getWithRetry(_uri('/categories/ranked'));
-    if (res.statusCode != 200) throw Exception('Error fetching ranked categories');
+    if (res.statusCode != 200)
+      throw Exception('Error fetching ranked categories');
     final List<dynamic> data = jsonDecode(res.body) as List<dynamic>;
     return data
         .map((e) => MarketplaceCategory.fromJson(e as Map<String, dynamic>))
@@ -656,7 +676,10 @@ class ApiService {
   }
 
   /// Análogo a [registerProductView] pero para publicaciones "se busca".
-  static Future<void> registerWantedPostView(String id, {String? userId}) async {
+  static Future<void> registerWantedPostView(
+    String id, {
+    String? userId,
+  }) async {
     try {
       await _client.post(
         _uri('/wanted/$id/view'),
@@ -994,6 +1017,13 @@ class ApiService {
     return Seller.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  /// Centinela para distinguir "no toques este campo" de "ponlo en null".
+  /// El resto de campos del PATCH usan `!= null` para decidir si viajan, pero
+  /// para el color de acento y el producto fijado null es un valor con
+  /// significado propio ("vuelve al color de marca", "desfija"), así que ahí
+  /// hace falta poder mandarlo explícitamente.
+  static const _sinCambio = Object();
+
   static Future<Seller> updateSellerProfile({
     required String sellerId,
     String? name,
@@ -1004,6 +1034,8 @@ class ApiService {
     double? locationLat,
     double? locationLng,
     List<String>? paymentMethods,
+    Object? colorAcento = _sinCambio,
+    Object? productoFijadoId = _sinCambio,
   }) async {
     final body = <String, dynamic>{};
     if (name != null) body['name'] = name;
@@ -1019,6 +1051,12 @@ class ApiService {
       body['locationLng'] = locationLng;
     }
     if (paymentMethods != null) body['paymentMethods'] = paymentMethods;
+    if (!identical(colorAcento, _sinCambio)) {
+      body['colorAcento'] = colorAcento;
+    }
+    if (!identical(productoFijadoId, _sinCambio)) {
+      body['productoFijadoId'] = productoFijadoId;
+    }
     final res = await _client.patch(
       _uri('/sellers/$sellerId'),
       headers: _authHeaders,

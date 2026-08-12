@@ -52,6 +52,10 @@ const routes = [
   require('./routes/comments'),
   require('./routes/search'),
   require('./routes/clientErrors'),
+  // Pagos con Mercado Pago (split payments). Aislado en su propia carpeta
+  // para que sea fácil de auditar por separado; no arranca nada al cargarse
+  // y responde 503 mientras falten credenciales en .env.
+  require('./payments/routes'),
 ];
 
 const app = express();

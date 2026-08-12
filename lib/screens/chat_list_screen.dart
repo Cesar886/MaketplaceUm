@@ -105,7 +105,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 margin: const EdgeInsets.only(left: 8),
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: AppColors.primary,
+                  color: context.colors.primary,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
@@ -221,7 +221,7 @@ class _ConversationTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         side: BorderSide(
           color: unread
-              ? AppColors.primary.withValues(alpha: 0.3)
+              ? context.colors.primary.withValues(alpha: 0.3)
               : context.colors.border,
           width: unread ? 1.5 : 1,
         ),
@@ -235,7 +235,7 @@ class _ConversationTile extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 24,
-                backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+                backgroundColor: context.colors.primary.withValues(alpha: 0.12),
                 backgroundImage:
                     otherUser?.logoUrl != null && otherUser!.logoUrl!.isNotEmpty
                     ? NetworkImage('${ApiService.baseUrl}${otherUser.logoUrl}')
@@ -276,8 +276,8 @@ class _ConversationTile extends StatelessWidget {
                           Container(
                             width: 8,
                             height: 8,
-                            decoration: const BoxDecoration(
-                              color: AppColors.primary,
+                            decoration: BoxDecoration(
+                              color: context.colors.primary,
                               shape: BoxShape.circle,
                             ),
                           ),

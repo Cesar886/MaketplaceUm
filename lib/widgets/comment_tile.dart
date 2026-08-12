@@ -46,7 +46,7 @@ class CommentAvatar extends StatelessWidget {
 
     return CircleAvatar(
       radius: size / 2,
-      backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+      backgroundColor: context.colors.primary.withValues(alpha: 0.12),
       child: author.logoUrl != null && author.logoUrl!.isNotEmpty
           ? ClipOval(
               child: Image.network(
@@ -96,7 +96,10 @@ class CommentTile extends StatelessWidget {
                       autor.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTypography.heading(14.5),
+                      style: AppTypography.heading(
+                        14.5,
+                        color: context.colors.ink,
+                      ),
                     ),
                   ),
                   if (autor.verified) ...[

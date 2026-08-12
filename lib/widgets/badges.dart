@@ -18,9 +18,9 @@ class FeaturedBadge extends StatelessWidget {
     return _Badge(
       icon: Icons.star_rounded,
       label: 'Destacado',
-      foreground: context.colors.gold,
-      background: context.colors.premiumBg,
-      border: context.colors.premiumBorder,
+      foreground: context.colors.accent,
+      background: context.colors.accentTint,
+      border: context.colors.accentTintBorder,
       compact: compact,
     );
   }
@@ -40,8 +40,8 @@ class OfferBadge extends StatelessWidget {
     return _Badge(
       icon: Icons.local_offer_rounded,
       label: label ?? 'Oferta',
-      foreground: AppColors.onGold,
-      background: AppColors.gold,
+      foreground: context.colors.onPrimary,
+      background: context.colors.primary,
       compact: compact,
     );
   }
@@ -62,8 +62,8 @@ class OfferCornerTag extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: const BoxDecoration(
-        color: AppColors.gold,
+      decoration: BoxDecoration(
+        color: context.colors.primary,
         borderRadius: BorderRadius.only(
           bottomRight: Radius.circular(10),
           topLeft: Radius.circular(10),
@@ -74,7 +74,7 @@ class OfferCornerTag extends StatelessWidget {
         style: AppTypography.label(
           11,
           weight: FontWeight.w800,
-          color: AppColors.onGold,
+          color: context.colors.onPrimary,
         ),
       ),
     );
@@ -91,7 +91,7 @@ class StatusBadge extends StatelessWidget {
     final c = context.colors;
     final (Color color, Color background) = switch (status) {
       ListingStatus.active => (c.success, c.successBg),
-      ListingStatus.featured => (c.gold, c.premiumBg),
+      ListingStatus.featured => (c.accent, c.accentTint),
       ListingStatus.expired => (c.danger, c.neutralBg),
     };
 
@@ -211,15 +211,15 @@ class AvailabilityBadge extends StatelessWidget {
         nextAvailableDay != null
             ? 'Disponible el $nextAvailableDay'
             : 'Próximamente',
-        c.gold,
-        c.pendingBg,
+        c.accent,
+        c.accentTint,
       ),
       ComputedStatus.closed => (
         opensAt != null ? 'Disponible: $opensAt' : 'Cerrado',
-        c.gold,
-        c.pendingBg,
+        c.accent,
+        c.accentTint,
       ),
-      ComputedStatus.reserved => ('Apartado', c.gold, c.pendingBg),
+      ComputedStatus.reserved => ('Apartado', c.accent, c.accentTint),
       ComputedStatus.negotiating => (
         'En negociación',
         c.accent,
@@ -289,6 +289,51 @@ Widget productStatusBadge(Product product) {
     nextAvailableDay: product.nextAvailableDay,
     opensAt: product.opensAt,
   );
+}
+
+/// "Responde rápido": la MEDIANA del tiempo de respuesta del vendedor está
+/// por debajo del umbral del sistema. El umbral y el cálculo viven en el
+/// backend — la app solo pinta el booleano.
+///
+/// Va en verde sage (el mismo de "Disponible") y no en oro: el oro está
+/// reservado a lo que termina en una compra, y esto es una señal de
+/// confianza sobre el vendedor, no sobre el producto.
+class RespondeRapidoBadge extends StatelessWidget {
+  const RespondeRapidoBadge({super.key, this.compact = false});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Badge(
+      icon: Icons.bolt_rounded,
+      label: 'Responde rápido',
+      foreground: context.colors.success,
+      background: context.colors.successBg,
+      compact: compact,
+    );
+  }
+}
+
+/// Racha de publicación: semanas consecutivas en las que el vendedor publicó
+/// algo. Solo cuenta publicar — ver `computeRachaPublicaciones` en el
+/// backend.
+class RachaBadge extends StatelessWidget {
+  const RachaBadge({super.key, required this.semanas, this.compact = false});
+
+  final int semanas;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Badge(
+      icon: Icons.local_fire_department_rounded,
+      label: '$semanas semanas activo',
+      foreground: context.colors.accent,
+      background: context.colors.surfaceMuted,
+      compact: compact,
+    );
+  }
 }
 
 class _Badge extends StatelessWidget {

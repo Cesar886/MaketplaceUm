@@ -173,9 +173,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           fit: BoxFit.cover,
           errorBuilder: (_, _, _) => Text(
             initials,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 28,
-              color: AppColors.primaryDark,
+              color: context.colors.primary,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -184,9 +184,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     } else {
       child = Text(
         initials,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 28,
-          color: AppColors.primaryDark,
+          color: context.colors.primary,
           fontWeight: FontWeight.w700,
         ),
       );
@@ -199,7 +199,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         children: [
           CircleAvatar(
             radius: 48,
-            backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+            backgroundColor: context.colors.primary.withValues(alpha: 0.12),
             child: child,
           ),
           Positioned(
@@ -207,8 +207,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             bottom: 0,
             child: Container(
               padding: const EdgeInsets.all(6),
-              decoration: const BoxDecoration(
-                color: AppColors.primary,
+              decoration: BoxDecoration(
+                color: context.colors.primary,
                 shape: BoxShape.circle,
               ),
               child: const Icon(

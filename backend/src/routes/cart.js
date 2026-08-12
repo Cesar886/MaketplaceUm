@@ -1,5 +1,15 @@
 const { requireAuth } = require('../auth');
-const { cart, products, sellers, categories, saveData } = require('../data');
+const db = require('../database');
+const { products, sellers, categories } = require('../data');
+
+// El carrito es PRIVADO de cada usuario. Todos los endpoints exigen
+// autenticación —incluido el GET— y toda consulta va acotada por
+// `req.user.id`.
+//
+// Antes no era así: la tabla `cart` no tenía `user_id` y `GET /api/cart`
+// devolvía el array completo sin pedir token, así que todo el mundo veía y
+// modificaba el mismo carrito. Los helpers de database.js piden ahora el
+// userId como primer argumento para que ese descuido no pueda repetirse.
 
 function register(app) {
   function enrichProduct(p) {
@@ -11,13 +21,19 @@ function register(app) {
     };
   }
 
-  // GET /api/cart
-  app.get('/api/cart', (_req, res) => {
-    const enriched = cart.map(item => ({
-      ...item,
+  function cartOf(userId) {
+    return db.getCartItems(userId).map(item => ({
+      id: item.id,
+      productId: item.productId,
+      quantity: item.quantity,
+      meetingPoint: item.meetingPoint,
       product: enrichProduct(products.find(p => p.id === item.productId) || null),
     }));
-    res.json(enriched);
+  }
+
+  // GET /api/cart — solo el carrito de quien pregunta.
+  app.get('/api/cart', requireAuth, (req, res) => {
+    res.json(cartOf(req.user.id));
   });
 
   // POST /api/cart – agregar item
@@ -26,50 +42,50 @@ function register(app) {
     if (!productId || !quantity) {
       return res.status(400).json({ error: 'productId y quantity son requeridos' });
     }
-
-    const existing = cart.find(item => item.productId === productId);
-    if (existing) {
-      existing.quantity += quantity;
-      if (meetingPoint) existing.meetingPoint = meetingPoint;
-    } else {
-      cart.push({
-        id: `c${Date.now()}`,
-        productId,
-        quantity,
-        meetingPoint: meetingPoint || 'Por definir',
-      });
+    const cantidad = Number(quantity);
+    if (!Number.isInteger(cantidad) || cantidad < 1) {
+      return res.status(400).json({ error: 'La cantidad debe ser un número entero mayor a cero.' });
+    }
+    if (!products.some(p => p.id === productId)) {
+      return res.status(404).json({ error: 'Producto no encontrado' });
     }
 
-    saveData();
-    const enriched = cart.map(item => ({
-      ...item,
-      product: enrichProduct(products.find(p => p.id === item.productId) || null),
-    }));
-    res.status(201).json(enriched);
+    db.upsertCartItem(req.user.id, {
+      id: `c${Date.now()}`,
+      productId,
+      quantity: cantidad,
+      meetingPoint,
+    });
+
+    res.status(201).json(cartOf(req.user.id));
   });
 
   // PUT /api/cart/:id
   app.put('/api/cart/:id', requireAuth, (req, res) => {
-    const item = cart.find(i => i.id === req.params.id);
-    if (!item) return res.status(404).json({ error: 'Item no encontrado' });
+    const { quantity, meetingPoint } = req.body;
+    if (quantity != null) {
+      const cantidad = Number(quantity);
+      if (!Number.isInteger(cantidad) || cantidad < 1) {
+        return res.status(400).json({ error: 'La cantidad debe ser un número entero mayor a cero.' });
+      }
+    }
 
-    if (req.body.quantity != null) item.quantity = req.body.quantity;
-    if (req.body.meetingPoint) item.meetingPoint = req.body.meetingPoint;
-    saveData();
+    // Un item que no es del usuario responde 404, no 403: confirmar que
+    // existe pero es de otra persona ya filtra información.
+    const ok = db.updateCartItem(req.user.id, req.params.id, {
+      quantity: quantity != null ? Number(quantity) : null,
+      meetingPoint: meetingPoint ?? null,
+    });
+    if (!ok) return res.status(404).json({ error: 'Item no encontrado' });
 
-    const enriched = cart.map(i => ({
-      ...i,
-      product: enrichProduct(products.find(p => p.id === i.productId) || null),
-    }));
-    res.json(enriched);
+    res.json(cartOf(req.user.id));
   });
 
   // DELETE /api/cart/:id
   app.delete('/api/cart/:id', requireAuth, (req, res) => {
-    const idx = cart.findIndex(i => i.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'Item no encontrado' });
-    cart.splice(idx, 1);
-    saveData();
+    if (!db.deleteCartItem(req.user.id, req.params.id)) {
+      return res.status(404).json({ error: 'Item no encontrado' });
+    }
     res.json({ ok: true });
   });
 }

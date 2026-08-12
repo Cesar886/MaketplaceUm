@@ -3,12 +3,14 @@ import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
 import '../models.dart';
+import '../providers/accent_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/api_service.dart';
 import '../services/recent_products_service.dart';
 import '../widgets/badges.dart';
 import '../widgets/product_card.dart';
+import '../widgets/profile_banner.dart';
 import '../widgets/user_role.dart';
 import 'auth/login_screen.dart';
 import 'auth/verification_screen.dart';
@@ -62,6 +64,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _sellerReviews = seller.reviews;
         _seller = seller;
       });
+      // El perfil del backend manda sobre el caché local: es lo que hace que
+      // un color elegido en otro teléfono aparezca aquí.
+      context.read<AccentProvider>().adoptarDe(seller);
     } catch (_) {
       if (!mounted) return;
       setState(() {});
@@ -190,23 +195,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   Row(
                     children: [
-                      Stack(
-                        children: [
-                          CircleAvatar(
-                            radius: 38,
-                            backgroundColor: AppColors.primary.withValues(
-                              alpha: 0.12,
-                            ),
-                            child:
-                                _seller?.logoUrl != null &&
-                                    _seller!.logoUrl!.isNotEmpty
-                                ? ClipOval(
-                                    child: Image.network(
-                                      '${ApiService.baseUrl}${_seller!.logoUrl}',
-                                      width: 76,
-                                      height: 76,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, _, _) => Text(
+                      // El banner queda detrás de LA FOTO (esta Stack) y no
+                      // de toda la fila: el nombre y la insignia se quedan
+                      // fuera para que el tratamiento sea idéntico al de
+                      // seller_profile_screen (mismo widget, mismo alcance
+                      // — solo el avatar, no el bloque completo).
+                      ProfileBanner(
+                        color: context.colors.primary,
+                        fadeTo: context.colors.surface,
+                        extraFade: 16,
+                        child: Stack(
+                          children: [
+                            // El anillo va como borde de un contenedor y no
+                            // como `border` del CircleAvatar porque el avatar
+                            // recorta su hijo: un borde dibujado dentro se
+                            // comería 3px de la foto en vez de rodearla.
+                            Container(
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: context.accentLine,
+                                  width: 3,
+                                ),
+                              ),
+                              child: CircleAvatar(
+                                radius: 38,
+                                backgroundColor: context.colors.primary
+                                    .withValues(alpha: 0.12),
+                                child:
+                                    _seller?.logoUrl != null &&
+                                        _seller!.logoUrl!.isNotEmpty
+                                    ? ClipOval(
+                                        child: Image.network(
+                                          '${ApiService.baseUrl}${_seller!.logoUrl}',
+                                          width: 76,
+                                          height: 76,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, _, _) => Text(
+                                            initials,
+                                            style: TextStyle(
+                                              fontSize: 22,
+                                              color: context.colors.accent,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    : Text(
                                         initials,
                                         style: TextStyle(
                                           fontSize: 22,
@@ -214,49 +250,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           fontWeight: FontWeight.w700,
                                         ),
                                       ),
-                                    ),
-                                  )
-                                : Text(
-                                    initials,
-                                    style: TextStyle(
-                                      fontSize: 22,
-                                      color: context.colors.accent,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                          ),
-                          Positioned(
-                            right: 0,
-                            bottom: 0,
-                            child: InkWell(
-                              onTap: _loadingSellerForEdit
-                                  ? null
-                                  : () => _openEditProfile(context),
-                              customBorder: const CircleBorder(),
-                              child: Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: const BoxDecoration(
-                                  color: AppColors.primary,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: _loadingSellerForEdit
-                                    ? const SizedBox(
-                                        width: 14,
-                                        height: 14,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    : const Icon(
-                                        Icons.edit_rounded,
-                                        color: Colors.white,
-                                        size: 14,
-                                      ),
                               ),
                             ),
-                          ),
-                        ],
+                            Positioned(
+                              right: 0,
+                              bottom: 0,
+                              child: InkWell(
+                                onTap: _loadingSellerForEdit
+                                    ? null
+                                    : () => _openEditProfile(context),
+                                customBorder: const CircleBorder(),
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: context.colors.primary,
+                                    shape: BoxShape.circle,
+                                    // El botón se apoya sobre el anillo y la
+                                    // tarjeta: sin este contorno del color de
+                                    // la tarjeta, un relleno pastel se funde
+                                    // con el fondo blanco y pierde su forma.
+                                    border: Border.all(
+                                      color: context.colors.surface,
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: _loadingSellerForEdit
+                                      ? SizedBox(
+                                          width: 14,
+                                          height: 14,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: context.colors.onPrimary,
+                                          ),
+                                        )
+                                      : Icon(
+                                          Icons.edit_rounded,
+                                          color: context.colors.onPrimary,
+                                          size: 14,
+                                        ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
@@ -434,6 +470,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             _DarkModeToggle(),
+            const _AccentPicker(),
 
             // ─── Sección legal ──────────────────────────────────
             Padding(
@@ -738,7 +775,7 @@ class _ProfileMetric extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Icon(icon, color: context.colors.gold),
+        Icon(icon, color: context.colors.accent),
         const SizedBox(height: 6),
         Text(
           value,
@@ -782,7 +819,7 @@ class _DarkModeToggle extends StatelessWidget {
           height: 36,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: AppColors.primary.withValues(alpha: 0.12),
+            color: context.colors.primary.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(9),
           ),
           child: Icon(
@@ -804,10 +841,142 @@ class _DarkModeToggle extends StatelessWidget {
         ),
         value: theme.darkMode,
         onChanged: (_) => theme.toggleDarkMode(),
-        activeTrackColor: AppColors.primary,
+        activeTrackColor: context.colors.primary,
         activeThumbColor: Colors.white,
         inactiveTrackColor: context.colors.surfaceMuted,
         inactiveThumbColor: context.colors.muted,
+      ),
+    );
+  }
+}
+
+/// Selector del color de acento personal.
+///
+/// Cada muestra previsualiza el relleno del tema ACTIVO, no siempre el
+/// pastel: en modo oscuro la app usa la versión oscurecida del color, así
+/// que mostrar el pastel aquí prometería algo que no se va a ver. Por eso la
+/// muestra se construye con la misma [AppColorSet.of] que usa el tema.
+///
+/// El aro exterior usa la variante de LÍNEA, porque un aro del propio
+/// relleno sobre la tarjeta daría ~1.5:1 y no marcaría nada.
+class _AccentPicker extends StatelessWidget {
+  const _AccentPicker();
+
+  @override
+  Widget build(BuildContext context) {
+    final seleccionado = context.accent;
+    final guardando = context.watch<AccentProvider>().guardando;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+      decoration: BoxDecoration(
+        color: context.colors.surfaceElevated,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: context.colors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Color de acento',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: context.colors.ink,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'Personaliza el color principal de tu app',
+            style: TextStyle(color: context.colors.muted, fontSize: 13),
+          ),
+          const SizedBox(height: 14),
+          // Mientras hay un PATCH en vuelo, la fila queda bloqueada: sin
+          // esto, tocar dos muestras rápido mandaba el segundo tap al
+          // guard interno de `AccentProvider.seleccionar` (que lo ignora
+          // para no encimar dos PATCH) sin ningún aviso — el color no
+          // cambiaba y no había manera de saber por qué.
+          IgnorePointer(
+            ignoring: guardando,
+            child: AnimatedOpacity(
+              opacity: guardando ? 0.5 : 1,
+              duration: AppAnimations.fast,
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final swatch in AccentSwatch.opciones)
+                    _SwatchDot(
+                      swatch: swatch,
+                      seleccionado: swatch.id == seleccionado.id,
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SwatchDot extends StatelessWidget {
+  const _SwatchDot({required this.swatch, required this.seleccionado});
+
+  final AccentSwatch swatch;
+  final bool seleccionado;
+
+  /// El color se guarda en el perfil del backend, así que sin sesión no hay
+  /// dónde guardarlo. Solo se llega aquí desde el perfil propio (que ya
+  /// exige sesión), pero el guard evita mandar un PATCH sin sellerId si esta
+  /// tarjeta se reusara en otra pantalla.
+  Future<void> _seleccionar(BuildContext context) async {
+    final sellerId = context.read<AuthProvider>().backendSellerId;
+    if (sellerId == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await context.read<AccentProvider>().seleccionar(
+        swatch,
+        sellerId: sellerId,
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo guardar el color. Intenta de nuevo.'),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final brillo = Theme.of(context).brightness;
+    final muestra = AppColorSet.of(swatch, brillo);
+    return Semantics(
+      button: true,
+      selected: seleccionado,
+      label: swatch.label,
+      child: InkWell(
+        onTap: () => _seleccionar(context),
+        customBorder: const CircleBorder(),
+        child: Container(
+          width: 44,
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: muestra.primary,
+            border: Border.all(
+              // Sin seleccionar el borde solo separa la muestra de la
+              // tarjeta; seleccionado es el aro grueso que marca el estado,
+              // y por eso ese sí necesita el tono de línea del tema.
+              color: seleccionado ? swatch.line(brillo) : context.colors.border,
+              width: seleccionado ? 3 : 1,
+            ),
+          ),
+          child: seleccionado
+              ? Icon(Icons.check_rounded, size: 20, color: muestra.onPrimary)
+              : null,
+        ),
       ),
     );
   }
@@ -836,7 +1005,7 @@ class _ProfileOption extends StatelessWidget {
         border: Border.all(color: context.colors.border),
       ),
       child: ListTile(
-        leading: Icon(icon, color: AppColors.primary),
+        leading: Icon(icon, color: context.colors.primary),
         title: Text(
           title,
           style: TextStyle(

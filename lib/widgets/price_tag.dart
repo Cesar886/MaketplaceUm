@@ -68,14 +68,19 @@ class _PriceTagContent extends StatelessWidget {
     final discountSize = large ? 13.0 : 11.0;
 
     if (!hasOffer) {
-      // Sin oferta: precio plano en latón, sin contenedor.
+      // Sin oferta: precio plano en TINTA, sin contenedor. El precio ya no
+      // se tiñe con el color elegido — un precio que cambia de color según
+      // la preferencia de cada quien deja de leerse como dato y empieza a
+      // leerse como decoración.
       return Text(
         Product.formatPrice(product.price),
-        style: AppTypography.price(priceSize, color: context.colors.gold),
+        style: AppTypography.price(priceSize, color: context.colors.ink),
       );
     }
 
-    // Con oferta: etiqueta de puesto — colgante de oro con ojal, rotada.
+    // Con oferta: etiqueta de puesto colgante con ojal, rotada. El
+    // CONTENEDOR sí lleva el color elegido (es un relleno, no texto), y
+    // encima va el único foreground legible sobre ese relleno.
     final holeSize = large ? 8.0 : 6.0;
     return Transform.rotate(
       angle: -3 * math.pi / 180,
@@ -84,9 +89,11 @@ class _PriceTagContent extends StatelessWidget {
         children: [
           DecoratedBox(
             decoration: BoxDecoration(
-              color: AppColors.gold,
+              color: context.colors.primary,
               borderRadius: BorderRadius.circular(large ? 10 : 8),
-              boxShadow: large ? AppShadows.gold : null,
+              boxShadow: large
+                  ? AppShadows.accent(context.colors.primary)
+                  : null,
             ),
             child: Padding(
               padding: EdgeInsets.only(
@@ -103,7 +110,7 @@ class _PriceTagContent extends StatelessWidget {
                     Product.formatPrice(product.price),
                     style: AppTypography.price(
                       priceSize,
-                      color: AppColors.onGold,
+                      color: context.colors.onPrimary,
                     ),
                   ),
                   if (product.previousPrice != null) ...[
@@ -113,9 +120,9 @@ class _PriceTagContent extends StatelessWidget {
                       style: AppTypography.body(
                         oldPriceSize,
                         // 0.86 es el punto donde el precio anterior todavía
-                        // se lee (4.8:1 sobre el oro) pero ya cedió jerarquía
-                        // al precio nuevo. Más abajo deja de ser legible.
-                        color: AppColors.onGold.withValues(alpha: 0.86),
+                        // se lee pero ya cedió jerarquía al precio nuevo.
+                        // Más abajo deja de ser legible.
+                        color: context.colors.onPrimary.withValues(alpha: 0.86),
                       ).copyWith(decoration: TextDecoration.lineThrough),
                     ),
                     if (product.discountLabel != null) ...[
@@ -125,7 +132,7 @@ class _PriceTagContent extends StatelessWidget {
                         style: AppTypography.label(
                           discountSize,
                           weight: FontWeight.w800,
-                          color: AppColors.onGold,
+                          color: context.colors.onPrimary,
                         ),
                       ),
                     ],
@@ -145,9 +152,9 @@ class _PriceTagContent extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: context.colors.surface,
                   shape: BoxShape.circle,
-                  // El ojal es un hueco: se define con el latón, no con un
-                  // borde claro que se perdería sobre el oro.
-                  border: Border.all(color: AppColors.goldText, width: 1),
+                  // El ojal es un hueco: se define con la línea del color,
+                  // no con un borde claro que se perdería sobre el relleno.
+                  border: Border.all(color: context.colors.accent, width: 1),
                 ),
               ),
             ),

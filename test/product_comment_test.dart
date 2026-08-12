@@ -12,7 +12,8 @@ void main() {
       'productId': 'p_1',
       'texto': 'Me interesa',
       'createdAt': createdAt,
-      'author': author ??
+      'author':
+          author ??
           {
             'id': 'u_1',
             'name': 'Mariana Peña',
@@ -45,10 +46,7 @@ void main() {
     final c = ProductComment.fromJson(json(createdAt: '2026-08-08T18:00:00Z'));
 
     expect(c.createdAt.isUtc, isFalse, reason: 'debe quedar en hora local');
-    expect(
-      c.createdAt.toUtc(),
-      DateTime.utc(2026, 8, 8, 18, 0, 0),
-    );
+    expect(c.createdAt.toUtc(), DateTime.utc(2026, 8, 8, 18, 0, 0));
   });
 
   test('un createdAt sin zona se asume UTC, no local', () {

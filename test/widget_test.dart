@@ -18,6 +18,8 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:mercadito_um/app_theme.dart';
+import 'package:mercadito_um/models.dart';
+import 'package:mercadito_um/providers/accent_provider.dart';
 import 'package:mercadito_um/providers/theme_provider.dart';
 
 void main() {
@@ -28,14 +30,18 @@ void main() {
   /// Réplica del MaterialApp de `MyApp`, sin su `home` (SplashScreen), que
   /// es la parte que arrastra Firebase y red.
   Widget appDePrueba() {
-    return ChangeNotifierProvider(
-      create: (_) => ThemeProvider(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => AccentProvider()),
+      ],
       child: Builder(
         builder: (context) {
           final theme = context.watch<ThemeProvider>();
+          final swatch = context.watch<AccentProvider>().swatch;
           return MaterialApp(
-            theme: AppTheme.light,
-            darkTheme: AppTheme.dark,
+            theme: AppTheme.light(swatch),
+            darkTheme: AppTheme.dark(swatch),
             themeMode: theme.themeMode,
             home: const Scaffold(body: Text('contenido')),
           );
@@ -79,7 +85,95 @@ void main() {
   testWidgets('el tema oscuro y el claro no son el mismo brillo', (
     tester,
   ) async {
-    expect(AppTheme.light.brightness, Brightness.light);
-    expect(AppTheme.dark.brightness, Brightness.dark);
+    expect(AppTheme.light().brightness, Brightness.light);
+    expect(AppTheme.dark().brightness, Brightness.dark);
+  });
+
+  // ─── Color de acento ──────────────────────────────────────────
+
+  /// Vendedor mínimo con un color ya elegido, como lo devolvería el backend.
+  Seller sellerConColor(String? colorAcento) => Seller(
+    id: 's1',
+    name: 'Yo',
+    avatarInitials: 'Y',
+    major: '',
+    rating: 0,
+    reviews: 0,
+    verified: false,
+    colorAcento: colorAcento,
+  );
+
+  testWidgets('el color del perfil repinta el tema tras reinstalar', (
+    tester,
+  ) async {
+    // Instalación limpia: SharedPreferences vacío, así que la app arranca
+    // con el color de marca. El color solo puede venir del backend.
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(appDePrueba());
+    await tester.pump();
+
+    var material = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(material.theme!.appBarTheme.backgroundColor, AccentSwatch.navy.fill);
+
+    // Llega el perfil del servidor (lo que hace `sincronizarDesdeBackend`).
+    final context = tester.element(find.text('contenido'));
+    context.read<AccentProvider>().adoptarDe(sellerConColor('salvia'));
+    await tester.pump();
+
+    material = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(
+      material.theme!.appBarTheme.backgroundColor,
+      AccentSwatch.salvia.fill,
+    );
+  });
+
+  testWidgets('el color elegido queda cacheado para el próximo arranque', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(appDePrueba());
+    await tester.pump();
+
+    final context = tester.element(find.text('contenido'));
+    context.read<AccentProvider>().adoptarDe(sellerConColor('wine'));
+    await tester.pump();
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('accent_swatch'), 'wine');
+  });
+
+  testWidgets('el caché local pinta antes de que responda el backend', (
+    tester,
+  ) async {
+    // Segundo arranque: el color ya está en disco, así que la app no debe
+    // mostrar el color de marca mientras espera la red.
+    SharedPreferences.setMockInitialValues({'accent_swatch': 'lavanda'});
+    await tester.pumpWidget(appDePrueba());
+    await tester.pump();
+
+    final material = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(
+      material.theme!.appBarTheme.backgroundColor,
+      AccentSwatch.lavanda.fill,
+    );
+  });
+
+  testWidgets('en oscuro el AppBar no se pinta con el pastel', (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'dark_mode': true,
+      'accent_swatch': 'durazno',
+    });
+    await tester.pumpWidget(appDePrueba());
+    await tester.pump();
+
+    final material = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    final oscuro = material.darkTheme!;
+    expect(oscuro.appBarTheme.backgroundColor, AppColors.darkBackground);
+    // Y el relleno de los botones es la variante oscura, no el pastel.
+    expect(oscuro.colorScheme.surface, isNot(AccentSwatch.durazno.fill));
+    expect(
+      oscuro.extension<AppColorSet>()!.primary,
+      AccentSwatch.durazno.darkFill,
+    );
   });
 }

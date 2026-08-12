@@ -125,13 +125,13 @@ class _BusinessHoursEditorState extends State<BusinessHoursEditor> {
               ),
               selected: selected,
               showCheckmark: false,
-              selectedColor: AppColors.primary.withValues(alpha: 0.12),
+              selectedColor: context.colors.primary.withValues(alpha: 0.12),
               labelStyle: TextStyle(
-                color: selected ? AppColors.primary : context.colors.ink,
+                color: selected ? context.colors.primary : context.colors.ink,
               ),
               side: BorderSide(
                 color: selected
-                    ? AppColors.primary.withValues(alpha: 0.4)
+                    ? context.colors.primary.withValues(alpha: 0.4)
                     : context.colors.border,
               ),
               padding: const EdgeInsets.symmetric(horizontal: 4),

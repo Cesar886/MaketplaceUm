@@ -167,6 +167,10 @@ class Seller {
     this.paymentMethods = const [],
     this.carrera,
     this.tipoVerificacion,
+    this.colorAcento,
+    this.productoFijadoId,
+    this.respondeRapido = false,
+    this.rachaSemanas = 0,
   });
 
   factory Seller.fromJson(Map<String, dynamic> json) {
@@ -196,6 +200,13 @@ class Seller {
           const [],
       carrera: json['carrera'] as String?,
       tipoVerificacion: json['tipoVerificacion'] as String?,
+      colorAcento: json['colorAcento'] as String?,
+      productoFijadoId: json['productoFijadoId'] as String?,
+      // Ambas solo llegan en el detalle del vendedor, no en el listado: los
+      // defaults dejan que un Seller construido desde una respuesta parcial
+      // simplemente no muestre los badges, en vez de reventar.
+      respondeRapido: json['respondeRapido'] as bool? ?? false,
+      rachaSemanas: (json['rachaSemanas'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -232,6 +243,25 @@ class Seller {
   final double? locationLng;
   final List<String> paymentMethods;
 
+  /// ID del swatch de acento elegido (ver [AccentSwatch]). Null = color de
+  /// marca. Se guarda el ID y no un hex porque cada swatch son cuatro
+  /// colores coordinados, no uno.
+  final String? colorAcento;
+
+  /// Publicación que el vendedor fijó arriba de su perfil. El backend ya
+  /// verifica que siga existiendo y siendo suya, así que un ID no nulo aquí
+  /// es siempre resoluble.
+  final String? productoFijadoId;
+
+  /// La MEDIANA de su tiempo de respuesta está por debajo del umbral del
+  /// sistema. Lo decide el backend para que la app no tenga que conocer el
+  /// umbral ni recibir los tiempos crudos de nadie.
+  final bool respondeRapido;
+
+  /// Ventanas consecutivas de 7 días en las que publicó algo. Solo cuenta
+  /// publicar: vender no la mueve.
+  final int rachaSemanas;
+
   bool get hasLocation => locationLat != null && locationLng != null;
 
   /// null = no aplica (no es negocio o no configuró horario, así que no hay
@@ -240,7 +270,8 @@ class Seller {
   bool? get isOpenNow {
     if (!isBusiness || businessHours.isEmpty) return null;
     final now = DateTime.now();
-    final day = now.weekday - 1; // DateTime: 1=Lunes..7=Domingo → 0=Lunes..6=Domingo
+    final day =
+        now.weekday - 1; // DateTime: 1=Lunes..7=Domingo → 0=Lunes..6=Domingo
     final range = businessHours[day];
     if (range == null) return false;
     final openParts = range.open.split(':');
@@ -562,8 +593,7 @@ class Product {
                   as Map<String, dynamic>?)?['next_available_day']
               as String?,
       opensAt:
-          (json['computed_status_detail']
-                  as Map<String, dynamic>?)?['opens_at']
+          (json['computed_status_detail'] as Map<String, dynamic>?)?['opens_at']
               as String?,
       stockQuantity: json['stock_quantity'] as int?,
       stockResetDaily: json['stock_reset_daily'] as bool? ?? false,

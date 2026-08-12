@@ -121,17 +121,17 @@ class _CommentsReceivedListState extends State<CommentsReceivedList> {
       if (!mounted) return;
       navegador.push(
         MaterialPageRoute<void>(
-          builder: (_) => ProductDetailScreen(
-            product: producto,
-            irAComentarios: true,
-          ),
+          builder: (_) =>
+              ProductDetailScreen(product: producto, irAComentarios: true),
         ),
       );
     } catch (_) {
       // Caso real: el dueño borró la publicación pero el comentario sigue
       // referenciándola en una lista ya cargada.
       mensajero.showSnackBar(
-        const SnackBar(content: Text('Esta publicación ya no está disponible.')),
+        const SnackBar(
+          content: Text('Esta publicación ya no está disponible.'),
+        ),
       );
     }
   }
@@ -143,7 +143,11 @@ class _CommentsReceivedListState extends State<CommentsReceivedList> {
         padding: widget.padding,
         physics: widget.physics,
         shrinkWrap: widget.shrinkWrap,
-        children: const [_TarjetaSkeleton(), _TarjetaSkeleton(), _TarjetaSkeleton()],
+        children: const [
+          _TarjetaSkeleton(),
+          _TarjetaSkeleton(),
+          _TarjetaSkeleton(),
+        ],
       );
     }
 
@@ -305,7 +309,10 @@ class _TarjetaComentarioRecibido extends StatelessWidget {
                           comentario.author.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: AppTypography.heading(14.5),
+                          style: AppTypography.heading(
+                            14.5,
+                            color: context.colors.ink,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),

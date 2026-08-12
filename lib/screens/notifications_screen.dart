@@ -241,7 +241,7 @@ class _NotificationTile extends StatelessWidget {
   Color _colorForType(BuildContext context, String type) {
     switch (type) {
       case 'new_product':
-        return AppColors.primary;
+        return context.colors.primary;
       case 'new_chat':
       case 'new_message':
         return context.colors.accent;
@@ -255,13 +255,13 @@ class _NotificationTile extends StatelessWidget {
     return Material(
       color: notification.read
           ? context.colors.surface
-          : context.colors.premiumBg,
+          : context.colors.accentTint,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
         side: BorderSide(
           color: notification.read
               ? context.colors.border
-              : context.colors.premiumBorder,
+              : context.colors.accentTintBorder,
         ),
       ),
       child: InkWell(
@@ -310,8 +310,8 @@ class _NotificationTile extends StatelessWidget {
                           Container(
                             width: 8,
                             height: 8,
-                            decoration: const BoxDecoration(
-                              color: AppColors.primary,
+                            decoration: BoxDecoration(
+                              color: context.colors.primary,
                               shape: BoxShape.circle,
                             ),
                           ),

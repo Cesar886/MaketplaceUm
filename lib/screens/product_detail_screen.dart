@@ -321,7 +321,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       Expanded(
                         child: Text(
                           product.title,
-                          style: AppTypography.heading(20),
+                          style: AppTypography.heading(
+                            20,
+                            color: context.colors.ink,
+                          ),
                         ),
                       ),
                       if (product.isFeatured)
@@ -386,17 +389,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                                       child: Container(
                                         padding: const EdgeInsets.all(6),
                                         decoration: BoxDecoration(
-                                          color: AppColors.primary.withValues(
-                                            alpha: 0.1,
-                                          ),
+                                          color: context.colors.primary
+                                              .withValues(alpha: 0.1),
                                           borderRadius: BorderRadius.circular(
                                             20,
                                           ),
                                         ),
-                                        child: const Icon(
+                                        child: Icon(
                                           Icons.edit_rounded,
                                           size: 18,
-                                          color: AppColors.primary,
+                                          color: context.colors.primary,
                                         ),
                                       ),
                                     ),
@@ -481,10 +483,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(
                             '${product.stockQuantity} en stock',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w600,
-                              color: AppColors.primary,
+                              color: context.colors.primary,
                             ),
                           ),
                         ),
@@ -693,7 +695,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       ? Icons.favorite_rounded
                       : Icons.bookmark_border_rounded,
                 ),
-                color: _favorite ? AppColors.danger : AppColors.primary,
+                color: _favorite ? AppColors.danger : context.colors.primary,
               ),
               if (_hasWhatsappContact) ...[
                 const SizedBox(width: 10),
@@ -1090,9 +1092,12 @@ class _SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 18, color: AppColors.primary),
+        Icon(icon, size: 18, color: context.colors.primary),
         const SizedBox(width: 8),
-        Text(label, style: AppTypography.heading(15)),
+        Text(
+          label,
+          style: AppTypography.heading(15, color: context.colors.ink),
+        ),
       ],
     );
   }
@@ -1259,12 +1264,14 @@ class _SellerCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: AppColors.primary.withValues(alpha: 0.18),
+                      color: context.colors.primary.withValues(alpha: 0.18),
                       width: 1.5,
                     ),
                   ),
                   child: CircleAvatar(
-                    backgroundColor: AppColors.primary.withValues(alpha: 0.10),
+                    backgroundColor: context.colors.primary.withValues(
+                      alpha: 0.10,
+                    ),
                     child: seller.logoUrl != null && seller.logoUrl!.isNotEmpty
                         ? ClipOval(
                             child: Image.network(
@@ -1342,7 +1349,7 @@ class _SellerCard extends StatelessWidget {
                             ),
                             decoration: BoxDecoration(
                               color: hasReviews
-                                  ? context.colors.gold.withValues(
+                                  ? context.colors.accent.withValues(
                                       alpha: 0.12,
                                     )
                                   : context.colors.surfaceMuted,
@@ -1356,7 +1363,7 @@ class _SellerCard extends StatelessWidget {
                                       ? Icons.star_rounded
                                       : Icons.star_border_rounded,
                                   color: hasReviews
-                                      ? context.colors.gold
+                                      ? context.colors.accent
                                       : context.colors.muted,
                                   size: 14,
                                 ),
@@ -1449,7 +1456,7 @@ class _CompactRating extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: context.colors.gold.withValues(alpha: 0.12),
+        color: context.colors.accent.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -1458,7 +1465,7 @@ class _CompactRating extends StatelessWidget {
           Icon(
             hasReviews ? Icons.star_rounded : Icons.star_border_rounded,
             size: 15,
-            color: context.colors.gold,
+            color: context.colors.accent,
           ),
           if (hasReviews) ...[
             const SizedBox(width: 3),
@@ -1607,7 +1614,7 @@ class _InteractiveStarRatingState extends State<_InteractiveStarRating> {
                     child: Icon(
                       filled ? Icons.star_rounded : Icons.star_border_rounded,
                       size: 32,
-                      color: context.colors.gold,
+                      color: context.colors.accent,
                     ),
                   ),
                 );

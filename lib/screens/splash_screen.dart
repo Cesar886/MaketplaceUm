@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
+import '../providers/accent_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/anonymous_id.dart';
 import '../widgets/app_logo.dart';
@@ -39,6 +40,16 @@ class _SplashScreenState extends State<SplashScreen> {
     await auth.tryAutoLogin();
 
     if (!mounted) return;
+
+    // El color de la app vive en el perfil del backend, así que se pide aquí
+    // y no al abrir la pantalla de perfil: tras reinstalar, el caché local
+    // está vacío y esta es la primera (y única) oportunidad de pintar la app
+    // con el color elegido antes de que se vea nada. No se espera con await
+    // para no retrasar el arranque — cuando responda, el tema se repinta.
+    final sellerId = auth.backendSellerId;
+    if (sellerId != null) {
+      context.read<AccentProvider>().sincronizarDesdeBackend(sellerId);
+    }
 
     Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(builder: (_) => const MainShell()),

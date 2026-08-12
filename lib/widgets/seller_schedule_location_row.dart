@@ -117,7 +117,7 @@ class _HoursSummary extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               range != null ? '${range.open} – ${range.close}' : 'Cerrado hoy',
-              style: AppTypography.heading(16),
+              style: AppTypography.heading(16, color: context.colors.ink),
             ),
             const SizedBox(height: 6),
             Row(
@@ -125,10 +125,10 @@ class _HoursSummary extends StatelessWidget {
               children: [
                 Text(
                   expanded ? 'Ocultar horario semanal' : 'Ver horario semanal',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.primary,
+                    color: context.colors.primary,
                   ),
                 ),
                 Icon(
@@ -136,7 +136,7 @@ class _HoursSummary extends StatelessWidget {
                       ? Icons.expand_less_rounded
                       : Icons.expand_more_rounded,
                   size: 17,
-                  color: AppColors.primary,
+                  color: context.colors.primary,
                 ),
               ],
             ),
@@ -165,17 +165,21 @@ class _LocationOnlyLabel extends StatelessWidget {
           style: AppTypography.label(12, color: context.colors.muted),
         ),
         const SizedBox(height: 4),
-        const Row(
+        Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.location_on_rounded, size: 16, color: AppColors.primary),
+            Icon(
+              Icons.location_on_rounded,
+              size: 16,
+              color: context.colors.primary,
+            ),
             SizedBox(width: 4),
             Text(
               'Ver en Maps',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: AppColors.primary,
+                color: context.colors.primary,
               ),
             ),
           ],

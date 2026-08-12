@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../app_theme.dart';
+import '../../providers/accent_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/app_logo.dart';
 import '../main_shell.dart';
@@ -108,6 +109,16 @@ class _LoginScreenState extends State<LoginScreen> {
                               );
                               if (!context.mounted) return;
                               if (ok) {
+                                // Iniciar sesión puede traer un perfil con
+                                // otro color que el que dejó la sesión
+                                // anterior en este teléfono, así que el
+                                // servidor manda desde ya.
+                                final sellerId = auth.backendSellerId;
+                                if (sellerId != null) {
+                                  context
+                                      .read<AccentProvider>()
+                                      .sincronizarDesdeBackend(sellerId);
+                                }
                                 Navigator.of(context).pushAndRemoveUntil(
                                   MaterialPageRoute<void>(
                                     builder: (_) => const MainShell(),
@@ -153,10 +164,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             builder: (_) => const RegisterTypeScreen(),
                           ),
                         ),
-                        child: const Text(
+                        child: Text(
                           'Crear cuenta',
                           style: TextStyle(
-                            color: AppColors.primary,
+                            color: context.colors.primary,
                             fontWeight: FontWeight.w700,
                           ),
                         ),

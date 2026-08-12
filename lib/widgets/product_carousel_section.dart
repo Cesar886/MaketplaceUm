@@ -95,12 +95,12 @@ class ProductCarouselSection extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(icon, size: 18, color: AppColors.primary),
+                Icon(icon, size: 18, color: context.colors.primary),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     title,
-                    style: AppTypography.heading(15),
+                    style: AppTypography.heading(15, color: context.colors.ink),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -158,7 +158,10 @@ class _FilaProductos extends StatelessWidget {
       curve: AppAnimations.easeOut,
       builder: (context, t, child) => Opacity(
         opacity: t,
-        child: Transform.translate(offset: Offset(0, 10 * (1 - t)), child: child),
+        child: Transform.translate(
+          offset: Offset(0, 10 * (1 - t)),
+          child: child,
+        ),
       ),
       child: ListView.separated(
         scrollDirection: Axis.horizontal,

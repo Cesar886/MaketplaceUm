@@ -154,11 +154,10 @@ class _ZoomableProductImageState extends State<_ZoomableProductImage> {
           width: double.infinity,
           height: double.infinity,
           gaplessPlayback: true,
-          errorBuilder: (_, _, _) =>
-              CategoryImagePlaceholder(
-                product: widget.product,
-                borderRadius: BorderRadius.zero,
-              ),
+          errorBuilder: (_, _, _) => CategoryImagePlaceholder(
+            product: widget.product,
+            borderRadius: BorderRadius.zero,
+          ),
           loadingBuilder: (_, child, progress) {
             if (progress == null) return child;
             return Container(

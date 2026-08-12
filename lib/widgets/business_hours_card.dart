@@ -55,7 +55,7 @@ class BusinessHoursCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
             decoration: isToday
                 ? BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.07),
+                    color: context.colors.primary.withValues(alpha: 0.07),
                     borderRadius: BorderRadius.circular(6),
                   )
                 : null,
@@ -67,7 +67,9 @@ class BusinessHoursCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,
-                    color: isToday ? AppColors.primary : context.colors.ink,
+                    color: isToday
+                        ? context.colors.primary
+                        : context.colors.ink,
                   ),
                 ),
                 Text(
@@ -76,7 +78,9 @@ class BusinessHoursCard extends StatelessWidget {
                     fontSize: 13,
                     fontWeight: isToday ? FontWeight.w700 : FontWeight.w500,
                     color: range != null
-                        ? (isToday ? AppColors.primary : context.colors.ink)
+                        ? (isToday
+                              ? context.colors.primary
+                              : context.colors.ink)
                         : context.colors.muted,
                   ),
                 ),

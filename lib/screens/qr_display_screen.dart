@@ -50,13 +50,13 @@ class QrDisplayScreen extends StatelessWidget {
                   data: data,
                   version: QrVersions.auto,
                   size: MediaQuery.of(context).size.width * 0.65,
-                  eyeStyle: const QrEyeStyle(
+                  eyeStyle: QrEyeStyle(
                     eyeShape: QrEyeShape.square,
-                    color: AppColors.primaryDark,
+                    color: context.colors.primary,
                   ),
-                  dataModuleStyle: const QrDataModuleStyle(
+                  dataModuleStyle: QrDataModuleStyle(
                     dataModuleShape: QrDataModuleShape.square,
-                    color: AppColors.primaryDark,
+                    color: context.colors.primary,
                   ),
                 ),
               ),

@@ -710,6 +710,188 @@ function runMigrations() {
     db.exec(`ALTER TABLE sellers ADD COLUMN tipo_verificacion TEXT`);
   }
 
+  // 27. Personalización del perfil: color de acento y producto fijado.
+  //
+  //     `colorAcento` guarda el ID del swatch ('salvia', 'navy', …) y no un
+  //     hex: cada swatch son cuatro colores distintos (relleno, foreground,
+  //     y la variante de línea de cada tema), así que guardar un hex suelto
+  //     obligaría al cliente a adivinar los otros tres. Guardar el ID deja
+  //     que la paleta evolucione sin migrar datos.
+  //
+  //     `producto_fijado_id` sin FOREIGN KEY, consistente con el resto del
+  //     esquema: la integridad se valida en el PATCH (el producto debe ser
+  //     del vendedor) y al leer se comprueba que siga existiendo, así que un
+  //     producto borrado simplemente deja de aparecer fijado.
+  const sellerColsPersonalizacion = db.prepare("PRAGMA table_info('sellers')").all();
+  if (!sellerColsPersonalizacion.some(c => c.name === 'colorAcento')) {
+    db.exec(`ALTER TABLE sellers ADD COLUMN colorAcento TEXT`);
+  }
+  if (!sellerColsPersonalizacion.some(c => c.name === 'producto_fijado_id')) {
+    db.exec(`ALTER TABLE sellers ADD COLUMN producto_fijado_id TEXT`);
+  }
+
+  // 28. Tiempo de respuesta como MEDIANA, no promedio.
+  //
+  //     `avg_response_minutes` (migración 9) nunca llegó a poblarse: el
+  //     ranking del feed la leía y siempre daba NULL, así que el bonus de
+  //     "responde rápido" jamás se aplicó a nadie. Se reemplaza por una
+  //     columna con el nombre correcto en vez de meter una mediana en una
+  //     columna llamada "avg", que es la clase de mentira que después
+  //     produce un bug imposible de leer.
+  //
+  //     La mediana es lo correcto aquí porque una sola conversación
+  //     olvidada durante tres días arrastra el promedio de un vendedor que
+  //     normalmente contesta en diez minutos; la mediana la ignora.
+  const sellerColsRespuesta = db.prepare("PRAGMA table_info('sellers')").all();
+  if (!sellerColsRespuesta.some(c => c.name === 'median_response_minutes')) {
+    db.exec(`ALTER TABLE sellers ADD COLUMN median_response_minutes INTEGER`);
+  }
+  if (sellerColsRespuesta.some(c => c.name === 'avg_response_minutes')) {
+    // DROP COLUMN existe desde SQLite 3.35. Si la versión es anterior, la
+    // columna muerta se queda: es preferible a abortar el arranque entero.
+    try {
+      db.exec(`ALTER TABLE sellers DROP COLUMN avg_response_minutes`);
+    } catch (err) {
+      console.warn('No se pudo eliminar avg_response_minutes:', err.message);
+    }
+  }
+
+  // 29. Carrito POR USUARIO.
+  //
+  //     La tabla `cart` nació sin `user_id`: había una sola fila por
+  //     producto para toda la instalación, y `GET /api/cart` ni siquiera
+  //     pedía autenticación. En la práctica eso es un carrito global
+  //     compartido — cualquiera veía y modificaba lo que otra persona había
+  //     agregado. Es un bug de privacidad, no una decisión de diseño.
+  //
+  //     Las filas que ya existen se quedan con user_id NULL a propósito: no
+  //     hay forma de saber a quién pertenecían, y adivinar sería peor que
+  //     descartarlas. Las consultas filtran por user_id, así que quedan
+  //     inertes.
+  const cartCols = db.prepare("PRAGMA table_info('cart')").all();
+  if (!cartCols.some(c => c.name === 'user_id')) {
+    db.exec(`ALTER TABLE cart ADD COLUMN user_id TEXT`);
+  }
+  // Un producto aparece una sola vez por carrito: la cantidad vive en la
+  // fila. El índice es parcial (WHERE user_id IS NOT NULL) para que las
+  // filas huérfanas de la migración no choquen entre sí.
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_cart_user_product
+      ON cart(user_id, productId) WHERE user_id IS NOT NULL;
+  `);
+
+  // 30. Pagos con Mercado Pago (split payments / marketplace).
+  //
+  //     Ver backend/src/payments/ para la lógica. Notas de esquema:
+  //
+  //     - `orders` es la primera tabla de dinero del proyecto; no había
+  //       ninguna tabla de órdenes/pedidos/transacciones que extender.
+  //     - Comprador y vendedor son ambos filas de `sellers`: esa tabla hace
+  //       de tabla de usuarios en este proyecto (el `sub` del JWT es un
+  //       `sellers.id`, ver auth.js).
+  //     - Los importes van en REAL de pesos (no centavos) por consistencia
+  //       con `products.priceNum`, y se redondean a 2 decimales al escribir.
+  //     - Los tokens de Mercado Pago del vendedor se guardan CIFRADOS
+  //       (AES-256-GCM, ver payments/crypto.js). Las columnas llevan el
+  //       sufijo `_enc` justamente para que un SELECT en producción deje
+  //       claro que ese contenido no es utilizable tal cual.
+  //     - NUNCA se guarda número completo de tarjeta, CVV ni card_token.
+  //       `saved_cards` solo tiene la referencia opaca de MP y los últimos
+  //       cuatro dígitos, que es lo que la UI necesita pintar.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS orders (
+      id TEXT PRIMARY KEY,
+      buyer_id TEXT NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+      vendor_id TEXT NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+      amount REAL NOT NULL,
+      application_fee REAL NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'MXN',
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending','paid','cancelled')),
+      payment_status TEXT
+        CHECK(payment_status IS NULL OR payment_status IN
+          ('pending','in_process','approved','rejected','refunded','cancelled','charged_back')),
+      mp_payment_id TEXT UNIQUE,
+      origin TEXT NOT NULL DEFAULT 'direct' CHECK(origin IN ('direct','cart')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_orders_buyer ON orders(buyer_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_orders_vendor ON orders(vendor_id, created_at DESC);
+
+    -- Precio y título CONGELADOS al crear la orden. Si se leyeran de
+    -- products en vez de copiarse, un vendedor que edite el precio después
+    -- reescribiría el histórico de algo que alguien ya pagó.
+    CREATE TABLE IF NOT EXISTS order_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      product_id TEXT NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      unit_price REAL NOT NULL,
+      title_snapshot TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
+
+    -- Cuenta de Mercado Pago del VENDEDOR, vinculada por OAuth. Su
+    -- access_token es lo que permite cobrar en su nombre quedándonos la
+    -- comisión (application_fee).
+    CREATE TABLE IF NOT EXISTS vendor_payment_accounts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      seller_id TEXT NOT NULL UNIQUE REFERENCES sellers(id) ON DELETE CASCADE,
+      mp_user_id TEXT NOT NULL,
+      mp_access_token_enc TEXT NOT NULL,
+      mp_refresh_token_enc TEXT,
+      mp_token_expires_at TEXT,
+      mp_public_key TEXT,
+      connected_at TEXT NOT NULL DEFAULT (datetime('now')),
+      revoked_at TEXT
+    );
+
+    -- Customer de MP del COMPRADOR: es el contenedor al que se le cuelgan
+    -- las tarjetas guardadas.
+    CREATE TABLE IF NOT EXISTS buyer_mp_customers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      seller_id TEXT NOT NULL UNIQUE REFERENCES sellers(id) ON DELETE CASCADE,
+      mp_customer_id TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS saved_cards (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      seller_id TEXT NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+      mp_card_id TEXT NOT NULL,
+      last_four_digits TEXT,
+      payment_method TEXT,
+      expiration_month INTEGER,
+      expiration_year INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(seller_id, mp_card_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_saved_cards_seller ON saved_cards(seller_id);
+
+    -- Idempotencia del webhook: MP reintenta la misma notificación varias
+    -- veces (y ante un timeout, muchas). El UNIQUE sobre event_id es lo que
+    -- hace que el segundo intento no vuelva a aplicar efectos.
+    CREATE TABLE IF NOT EXISTS mp_webhook_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id TEXT NOT NULL UNIQUE,
+      topic TEXT,
+      resource_id TEXT,
+      received_at TEXT NOT NULL DEFAULT (datetime('now')),
+      processed_at TEXT
+    );
+
+    -- Parámetro "state" del OAuth de MP: protección CSRF. Sin él, alguien
+    -- podría hacer que el callback vincule SU cuenta de Mercado Pago al
+    -- vendedor equivocado, desviando los cobros.
+    CREATE TABLE IF NOT EXISTS payment_oauth_states (
+      state TEXT PRIMARY KEY,
+      seller_id TEXT NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      used_at TEXT
+    );
+  `);
+
   console.log('🔄 Migración de schema completada');
 }
 
@@ -856,6 +1038,12 @@ function rowToSeller(row) {
     locationLat: row.location_lat ?? null,
     locationLng: row.location_lng ?? null,
     paymentMethods: JSON.parse(row.paymentMethods || '[]'),
+    // ID del swatch elegido, no un hex — ver migración 27.
+    colorAcento: row.colorAcento || null,
+    productoFijadoId: row.producto_fijado_id || null,
+    // Mediana en minutos entre el mensaje de un comprador y la respuesta del
+    // vendedor. null = todavía no hay respuestas suficientes para calcularla.
+    medianResponseMinutes: row.median_response_minutes ?? null,
   };
 }
 
@@ -960,23 +1148,62 @@ function incrementProductViews(id) {
   db.prepare('UPDATE products SET views = views + 1 WHERE id = ?').run(id);
 }
 
-function getAllCartItems() {
-  return db.prepare('SELECT * FROM cart').all();
+// ─── Carrito ────────────────────────────────────────────────
+//
+// Todas las operaciones van acotadas por `userId`. Las firmas piden el
+// usuario como primer argumento a propósito: así es imposible escribir por
+// descuido una consulta de carrito que no filtre por dueño, que es
+// exactamente el bug que tenía la versión anterior de estas funciones.
+
+function getCartItems(userId) {
+  return db.prepare('SELECT * FROM cart WHERE user_id = ?').all(userId);
 }
 
-function addCartItem(cartItem) {
+function getCartItem(userId, id) {
+  return db.prepare('SELECT * FROM cart WHERE id = ? AND user_id = ?').get(id, userId);
+}
+
+/** Agrega o suma cantidad si el producto ya está en el carrito del usuario. */
+function upsertCartItem(userId, { id, productId, quantity, meetingPoint }) {
+  const existing = db
+    .prepare('SELECT * FROM cart WHERE user_id = ? AND productId = ?')
+    .get(userId, productId);
+
+  if (existing) {
+    db.prepare(
+      `UPDATE cart SET quantity = quantity + ?,
+       meetingPoint = COALESCE(?, meetingPoint) WHERE id = ?`,
+    ).run(quantity, meetingPoint || null, existing.id);
+    return existing.id;
+  }
+
   db.prepare(`
-    INSERT INTO cart (id, productId, quantity, meetingPoint)
-    VALUES (@id, @productId, @quantity, @meetingPoint)
-  `).run(cartItem);
+    INSERT INTO cart (id, user_id, productId, quantity, meetingPoint)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(id, userId, productId, quantity, meetingPoint || 'Por definir');
+  return id;
 }
 
-function updateCartItem(id, quantity) {
-  db.prepare('UPDATE cart SET quantity = ? WHERE id = ?').run(quantity, id);
+function updateCartItem(userId, id, { quantity, meetingPoint }) {
+  const item = getCartItem(userId, id);
+  if (!item) return false;
+  db.prepare(
+    `UPDATE cart SET quantity = COALESCE(?, quantity),
+     meetingPoint = COALESCE(?, meetingPoint) WHERE id = ? AND user_id = ?`,
+  ).run(quantity ?? null, meetingPoint ?? null, id, userId);
+  return true;
 }
 
-function deleteCartItem(id) {
-  db.prepare('DELETE FROM cart WHERE id = ?').run(id);
+function deleteCartItem(userId, id) {
+  return db.prepare('DELETE FROM cart WHERE id = ? AND user_id = ?').run(id, userId).changes > 0;
+}
+
+function clearCartItems(userId, productIds) {
+  if (!productIds || productIds.length === 0) return;
+  const placeholders = productIds.map(() => '?').join(',');
+  db.prepare(
+    `DELETE FROM cart WHERE user_id = ? AND productId IN (${placeholders})`,
+  ).run(userId, ...productIds);
 }
 
 function getAllListings() {
@@ -1155,6 +1382,117 @@ function syncSellerRating(sellerId) {
   db.prepare('UPDATE sellers SET rating = ?, reviews = ? WHERE id = ?')
     .run(stats.rating, stats.reviews, sellerId);
   return stats;
+}
+
+// ─── Tiempo de respuesta (mediana) ──────────────────────────────
+//
+// Un vendedor no queda marcado como "responde rápido" con una sola respuesta
+// afortunada: hacen falta al menos estas respuestas para que la mediana
+// signifique algo.
+const MIN_RESPUESTAS_PARA_MEDIANA = 3;
+
+/// Minutos entre cada mensaje de comprador y la respuesta del vendedor.
+///
+/// Solo cuenta el PRIMER mensaje de cada ráfaga: si alguien escribe cuatro
+/// mensajes seguidos y el vendedor contesta una vez, eso es UNA respuesta
+/// medida desde el primero, no cuatro. Contar cada mensaje por separado
+/// premiaría al vendedor cuando el comprador es insistente.
+function getResponseDeltasMinutes(sellerId) {
+  const rows = db.prepare(`
+    SELECT
+      m.conversation_id,
+      m.sender_id,
+      -- strftime interpreta created_at como UTC, que es como lo escribe
+      -- datetime('now'). Hacer el delta en JS con Date.parse dependería de
+      -- la zona horaria del servidor.
+      CAST(strftime('%s', m.created_at) AS INTEGER) AS ts
+    FROM messages m
+    JOIN conversations c ON c.id = m.conversation_id
+    WHERE c.seller_id = ?
+    -- created_at solo tiene precisión de SEGUNDO (datetime('now') de
+    -- SQLite); dos mensajes en el mismo segundo (un intercambio rápido de
+    -- "sí"/"no", por ejemplo) empatan y SQLite no garantiza su orden real
+    -- en el ORDER BY. El id sí tiene precisión de milisegundo (msg seguido
+    -- del timestamp) y ordena igual que created_at cuando no hay empate,
+    -- así que sirve de desempate sin cambiar el orden en el caso normal.
+    ORDER BY m.conversation_id, m.created_at, m.id
+  `).all(sellerId);
+
+  const deltas = [];
+  let conversacionActual = null;
+  let esperandoDesde = null;
+
+  for (const row of rows) {
+    if (row.conversation_id !== conversacionActual) {
+      conversacionActual = row.conversation_id;
+      esperandoDesde = null;
+    }
+    if (row.sender_id === sellerId) {
+      if (esperandoDesde !== null) {
+        deltas.push((row.ts - esperandoDesde) / 60);
+        esperandoDesde = null;
+      }
+      continue;
+    }
+    // Mensaje del comprador: abre una espera solo si no había una abierta.
+    if (esperandoDesde === null) esperandoDesde = row.ts;
+  }
+
+  return deltas;
+}
+
+function medianOf(numeros) {
+  if (numeros.length === 0) return null;
+  const ordenados = [...numeros].sort((a, b) => a - b);
+  const medio = Math.floor(ordenados.length / 2);
+  return ordenados.length % 2 === 1
+    ? ordenados[medio]
+    : (ordenados[medio - 1] + ordenados[medio]) / 2;
+}
+
+/// Recalcula y cachea la mediana de respuesta del vendedor. Devuelve los
+/// minutos, o null si todavía no hay respuestas suficientes.
+function syncSellerResponseTime(sellerId) {
+  const deltas = getResponseDeltasMinutes(sellerId);
+  const mediana = deltas.length >= MIN_RESPUESTAS_PARA_MEDIANA
+    ? Math.round(medianOf(deltas))
+    : null;
+  db.prepare('UPDATE sellers SET median_response_minutes = ? WHERE id = ?')
+    .run(mediana, sellerId);
+  return mediana;
+}
+
+// ─── Racha de publicaciones ─────────────────────────────────────
+//
+// La racha cuenta SEMANAS consecutivas con al menos una publicación, no
+// días: en un marketplace universitario nadie publica algo nuevo cada día,
+// y una racha diaria estaría rota para todo el mundo el 100% del tiempo.
+//
+// Solo cuenta publicar. Vender no entra: si contara, un vendedor con
+// inventario parado perdería su racha por algo que no depende de él, y la
+// racha dejaría de medir constancia para medir suerte.
+
+/// Cuenta ventanas MÓVILES de 7 días hacia atrás desde ahora: la ventana 0
+/// son los últimos 7 días, la 1 los 7 anteriores, y así. La racha es cuántas
+/// ventanas consecutivas desde la 0 tienen al menos una publicación.
+///
+/// Se usan ventanas móviles y no semanas de calendario a propósito. Con
+/// bloques fijos, "publiqué el domingo y el lunes" cae en dos semanas
+/// distintas y regala una racha de 2, mientras que "publiqué el lunes y el
+/// domingo siguiente" (13 días de diferencia) cuenta como una sola. La
+/// ventana móvil mide lo que la palabra promete: que no has dejado pasar
+/// siete días sin publicar.
+function computeRachaPublicaciones(sellerId) {
+  const ventanas = new Set(db.prepare(`
+    SELECT DISTINCT
+      CAST((julianday('now') - julianday(created_at)) / 7 AS INTEGER) AS ventana
+    FROM products
+    WHERE seller = ?
+  `).all(sellerId).map(r => r.ventana));
+
+  let racha = 0;
+  while (ventanas.has(racha)) racha += 1;
+  return racha;
 }
 
 // Recalcula el caché de TODOS los vendedores desde product_ratings. Corre al
@@ -1710,6 +2048,15 @@ function createMessage(id, conversationId, senderId, text, imageUrl = null) {
     VALUES (?, ?, ?, ?, ?, datetime('now'), 0)
   `).run(id, conversationId, senderId, text, imageUrl);
   updateConversationPreview(conversationId, imageUrl ? '📷 Foto' : text);
+
+  // El recálculo va aquí y no en la ruta para que valga también para los
+  // mensajes con imagen y para cualquier call site futuro. Solo corre cuando
+  // quien escribe es el vendedor: un mensaje del comprador abre una espera,
+  // no la cierra, y no puede cambiar la mediana.
+  const conv = db.prepare('SELECT seller_id FROM conversations WHERE id = ?').get(conversationId);
+  if (conv && conv.seller_id === senderId) {
+    syncSellerResponseTime(senderId);
+  }
 }
 
 function getMessages(conversationId) {
@@ -1872,8 +2219,8 @@ function getFeedRanked({ deviceId, userId, limit = 60, offset = 0 }) {
           -- Calidad del vendedor: rating, foto de perfil, tiempo de respuesta
           + @wSellerRating * (COALESCE(s.rating, 0) / 5.0)
           + CASE WHEN s.logoUrl IS NOT NULL AND s.logoUrl != '' THEN @wSellerPhoto ELSE 0 END
-          + CASE WHEN s.avg_response_minutes IS NOT NULL
-                  AND s.avg_response_minutes <= @fastReplyMaxMinutes
+          + CASE WHEN s.median_response_minutes IS NOT NULL
+                  AND s.median_response_minutes <= @fastReplyMaxMinutes
                  THEN @wSellerFastReply ELSE 0 END
         )
         -- Afinidad: bonus multiplicativo si la categoría es top-N del device/usuario
@@ -2218,10 +2565,13 @@ module.exports = {
   updateProduct,
   deleteProduct,
   incrementProductViews,
-  getAllCartItems,
-  addCartItem,
+  // Carrito (siempre acotado por usuario)
+  getCartItems,
+  getCartItem,
+  upsertCartItem,
   updateCartItem,
   deleteCartItem,
+  clearCartItems,
   getAllListings,
   addListing,
   // Price history
@@ -2239,6 +2589,11 @@ module.exports = {
   getSellerRatingStats,
   syncSellerRating,
   recomputeAllSellerRatings,
+  // Métricas de perfil
+  MIN_RESPUESTAS_PARA_MEDIANA,
+  getResponseDeltasMinutes,
+  syncSellerResponseTime,
+  computeRachaPublicaciones,
   // Product comments
   COMENTARIOS_POR_PAGINA,
   COMENTARIOS_MAX_POR_PAGINA,

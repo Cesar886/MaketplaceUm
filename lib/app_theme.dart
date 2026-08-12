@@ -4,14 +4,18 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'widgets/edge_swipe_back.dart';
 
-/// Sistema "Navy + Oro": el navy es el ancla fría de confianza (header,
-/// nav, marca) y el oro es el ÚNICO color cálido del sistema, reservado
-/// para lo que debe atraer el ojo y termina en una compra: precio, botón de
-/// publicar y badge de descuento.
+/// Constantes crudas del sistema. NO usarlas directamente en pantallas:
+/// el color de marca ahora lo elige cada quien, así que todo lo que sea
+/// marca se lee de `context.colors` (ver [AppColorSet]) y solo los neutros
+/// y los estados semánticos viven aquí como valores fijos.
 ///
-/// La regla que sostiene todo: si algo es oro, es porque queremos que lo
-/// mires. Si el oro se reparte entre decoración e información, deja de
-/// funcionar como señal y la pantalla vuelve a sentirse plantilla.
+/// La regla que sostiene la personalización: **el color solo aparece como
+/// relleno o como línea, nunca como texto de contenido.** El texto, los
+/// precios y los datos van siempre en tinta neutra. Eso es lo que permite
+/// ofrecer ocho colores sin revisar el contraste de cada pantalla ocho
+/// veces — y es la razón por la que el oro dejó de existir como acento
+/// paralelo: dos acentos compitiendo obligaban a decidir cuál gana en cada
+/// superficie, y esa decisión no sobrevive a que el usuario cambie uno.
 class AppColors {
   // ─── Primario — Navy ─────────────────────────────────────
   static const primary = Color(0xFF1B2A4A); // Navy base — marca, nav activo
@@ -24,26 +28,6 @@ class AppColors {
   // Íconos/labels inactivos DENTRO de la barra navy: primaryLight es un
   // color de superficie, sobre navy no alcanza a leerse como texto.
   static const onPrimaryMuted = Color(0xFF93A2BC);
-
-  // ─── Acento — Oro ────────────────────────────────────────
-  // Único acento cálido: precio, FAB de publicar, badges de oferta.
-  static const gold = Color(0xFFD4A02C); // Oro base — el acento vivo
-  static const goldDark = Color(0xFFB07D12); // Hover/pressed, bordes
-  static const goldSoft = Color(
-    0xFFF7E7C0,
-  ); // Oro muy claro — bordes de badge, chip activo
-  static const goldTint = Color(
-    0xFFFDF4E2,
-  ); // Fondo de badge/banner oro (pendiente, premium)
-  // Latón para TEXTO PEQUEÑO sobre superficies claras: el oro base sobre
-  // blanco da 2.4:1 y es ilegible. Sigue siendo oro y no café — 40° de tono
-  // y 79% de saturación, contra los 24°/42% de un cobre.
-  static const goldText = Color(0xFF8A6210);
-  // Lo que va ENCIMA de un relleno de oro es NAVY, no blanco: navy sobre oro
-  // da 6.0:1 y blanco apenas 2.4:1. Eso es lo que deja al oro quedarse en su
-  // versión brillante dentro de badges, botones y etiqueta de precio, en vez
-  // de tener que oscurecerse hasta parecer café.
-  static const onGold = primary;
 
   static const verifiedBlue = Color(
     0xFF3897F0,
@@ -71,42 +55,36 @@ class AppColors {
   static const danger = Color(0xFFA6483C); // Ladrillo apagado, no rojo puro
   static const neutralBg = Color(0xFFEDEDEB); // No disponible / inactivo
 
-  // Premium/destacado: mismo oro, diferenciado del badge de oferta por
-  // tratamiento (fondo crema + borde) y no por tono.
-  static const premiumBorder = goldSoft;
-
   // ─── Oscuro ──────────────────────────────────────────────
   // Jerarquía por elevación (fondo < surface < surfaceElevated) en vez de
   // un solo gris plano — así las tarjetas se separan del fondo sin
   // depender de sombras, que casi no se ven sobre fondo oscuro. Los grises
   // van teñidos de navy para que el modo oscuro siga leyéndose como la
-  // misma marca.
-  static const darkBackground = Color(0xFF0E1420); // navy casi negro
-  static const darkSurface = Color(0xFF17202E); // tarjetas estándar
+  // misma marca. Más claros que la primera versión — casi negro leía como
+  // apagado en vez de como "de noche".
+  static const darkBackground = Color(0xFF1B2635);
+  static const darkSurface = Color(0xFF233042); // tarjetas estándar
   static const darkSurfaceElevated = Color(
-    0xFF1F2A3A,
+    0xFF2B394E,
   ); // modales, sheets, banners destacados
-  static const darkSurfaceMuted = Color(0xFF1A2432); // fondos de sección/inputs
-  static const darkInk = Color(0xFFECEEF2);
-  static const darkMuted = Color(0xFF959FAF);
+  static const darkSurfaceMuted = Color(0xFF202C3E); // fondos de sección/inputs
   static const darkBorder = Color(
-    0xFF2C3849,
+    0xFF3A4A61,
   ); // con suficiente presencia para separar tarjetas
-  // Reemplaza a primary/primaryDark cuando se usa como color de
-  // ícono/texto sobre una superficie neutra (no como fondo de AppBar/nav):
-  // el navy es casi negro y se pierde sobre fondos ya oscuros.
-  static const primaryAccentDark = Color(0xFF9FB6D6);
-  // Sobre fondo oscuro el oro base ya contrasta bien (6.9:1), pero esta
-  // variante aclarada le devuelve el brillo que pierde sin blanco alrededor.
-  static const goldOnDark = Color(0xFFE3B84E);
+
+  // Texto en oscuro: BLANCO siempre, nunca un gris con tinte propio — la
+  // jerarquía (principal/secundario) se hace con OPACIDAD del mismo blanco,
+  // no con un segundo color. Da 7-15:1 de contraste incluso en el nivel más
+  // tenue, muy por encima del mínimo AA.
+  static const darkInk = Colors.white;
+  static const darkMuted = Color(0xA8FFFFFF); // ~66% — texto secundario
+  static const darkMutedStrong = Color(0xD9FFFFFF); // ~85% — secundario pequeño
+
   // Los estados semánticos también se aclaran en oscuro por la misma razón
   // que el oro: el tono claro conserva la identidad, el oscuro se pierde.
   static const successOnDark = Color(0xFF7FA593);
   static const darkSuccessBg = Color(0xFF1B2A24);
   static const dangerOnDark = Color(0xFFD98577);
-  // Reemplaza a goldTint (fondo de badges/banners "premium") en oscuro.
-  static const darkPremiumBg = Color(0xFF2B2312);
-  static const darkPremiumBorder = Color(0xFF4E4222);
 }
 
 /// Set de colores neutros que sí cambian según el tema activo (a diferencia
@@ -114,7 +92,7 @@ class AppColors {
 /// `context.colors.xxx` en vez de `AppColors.background/surface/ink/muted/
 /// border` para que cualquier superficie/texto neutro responda al modo
 /// oscuro.
-class AppColorSet {
+class AppColorSet extends ThemeExtension<AppColorSet> {
   const AppColorSet({
     required this.background,
     required this.surface,
@@ -124,16 +102,62 @@ class AppColorSet {
     required this.muted,
     required this.mutedStrong,
     required this.border,
+    required this.primary,
+    required this.onPrimary,
     required this.accent,
-    required this.gold,
-    required this.premiumBg,
-    required this.premiumBorder,
+    required this.accentTint,
+    required this.accentTintBorder,
     required this.success,
     required this.successBg,
-    required this.pendingBg,
     required this.neutralBg,
     required this.danger,
   });
+
+  /// Construye la paleta completa a partir del swatch elegido y del tema.
+  ///
+  /// Todo lo de marca sale de aquí, así que cambiar de swatch repinta la app
+  /// entera sin tocar un solo call site. Los neutros (fondos, grises, texto)
+  /// NO se tiñen: el texto se queda en tinta negra pase lo que pase, que es
+  /// justo lo que evita que elegir un color rosa deje la app ilegible.
+  factory AppColorSet.of(AccentSwatch swatch, Brightness brightness) {
+    final oscuro = brightness == Brightness.dark;
+    final base = oscuro ? AppColors.darkSurface : AppColors.surface;
+    return AppColorSet(
+      background: oscuro ? AppColors.darkBackground : AppColors.background,
+      surface: base,
+      surfaceElevated: oscuro
+          ? AppColors.darkSurfaceElevated
+          : AppColors.surface,
+      surfaceMuted: oscuro
+          ? AppColors.darkSurfaceMuted
+          : AppColors.surfaceMuted,
+      ink: oscuro ? AppColors.darkInk : AppColors.ink,
+      muted: oscuro ? AppColors.darkMuted : AppColors.muted,
+      mutedStrong: oscuro ? AppColors.darkMutedStrong : AppColors.mutedStrong,
+      border: oscuro ? AppColors.darkBorder : AppColors.border,
+      primary: oscuro ? swatch.darkFill : swatch.fill,
+      // Sobre el relleno oscuro lo legible es la tinta clara, no el navy que
+      // se usa sobre el pastel.
+      onPrimary: oscuro ? AppColors.darkInk : swatch.onFill,
+      accent: swatch.line(brightness),
+      // Lavado del color para fondos de chip/sección, derivado del relleno
+      // de SU tema: en oscuro parte del tono oscuro, no del pastel.
+      accentTint: Color.lerp(
+        oscuro ? swatch.darkFill : swatch.fill,
+        base,
+        oscuro ? 0.72 : 0.62,
+      )!,
+      accentTintBorder: Color.lerp(
+        oscuro ? swatch.darkFill : swatch.fill,
+        base,
+        oscuro ? 0.35 : 0.28,
+      )!,
+      success: oscuro ? AppColors.successOnDark : AppColors.success,
+      successBg: oscuro ? AppColors.darkSuccessBg : AppColors.successBg,
+      neutralBg: oscuro ? AppColors.darkSurfaceMuted : AppColors.neutralBg,
+      danger: oscuro ? AppColors.dangerOnDark : AppColors.danger,
+    );
+  }
 
   final Color background;
   final Color surface;
@@ -146,125 +170,360 @@ class AppColorSet {
   /// donde [muted] queda por debajo del contraste mínimo.
   final Color mutedStrong;
   final Color border;
+
+  /// RELLENO sólido del color elegido: AppBar, barra de navegación, botones
+  /// primarios, FAB. Lo que va encima es [onPrimary] y nada más.
+  final Color primary;
+
+  /// Único color legible sobre [primary]. En los seis pasteles es tinta
+  /// oscura; en navy y wine es blanco, porque sobre un relleno oscuro la
+  /// tinta negra da 1.5:1 y no hay forma de arreglarlo.
+  final Color onPrimary;
+
+  /// El color elegido como TEXTO/ÍCONO/LÍNEA sobre una superficie neutra
+  /// (íconos activos, bordes de foco, indicadores). Ya viene resuelto contra
+  /// el tema: el pastel crudo sobre fondo claro no se ve.
   final Color accent;
 
-  /// Oro legible como TEXTO/ÍCONO sobre una superficie del tema actual.
-  /// Para oro como RELLENO sólido (FAB, badge, botón) usar [AppColors.gold]
-  /// con [AppColors.onGold] encima: ahí el fondo es el oro mismo y no
-  /// depende del tema.
-  final Color gold;
-  final Color premiumBg;
-  final Color premiumBorder;
+  /// Lavado del color para fondos de chip, badge y sección. El texto encima
+  /// va en [ink], nunca en el color.
+  final Color accentTint;
+  final Color accentTintBorder;
 
-  /// Fondos de los tres estados semánticos (disponible / pendiente / no
-  /// disponible). Son colores propios y no el foreground con alpha: un
-  /// verde sage al 8% sobre fondo cálido se ensucia y deja de distinguirse
-  /// del gris de "no disponible", que es justo la diferencia que el badge
-  /// tiene que comunicar.
+  /// Fondos de los estados semánticos (disponible / no disponible). Son
+  /// colores propios y no el foreground con alpha: un verde sage al 8% sobre
+  /// fondo cálido se ensucia y deja de distinguirse del gris de "no
+  /// disponible", que es justo la diferencia que el badge tiene que
+  /// comunicar. Estos NO se tiñen con el swatch: verde es verde.
   final Color success;
   final Color successBg;
-  final Color pendingBg;
   final Color neutralBg;
 
   /// Ladrillo apagado legible sobre la superficie del tema actual. Para
   /// rellenos sólidos de error usar [AppColors.danger].
   final Color danger;
 
-  static const light = AppColorSet(
-    background: AppColors.background,
-    surface: AppColors.surface,
-    surfaceElevated: AppColors.surface,
-    surfaceMuted: AppColors.surfaceMuted,
-    ink: AppColors.ink,
-    muted: AppColors.muted,
-    mutedStrong: AppColors.mutedStrong,
-    border: AppColors.border,
-    accent: AppColors.primary,
-    gold: AppColors.goldText,
-    premiumBg: AppColors.goldTint,
-    premiumBorder: AppColors.premiumBorder,
-    success: AppColors.success,
-    successBg: AppColors.successBg,
-    pendingBg: AppColors.goldTint,
-    neutralBg: AppColors.neutralBg,
-    danger: AppColors.danger,
+  @override
+  AppColorSet copyWith({
+    Color? background,
+    Color? surface,
+    Color? surfaceElevated,
+    Color? surfaceMuted,
+    Color? ink,
+    Color? muted,
+    Color? mutedStrong,
+    Color? border,
+    Color? primary,
+    Color? onPrimary,
+    Color? accent,
+    Color? accentTint,
+    Color? accentTintBorder,
+    Color? success,
+    Color? successBg,
+    Color? neutralBg,
+    Color? danger,
+  }) {
+    return AppColorSet(
+      background: background ?? this.background,
+      surface: surface ?? this.surface,
+      surfaceElevated: surfaceElevated ?? this.surfaceElevated,
+      surfaceMuted: surfaceMuted ?? this.surfaceMuted,
+      ink: ink ?? this.ink,
+      muted: muted ?? this.muted,
+      mutedStrong: mutedStrong ?? this.mutedStrong,
+      border: border ?? this.border,
+      primary: primary ?? this.primary,
+      onPrimary: onPrimary ?? this.onPrimary,
+      accent: accent ?? this.accent,
+      accentTint: accentTint ?? this.accentTint,
+      accentTintBorder: accentTintBorder ?? this.accentTintBorder,
+      success: success ?? this.success,
+      successBg: successBg ?? this.successBg,
+      neutralBg: neutralBg ?? this.neutralBg,
+      danger: danger ?? this.danger,
+    );
+  }
+
+  @override
+  AppColorSet lerp(ThemeExtension<AppColorSet>? other, double t) {
+    if (other is! AppColorSet) return this;
+    return AppColorSet(
+      background: Color.lerp(background, other.background, t)!,
+      surface: Color.lerp(surface, other.surface, t)!,
+      surfaceElevated: Color.lerp(surfaceElevated, other.surfaceElevated, t)!,
+      surfaceMuted: Color.lerp(surfaceMuted, other.surfaceMuted, t)!,
+      ink: Color.lerp(ink, other.ink, t)!,
+      muted: Color.lerp(muted, other.muted, t)!,
+      mutedStrong: Color.lerp(mutedStrong, other.mutedStrong, t)!,
+      border: Color.lerp(border, other.border, t)!,
+      primary: Color.lerp(primary, other.primary, t)!,
+      onPrimary: Color.lerp(onPrimary, other.onPrimary, t)!,
+      accent: Color.lerp(accent, other.accent, t)!,
+      accentTint: Color.lerp(accentTint, other.accentTint, t)!,
+      accentTintBorder: Color.lerp(
+        accentTintBorder,
+        other.accentTintBorder,
+        t,
+      )!,
+      success: Color.lerp(success, other.success, t)!,
+      successBg: Color.lerp(successBg, other.successBg, t)!,
+      neutralBg: Color.lerp(neutralBg, other.neutralBg, t)!,
+      danger: Color.lerp(danger, other.danger, t)!,
+    );
+  }
+}
+
+/// Color de marca elegido por la persona usuaria. Es la raíz de la que sale
+/// TODO el color de la app: [AppColorSet.of] lo convierte en la paleta
+/// completa y [AppTheme] la mete en el ThemeData, así que cambiar de swatch
+/// repinta AppBar, navegación, botones, chips e íconos de una sola vez.
+///
+/// Lo que NUNCA se tiñe es el contenido: texto, precios y datos van siempre
+/// en tinta neutra. Esa frontera es lo que hace viable ofrecer ocho colores
+/// sin auditar el contraste de cada pantalla ocho veces.
+///
+/// Cada swatch necesita CUATRO colores y no uno, porque un mismo tono no
+/// puede cumplir los dos trabajos a la vez:
+///
+///  - [fill] / [darkFill] son el RELLENO sólido de cada tema. El pastel se
+///    queda en claro; en oscuro entra su versión normalizada, porque un
+///    pastel crudo sobre fondo oscuro deslumbra y rompe la jerarquía.
+///  - [onFill] es lo único legible sobre [fill]. Sobre [darkFill] va tinta
+///    clara, que la paleta resuelve sola.
+///  - [lineLight] / [lineDark] son el color como LÍNEA sobre el fondo de la
+///    página, que sí depende del tema: un pastel sobre `#FAFAF8` da 1.4:1 y
+///    literalmente no se ve, y un navy sobre `#0E1420` da 1.3:1 y tampoco.
+///    Ambas variantes están calculadas al mínimo no-textual de 3:1 (WCAG
+///    1.4.11) contra la superficie MENOS favorable de su tema, no contra el
+///    fondo: en claro eso es `background` (el más oscuro de los claros) y en
+///    oscuro es `darkSurfaceElevated` (el más claro de los oscuros).
+class AccentSwatch {
+  const AccentSwatch({
+    required this.id,
+    required this.label,
+    required this.fill,
+    required this.darkFill,
+    required this.onFill,
+    required this.lineLight,
+    required this.lineDark,
+  });
+
+  /// Clave estable de persistencia. Nunca renombrar: es lo que queda
+  /// guardado en disco.
+  final String id;
+  final String label;
+
+  /// Relleno sólido en tema CLARO (AppBar, botón, FAB).
+  final Color fill;
+
+  /// El mismo color llevado a tema oscuro: mismo tono, normalizado a una
+  /// LUMINANCIA común (~0.075) para los ocho.
+  ///
+  /// Se normaliza por luminancia relativa y no por claridad HSL porque no
+  /// son lo mismo: a igual claridad HSL, un verde y un cian se perciben
+  /// bastante más brillantes que un morado, y el modo oscuro terminaba
+  /// sintiéndose distinto según el color elegido. Igualando la luminancia,
+  /// los ocho pesan lo mismo y el tema oscuro se lee como la misma app.
+  ///
+  /// Para los seis pasteles esto los OSCURECE (un pastel crudo sobre fondo
+  /// oscuro deslumbra y el botón se come la jerarquía); para navy y wine,
+  /// que ya son casi negros, los ACLARA, porque si no desaparecerían contra
+  /// el fondo. Convergen desde lados opuestos.
+  final Color darkFill;
+
+  /// Único color legible sobre [fill]. Los seis pasteles llevan navy y los
+  /// dos sobrios llevan blanco, así que el foreground es por swatch y no una
+  /// constante del sistema.
+  final Color onFill;
+
+  final Color lineLight;
+  final Color lineDark;
+
+  /// El color como línea sobre el fondo del tema activo.
+  Color line(Brightness brightness) =>
+      brightness == Brightness.dark ? lineDark : lineLight;
+
+  /// Seis pasteles editoriales de saturación baja/media más dos tonos
+  /// sobrios para quien no quiera pastel. En los pasteles [lineLight] es el
+  /// mismo tono profundizado hasta 3:1 con un techo de saturación de 55%,
+  /// que es lo que evita que el durazno aterrice en naranja neón y le
+  /// dispute el rol de señal al oro.
+  static const azulNiebla = AccentSwatch(
+    id: 'azul_niebla',
+    label: 'Azul niebla',
+    fill: Color(0xFFC7D8EE),
+    darkFill: Color(0xFF274F81),
+    onFill: AppColors.primary,
+    lineLight: Color(0xFF6493D0),
+    lineDark: Color(0xFFC7D8EE),
+  );
+  static const salvia = AccentSwatch(
+    id: 'salvia',
+    label: 'Salvia',
+    fill: Color(0xFFC6D8C9),
+    darkFill: Color(0xFF2F5735),
+    onFill: AppColors.primary,
+    lineLight: Color(0xFF6F9C76),
+    lineDark: Color(0xFFC6D8C9),
+  );
+  static const durazno = AccentSwatch(
+    id: 'durazno',
+    label: 'Durazno',
+    fill: Color(0xFFF3D4BE),
+    darkFill: Color(0xFF714221),
+    onFill: AppColors.primary,
+    lineLight: Color(0xFFCA7F4A),
+    lineDark: Color(0xFFF3D4BE),
+  );
+  static const lavanda = AccentSwatch(
+    id: 'lavanda',
+    label: 'Lavanda',
+    fill: Color(0xFFD6D0E8),
+    darkFill: Color(0xFF544288),
+    onFill: AppColors.primary,
+    lineLight: Color(0xFF9888C5),
+    lineDark: Color(0xFFD6D0E8),
+  );
+  static const rosaPolvo = AccentSwatch(
+    id: 'rosa_polvo',
+    label: 'Rosa polvo',
+    fill: Color(0xFFEFD0D4),
+    darkFill: Color(0xFF892E3A),
+    onFill: AppColors.primary,
+    lineLight: Color(0xFFD17783),
+    lineDark: Color(0xFFEFD0D4),
+  );
+  static const celeste = AccentSwatch(
+    id: 'celeste',
+    label: 'Celeste',
+    fill: Color(0xFFC3DDE4),
+    darkFill: Color(0xFF2B545F),
+    onFill: AppColors.primary,
+    lineLight: Color(0xFF4F9BB0),
+    lineDark: Color(0xFFC3DDE4),
   );
 
-  static const dark = AppColorSet(
-    background: AppColors.darkBackground,
-    surface: AppColors.darkSurface,
-    surfaceElevated: AppColors.darkSurfaceElevated,
-    surfaceMuted: AppColors.darkSurfaceMuted,
-    ink: AppColors.darkInk,
-    muted: AppColors.darkMuted,
-    // En oscuro el gris de texto ya tiene contraste de sobra sobre los
-    // fondos de sección, así que no hace falta una segunda variante.
-    mutedStrong: AppColors.darkMuted,
-    border: AppColors.darkBorder,
-    accent: AppColors.primaryAccentDark,
-    gold: AppColors.goldOnDark,
-    premiumBg: AppColors.darkPremiumBg,
-    premiumBorder: AppColors.darkPremiumBorder,
-    success: AppColors.successOnDark,
-    successBg: AppColors.darkSuccessBg,
-    pendingBg: AppColors.darkPremiumBg,
-    neutralBg: AppColors.darkSurfaceMuted,
-    danger: AppColors.dangerOnDark,
+  // Los dos sobrios invierten el foreground: sobre un relleno oscuro el navy
+  // no se lee y el blanco sí.
+  static const navy = AccentSwatch(
+    id: 'navy',
+    label: 'Navy',
+    fill: AppColors.primary,
+    darkFill: Color(0xFF314C85),
+    onFill: Colors.white,
+    lineLight: AppColors.primary,
+    // Recalibrado tras aclarar el fondo oscuro (ver AppColors.darkSurface*):
+    // el mismo tono a 3:1 contra la superficie MENOS favorable de cada
+    // versión del tema — que ahora es más clara, así que el tono también.
+    lineDark: Color(0xFF6381C6),
   );
+  static const wine = AccentSwatch(
+    id: 'wine',
+    label: 'Wine',
+    fill: Color(0xFF6B2737),
+    darkFill: Color(0xFF853044),
+    onFill: Colors.white,
+    lineLight: Color(0xFF6B2737),
+    lineDark: Color(0xFFC6647A),
+  );
+
+  static const opciones = <AccentSwatch>[
+    azulNiebla,
+    salvia,
+    durazno,
+    lavanda,
+    rosaPolvo,
+    celeste,
+    navy,
+    wine,
+  ];
+
+  /// El swatch por defecto es el navy de la marca: quien nunca entre a
+  /// Apariencia ve exactamente la app que veía antes.
+  static const defecto = navy;
+
+  /// Resuelve un id guardado en disco. Un id desconocido (swatch retirado en
+  /// una versión posterior, dato corrupto) cae al de marca en vez de romper.
+  static AccentSwatch porId(String? id) =>
+      opciones.firstWhere((s) => s.id == id, orElse: () => defecto);
 }
 
 extension AppColorsContext on BuildContext {
-  AppColorSet get colors => Theme.of(this).brightness == Brightness.dark
-      ? AppColorSet.dark
-      : AppColorSet.light;
+  /// La paleta viaja dentro del ThemeData como [ThemeExtension], no en un
+  /// provider aparte: así cambiar de swatch repinta TODA la app por el mismo
+  /// camino que ya usa el modo oscuro, y ningún widget necesita suscribirse
+  /// a nada.
+  ///
+  /// El fallback cubre a quien monte un [MaterialApp] con un tema pelado
+  /// (varios tests lo hacen): mejor la paleta de marca que un crash.
+  AppColorSet get colors {
+    final theme = Theme.of(this);
+    return theme.extension<AppColorSet>() ??
+        AppColorSet.of(AccentSwatch.defecto, theme.brightness);
+  }
 }
 
 class AppTypography {
+  // `color` es OBLIGATORIO en las cuatro — a propósito, sin fallback.
+  //
+  // Antes caían a `AppColors.ink`, una constante fija de tema claro
+  // (#1A1A1D). Cualquier call site que "se olvidara" de pasar color
+  // quedaba con texto casi negro sobre fondo oscuro en modo oscuro (1.14:1
+  // de contraste — invisible) sin que nada lo avisara: compilaba limpio y
+  // se veía bien en claro, que es como sobrevivió sin que nadie lo notara
+  // hasta que alguien miró la pantalla en oscuro.
+  //
+  // Con `color` requerido, omitirlo es un error de compilación, no un
+  // valor por defecto silenciosamente equivocado. El call site típico pasa
+  // `context.colors.ink` (o `.muted`, `.accent`, etc.) — ya tiene el
+  // BuildContext a mano en cualquier `build()`, así que no es más trabajo
+  // que antes, solo ya no es opcional.
+
   // Baloo 2: para precios — redondeada, con carácter de etiqueta de puesto,
   // usada con moderación (solo precios y headlines grandes).
   static TextStyle price(
     double size, {
+    required Color color,
     FontWeight weight = FontWeight.w800,
-    Color? color,
   }) => GoogleFonts.baloo2(
     fontSize: size,
     fontWeight: weight,
-    color: color ?? AppColors.ink,
+    color: color,
     height: 1.1,
   );
 
   // Baloo 2: headings de sección
   static TextStyle heading(
     double size, {
+    required Color color,
     FontWeight weight = FontWeight.w700,
-    Color? color,
   }) => GoogleFonts.baloo2(
     fontSize: size,
     fontWeight: weight,
-    color: color ?? AppColors.ink,
+    color: color,
     height: 1.2,
   );
 
   // Work Sans: cuerpo, descripción, labels
   static TextStyle body(
     double size, {
+    required Color color,
     FontWeight weight = FontWeight.w400,
-    Color? color,
   }) => GoogleFonts.workSans(
     fontSize: size,
     fontWeight: weight,
-    color: color ?? AppColors.ink,
+    color: color,
     height: 1.4,
   );
 
   static TextStyle label(
     double size, {
+    required Color color,
     FontWeight weight = FontWeight.w600,
-    Color? color,
   }) => GoogleFonts.workSans(
     fontSize: size,
     fontWeight: weight,
-    color: color ?? AppColors.ink,
+    color: color,
     height: 1.3,
   );
 }
@@ -299,9 +558,13 @@ class AppShadows {
     ),
   ];
 
-  static List<BoxShadow> get gold => [
+  /// Sombra tintada para elementos que flotan en el color elegido (FAB,
+  /// etiqueta de precio con oferta). Recibe el color en vez de leerlo de una
+  /// constante: la sombra tiene que ser del mismo tono que lo que la
+  /// proyecta, y ese tono ya no es fijo.
+  static List<BoxShadow> accent(Color color) => [
     BoxShadow(
-      color: AppColors.goldDark.withValues(alpha: 0.34),
+      color: color.withValues(alpha: 0.34),
       blurRadius: 12,
       offset: const Offset(0, 4),
     ),
@@ -309,25 +572,34 @@ class AppShadows {
 }
 
 class AppTheme {
-  static ThemeData get light {
+  /// Tema claro pintado con el swatch elegido.
+  ///
+  /// Todo el color de marca sale de [c]; los neutros y el texto no se tiñen.
+  /// Esa separación es lo que permite ofrecer ocho colores sin revisar el
+  /// contraste de cada pantalla ocho veces: el texto siempre es tinta sobre
+  /// superficie neutra, y el color solo aparece como relleno (con
+  /// [AppColorSet.onPrimary] encima) o como línea ya resuelta.
+  static ThemeData light([AccentSwatch swatch = AccentSwatch.defecto]) {
     final base = GoogleFonts.workSansTextTheme();
-    final scheme = ColorScheme.fromSeed(seedColor: AppColors.primary).copyWith(
-      primary: AppColors.primary,
-      onPrimary: Colors.white,
-      secondary: AppColors.gold,
-      onSecondary: AppColors.onGold,
-      tertiary: AppColors.goldText,
-      surface: AppColors.surface,
-      surfaceContainerHighest: AppColors.surfaceMuted,
-      outline: AppColors.border,
-      outlineVariant: AppColors.border,
+    final c = AppColorSet.of(swatch, Brightness.light);
+    final scheme = ColorScheme.fromSeed(seedColor: c.primary).copyWith(
+      primary: c.primary,
+      onPrimary: c.onPrimary,
+      secondary: c.accent,
+      onSecondary: c.onPrimary,
+      tertiary: c.accent,
+      surface: c.surface,
+      surfaceContainerHighest: c.surfaceMuted,
+      outline: c.border,
+      outlineVariant: c.border,
       error: AppColors.danger,
     );
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      scaffoldBackgroundColor: AppColors.background,
+      extensions: [c],
+      scaffoldBackgroundColor: c.background,
       // Transición + gesto de "deslizar desde el borde para regresar" de
       // estilo iOS en Android y iOS por igual. El área activa del gesto ya
       // viene limitada por Flutter a una franja angosta desde el borde
@@ -372,50 +644,53 @@ class AppTheme {
         centerTitle: false,
         elevation: 0,
         scrolledUnderElevation: 0,
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
+        backgroundColor: c.primary,
+        foregroundColor: c.onPrimary,
         surfaceTintColor: Colors.transparent,
-        // Fondo oscuro del AppBar → íconos claros en la barra de estado.
-        // Explícito (no auto-detectado) para que sea consistente sin
-        // importar el color exacto de fondo que se use.
-        systemOverlayStyle: SystemUiOverlayStyle.light,
+        // Los íconos de la barra de estado se eligen según lo claro que sea
+        // el AppBar, no fijos: con un swatch pastel el header es claro y
+        // unos íconos blancos ahí desaparecerían.
+        systemOverlayStyle: swatch.fill.computeLuminance() > 0.45
+            ? SystemUiOverlayStyle.dark
+            : SystemUiOverlayStyle.light,
         titleTextStyle: GoogleFonts.baloo2(
           fontSize: 19,
           fontWeight: FontWeight.w700,
-          color: Colors.white,
+          color: c.onPrimary,
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
-        actionsIconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: c.onPrimary),
+        actionsIconTheme: IconThemeData(color: c.onPrimary),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: AppColors.surface,
+        fillColor: c.surface,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 14,
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: c.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: c.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+          // El foco usa la variante de LÍNEA: el relleno pastel sobre el
+          // blanco del campo no marcaría nada.
+          borderSide: BorderSide(color: c.accent, width: 1.5),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          // El botón lleno es la acción — y toda acción es oro con etiqueta
-          // navy. El navy sólido se queda para el cromo (header, nav), así
-          // nunca compiten.
-          backgroundColor: AppColors.gold,
-          foregroundColor: AppColors.onGold,
-          disabledBackgroundColor: AppColors.gold.withValues(alpha: 0.38),
-          disabledForegroundColor: AppColors.onGold.withValues(alpha: 0.55),
+          // El botón lleno es la acción principal y va en el color elegido,
+          // con el único foreground legible encima de ese relleno.
+          backgroundColor: c.primary,
+          foregroundColor: c.onPrimary,
+          disabledBackgroundColor: c.primary.withValues(alpha: 0.38),
+          disabledForegroundColor: c.onPrimary.withValues(alpha: 0.55),
           elevation: 0,
           minimumSize: const Size.fromHeight(52),
           shape: RoundedRectangleBorder(
@@ -429,8 +704,8 @@ class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.primary,
-          side: const BorderSide(color: AppColors.primaryLight),
+          foregroundColor: c.accent,
+          side: BorderSide(color: c.accentTintBorder),
           minimumSize: const Size.fromHeight(48),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -439,57 +714,63 @@ class AppTheme {
         ),
       ),
       chipTheme: ChipThemeData(
-        backgroundColor: AppColors.surface,
-        // Chip activo en oro muy claro: marca la selección con el color de
-        // acento sin gastar oro sólido, que está reservado a precio y CTA.
-        selectedColor: AppColors.goldTint,
-        side: const BorderSide(color: AppColors.border),
+        backgroundColor: c.surface,
+        // Chip activo con el lavado del color: marca la selección sin gastar
+        // relleno sólido, que se reserva a las acciones.
+        selectedColor: c.accentTint,
+        side: BorderSide(color: c.border),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         labelStyle: GoogleFonts.workSans(
           fontWeight: FontWeight.w700,
-          color: AppColors.ink,
+          color: c.ink,
         ),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: AppColors.primaryDark,
+        // El snackbar se queda en tinta neutra: flota sobre cualquier
+        // pantalla y teñirlo lo pondría a competir con el contenido.
+        backgroundColor: AppColors.ink,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         contentTextStyle: GoogleFonts.workSans(
           color: Colors.white,
           fontWeight: FontWeight.w600,
         ),
       ),
-      dividerColor: AppColors.border,
+      dividerColor: c.border,
       visualDensity: VisualDensity.standard,
     );
   }
 
-  static ThemeData get dark {
+  static ThemeData dark([AccentSwatch swatch = AccentSwatch.defecto]) {
     final base = GoogleFonts.workSansTextTheme(ThemeData.dark().textTheme);
+    final c = AppColorSet.of(swatch, Brightness.dark);
     final scheme =
         ColorScheme.fromSeed(
-          seedColor: AppColors.primary,
+          seedColor: c.primary,
           brightness: Brightness.dark,
         ).copyWith(
-          // En oscuro el navy base se confunde con el fondo, así que el rol
-          // de "primary" lo toma la variante aclarada.
-          primary: AppColors.primaryAccentDark,
-          onPrimary: AppColors.primaryDark,
-          secondary: AppColors.goldOnDark,
-          onSecondary: AppColors.primaryDark,
-          tertiary: AppColors.gold,
-          surface: AppColors.darkSurface,
-          surfaceContainerHighest: AppColors.darkSurfaceMuted,
-          outline: AppColors.darkBorder,
-          outlineVariant: AppColors.darkBorder,
+          // En oscuro el rol de "primary" de Material lo toma la variante de
+          // LÍNEA y no el relleno: un pastel sólido como color de rol haría
+          // que Material lo usara de fondo en sitios donde no controlamos el
+          // foreground.
+          primary: c.accent,
+          onPrimary: AppColors.darkBackground,
+          secondary: c.accent,
+          onSecondary: AppColors.darkBackground,
+          tertiary: c.accent,
+          surface: c.surface,
+          surfaceContainerHighest: c.surfaceMuted,
+          outline: c.border,
+          outlineVariant: c.border,
           error: AppColors.danger,
         );
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      scaffoldBackgroundColor: AppColors.darkBackground,
+      extensions: [c],
+      scaffoldBackgroundColor: c.background,
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
           TargetPlatform.android: SensitiveCupertinoPageTransitionsBuilder(),
@@ -520,47 +801,47 @@ class AppTheme {
         bodyLarge: base.bodyLarge?.copyWith(color: AppColors.darkInk),
         bodyMedium: base.bodyMedium?.copyWith(color: AppColors.darkInk),
       ),
-      appBarTheme: const AppBarTheme(
+      // En oscuro el AppBar NO se pinta con el relleno del swatch: un
+      // pastel claro de header sobre una app oscura invierte la jerarquía y
+      // deslumbra. El color entra como línea en el título y los íconos.
+      appBarTheme: AppBarTheme(
         centerTitle: false,
         elevation: 0,
         scrolledUnderElevation: 0,
-        backgroundColor: AppColors.darkBackground,
-        foregroundColor: AppColors.darkInk,
-        // Fondo oscuro del AppBar → íconos claros en la barra de estado.
+        backgroundColor: c.background,
+        foregroundColor: c.ink,
         systemOverlayStyle: SystemUiOverlayStyle.light,
+        iconTheme: IconThemeData(color: c.accent),
+        actionsIconTheme: IconThemeData(color: c.accent),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: AppColors.darkSurface,
+        fillColor: c.surface,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 14,
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.darkBorder),
+          borderSide: BorderSide(color: c.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.darkBorder),
+          borderSide: BorderSide(color: c.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(
-            color: AppColors.primaryAccentDark,
-            width: 1.5,
-          ),
+          borderSide: BorderSide(color: c.accent, width: 1.5),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          // El botón lleno es la acción — y toda acción es oro con etiqueta
-          // navy. El navy sólido se queda para el cromo (header, nav), así
-          // nunca compiten.
-          backgroundColor: AppColors.gold,
-          foregroundColor: AppColors.onGold,
-          disabledBackgroundColor: AppColors.gold.withValues(alpha: 0.38),
-          disabledForegroundColor: AppColors.onGold.withValues(alpha: 0.55),
+          // Mismo par relleno/foreground que en claro: el fondo es el color
+          // mismo, así que no depende del tema.
+          backgroundColor: c.primary,
+          foregroundColor: c.onPrimary,
+          disabledBackgroundColor: c.primary.withValues(alpha: 0.38),
+          disabledForegroundColor: c.onPrimary.withValues(alpha: 0.55),
           elevation: 0,
           minimumSize: const Size.fromHeight(52),
           shape: RoundedRectangleBorder(
@@ -574,8 +855,8 @@ class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.primaryAccentDark,
-          side: const BorderSide(color: AppColors.darkBorder),
+          foregroundColor: c.accent,
+          side: BorderSide(color: c.border),
           minimumSize: const Size.fromHeight(48),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -584,25 +865,25 @@ class AppTheme {
         ),
       ),
       chipTheme: ChipThemeData(
-        backgroundColor: AppColors.darkSurface,
-        selectedColor: AppColors.darkPremiumBg,
-        side: const BorderSide(color: AppColors.darkBorder),
+        backgroundColor: c.surface,
+        selectedColor: c.accentTint,
+        side: BorderSide(color: c.border),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         labelStyle: GoogleFonts.workSans(
           fontWeight: FontWeight.w700,
-          color: AppColors.darkInk,
+          color: c.ink,
         ),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: AppColors.darkSurface,
+        backgroundColor: c.surfaceElevated,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         contentTextStyle: GoogleFonts.workSans(
-          color: AppColors.darkInk,
+          color: c.ink,
           fontWeight: FontWeight.w600,
         ),
       ),
-      dividerColor: AppColors.darkBorder,
+      dividerColor: c.border,
       visualDensity: VisualDensity.standard,
     );
   }

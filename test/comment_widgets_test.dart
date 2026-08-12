@@ -64,7 +64,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        theme: tema ?? AppTheme.light,
+        theme: tema ?? AppTheme.light(),
         home: Scaffold(
           body: SingleChildScrollView(
             child: Padding(
@@ -90,8 +90,9 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('no desborda a 320 px con nombre y carrera largos',
-        (tester) async {
+    testWidgets('no desborda a 320 px con nombre y carrera largos', (
+      tester,
+    ) async {
       await montar(
         tester,
         CommentTile(
@@ -109,8 +110,9 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('un comentario de 500 caracteres se envuelve, no desborda',
-        (tester) async {
+    testWidgets('un comentario de 500 caracteres se envuelve, no desborda', (
+      tester,
+    ) async {
       await montar(
         tester,
         CommentTile(comment: comentario(texto: 'palabra ' * 62)),
@@ -120,8 +122,9 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('una sola palabra larguísima no rompe el layout',
-        (tester) async {
+    testWidgets('una sola palabra larguísima no rompe el layout', (
+      tester,
+    ) async {
       // Caso real: alguien pega una URL sin espacios.
       await montar(
         tester,
@@ -132,20 +135,19 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('el menú de borrar solo existe cuando hay permiso',
-        (tester) async {
+    testWidgets('el menú de borrar solo existe cuando hay permiso', (
+      tester,
+    ) async {
       await montar(tester, CommentTile(comment: comentario()));
       expect(find.byIcon(Icons.more_horiz_rounded), findsNothing);
 
-      await montar(
-        tester,
-        CommentTile(comment: comentario(), onDelete: () {}),
-      );
+      await montar(tester, CommentTile(comment: comentario(), onDelete: () {}));
       expect(find.byIcon(Icons.more_horiz_rounded), findsOneWidget);
     });
 
-    testWidgets('borrar pide confirmación antes de llamar al callback',
-        (tester) async {
+    testWidgets('borrar pide confirmación antes de llamar al callback', (
+      tester,
+    ) async {
       var borrado = false;
       await montar(
         tester,
@@ -179,8 +181,9 @@ void main() {
       expect(borrado, isFalse);
     });
 
-    testWidgets('una cuenta sin verificar no muestra insignia ni rol',
-        (tester) async {
+    testWidgets('una cuenta sin verificar no muestra insignia ni rol', (
+      tester,
+    ) async {
       await montar(
         tester,
         CommentTile(
@@ -211,7 +214,7 @@ void main() {
       await montar(
         tester,
         CommentTile(comment: comentario(), onDelete: () {}),
-        tema: AppTheme.dark,
+        tema: AppTheme.dark(),
       );
 
       expect(find.text('Mariana Peña'), findsOneWidget);
@@ -220,7 +223,9 @@ void main() {
   });
 
   group('Separadores del hilo', () {
-    testWidgets('el divisor entre comentarios tiene ancho real', (tester) async {
+    testWidgets('el divisor entre comentarios tiene ancho real', (
+      tester,
+    ) async {
       // Un Divider dentro de una Column con alineación al centro puede
       // colapsar a cero de ancho y desaparecer sin lanzar ningún error: el
       // hilo se ve "pegado" y nadie sabe por qué.
@@ -254,8 +259,9 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('el esqueleto ocupa un alto parecido al contenido real',
-        (tester) async {
+    testWidgets('el esqueleto ocupa un alto parecido al contenido real', (
+      tester,
+    ) async {
       // Si el esqueleto fuera mucho más corto, la lista daría un salto al
       // llegar los datos — justo lo que un skeleton existe para evitar.
       await montar(tester, const CommentSkeleton());

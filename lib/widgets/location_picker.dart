@@ -86,7 +86,11 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                     width: 40,
                     height: 40,
                     alignment: Alignment.topCenter,
-                    child: const Icon(Icons.location_on, color: Colors.red, size: 40),
+                    child: const Icon(
+                      Icons.location_on,
+                      color: Colors.red,
+                      size: 40,
+                    ),
                   ),
                 ],
               ),
@@ -98,7 +102,9 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             bottom: 0,
             child: SafeArea(
               child: Container(
-                color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.95),
+                color: Theme.of(
+                  context,
+                ).colorScheme.surface.withValues(alpha: 0.95),
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [

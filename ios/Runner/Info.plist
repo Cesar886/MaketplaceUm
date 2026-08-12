@@ -49,6 +49,23 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Deep link de vuelta desde Safari tras conectar la cuenta de Mercado
+	     Pago (mercaditoum://payments/connected). El esquema debe coincidir
+	     con APP_DEEP_LINK_SCHEME del backend (.env) y con el intent-filter
+	     de android/app/src/main/AndroidManifest.xml. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>mx.edu.um.mercadito</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>mercaditoum</string>
+			</array>
+		</dict>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

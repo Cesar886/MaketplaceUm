@@ -69,7 +69,11 @@ class WantedPostCard extends StatelessWidget {
                   post.title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTypography.label(13.5, weight: FontWeight.w700),
+                  style: AppTypography.label(
+                    13.5,
+                    weight: FontWeight.w700,
+                    color: context.colors.ink,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(

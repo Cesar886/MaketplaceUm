@@ -73,7 +73,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        theme: AppTheme.light,
+        theme: AppTheme.light(),
         home: Scaffold(
           body: SingleChildScrollView(
             child: Padding(
@@ -148,7 +148,10 @@ void main() {
       ),
     );
 
-    expect(tester.widget<ProductCard>(find.byType(ProductCard).first).dense, isTrue);
+    expect(
+      tester.widget<ProductCard>(find.byType(ProductCard).first).dense,
+      isTrue,
+    );
     expect(find.text('Poco uso, funciona bien.'), findsNothing);
     expect(find.byType(ViewsCounter), findsNothing);
     // El precio y el nombre sí se quedan: son lo que decide si vale la pena

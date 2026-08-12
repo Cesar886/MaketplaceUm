@@ -172,12 +172,41 @@ function validatePaymentMethods(paymentMethods, { required = false } = {}) {
   return { value: unique };
 }
 
+// IDs de la paleta de acento. Es una lista cerrada y no un hex libre: el
+// cliente resuelve cada ID a cuatro colores (relleno, foreground y la
+// variante de línea de cada tema), todos verificados a contraste AA/3:1. Un
+// hex arbitrario del cliente se saltaría esa verificación y podría dejar
+// texto ilegible sobre el botón del perfil.
+//
+// Debe coincidir con AccentSwatch.opciones en lib/app_theme.dart.
+const VALID_ACCENT_IDS = [
+  'azul_niebla',
+  'salvia',
+  'durazno',
+  'lavanda',
+  'rosa_polvo',
+  'celeste',
+  'navy',
+  'wine',
+];
+
+/// `null` es válido y significa "volver al color de marca".
+function validateColorAcento(colorAcento) {
+  if (colorAcento === undefined || colorAcento === null) return null;
+  if (typeof colorAcento !== 'string' || !VALID_ACCENT_IDS.includes(colorAcento)) {
+    return 'Color de acento inválido';
+  }
+  return null;
+}
+
 module.exports = {
   MIN_NAME_LENGTH,
   MAX_NAME_LENGTH,
   MAX_DESCRIPTION_LENGTH,
   MIN_PASSWORD_LENGTH,
   VALID_PAYMENT_METHODS,
+  VALID_ACCENT_IDS,
+  validateColorAcento,
   validateName,
   validateEmail,
   validatePassword,

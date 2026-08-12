@@ -146,7 +146,7 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
               suffixIcon: IconButton(
                 icon: Icon(
                   _showFilters ? Icons.filter_list_off : Icons.tune_rounded,
-                  color: _hasActiveFilters ? AppColors.primary : null,
+                  color: _hasActiveFilters ? context.colors.primary : null,
                 ),
                 onPressed: () => setState(() => _showFilters = !_showFilters),
               ),
@@ -163,7 +163,7 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
                   color: _hasActiveFilters
-                      ? AppColors.primary.withValues(alpha: 0.4)
+                      ? context.colors.primary.withValues(alpha: 0.4)
                       : context.colors.border,
                 ),
               ),
@@ -172,10 +172,10 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                 children: [
                   Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.filter_alt_rounded,
                         size: 18,
-                        color: AppColors.primary,
+                        color: context.colors.primary,
                       ),
                       const SizedBox(width: 6),
                       Text(
@@ -330,8 +330,8 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                   value: _sortValue,
                   underline: const SizedBox(),
                   isDense: true,
-                  style: const TextStyle(
-                    color: AppColors.primary,
+                  style: TextStyle(
+                    color: context.colors.primary,
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
                   ),

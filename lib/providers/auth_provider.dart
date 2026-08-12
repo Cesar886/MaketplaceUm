@@ -32,7 +32,6 @@ extension UserTypeParse on String {
         return null;
     }
   }
-
 }
 
 /// Provider de autenticación que gestiona la sesión local del usuario.

@@ -9,10 +9,40 @@ import '../widgets/badges.dart';
 import '../widgets/comments_received_list.dart';
 import '../widgets/payment_methods.dart';
 import '../widgets/product_card.dart';
+import '../widgets/profile_banner.dart';
 import '../widgets/seller_profile_skeleton.dart';
 import '../widgets/seller_schedule_location_row.dart';
 import '../widgets/user_role.dart';
 import 'product_detail_screen.dart';
+
+/// El color del banner del perfil: el swatch del VENDEDOR, resuelto contra
+/// [brightness], nunca el de quien mira. Es una función y no un `context.
+/// colors.primary` inline a propósito — así queda testeable sin depender de
+/// qué tema tenga la app de quien abre la pantalla, que es justo el bug que
+/// se busca prevenir (que el banner "sangre" el acento del visitante hacia
+/// el perfil ajeno).
+Color colorDeBannerDeVendedor(Seller seller, Brightness brightness) =>
+    AppColorSet.of(AccentSwatch.porId(seller.colorAcento), brightness).primary;
+
+/// Mueve la publicación fijada al frente conservando el orden del resto.
+///
+/// Si el ID fijado no está en la lista, devuelve la lista intacta. El backend
+/// ya verifica que el producto exista y sea del vendedor, pero aquí además
+/// pudo haberse filtrado por no estar disponible (agotado, pausado), y en ese
+/// caso fijarlo no debe resucitarlo en el perfil.
+List<Product> ordenarConFijadoPrimero(
+  List<Product> productos,
+  String? fijadoId,
+) {
+  if (fijadoId == null) return productos;
+  final indice = productos.indexWhere((p) => p.id == fijadoId);
+  if (indice <= 0) return productos;
+  return [
+    productos[indice],
+    ...productos.sublist(0, indice),
+    ...productos.sublist(indice + 1),
+  ];
+}
 
 /// Perfil público de un vendedor/negocio: nombre, logo, rating y sus
 /// publicaciones activas. No requiere sesión — cualquiera puede verlo y
@@ -63,11 +93,13 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
         ApiService.getProducts(seller: widget.sellerId),
       ]);
       if (!mounted) return;
+      final seller = results[0] as Seller;
       setState(() {
-        _seller = results[0] as Seller;
-        _products = (results[1] as List<Product>)
-            .where((p) => p.isAvailable)
-            .toList();
+        _seller = seller;
+        _products = ordenarConFijadoPrimero(
+          (results[1] as List<Product>).where((p) => p.isAvailable).toList(),
+          seller.productoFijadoId,
+        );
         _loading = false;
       });
     } catch (_) {
@@ -154,6 +186,11 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
 
   Widget _buildContent(BuildContext context) {
     final seller = _seller!;
+    // El acento de ESTA pantalla es el del vendedor que se está viendo, no
+    // el de quien mira: el color es parte de su perfil, así que su tienda se
+    // ve igual desde cualquier teléfono.
+    final acento = AccentSwatch.porId(seller.colorAcento);
+    final acentoLinea = acento.line(Theme.of(context).brightness);
     final hasOperationalInfo =
         seller.businessHours.isNotEmpty ||
         seller.hasLocation ||
@@ -164,28 +201,55 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
         Center(
           child: Column(
             children: [
-              CircleAvatar(
-                radius: 40,
-                backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-                backgroundImage: seller.logoUrl != null
-                    ? NetworkImage(ApiService.baseUrl + seller.logoUrl!)
-                    : null,
-                child: seller.logoUrl == null
-                    ? Text(
-                        seller.avatarInitials,
-                        style: const TextStyle(
-                          color: AppColors.primaryDark,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 22,
+              SizedBox(
+                width: double.infinity,
+                child: ProfileBanner(
+                  color: colorDeBannerDeVendedor(
+                    seller,
+                    Theme.of(context).brightness,
+                  ),
+                  fadeTo: context.colors.background,
+                  child: Center(
+                    // Ver la nota del anillo en profile_screen: el borde va
+                    // en un contenedor exterior porque el CircleAvatar
+                    // recorta su hijo.
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: acentoLinea, width: 3),
+                      ),
+                      child: CircleAvatar(
+                        radius: 40,
+                        backgroundColor: context.colors.primary.withValues(
+                          alpha: 0.12,
                         ),
-                      )
-                    : null,
+                        backgroundImage: seller.logoUrl != null
+                            ? NetworkImage(ApiService.baseUrl + seller.logoUrl!)
+                            : null,
+                        child: seller.logoUrl == null
+                            ? Text(
+                                seller.avatarInitials,
+                                style: TextStyle(
+                                  color: context.colors.primary,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 22,
+                                ),
+                              )
+                            : null,
+                      ),
+                    ),
+                  ),
+                ),
               ),
               const SizedBox(height: 12),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(seller.name, style: AppTypography.heading(21)),
+                  Text(
+                    seller.name,
+                    style: AppTypography.heading(21, color: context.colors.ink),
+                  ),
                   if (seller.verified) ...[
                     const SizedBox(width: 6),
                     InsigniaVerificada.desdeTipo(
@@ -210,7 +274,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                 children: [
                   Icon(
                     Icons.star_rounded,
-                    color: context.colors.gold,
+                    color: context.colors.accent,
                     size: 18,
                   ),
                   const SizedBox(width: 3),
@@ -231,6 +295,22 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                   style: TextStyle(color: context.colors.muted),
                 ),
               ],
+              if (seller.respondeRapido || seller.rachaSemanas > 1) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    if (seller.respondeRapido) const RespondeRapidoBadge(),
+                    // Una sola ventana no es una racha: todo el que publicó
+                    // algo esta semana tendría el badge y dejaría de
+                    // significar constancia.
+                    if (seller.rachaSemanas > 1)
+                      RachaBadge(semanas: seller.rachaSemanas),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -241,7 +321,10 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
             if (seller.paymentMethods.isNotEmpty) const SizedBox(height: 20),
           ],
           if (seller.paymentMethods.isNotEmpty) ...[
-            Text('Métodos de pago aceptados', style: AppTypography.heading(16)),
+            Text(
+              'Métodos de pago aceptados',
+              style: AppTypography.heading(16, color: context.colors.ink),
+            ),
             const SizedBox(height: 10),
             PaymentMethodsChips(methods: seller.paymentMethods),
           ],
@@ -254,11 +337,17 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
         // antes de que hubiera pestañas.
         TabBar(
           controller: _tabs,
-          labelStyle: AppTypography.heading(14.5),
-          unselectedLabelStyle: AppTypography.body(14.5),
+          labelStyle: AppTypography.heading(14.5, color: context.colors.ink),
+          unselectedLabelStyle: AppTypography.body(
+            14.5,
+            color: context.colors.muted,
+          ),
           labelColor: context.colors.ink,
           unselectedLabelColor: context.colors.muted,
-          indicatorColor: context.colors.accent,
+          // El indicador SÍ comunica estado (qué pestaña está activa), así
+          // que usa la variante de línea del swatch y no el relleno: el
+          // pastel directo daría 1.4:1 sobre el fondo claro.
+          indicatorColor: acentoLinea,
           indicatorSize: TabBarIndicatorSize.label,
           indicatorWeight: 2,
           dividerColor: context.colors.border.withValues(alpha: 0.5),
@@ -276,12 +365,12 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
             padding: EdgeInsets.zero,
           )
         else if (_products.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
             child: Center(
               child: Text(
                 'Sin publicaciones activas',
-                style: TextStyle(color: AppColors.muted),
+                style: TextStyle(color: context.colors.muted),
               ),
             ),
           )
@@ -301,7 +390,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                 ),
                 itemBuilder: (context, index) {
                   final product = _products[index];
-                  return ProductCard(
+                  final card = ProductCard(
                     product: product,
                     heroEnabled: false,
                     onTap: () => Navigator.of(context).push(
@@ -309,6 +398,51 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                         builder: (_) => ProductDetailScreen(product: product),
                       ),
                     ),
+                  );
+                  if (product.id != seller.productoFijadoId) return card;
+                  // La etiqueta explica por qué esta publicación va primero;
+                  // sin ella el orden se lee como aleatorio. Va superpuesta
+                  // y no apilada encima: la celda del grid tiene proporción
+                  // fija, así que una fila extra le robaría altura a la
+                  // tarjeta y podría desbordarla.
+                  return Stack(
+                    children: [
+                      Positioned.fill(child: card),
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: context.colors.surface,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: context.colors.border),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.push_pin_rounded,
+                                size: 11,
+                                color: acentoLinea,
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                'Fijado',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: context.colors.ink,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   );
                 },
               );

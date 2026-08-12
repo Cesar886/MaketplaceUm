@@ -15,12 +15,11 @@ db.expireStaleOffers();
 // Cargar products, cart y ownListings desde SQLite
 let products = db.getAllProducts();
 
-let cart = db.getAllCartItems().map(row => ({
-  id: row.id,
-  productId: row.productId,
-  quantity: row.quantity,
-  meetingPoint: row.meetingPoint,
-}));
+// El carrito NO se cachea en memoria: es por usuario y se consulta siempre
+// contra SQLite desde routes/cart.js. La versión anterior lo mantenía como
+// un array global que `saveData()` volcaba con DELETE+INSERT, lo que además
+// de compartir el carrito entre usuarios borraba el de todos cada vez que
+// se guardaba cualquier producto.
 
 let ownListings = db.getAllListings().map(row => ({
   id: row.id,
@@ -66,12 +65,6 @@ function saveData() {
       db.insertProduct(p);
     }
 
-    // Cart
-    db.getDb().prepare('DELETE FROM cart').run();
-    for (const c of cart) {
-      db.addCartItem(c);
-    }
-
     // Listings
     db.getDb().prepare('DELETE FROM listings').run();
     for (const l of ownListings) {
@@ -89,4 +82,4 @@ function updateSellerField(sellerId, field, value) {
   sellers.push(...db.getSellers());
 }
 
-module.exports = { categories, sellers, products, cart, ownListings, highlightPlans, saveData, registerSeller, updateSellerField };
+module.exports = { categories, sellers, products, ownListings, highlightPlans, saveData, registerSeller, updateSellerField };

@@ -440,7 +440,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   mensaje:
                       'Modo desarrollo: el servidor no tiene configurado el '
                       'envío, tu código es $_codigoDev',
-                  color: context.colors.gold,
+                  color: context.colors.accent,
                   icono: Icons.build_rounded,
                 ),
                 const SizedBox(height: 16),

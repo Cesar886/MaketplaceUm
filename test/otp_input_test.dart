@@ -117,7 +117,9 @@ void main() {
     final llave = GlobalKey<OtpInputState>();
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: OtpInput(key: llave, onCompleto: (_) {})),
+        home: Scaffold(
+          body: OtpInput(key: llave, onCompleto: (_) {}),
+        ),
       ),
     );
 
