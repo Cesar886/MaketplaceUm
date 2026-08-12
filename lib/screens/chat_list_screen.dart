@@ -11,6 +11,7 @@ import '../services/api_service.dart';
 import '../services/chat_socket_service.dart';
 import 'chat_screen.dart';
 import 'main_shell.dart';
+import 'seller_profile_screen.dart';
 
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
@@ -242,23 +243,45 @@ class _ConversationTile extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: context.colors.primary.withValues(alpha: 0.12),
-                backgroundImage:
-                    otherUser?.logoUrl != null && otherUser!.logoUrl!.isNotEmpty
-                    ? NetworkImage('${ApiService.baseUrl}${otherUser.logoUrl}')
-                    : null,
-                child: otherUser?.logoUrl == null || otherUser!.logoUrl!.isEmpty
-                    ? Text(
-                        otherUser?.avatarInitials ?? '?',
-                        style: TextStyle(
-                          color: context.colors.accent,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                        ),
-                      )
-                    : null,
+              Material(
+                type: MaterialType.circle,
+                color: Colors.transparent,
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: otherUser != null && otherUser.id.isNotEmpty
+                      ? () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                SellerProfileScreen(sellerId: otherUser.id),
+                          ),
+                        )
+                      : null,
+                  child: CircleAvatar(
+                    radius: 24,
+                    backgroundColor: context.colors.primary.withValues(
+                      alpha: 0.12,
+                    ),
+                    backgroundImage:
+                        otherUser?.logoUrl != null &&
+                            otherUser!.logoUrl!.isNotEmpty
+                        ? NetworkImage(
+                            '${ApiService.baseUrl}${otherUser.logoUrl}',
+                          )
+                        : null,
+                    child:
+                        otherUser?.logoUrl == null ||
+                            otherUser!.logoUrl!.isEmpty
+                        ? Text(
+                            otherUser?.avatarInitials ?? '?',
+                            style: TextStyle(
+                              color: context.colors.accent,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                            ),
+                          )
+                        : null,
+                  ),
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(

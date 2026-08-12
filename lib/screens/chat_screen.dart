@@ -1249,8 +1249,6 @@ class _MessageBubble extends StatelessWidget {
                       style: TextStyle(
                         color: isDeleted
                             ? context.colors.muted
-                            : isMine
-                            ? Colors.white
                             : context.colors.ink,
                         fontSize: 15,
                         height: 1.3,
