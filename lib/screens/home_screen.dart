@@ -387,14 +387,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             // guardarlo en un campo de estado, y pedirle getNextBatch(n) a
             // esa misma instancia cada vez que el scroll dispare la
             // siguiente página — ver el doc de [FeedMixer] para el porqué.
+            //
+            // applyFeedLayoutRules es un paso de post-proceso sobre la lista
+            // ya mezclada: no toca el ranking ni la mezcla, solo corrige las
+            // posiciones de negocio que violan las reglas de presentación
+            // (nada de negocios en los primeros kFeedTopItemsNoBusiness
+            // ítems, ni dos negocios sin publicaciones entre medio). Vive
+            // acá afuera del mezclador para poder probarse en aislamiento
+            // — ver test/feed_layout_rules_test.dart.
             ..._buildFeedSlivers(
               context,
-              FeedMixer(
-                products: recent,
-                wantedPosts: _wantedPosts,
-                businesses: _businessesWithProducts,
-                seed: _feedSeed,
-              ).getAll(),
+              applyFeedLayoutRules(
+                FeedMixer(
+                  products: recent,
+                  wantedPosts: _wantedPosts,
+                  businesses: _businessesWithProducts,
+                  seed: _feedSeed,
+                ).getAll(),
+              ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 8)),
           ],
@@ -744,10 +754,14 @@ class _HeaderIconButton extends StatelessWidget {
     Widget content = Icon(icon, size: 20, color: Colors.white);
 
     if (badgeCount > 0) {
+      // Misma regla que el badge de la barra de navegación. Estos botones
+      // viven sobre el header pintado con `colors.primary`, así que el badge
+      // en `colors.primary` desaparecía dentro de él (1.00:1).
+      final contador = context.colors.contadorSobrePrimary;
       content = Badge.count(
         count: badgeCount,
-        backgroundColor: context.colors.primary,
-        textColor: context.colors.onPrimary,
+        backgroundColor: contador.fondo,
+        textColor: contador.texto,
         child: content,
       );
     }

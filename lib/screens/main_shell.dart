@@ -369,15 +369,18 @@ class _NavItem extends StatelessWidget {
     );
 
     if (badge != null && badge! > 0) {
-      // El badge iba en `colors.primary`, que es el color de ESTA barra:
-      // 1.00:1, un contador invisible. Va en el ladrillo semántico, que es lo
-      // único de la paleta que se lee tanto sobre la barra navy (3.4:1) como
-      // sobre un swatch pastel, y que además es el registro correcto para un
-      // "tienes algo pendiente".
+      // El contador va con el tema al revés del que se ve en la barra, pero
+      // con el swatch que la persona eligió — ver [contadorSobrePrimary], que
+      // es donde está el porqué y contra qué se verificó.
+      //
+      // Antes iba en `AppColors.danger`, un ladrillo que no participa de la
+      // paleta: se leía, pero era el único punto de la app donde el color no
+      // seguía la elección del usuario.
+      final contador = context.colors.contadorSobrePrimary;
       iconWidget = Badge.count(
         count: badge!,
-        backgroundColor: AppColors.danger,
-        textColor: Colors.white,
+        backgroundColor: contador.fondo,
+        textColor: contador.texto,
         child: iconWidget,
       );
     }
