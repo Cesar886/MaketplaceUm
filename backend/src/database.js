@@ -223,6 +223,51 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_product_comments_user
       ON product_comments(user_id, created_at DESC);
 
+    -- Preguntas públicas sobre una publicación, estilo marketplace: pregunta
+    -- cualquiera CON SESIÓN (no hace falta estar verificado, a diferencia de
+    -- los comentarios) y responde ÚNICAMENTE el dueño del producto.
+    --
+    -- seller_id va denormalizado del producto: el listado y el futuro panel
+    -- de "pendientes por responder" filtran por vendedor, y sin esta columna
+    -- cada consulta necesitaría un JOIN con products solo para eso. Se copia
+    -- al insertar y no se vuelve a tocar; si un producto cambiara de dueño
+    -- (hoy no pasa), las preguntas viejas seguirían apuntando a quien las
+    -- recibió, que es lo correcto para un hilo público ya publicado.
+    --
+    -- status es derivable de answer_text IS NULL, y se guarda igual porque
+    -- el índice de pendientes del vendedor lo necesita como columna real.
+    -- Para que no se desincronice, se escribe SIEMPRE en el mismo UPDATE
+    -- que la respuesta (ver answerProductQuestion) y nunca solo.
+    --
+    -- Sin FOREIGN KEY hacia sellers, por lo mismo que product_comments.
+    CREATE TABLE IF NOT EXISTS product_questions (
+      id            TEXT PRIMARY KEY,
+      product_id    TEXT NOT NULL,
+      seller_id     TEXT NOT NULL,
+      asked_by      TEXT NOT NULL,
+      question_text TEXT NOT NULL CHECK(length(question_text) >= 1 AND length(question_text) <= 500),
+      answer_text   TEXT DEFAULT NULL CHECK(answer_text IS NULL OR (length(answer_text) >= 1 AND length(answer_text) <= 500)),
+      status        TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'answered')),
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      answered_at   TEXT DEFAULT NULL,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    );
+
+    -- Listado del detalle y de "ver todas": mismo keyset que el hilo de
+    -- comentarios (created_at, id) DESC, resuelto como range scan puro.
+    CREATE INDEX IF NOT EXISTS idx_product_questions_product
+      ON product_questions(product_id, created_at DESC, id DESC);
+
+    -- "¿Qué me falta por responder?" — el chip de pendientes del dueño y el
+    -- panel que vendrá después. Arranca por seller_id, así que no puede
+    -- servirse del índice de arriba.
+    CREATE INDEX IF NOT EXISTS idx_product_questions_seller
+      ON product_questions(seller_id, status, created_at DESC);
+
+    -- Rate limit: "¿cuántas preguntas lleva ESTE usuario en ESTE producto?".
+    CREATE INDEX IF NOT EXISTS idx_product_questions_asked_by
+      ON product_questions(asked_by, product_id, created_at DESC);
+
     -- Interacciones de feed: registra vistas/favoritos/contactos por device_id
     -- (siempre presente) y opcionalmente por user_id (si hay sesión). Es la
     -- única fuente tanto para la popularidad de un producto (Fase 1) como
@@ -1213,6 +1258,20 @@ function runMigrations() {
     }
   }
 
+  // 34. Redes sociales del negocio (Facebook, Instagram, WhatsApp, TikTok,
+  //     X/Twitter): todas opcionales, solo tienen sentido cuando isBusiness.
+  //     whatsapp_number guarda dígitos crudos con código de país (no la URL
+  //     wa.me completa) para que la validación sea un regex simple y el
+  //     cliente arme el link de forma determinista: https://wa.me/<número>.
+  //     Ver docs/superpowers/specs/2026-08-08-business-social-links-design.md.
+  const sellerColsSocial = db.prepare("PRAGMA table_info('sellers')").all();
+  const socialColumns = ['facebook_url', 'instagram_url', 'whatsapp_number', 'tiktok_url', 'twitter_url'];
+  for (const column of socialColumns) {
+    if (!sellerColsSocial.some(c => c.name === column)) {
+      db.exec(`ALTER TABLE sellers ADD COLUMN ${column} TEXT`);
+    }
+  }
+
   console.log('🔄 Migración de schema completada');
 }
 
@@ -1432,6 +1491,11 @@ function rowToSeller(row) {
     // Mediana en minutos entre el mensaje de un comprador y la respuesta del
     // vendedor. null = todavía no hay respuestas suficientes para calcularla.
     medianResponseMinutes: row.median_response_minutes ?? null,
+    facebookUrl: row.facebook_url || null,
+    instagramUrl: row.instagram_url || null,
+    whatsappNumber: row.whatsapp_number || null,
+    tiktokUrl: row.tiktok_url || null,
+    twitterUrl: row.twitter_url || null,
   };
 }
 
@@ -2183,6 +2247,229 @@ function softDeleteProductComment(commentId, actorId) {
     WHERE id = ? AND deleted_at IS NULL
   `).run(actorId, commentId);
   return info.changes > 0;
+}
+
+// ─── Preguntas y respuestas de producto ─────────────────────────
+
+/** Tamaño de página del listado completo y tope que puede pedir el cliente. */
+const PREGUNTAS_POR_PAGINA = 20;
+const PREGUNTAS_MAX_POR_PAGINA = 50;
+
+/** Cuántas preguntas se muestran en el preview del detalle. */
+const PREGUNTAS_PREVIEW = 3;
+
+const SELECT_PREGUNTA = `
+  SELECT
+    q.id            AS id,
+    q.product_id    AS productId,
+    q.seller_id     AS sellerId,
+    q.asked_by      AS askedBy,
+    q.question_text AS questionText,
+    q.answer_text   AS answerText,
+    q.status        AS status,
+    strftime('%Y-%m-%dT%H:%M:%SZ', q.created_at)  AS createdAt,
+    strftime('%Y-%m-%dT%H:%M:%SZ', q.answered_at) AS answeredAt,
+    -- Formato crudo de SQLite: es contra ESTE valor que compara el WHERE de
+    -- la página siguiente, así que el cursor tiene que llevarlo tal cual.
+    q.created_at    AS createdAtRaw,
+    s.name              AS autorNombre,
+    s.avatarInitials    AS autorIniciales,
+    s.logoUrl           AS autorLogo,
+    s.major             AS autorMajor,
+    s.isBusiness        AS autorEsNegocio,
+    s.verified          AS autorVerificado,
+    s.tipo_cuenta       AS autorTipoCuenta,
+    s.carrera           AS autorCarrera,
+    s.tipo_verificacion AS autorTipoVerificacion
+  FROM product_questions q
+  LEFT JOIN sellers s ON s.id = q.asked_by
+`;
+
+/**
+ * Convierte una fila de [SELECT_PREGUNTA] a la forma que consume la app.
+ * Única función que arma esta forma, para que las cuatro rutas (crear,
+ * preview, listado y responder) devuelvan exactamente lo mismo.
+ *
+ * `author` trae solo lo que necesita la UI para pintar nombre e insignia —
+ * la misma proyección que los comentarios. Ni teléfono ni correo: esto es
+ * un hilo público.
+ */
+function rowToProductQuestion(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    productId: row.productId,
+    questionText: row.questionText,
+    answerText: row.answerText || null,
+    status: row.status,
+    createdAt: row.createdAt,
+    answeredAt: row.answeredAt || null,
+    author: {
+      id: row.askedBy,
+      // Una cuenta borrada deja su pregunta en pie pero sin autor que
+      // resolver; el hilo no debe romperse por eso.
+      name: row.autorNombre || 'Usuario',
+      avatarInitials: row.autorIniciales || '??',
+      logoUrl: row.autorLogo || null,
+      major: row.autorMajor || '',
+      isBusiness: !!row.autorEsNegocio,
+      verified: !!row.autorVerificado,
+      tipoCuenta: row.autorTipoCuenta || 'particular',
+      carrera: row.autorCarrera || null,
+      tipoVerificacion: row.autorTipoVerificacion || null,
+    },
+  };
+}
+
+function normalizarLimitePreguntas(limite) {
+  const n = parseInt(limite, 10);
+  if (!Number.isFinite(n) || n < 1) return PREGUNTAS_POR_PAGINA;
+  return Math.min(n, PREGUNTAS_MAX_POR_PAGINA);
+}
+
+function getProductQuestionById(id) {
+  return rowToProductQuestion(
+    db.prepare(`${SELECT_PREGUNTA} WHERE q.id = ?`).get(id),
+  );
+}
+
+/** Fila cruda, para las validaciones de permiso de la ruta (seller_id). */
+function getProductQuestionRow(id) {
+  return db.prepare('SELECT * FROM product_questions WHERE id = ?').get(id);
+}
+
+function createProductQuestion(id, productId, sellerId, askedBy, texto) {
+  db.prepare(`
+    INSERT INTO product_questions (id, product_id, seller_id, asked_by, question_text)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(id, productId, sellerId, askedBy, texto);
+  return getProductQuestionById(id);
+}
+
+/**
+ * Guarda (o corrige) la respuesta del vendedor.
+ *
+ * Una pregunta admite UNA respuesta: si ya había, se sobrescribe en vez de
+ * insertar otra fila, y `answered_at` se refresca — para el que preguntó,
+ * una respuesta editada es una respuesta nueva. `status` viaja en el mismo
+ * UPDATE, nunca por separado, para que no pueda quedar en 'pending' con
+ * texto de respuesta guardado.
+ *
+ * La ruta ya validó quién responde; aquí no se decide permiso.
+ */
+function answerProductQuestion(id, texto) {
+  db.prepare(`
+    UPDATE product_questions
+    SET answer_text = ?, status = 'answered', answered_at = datetime('now')
+    WHERE id = ?
+  `).run(texto, id);
+  return getProductQuestionById(id);
+}
+
+/**
+ * Página del listado completo, de la más reciente a la más antigua.
+ *
+ * Keyset y no OFFSET por lo mismo que en comentarios: llegan preguntas
+ * nuevas al tope mientras alguien pagina, y con OFFSET la página siguiente
+ * repetiría filas ya vistas.
+ *
+ * `filter: 'pending'` es lo que usa el chip "sin responder" del dueño. Va
+ * como filtro y no como orden mezclado a propósito: ordenar "pendientes
+ * primero" rompería el keyset, porque un cursor sobre created_at no puede
+ * saltar entre dos bloques con criterios de orden distintos sin repetir o
+ * saltarse filas.
+ */
+function getProductQuestions(productId, { limit, cursor, filter } = {}) {
+  const limite = normalizarLimitePreguntas(limit);
+  const desde = parseCursorComentario(cursor);
+
+  const condiciones = ['q.product_id = ?'];
+  const params = [productId];
+
+  if (filter === 'pending') condiciones.push("q.status = 'pending'");
+  if (desde) {
+    condiciones.push('(q.created_at < ? OR (q.created_at = ? AND q.id < ?))');
+    params.push(desde.createdAt, desde.createdAt, desde.id);
+  }
+
+  const { filas, nextCursor } = paginarComentarios(
+    `${SELECT_PREGUNTA} WHERE ${condiciones.join(' AND ')}
+     ORDER BY q.created_at DESC, q.id DESC`,
+    params,
+    limite,
+  );
+
+  return { questions: filas.map(rowToProductQuestion), nextCursor };
+}
+
+/**
+ * Las pocas preguntas que se asoman en el detalle del producto.
+ *
+ * Prioriza respondidas recientes y completa con pendientes si no llenan el
+ * cupo: una pregunta con respuesta informa a quien está mirando el producto
+ * (que es de quien es esta pantalla), mientras que una pendiente solo dice
+ * que alguien más preguntó. Dentro de cada grupo, lo más reciente primero,
+ * usando la fecha que le da sentido a cada uno: cuándo se respondió para
+ * las respondidas, cuándo se preguntó para las pendientes.
+ */
+function getProductQuestionsPreview(productId, { limit = PREGUNTAS_PREVIEW } = {}) {
+  const filas = db.prepare(`
+    ${SELECT_PREGUNTA}
+    WHERE q.product_id = ?
+    ORDER BY
+      CASE WHEN q.status = 'answered' THEN 0 ELSE 1 END,
+      COALESCE(q.answered_at, q.created_at) DESC,
+      q.id DESC
+    LIMIT ?
+  `).all(productId, limit);
+
+  return filas.map(rowToProductQuestion);
+}
+
+/** Total de preguntas de un producto (el "Ver las N preguntas"). */
+function countProductQuestions(productId) {
+  const row = db.prepare(
+    'SELECT COUNT(*) AS total FROM product_questions WHERE product_id = ?',
+  ).get(productId);
+  return row ? row.total : 0;
+}
+
+/** Cuántas están sin responder — el chip del dueño. */
+function countPendingProductQuestions(productId) {
+  const row = db.prepare(
+    "SELECT COUNT(*) AS total FROM product_questions WHERE product_id = ? AND status = 'pending'",
+  ).get(productId);
+  return row ? row.total : 0;
+}
+
+/**
+ * Segundos desde la última pregunta de [userId] en cualquier producto, o
+ * null si nunca ha preguntado. Frena el tecleo compulsivo en varios hilos.
+ *
+ * El cálculo va entero dentro de SQLite por lo mismo que en comentarios:
+ * created_at es UTC y el proceso corre en horario de Monterrey, así que
+ * restarlo contra un Date de Node daría seis horas de más.
+ */
+function segundosDesdeUltimaPregunta(userId) {
+  const row = db.prepare(`
+    SELECT CAST((julianday('now') - julianday(MAX(created_at))) * 86400.0 AS INTEGER) AS segundos
+    FROM product_questions WHERE asked_by = ?
+  `).get(userId);
+  return row && row.segundos != null ? row.segundos : null;
+}
+
+/**
+ * Cuántas preguntas lleva [userId] en [productId] dentro de las últimas
+ * [horas]. Es el límite que de verdad importa: el daño no es preguntar
+ * mucho en la app, es inundar UNA publicación ajena.
+ */
+function contarPreguntasRecientes(userId, productId, horas) {
+  const row = db.prepare(`
+    SELECT COUNT(*) AS total FROM product_questions
+    WHERE asked_by = ? AND product_id = ?
+      AND created_at >= datetime('now', '-' || ? || ' hours')
+  `).get(userId, productId, horas);
+  return row ? row.total : 0;
 }
 
 // ─── Category Interests ─────────────────────────────────────────
@@ -3073,6 +3360,20 @@ module.exports = {
   countCommentsReceivedBySeller,
   segundosDesdeUltimoComentario,
   softDeleteProductComment,
+  // Preguntas y respuestas
+  PREGUNTAS_POR_PAGINA,
+  PREGUNTAS_MAX_POR_PAGINA,
+  PREGUNTAS_PREVIEW,
+  createProductQuestion,
+  answerProductQuestion,
+  getProductQuestions,
+  getProductQuestionsPreview,
+  getProductQuestionById,
+  getProductQuestionRow,
+  countProductQuestions,
+  countPendingProductQuestions,
+  segundosDesdeUltimaPregunta,
+  contarPreguntasRecientes,
   // Category Interests
   addCategoryInterest,
   removeCategoryInterest,

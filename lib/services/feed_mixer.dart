@@ -38,6 +38,98 @@ const Map<FeedItemType, double> _baseWeights = {
   FeedItemType.business: 0.20,
 };
 
+// ─── Reglas de presentación (post-mezcla) ──────────────────────────────
+// Se aplican DESPUÉS de que [FeedMixer] ya decidió el intercalado, sobre la
+// lista final, vía [applyFeedLayoutRules]. No tocan el ranking ni la mezcla:
+// solo corrigen las posiciones que violan una regla, moviendo el negocio
+// hacia adelante. Ajustar el espaciado de negocios se hace acá, no en
+// _blockRanges/_baseWeights.
+
+/// Ningún negocio puede aparecer dentro de los primeros N ítems del feed.
+/// La unidad es ÍTEM, no fila de grid: la cantidad de columnas se decide en
+/// tiempo de layout (2 en teléfono, 3 en ≥720px — ver `_buildFeedSlivers`),
+/// así que una función pura no puede razonar en filas. En el grid de 2
+/// columnas del teléfono, 8 ítems ≈ las primeras 4 filas.
+const int kFeedTopItemsNoBusiness = 8;
+
+/// Mínimo de publicaciones normales (producto o "se busca") que deben
+/// separar dos negocios. 2 ítems ≈ 1 fila del grid de 2 columnas.
+const int kMinGapEntreNegocios = 2;
+
+/// Aplica las reglas de presentación sobre la lista YA mezclada por
+/// [FeedMixer]:
+///
+/// 1. Ningún negocio dentro de los primeros [topItemsNoBusiness] ítems.
+/// 2. Al menos [minGapEntreNegocios] publicaciones normales entre dos
+///    negocios.
+///
+/// Un negocio en posición prohibida **no se elimina**: se difiere hasta la
+/// primera posición legal a partir de la suya, y el resto de los ítems sube
+/// una posición. Nada más se reordena.
+///
+/// Propiedades garantizadas (y cubiertas por
+/// `test/feed_layout_rules_test.dart`):
+///
+/// - **Es identidad sobre feeds que ya cumplen.** Un negocio que ya estaba
+///   en posición legal se recoloca en su índice exacto, así que la salida es
+///   idéntica a la entrada — el orden de personalización se preserva entero.
+/// - **Cada negocio cae en la primera posición legal ≥ su posición
+///   original.** Nunca se adelanta ni se manda al final del feed.
+/// - **El orden relativo de los no-negocios nunca cambia**, por
+///   construcción: solo se les agrega a `result` en el orden del bucle.
+///
+/// `wanted` cuenta como publicación normal para ambas reglas: llena la zona
+/// de exclusión y satisface el espaciado. Solo `business` es especial.
+///
+/// **Cola best-effort:** si al agotarse la lista quedan negocios pendientes,
+/// ya no hay publicaciones normales con las cuales separarlos. Se anexan al
+/// final en su orden relativo original — no se descarta contenido — por lo
+/// que la regla 2 puede no cumplirse entre los negocios de esa cola. La
+/// invariante estricta rige hasta el último ítem normal.
+///
+/// **Pendiente para scroll infinito:** aplicar esta función por batch
+/// reiniciaría el estado de espaciado en cada página, y un negocio al final
+/// de la página 1 podría quedar pegado a otro al inicio de la página 2. La
+/// corrección sería que la función acepte y devuelva ese estado de arrastre
+/// (última posición de negocio + negocios pendientes). Hoy no hace falta:
+/// el home consume todo de un tirón con `getAll()` — ver el doc de
+/// [FeedMixer] sobre paginación.
+List<FeedItem> applyFeedLayoutRules(
+  List<FeedItem> items, {
+  int topItemsNoBusiness = kFeedTopItemsNoBusiness,
+  int minGapEntreNegocios = kMinGapEntreNegocios,
+}) {
+  final result = <FeedItem>[];
+  // Negocios diferidos esperando posición legal, en su orden relativo
+  // original (FIFO): el que venía antes en el ranking se coloca antes.
+  final pending = <FeedItem>[];
+  // Índice EN result del último negocio ya emitido (-1 si ninguno).
+  var lastBusinessPos = -1;
+
+  bool canPlaceBusinessNow() {
+    if (result.length < topItemsNoBusiness) return false;
+    if (lastBusinessPos < 0) return true;
+    return result.length - lastBusinessPos - 1 >= minGapEntreNegocios;
+  }
+
+  for (final item in items) {
+    if (item.type == FeedItemType.business) {
+      pending.add(item);
+      continue;
+    }
+    // Antes de cada publicación normal se intenta colocar UN negocio
+    // pendiente. Uno solo: colocar dos seguidos violaría el espaciado.
+    if (pending.isNotEmpty && canPlaceBusinessNow()) {
+      lastBusinessPos = result.length;
+      result.add(pending.removeAt(0));
+    }
+    result.add(item);
+  }
+
+  result.addAll(pending);
+  return result;
+}
+
 /// Controlador con estado que decide, de una sola vez y con una sola
 /// semilla, la secuencia COMPLETA de mezcla (orden e intercalado de
 /// bloques) de productos, búsquedas ("se busca") y negocios para una

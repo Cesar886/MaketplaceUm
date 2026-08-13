@@ -50,6 +50,7 @@ const routes = [
   require('./routes/verificacion'),
   require('./routes/public'),
   require('./routes/comments'),
+  require('./routes/questions'),
   require('./routes/search'),
   require('./routes/clientErrors'),
   // Pagos con Mercado Pago (split payments). Aislado en su propia carpeta

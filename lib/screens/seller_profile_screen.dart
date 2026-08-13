@@ -12,6 +12,7 @@ import '../widgets/product_card.dart';
 import '../widgets/profile_banner.dart';
 import '../widgets/seller_profile_skeleton.dart';
 import '../widgets/seller_schedule_location_row.dart';
+import '../widgets/social_links_row.dart';
 import '../widgets/user_role.dart';
 import 'product_detail_screen.dart';
 
@@ -331,6 +332,8 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
             ),
           ),
         ),
+        Center(child: SocialLinksRow(seller: seller)),
+        if (buildSocialLinkEntries(seller).isNotEmpty) const SizedBox(height: 16),
         if (hasOperationalInfo) ...[
           const SizedBox(height: 28),
           if (seller.businessHours.isNotEmpty || seller.hasLocation) ...[

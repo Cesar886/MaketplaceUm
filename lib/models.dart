@@ -171,6 +171,11 @@ class Seller {
     this.productoFijadoId,
     this.respondeRapido = false,
     this.rachaSemanas = 0,
+    this.facebookUrl,
+    this.instagramUrl,
+    this.whatsappNumber,
+    this.tiktokUrl,
+    this.twitterUrl,
   });
 
   factory Seller.fromJson(Map<String, dynamic> json) {
@@ -207,6 +212,11 @@ class Seller {
       // simplemente no muestre los badges, en vez de reventar.
       respondeRapido: json['respondeRapido'] as bool? ?? false,
       rachaSemanas: (json['rachaSemanas'] as num?)?.toInt() ?? 0,
+      facebookUrl: json['facebookUrl'] as String?,
+      instagramUrl: json['instagramUrl'] as String?,
+      whatsappNumber: json['whatsappNumber'] as String?,
+      tiktokUrl: json['tiktokUrl'] as String?,
+      twitterUrl: json['twitterUrl'] as String?,
     );
   }
 
@@ -231,6 +241,23 @@ class Seller {
   /// comparten [tipoCuenta] 'estudiante' y se distinguen por el dominio de
   /// correo con el que se verificaron.
   final String? tipoVerificacion;
+
+  /// Link de Facebook del negocio. Solo tiene valor cuando [isBusiness].
+  final String? facebookUrl;
+
+  /// Link de Instagram del negocio. Solo tiene valor cuando [isBusiness].
+  final String? instagramUrl;
+
+  /// Número de WhatsApp del negocio: dígitos con código de país, sin '+' ni
+  /// espacios (ej. "5215512345678"). El link se arma como
+  /// https://wa.me/<whatsappNumber>. Solo tiene valor cuando [isBusiness].
+  final String? whatsappNumber;
+
+  /// Link de TikTok del negocio. Solo tiene valor cuando [isBusiness].
+  final String? tiktokUrl;
+
+  /// Link de X/Twitter del negocio. Solo tiene valor cuando [isBusiness].
+  final String? twitterUrl;
 
   /// 'estudiante' | 'negocio' | 'particular'. Determina el color y la
   /// etiqueta de [InsigniaVerificada]. 'particular' es lo que la UI llama
@@ -1197,6 +1224,106 @@ class ProductCommentPage {
   final int total;
 
   /// Null cuando ya no hay más páginas.
+  final String? nextCursor;
+
+  bool get hasMore => nextCursor != null;
+}
+
+/// Una pregunta pública sobre una publicación, con la respuesta del vendedor
+/// si ya la dio.
+///
+/// Pregunta y respuesta viven en la misma fila porque son un solo hilo de dos
+/// turnos: cada pregunta admite UNA respuesta, la del dueño. Por eso no hay
+/// una lista de respuestas ni un autor por respuesta — siempre es el mismo, y
+/// quién es se sabe desde la publicación.
+class ProductQuestion {
+  const ProductQuestion({
+    required this.id,
+    required this.productId,
+    required this.questionText,
+    required this.createdAt,
+    required this.author,
+    this.answerText,
+    this.answeredAt,
+    this.status = 'pending',
+  });
+
+  factory ProductQuestion.fromJson(Map<String, dynamic> json) {
+    final respuesta = json['answerText'] as String?;
+    return ProductQuestion(
+      id: json['id'] as String? ?? '',
+      productId: json['productId'] as String? ?? '',
+      questionText: json['questionText'] as String? ?? '',
+      answerText: (respuesta != null && respuesta.isNotEmpty) ? respuesta : null,
+      // El estado se lee del backend, que es quien manda, pero se cae a
+      // deducirlo del texto si llegara vacío: una respuesta visible con
+      // badge de "pendiente" al lado es peor que no tener el campo.
+      status: json['status'] as String? ??
+          ((respuesta != null && respuesta.isNotEmpty) ? 'answered' : 'pending'),
+      createdAt: _parseUtc(json['createdAt'] as String?),
+      answeredAt: json['answeredAt'] == null
+          ? null
+          : _parseUtc(json['answeredAt'] as String?),
+      author: Seller.fromJson(
+        (json['author'] as Map<String, dynamic>?) ?? const {},
+      ),
+    );
+  }
+
+  /// Mismo criterio que [ProductComment._parseUtc]: el backend emite UTC con
+  /// 'Z' y aquí se pasa a hora local.
+  static DateTime _parseUtc(String? raw) => ProductComment._parseUtc(raw);
+
+  final String id;
+  final String productId;
+  final String questionText;
+
+  /// Null mientras el vendedor no responde.
+  final String? answerText;
+
+  /// 'pending' | 'answered'. Ambos son públicos: que una pregunta lleve días
+  /// sin respuesta también es información sobre la publicación.
+  final String status;
+
+  final DateTime createdAt;
+  final DateTime? answeredAt;
+
+  /// Quien preguntó. Solo lo mínimo para pintar nombre e insignia.
+  final Seller author;
+
+  bool get isAnswered => status == 'answered' && answerText != null;
+}
+
+/// Una página de preguntas: las filas, el cursor de la siguiente y los dos
+/// contadores que la UI necesita sin tener que pedir el listado completo.
+class ProductQuestionPage {
+  const ProductQuestionPage({
+    required this.questions,
+    required this.total,
+    required this.pendingCount,
+    this.nextCursor,
+  });
+
+  factory ProductQuestionPage.fromJson(Map<String, dynamic> json) {
+    return ProductQuestionPage(
+      questions: ((json['questions'] as List<dynamic>?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(ProductQuestion.fromJson)
+          .toList(),
+      total: (json['total'] as num?)?.toInt() ?? 0,
+      pendingCount: (json['pendingCount'] as num?)?.toInt() ?? 0,
+      nextCursor: json['nextCursor'] as String?,
+    );
+  }
+
+  final List<ProductQuestion> questions;
+
+  /// Total de preguntas de la publicación, no el tamaño de esta página.
+  final int total;
+
+  /// Cuántas siguen sin responder — el chip del dueño.
+  final int pendingCount;
+
   final String? nextCursor;
 
   bool get hasMore => nextCursor != null;

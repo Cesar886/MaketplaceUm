@@ -14,6 +14,8 @@ const {
   validateLocation,
   validatePaymentMethods,
   validateColorAcento,
+  validateSocialUrl,
+  validateWhatsappNumber,
 } = require('../validation/sellerProfile');
 const { validarMetodosPermitidos } = require('../payments/methods');
 
@@ -87,7 +89,11 @@ function register(app) {
     const seller = sellers.find(s => s.id === req.params.id);
     if (!seller) return res.status(404).json({ error: 'Vendedor no encontrado' });
 
-    const { name, phone, businessDescription, businessCategory, businessHours, locationLat, locationLng, paymentMethods, colorAcento, productoFijadoId } = req.body;
+    const {
+      name, phone, businessDescription, businessCategory, businessHours,
+      locationLat, locationLng, paymentMethods, colorAcento, productoFijadoId,
+      facebookUrl, instagramUrl, whatsappNumber, tiktokUrl, twitterUrl,
+    } = req.body;
 
     // ─── Validar todo antes de escribir nada (evita estado a medias) ──
     if (name !== undefined) {
@@ -141,6 +147,7 @@ function register(app) {
 
     let normalizedHours;
     let normalizedLocation;
+    let normalizedFacebook, normalizedInstagram, normalizedTiktok, normalizedTwitter, normalizedWhatsapp;
     // La ubicación de perfil (Nivel 1) es exclusiva de negocios, igual que
     // horario/descripción/categoría: un usuario normal no puede guardarla
     // mandando estos campos manualmente al endpoint.
@@ -159,6 +166,31 @@ function register(app) {
         const locationResult = validateLocation(locationLat, locationLng);
         if (locationResult.error) return res.status(400).json({ error: locationResult.error });
         normalizedLocation = locationResult.value; // { lat, lng } o null (borra la ubicación)
+      }
+      if (facebookUrl !== undefined) {
+        const r = validateSocialUrl('facebook', facebookUrl);
+        if (r.error) return res.status(400).json({ error: r.error });
+        normalizedFacebook = r.value;
+      }
+      if (instagramUrl !== undefined) {
+        const r = validateSocialUrl('instagram', instagramUrl);
+        if (r.error) return res.status(400).json({ error: r.error });
+        normalizedInstagram = r.value;
+      }
+      if (tiktokUrl !== undefined) {
+        const r = validateSocialUrl('tiktok', tiktokUrl);
+        if (r.error) return res.status(400).json({ error: r.error });
+        normalizedTiktok = r.value;
+      }
+      if (twitterUrl !== undefined) {
+        const r = validateSocialUrl('twitter', twitterUrl);
+        if (r.error) return res.status(400).json({ error: r.error });
+        normalizedTwitter = r.value;
+      }
+      if (whatsappNumber !== undefined) {
+        const r = validateWhatsappNumber(whatsappNumber);
+        if (r.error) return res.status(400).json({ error: r.error });
+        normalizedWhatsapp = r.value;
       }
     }
 
@@ -195,6 +227,21 @@ function register(app) {
       if (normalizedLocation !== undefined) {
         updateSellerField(seller.id, 'location_lat', normalizedLocation ? normalizedLocation.lat : null);
         updateSellerField(seller.id, 'location_lng', normalizedLocation ? normalizedLocation.lng : null);
+      }
+      if (normalizedFacebook !== undefined) {
+        updateSellerField(seller.id, 'facebook_url', normalizedFacebook);
+      }
+      if (normalizedInstagram !== undefined) {
+        updateSellerField(seller.id, 'instagram_url', normalizedInstagram);
+      }
+      if (normalizedTiktok !== undefined) {
+        updateSellerField(seller.id, 'tiktok_url', normalizedTiktok);
+      }
+      if (normalizedTwitter !== undefined) {
+        updateSellerField(seller.id, 'twitter_url', normalizedTwitter);
+      }
+      if (normalizedWhatsapp !== undefined) {
+        updateSellerField(seller.id, 'whatsapp_number', normalizedWhatsapp);
       }
     }
 

@@ -8,6 +8,7 @@ import '../services/api_service.dart';
 import 'auth/login_screen.dart';
 import 'chat_screen.dart';
 import 'product_detail_screen.dart';
+import 'product_questions_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -203,7 +204,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
         );
       }
-    } else if (notif.type == 'new_product') {
+    } else if (notif.type == 'new_product' || notif.type == 'product_comment') {
       final productId = notif.data['productId'] as String?;
       if (productId != null) {
         try {
@@ -211,7 +212,32 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           if (!mounted) return;
           Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder: (_) => ProductDetailScreen(product: product),
+              builder: (_) => ProductDetailScreen(
+                product: product,
+                // Un aviso de comentario aterriza en el hilo, igual que al
+                // tocar la push. Antes esta rama no existía y tocar la
+                // notificación desde aquí no hacía nada.
+                irAComentarios: notif.type == 'product_comment',
+              ),
+            ),
+          );
+        } catch (_) {}
+      }
+    } else if (notif.type == 'product_question' ||
+        notif.type == 'question_answered') {
+      final productId = notif.data['productId'] as String?;
+      if (productId != null) {
+        try {
+          final product = await ApiService.getProduct(productId);
+          if (!mounted) return;
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => ProductQuestionsScreen(
+                productId: product.id,
+                productOwnerId: product.seller.id,
+                sellerName: product.seller.name,
+                destacarPreguntaId: notif.data['questionId'] as String?,
+              ),
             ),
           );
         } catch (_) {}
@@ -233,6 +259,11 @@ class _NotificationTile extends StatelessWidget {
       case 'new_chat':
       case 'new_message':
         return Icons.chat_rounded;
+      case 'product_comment':
+        return Icons.mode_comment_outlined;
+      case 'product_question':
+      case 'question_answered':
+        return Icons.forum_outlined;
       default:
         return Icons.notifications_rounded;
     }

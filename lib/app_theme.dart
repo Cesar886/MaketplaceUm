@@ -94,6 +94,8 @@ class AppColors {
 /// oscuro.
 class AppColorSet extends ThemeExtension<AppColorSet> {
   const AppColorSet({
+    required this.swatch,
+    required this.brightness,
     required this.background,
     required this.surface,
     required this.surfaceElevated,
@@ -123,6 +125,8 @@ class AppColorSet extends ThemeExtension<AppColorSet> {
     final oscuro = brightness == Brightness.dark;
     final base = oscuro ? AppColors.darkSurface : AppColors.surface;
     return AppColorSet(
+      swatch: swatch,
+      brightness: brightness,
       background: oscuro ? AppColors.darkBackground : AppColors.background,
       surface: base,
       surfaceElevated: oscuro
@@ -157,6 +161,49 @@ class AppColorSet extends ThemeExtension<AppColorSet> {
       neutralBg: oscuro ? AppColors.darkSurfaceMuted : AppColors.neutralBg,
       danger: oscuro ? AppColors.dangerOnDark : AppColors.danger,
     );
+  }
+
+  /// Swatch y tema con los que se construyó esta paleta. No se pintan: se
+  /// guardan para poder reconstruirla, que es lo que necesita [inverted].
+  final AccentSwatch swatch;
+  final Brightness brightness;
+
+  /// La MISMA paleta con el tema al revés: el swatch elegido se respeta, solo
+  /// se voltea la luminosidad.
+  AppColorSet get inverted => AppColorSet.of(
+    swatch,
+    brightness == Brightness.dark ? Brightness.light : Brightness.dark,
+  );
+
+  /// Par (fondo, texto) para un contador que se pinta ENCIMA de [primary]:
+  /// el badge de notificaciones sobre la barra de navegación y sobre los
+  /// botones del header.
+  ///
+  /// La idea es "el tema al revés": si la interfaz va en claro el contador va
+  /// en oscuro y viceversa, para que se separe por LUMINOSIDAD (que el ojo
+  /// resuelve antes que el tono) sin dejar de llevar el color que la persona
+  /// eligió. Por eso el fondo es [accentTint] y no un rojo genérico.
+  ///
+  /// Pero la paleta contraria NO se elige por [brightness], sino por lo
+  /// oscura que sea la barra de verdad. La diferencia importa en `navy` y
+  /// `wine`, los dos swatches sobrios: su relleno es oscuro en AMBOS temas,
+  /// así que "invertir el tema" ahí no voltea nada — con navy en claro el
+  /// badge daba 1.07:1 contra su propia barra, invisible. Mirando la
+  /// luminosidad real del relleno el resultado coincide con la inversión de
+  /// tema en los seis pasteles (donde la barra sí sigue al tema) y sigue
+  /// siendo legible en los dos sobrios.
+  ///
+  /// Verificado en `test/inverted_badge_test.dart` sobre los 8 swatches × 2
+  /// temas: mínimo 3.77:1 de silueta contra la barra y 7.81:1 de texto.
+  ({Color fondo, Color texto}) get contadorSobrePrimary {
+    final barraOscura = primary.computeLuminance() < 0.5;
+    final contraria = AppColorSet.of(
+      swatch,
+      barraOscura ? Brightness.light : Brightness.dark,
+    );
+    // `ink` sobre `accentTint` es la regla que ya fija la paleta para
+    // cualquier chip tintado: el texto nunca va en el color.
+    return (fondo: contraria.accentTint, texto: contraria.ink);
   }
 
   final Color background;
@@ -205,6 +252,8 @@ class AppColorSet extends ThemeExtension<AppColorSet> {
 
   @override
   AppColorSet copyWith({
+    AccentSwatch? swatch,
+    Brightness? brightness,
     Color? background,
     Color? surface,
     Color? surfaceElevated,
@@ -224,6 +273,8 @@ class AppColorSet extends ThemeExtension<AppColorSet> {
     Color? danger,
   }) {
     return AppColorSet(
+      swatch: swatch ?? this.swatch,
+      brightness: brightness ?? this.brightness,
       background: background ?? this.background,
       surface: surface ?? this.surface,
       surfaceElevated: surfaceElevated ?? this.surfaceElevated,
@@ -248,6 +299,13 @@ class AppColorSet extends ThemeExtension<AppColorSet> {
   AppColorSet lerp(ThemeExtension<AppColorSet>? other, double t) {
     if (other is! AppColorSet) return this;
     return AppColorSet(
+      // Ni el swatch ni el brightness se interpolan (son discretos): saltan a
+      // mitad de la transición, igual que hace Flutter con cualquier campo no
+      // numérico de un ThemeExtension. Durante el cruce el `inverted` de un
+      // frame intermedio puede no coincidir con los colores ya mezclados; es
+      // aceptable porque solo dura la animación de cambio de tema.
+      swatch: t < 0.5 ? swatch : other.swatch,
+      brightness: t < 0.5 ? brightness : other.brightness,
       background: Color.lerp(background, other.background, t)!,
       surface: Color.lerp(surface, other.surface, t)!,
       surfaceElevated: Color.lerp(surfaceElevated, other.surfaceElevated, t)!,

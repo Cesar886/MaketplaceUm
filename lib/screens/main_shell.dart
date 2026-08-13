@@ -14,6 +14,7 @@ import 'home_screen.dart';
 import 'notifications_screen.dart';
 import 'offers_screen.dart';
 import 'product_detail_screen.dart';
+import 'product_questions_screen.dart';
 import 'profile_screen.dart';
 import 'publish_product_screen.dart';
 import 'wanted_post_screen.dart';
@@ -90,6 +91,13 @@ class MainShellState extends State<MainShell> {
       // hilo. Quien toca esta notificación viene a leer el comentario, no a
       // revisar el producto desde arriba.
       _openProduct(productId, irAComentarios: true);
+    } else if ((type == 'product_question' || type == 'question_answered') &&
+        productId != null) {
+      // Preguntas: se abre directo la pantalla del hilo, resaltando la
+      // pregunta concreta. No se pasa por el detalle porque quien toca esto
+      // viene a responder (o a leer la respuesta) una pregunta puntual, y
+      // dejarlo en el detalle lo obligaría a ir a buscarla.
+      _openQuestions(productId, data['questionId'] as String?);
     }
   }
 
@@ -142,6 +150,26 @@ class MainShellState extends State<MainShell> {
           builder: (_) => ProductDetailScreen(
             product: product,
             irAComentarios: irAComentarios,
+          ),
+        ),
+      );
+    } catch (_) {}
+  }
+
+  /// Abre el hilo de preguntas de una publicación, opcionalmente anclado a
+  /// una pregunta concreta. Necesita el producto para saber quién es el
+  /// dueño (de eso depende si se puede responder ahí mismo) y su nombre.
+  Future<void> _openQuestions(String productId, String? questionId) async {
+    try {
+      final product = await ApiService.getProduct(productId);
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ProductQuestionsScreen(
+            productId: product.id,
+            productOwnerId: product.seller.id,
+            sellerName: product.seller.name,
+            destacarPreguntaId: questionId,
           ),
         ),
       );
@@ -341,15 +369,18 @@ class _NavItem extends StatelessWidget {
     );
 
     if (badge != null && badge! > 0) {
-      // El badge iba en `colors.primary`, que es el color de ESTA barra:
-      // 1.00:1, un contador invisible. Va en el ladrillo semántico, que es lo
-      // único de la paleta que se lee tanto sobre la barra navy (3.4:1) como
-      // sobre un swatch pastel, y que además es el registro correcto para un
-      // "tienes algo pendiente".
+      // El contador va con el tema al revés del que se ve en la barra, pero
+      // con el swatch que la persona eligió — ver [contadorSobrePrimary], que
+      // es donde está el porqué y contra qué se verificó.
+      //
+      // Antes iba en `AppColors.danger`, un ladrillo que no participa de la
+      // paleta: se leía, pero era el único punto de la app donde el color no
+      // seguía la elección del usuario.
+      final contador = context.colors.contadorSobrePrimary;
       iconWidget = Badge.count(
         count: badge!,
-        backgroundColor: AppColors.danger,
-        textColor: Colors.white,
+        backgroundColor: contador.fondo,
+        textColor: contador.texto,
         child: iconWidget,
       );
     }

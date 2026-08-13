@@ -20,6 +20,7 @@ import '../widgets/badges.dart';
 import '../widgets/payment_methods.dart';
 import '../widgets/product_carousel_section.dart';
 import '../widgets/product_comments_section.dart';
+import '../widgets/product_questions_section.dart';
 import '../widgets/product_image_carousel.dart';
 import '../widgets/price_tag.dart';
 import '../widgets/user_role.dart';
@@ -634,6 +635,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                     otherProducts: _otrosDelVendedor,
                     onProductTap: _abrirPublicacion,
                   ),
+                  // ─── Preguntas y respuestas ─────────────────────────
+                  // No aplica a "se busca": ahí no hay un vendedor a quien
+                  // preguntarle por un producto, el post ES la pregunta.
+                  if (!product.isWantedPost) ...[
+                    const SizedBox(height: 24),
+                    ProductQuestionsSection(
+                      productId: product.id,
+                      productOwnerId: product.seller.id,
+                      sellerName: product.seller.name,
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   // ─── Compartir ──────────────────────────────────────
                   const _SectionHeader(
