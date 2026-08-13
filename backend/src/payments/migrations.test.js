@@ -342,3 +342,76 @@ test('M5 · a quien no tenía transferencia no se le toca nada', () => {
     'null significa "hereda del perfil" y no debe convertirse en un array',
   );
 });
+
+// ─── M6: order_items sobrevive a la recreación de `orders` ───────
+//
+// Regresión de un 500 en producción al crear cualquier orden:
+//
+//   SqliteError: no such table: main.orders_legacy
+//     at Object.crearOrden (src/payments/store.js)
+//
+// La migración de `orders` la recrea con ALTER TABLE ... RENAME TO
+// orders_legacy. En SQLite moderno ese RENAME no solo renombra la tabla:
+// reescribe las claves foráneas que apuntan a ella DESDE OTRAS TABLAS. Así
+// que `order_items.order_id` pasaba a referenciar "orders_legacy", y al
+// terminar la migración esa tabla ya no existe — dejando la FK colgando y
+// cualquier INSERT en order_items muerto.
+//
+// No lo cazó ningún test porque una base nueva crea `orders` ya con el
+// schema bueno: la migración no corre y el daño no ocurre. Solo se rompen
+// los despliegues que venían de la versión anterior, que son justamente los
+// que importan.
+
+test('M6 · order_items no queda apuntando a una tabla que ya no existe', () => {
+  const definicion = sql('order_items');
+  assert.ok(
+    !definicion.includes('orders_legacy'),
+    `la FK quedó colgando tras la migración de orders: ${definicion}`,
+  );
+  assert.match(definicion, /REFERENCES\s+"?orders"?\s*\(/i);
+});
+
+test('M6 · se puede crear una orden con sus items después de migrar', () => {
+  // La prueba de verdad: es exactamente lo que hace store.crearOrden, que es
+  // donde reventaba en producción.
+  db.getDb().prepare(
+    `INSERT INTO orders (id, buyer_id, vendor_id, amount, application_fee,
+       currency, status, payment_status, payment_method, origin, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'MXN', 'pending', NULL, NULL, 'direct', ?, ?)`,
+  ).run('ord_nueva', 'comprador', 'v_mixto', 100, 5,
+    new Date().toISOString(), new Date().toISOString());
+
+  db.getDb().prepare(
+    `INSERT INTO order_items (order_id, product_id, quantity, unit_price, title_snapshot)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run('ord_nueva', 'p_2', 2, 50, 'Producto nuevo');
+
+  const items = db.getDb()
+    .prepare('SELECT * FROM order_items WHERE order_id = ?').all('ord_nueva');
+  assert.strictEqual(items.length, 1);
+  assert.strictEqual(items[0].unit_price, 50);
+});
+
+test('M6 · la orden histórica y su item siguen ahí', () => {
+  const orden = db.getDb().prepare('SELECT * FROM orders WHERE id = ?').get('ord_legacy');
+  assert.ok(orden, 'no se debió perder ninguna orden al recrear la tabla');
+  assert.strictEqual(orden.amount, 250.5);
+  assert.strictEqual(orden.mp_payment_id, 'pay_legacy');
+  // Las órdenes históricas se crearon antes de que el método se registrara.
+  assert.strictEqual(orden.payment_method, null);
+
+  const items = db.getDb()
+    .prepare('SELECT * FROM order_items WHERE order_id = ?').all('ord_legacy');
+  assert.strictEqual(items.length, 1);
+  assert.strictEqual(items[0].title_snapshot, 'Producto histórico');
+});
+
+test('M6 · la FK sigue haciendo su trabajo: borrar la orden borra sus items', () => {
+  db.getDb().pragma('foreign_keys = ON');
+  db.getDb().prepare('DELETE FROM orders WHERE id = ?').run('ord_nueva');
+
+  const items = db.getDb()
+    .prepare('SELECT * FROM order_items WHERE order_id = ?').all('ord_nueva');
+  assert.strictEqual(items.length, 0,
+    'reparar la FK sin conservar el ON DELETE CASCADE dejaría items huérfanos');
+});

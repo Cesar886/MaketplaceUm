@@ -99,6 +99,20 @@ function validarMetodosPermitidos(vendorId, metodos) {
  * La `cardPublicKey` es la DEL VENDEDOR, no la de la plataforma: en el modo
  * marketplace un card_token creado con otra public key no pertenece a esa
  * cuenta y MP lo rechaza al cobrar.
+ *
+ * `methods` y `cardEnabled` responden a preguntas DISTINTAS, y por eso son
+ * dos campos y no uno:
+ *
+ * - `methods` es lo que el vendedor ANUNCIA (su lista declarada). De ella
+ *   depende validar una orden que pide un método explícito: a quien solo
+ *   quiere cobrar en efectivo no se le puede imponer otra cosa.
+ * - `cardEnabled` es si su cuenta PUEDE cobrar con tarjeta ahora mismo.
+ *
+ * Conectar Mercado Pago y marcar 'tarjeta' en el perfil son dos acciones
+ * distintas, y la gente hace la primera sin la segunda. Como `/checkout` solo
+ * exige la cuenta conectada y el token vivo —nunca mira la lista declarada—,
+ * esconderle el pago a un vendedor conectado sería negarle ventas que su
+ * cuenta cobraría hoy mismo.
  */
 function metodosDeVendedor(vendorId) {
   const aceptados = metodosAceptados(vendorId);
@@ -112,12 +126,13 @@ function metodosDeVendedor(vendorId) {
       : { id, available: true };
   });
 
-  const puedeTarjeta = methods.some(m => m.id === 'tarjeta' && m.available);
+  const cardEnabled = tarjetaDisponible(vendorId);
 
   return {
     vendorId,
     methods,
-    cardPublicKey: puedeTarjeta ? (cuenta?.mp_public_key || null) : null,
+    cardEnabled,
+    cardPublicKey: cardEnabled ? (cuenta?.mp_public_key || null) : null,
   };
 }
 

@@ -17,6 +17,10 @@ import 'payments_api.dart';
 /// falló— no se dibuja NADA: ni placeholder, ni mensaje, ni el hueco. El
 /// detalle de producto no es el sitio donde explicarle al comprador la
 /// situación administrativa del vendedor.
+///
+/// Deliberadamente NO muestra el precio: ya lo pinta la etiqueta grande del
+/// detalle, unos centímetros más arriba, y repetirlo dejaba dos precios
+/// compitiendo en la misma pantalla.
 class PayWithCardSection extends StatefulWidget {
   const PayWithCardSection({
     super.key,
@@ -67,11 +71,13 @@ class _PayWithCardSectionState extends State<PayWithCardSection> {
 
   @override
   Widget build(BuildContext context) {
-    if (_metodos?.aceptaTarjeta != true) return const SizedBox.shrink();
+    // `puedeCobrarConTarjeta` y no `aceptaTarjeta`: la condición es que su
+    // cuenta COBRE, no que haya marcado el checkbox de 'tarjeta' en su
+    // perfil. Es literalmente lo que exige /payments/checkout, y ser más
+    // estricto aquí le esconde ventas a un vendedor que sí puede cobrarlas.
+    if (_metodos?.puedeCobrarConTarjeta != true) return const SizedBox.shrink();
 
     final colors = context.colors;
-    final product = widget.product;
-    final enOferta = product.isOffer && product.previousPrice != null;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -110,61 +116,6 @@ class _PayWithCardSectionState extends State<PayWithCardSection> {
             ),
           ),
           const SizedBox(height: 14),
-
-          // El precio final, con la misma jerarquía que en el resto de la
-          // app: el precio anterior tachado cede protagonismo al que se paga.
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                Product.formatPrice(product.price),
-                style: AppTypography.price(30, color: colors.ink),
-              ),
-              if (enOferta) ...[
-                const SizedBox(width: 10),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 5),
-                  child: Text(
-                    Product.formatPrice(product.previousPrice!),
-                    style: AppTypography.body(
-                      15,
-                      color: colors.muted,
-                    ).copyWith(decoration: TextDecoration.lineThrough),
-                  ),
-                ),
-                if (product.discountLabel != null) ...[
-                  const SizedBox(width: 8),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colors.primary,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        product.discountLabel!,
-                        style: AppTypography.label(
-                          11.5,
-                          weight: FontWeight.w800,
-                          color: colors.onPrimary,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Total a pagar con tarjeta',
-            style: AppTypography.body(12.5, color: colors.muted),
-          ),
-          const SizedBox(height: 16),
 
           SizedBox(
             width: double.infinity,

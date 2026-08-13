@@ -52,15 +52,22 @@ Product _producto({
   imageColor: const Color(0xFF607D8B),
 );
 
+/// [tarjetaDisponible] es lo que responde el backend en `cardEnabled`: si la
+/// cuenta de Mercado Pago del vendedor puede cobrar AHORA. [declaraTarjeta]
+/// es si además marcó el checkbox en su perfil — deliberadamente distinto,
+/// porque la sección no debe depender de eso.
 VendorPaymentMethods _metodos({
   required bool tarjetaDisponible,
+  bool declaraTarjeta = true,
   String? clavePublica = 'APP_USR-pk',
 }) => VendorPaymentMethods(
   vendorId: 'v_1',
   methods: [
     const VendorPaymentMethod(id: 'efectivo', available: true),
-    VendorPaymentMethod(id: 'tarjeta', available: tarjetaDisponible),
+    if (declaraTarjeta)
+      VendorPaymentMethod(id: 'tarjeta', available: tarjetaDisponible),
   ],
+  cardEnabled: tarjetaDisponible && clavePublica != null,
   cardPublicKey: tarjetaDisponible ? clavePublica : null,
 );
 
@@ -101,7 +108,6 @@ void main() {
     );
 
     expect(find.text('Pagar con tarjeta'), findsOneWidget);
-    expect(find.textContaining('120'), findsOneWidget);
   });
 
   testWidgets('no dibuja NADA si la cuenta del vendedor está caída', (
@@ -120,6 +126,25 @@ void main() {
     final tamano = tester.getSize(find.byType(PayWithCardSection));
     expect(tamano.height, 0);
   });
+
+  testWidgets(
+    'se muestra si la cuenta cobra, aunque no haya marcado "tarjeta"',
+    (tester) async {
+      // El caso que motivó todo esto: conectar Mercado Pago y marcar el
+      // checkbox del perfil son dos acciones distintas, y la gente hace la
+      // primera sin la segunda. /payments/checkout solo exige la cuenta
+      // conectada, así que esconder el pago aquí le niega ventas que su
+      // cuenta cobraría hoy mismo.
+      await _montar(
+        tester,
+        producto: _producto(),
+        cargar: (_) async =>
+            _metodos(tarjetaDisponible: true, declaraTarjeta: false),
+      );
+
+      expect(find.text('Pagar con tarjeta'), findsOneWidget);
+    },
+  );
 
   testWidgets('no dibuja nada si el vendedor no tiene clave pública', (
     tester,
@@ -147,29 +172,27 @@ void main() {
     expect(tester.getSize(find.byType(PayWithCardSection)).height, 0);
   });
 
-  testWidgets(
-    'con descuento muestra el precio anterior tachado y la etiqueta',
-    (tester) async {
-      await _montar(
-        tester,
-        producto: _producto(
-          precio: 80,
-          precioAnterior: 100,
-          etiquetaDescuento: '-20%',
-          oferta: true,
-        ),
-        cargar: (_) async => _metodos(tarjetaDisponible: true),
-      );
+  testWidgets('la sección no repite el precio, que ya está arriba', (
+    tester,
+  ) async {
+    await _montar(
+      tester,
+      producto: _producto(
+        precio: 80,
+        precioAnterior: 100,
+        etiquetaDescuento: '-20%',
+        oferta: true,
+      ),
+      cargar: (_) async => _metodos(tarjetaDisponible: true),
+    );
 
-      expect(find.text('-20%'), findsOneWidget);
-
-      // El precio anterior va tachado; el que se cobra, no.
-      final anterior = tester.widget<Text>(find.textContaining('100'));
-      expect(anterior.style?.decoration, TextDecoration.lineThrough);
-      final aPagar = tester.widget<Text>(find.textContaining('80'));
-      expect(aPagar.style?.decoration, isNot(TextDecoration.lineThrough));
-    },
-  );
+    // El precio ya lo pinta la etiqueta grande del detalle; repetirlo aquí
+    // dejaba dos precios distintos compitiendo en la misma pantalla.
+    expect(find.textContaining('80'), findsNothing);
+    expect(find.textContaining('100'), findsNothing);
+    expect(find.text('-20%'), findsNothing);
+    expect(find.text('Pagar con tarjeta'), findsOneWidget);
+  });
 
   testWidgets('el botón queda inerte mientras se crea la orden', (
     tester,

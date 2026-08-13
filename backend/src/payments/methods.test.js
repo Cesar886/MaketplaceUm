@@ -306,3 +306,55 @@ test('sin public key guardada, tarjeta no se reporta como disponible', async () 
   assert.ok(tarjeta.unavailableReason);
   assert.strictEqual(res.datos.cardPublicKey, null);
 });
+
+// ─── Cobrar sin haber marcado "tarjeta" en el perfil ────────────
+//
+// Conectar la cuenta de Mercado Pago y marcar 'tarjeta' en el perfil son dos
+// acciones distintas, y la gente hace la primera sin la segunda. El checkout
+// solo exige la cuenta conectada y el token vivo (nunca mira la lista
+// declarada), así que la UI no puede ser más estricta que él: esconder el
+// pago a un vendedor que SÍ puede cobrar es negarle ventas por un checkbox.
+
+test('un vendedor conectado puede cobrar aunque no haya marcado tarjeta', async () => {
+  const comprador = crearUsuario();
+  const vendedor = crearUsuario({ tipoCuenta: 'negocio', metodos: ['efectivo'] });
+  conectar(vendedor.id, { publicKey: 'APP_USR-pk-sin-declarar' });
+
+  const res = await pedir('GET', `/api/payments/vendors/${vendedor.id}/methods`,
+    { token: comprador.token });
+  assert.strictEqual(res.status, 200);
+
+  assert.strictEqual(res.datos.cardEnabled, true,
+    'su cuenta está viva: el cobro con tarjeta funcionaría hoy mismo');
+  assert.strictEqual(res.datos.cardPublicKey, 'APP_USR-pk-sin-declarar',
+    'sin la key del vendedor el cliente no puede tokenizar');
+
+  // Pero la lista declarada NO se toca: es lo que el vendedor anuncia, y de
+  // ella depende el guardado de órdenes con método explícito.
+  assert.strictEqual(res.datos.methods.find(m => m.id === 'tarjeta'), undefined);
+  assert.deepStrictEqual(res.datos.methods.map(m => m.id), ['efectivo']);
+});
+
+test('un vendedor sin cuenta conectada no puede cobrar con tarjeta', async () => {
+  const comprador = crearUsuario();
+  const vendedor = crearUsuario({ tipoCuenta: 'negocio', metodos: ['efectivo'] });
+
+  const res = await pedir('GET', `/api/payments/vendors/${vendedor.id}/methods`,
+    { token: comprador.token });
+
+  assert.strictEqual(res.datos.cardEnabled, false);
+  assert.strictEqual(res.datos.cardPublicKey, null);
+});
+
+test('desconectarse apaga cardEnabled aunque tarjeta siga declarada', async () => {
+  const comprador = crearUsuario();
+  const vendedor = crearUsuario({ tipoCuenta: 'negocio', metodos: ['efectivo', 'tarjeta'] });
+  conectar(vendedor.id);
+  store.desconectarVendedor(vendedor.id, { motivo: 'prueba', por: 'user' });
+
+  const res = await pedir('GET', `/api/payments/vendors/${vendedor.id}/methods`,
+    { token: comprador.token });
+
+  assert.strictEqual(res.datos.cardEnabled, false);
+  assert.strictEqual(res.datos.cardPublicKey, null);
+});

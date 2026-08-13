@@ -302,16 +302,34 @@ class VendorPaymentMethods {
   const VendorPaymentMethods({
     required this.vendorId,
     required this.methods,
+    this.cardEnabled = false,
     this.cardPublicKey,
   });
 
   final String vendorId;
+
+  /// Lo que el vendedor ANUNCIA que acepta. No es lo mismo que lo que su
+  /// cuenta puede cobrar — ver [cardEnabled].
   final List<VendorPaymentMethod> methods;
+
+  /// Su cuenta de Mercado Pago está conectada y viva AHORA: el cobro con
+  /// tarjeta funcionaría hoy mismo, haya marcado o no 'tarjeta' en su perfil.
+  ///
+  /// Es lo que decide si se le ofrece pagar con tarjeta al comprador, porque
+  /// es exactamente lo que `/payments/checkout` exige. Marcar el checkbox del
+  /// perfil es una declaración de intenciones; esto es la capacidad real.
+  final bool cardEnabled;
 
   /// Clave pública DEL VENDEDOR con la que hay que tokenizar. Llega null si
   /// no puede cobrar con tarjeta; nunca es la clave de la plataforma.
   final String? cardPublicKey;
 
+  /// Se le puede ofrecer pagar con tarjeta: su cuenta cobra y hay con qué
+  /// tokenizar. Sin la key el comprador queda en un callejón.
+  bool get puedeCobrarConTarjeta => cardEnabled && cardPublicKey != null;
+
+  /// El vendedor ANUNCIA tarjeta y además funciona. Más estricto que
+  /// [puedeCobrarConTarjeta]: úsalo solo donde importe lo declarado.
   bool get aceptaTarjeta =>
       methods.any((m) => m.id == 'tarjeta' && m.available) &&
       cardPublicKey != null;
@@ -330,6 +348,7 @@ class VendorPaymentMethods {
     return VendorPaymentMethods(
       vendorId: json['vendorId'] as String? ?? '',
       methods: lista,
+      cardEnabled: json['cardEnabled'] == true,
       cardPublicKey: json['cardPublicKey'] as String?,
     );
   }

@@ -566,22 +566,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       ),
                     ],
                   ],
-                  // ─── Pagar con tarjeta ────────────────────────────
-                  //
-                  // Se decide sola: si este vendedor no puede cobrar con
-                  // tarjeta ahora mismo, no dibuja nada (ver
-                  // [PayWithCardSection]). Va aquí, justo después de la
-                  // descripción y los extras, porque es lo que termina de
-                  // responder "¿me lo llevo?" — más abajo competiría con las
-                  // calificaciones y el vendedor.
-                  if (_puedeComprarse) ...[
-                    const SizedBox(height: 22),
-                    PayWithCardSection(
-                      product: product,
-                      pagando: _creandoOrden,
-                      onPagar: () => _comprar(context),
-                    ),
-                  ],
                   // ─── Calificaciones del producto — no aplica a "se busca" ──────
                   if (!product.isWantedPost) ...[
                     const SizedBox(height: 24),
@@ -601,6 +585,27 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         });
                       },
                     ),
+                    // ─── Pagar con tarjeta ──────────────────────────
+                    //
+                    // La condición de verdad la resuelve el propio widget
+                    // contra el backend: si este vendedor no puede cobrar
+                    // AHORA, no dibuja nada (ver [PayWithCardSection]).
+                    //
+                    // Aquí solo se descartan los casos en los que la compra
+                    // no existe como concepto: tu propio producto (el backend
+                    // también lo corta) y lo agotado. Deliberadamente NO se
+                    // mira la lista de métodos declarada del vendedor — tener
+                    // la cuenta conectada y haber marcado el checkbox de
+                    // 'tarjeta' son dos cosas distintas, y /payments/checkout
+                    // solo exige la primera.
+                    if (_puedeOfrecerseElPago) ...[
+                      const SizedBox(height: 22),
+                      PayWithCardSection(
+                        product: product,
+                        pagando: _creandoOrden,
+                        onPagar: () => _comprar(context),
+                      ),
+                    ],
                     // ─── También te puede interesar ─────────────────
                     // Se omite entera si no hay nada relacionado: ni el
                     // encabezado ni el espacio, para no dejar un hueco.
@@ -779,27 +784,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         ),
                       ),
               ),
-              // Comprar solo aparece si este vendedor anuncia que acepta
-              // tarjeta. Es una comprobación barata sobre datos que ya
-              // tenemos cargados; la de verdad —¿su cuenta sigue viva AHORA?—
-              // la hace el checkout contra el servidor, que es el único sitio
-              // donde puede ser fiable.
-              if (_puedeComprarse) ...[
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _creandoOrden ? null : () => _comprar(context),
-                    icon: _creandoOrden
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.credit_card_rounded),
-                    label: const Text('Comprar'),
-                  ),
-                ),
-              ],
+              // El pago con tarjeta vive SOLO en la sección del cuerpo (ver
+              // [PayWithCardSection]). Antes había además un botón "Comprar"
+              // aquí, y eran dos llamadas a la acción para lo mismo en una
+              // pantalla: la barra queda para contactar al vendedor.
             ],
           ),
         ),
@@ -807,14 +795,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     );
   }
 
-  /// Si tiene sentido ofrecer la compra dentro de la app para este producto.
-  bool get _puedeComprarse {
+  /// Si la compra dentro de la app existe como concepto para este producto,
+  /// sin entrar en si ESTE vendedor puede cobrarla.
+  ///
+  /// Esa segunda pregunta la resuelve [PayWithCardSection] contra el backend,
+  /// que es el único sitio donde la respuesta es fiable: entre que se pintó
+  /// la pantalla y el comprador toca el botón, el vendedor pudo revocar la
+  /// autorización desde su panel de Mercado Pago.
+  bool get _puedeOfrecerseElPago {
     if (product.isWantedPost || !product.isAvailable) return false;
-    if (context.read<AuthProvider>().backendSellerId == product.seller.id) {
-      return false; // No puedes comprarte a ti mismo (el backend también lo corta).
-    }
-    final metodos = product.paymentMethods ?? product.seller.paymentMethods;
-    return metodos.contains('tarjeta');
+    // No puedes comprarte a ti mismo (el backend también lo corta).
+    return context.read<AuthProvider>().backendSellerId != product.seller.id;
   }
 
   /// Crea la orden en el servidor y abre el checkout.

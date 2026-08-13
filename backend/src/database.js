@@ -851,6 +851,20 @@ function runMigrations() {
   );
   if (ordersDesactualizada) {
     db.pragma('foreign_keys = OFF');
+    // `legacy_alter_table = ON` es lo que impide que el RENAME de abajo
+    // corrompa OTRAS tablas.
+    //
+    // En SQLite moderno, `ALTER TABLE orders RENAME TO orders_legacy` no
+    // solo renombra: reescribe las claves foráneas que apuntan a `orders`
+    // desde otras tablas, para que sigan apuntando "a la misma" tabla. Aquí
+    // eso es justo lo contrario de lo que queremos: `order_items` acababa
+    // referenciando "orders_legacy", que tres líneas más abajo se borra, y
+    // se quedaba con una FK colgando. Resultado: TODO INSERT en order_items
+    // muere con `no such table: main.orders_legacy` y no se puede crear
+    // ninguna orden.
+    //
+    // `foreign_keys = OFF` NO evita esa reescritura — son pragmas distintos.
+    db.pragma('legacy_alter_table = ON');
     try {
       const migrateOrders = db.transaction(() => {
         db.exec(`
@@ -899,6 +913,7 @@ function runMigrations() {
       });
       migrateOrders();
     } finally {
+      db.pragma('legacy_alter_table = OFF');
       db.pragma('foreign_keys = ON');
     }
   }
@@ -1147,6 +1162,55 @@ function runMigrations() {
       UPDATE verificaciones SET identidad_confirmada_en = COALESCE(fecha_verificacion, creado_en)
       WHERE identidad_confirmada_en IS NULL AND estado = 'verificado'
     `);
+  }
+
+  // 33. Reparar `order_items` con la FK colgando hacia `orders_legacy`.
+  //
+  //     La migración 30b la rompió en todo despliegue que venía de la versión
+  //     anterior (ver el comentario ahí). Arreglar 30b evita el daño nuevo,
+  //     pero no cura las bases ya dañadas: ahí `order_items` sigue con
+  //     `REFERENCES "orders_legacy"` y no se puede crear ninguna orden.
+  //
+  //     No se puede alterar una FK en SQLite, así que toca reconstruir la
+  //     tabla — copiando las filas, que son ventas reales.
+  const orderItemsSql = db.prepare(
+    `SELECT sql FROM sqlite_master WHERE type='table' AND name='order_items'`,
+  ).get();
+  if (orderItemsSql && orderItemsSql.sql.includes('orders_legacy')) {
+    console.warn('[db] Reparando order_items: su FK apuntaba a orders_legacy');
+    db.pragma('foreign_keys = OFF');
+    // Igual que en 30b: sin esto, el RENAME final reescribiría referencias
+    // ajenas y volveríamos a dejar el mismo desastre en otra tabla.
+    db.pragma('legacy_alter_table = ON');
+    try {
+      db.transaction(() => {
+        db.exec(`
+          CREATE TABLE order_items_reparada (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+            product_id TEXT NOT NULL,
+            quantity INTEGER NOT NULL DEFAULT 1,
+            unit_price REAL NOT NULL,
+            title_snapshot TEXT
+          );
+
+          -- Columnas explícitas: un SELECT * se rompería en silencio si el
+          -- orden de columnas de la tabla vieja no fuera exactamente éste.
+          INSERT INTO order_items_reparada
+            (id, order_id, product_id, quantity, unit_price, title_snapshot)
+          SELECT id, order_id, product_id, quantity, unit_price, title_snapshot
+          FROM order_items;
+
+          DROP TABLE order_items;
+          ALTER TABLE order_items_reparada RENAME TO order_items;
+
+          CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
+        `);
+      })();
+    } finally {
+      db.pragma('legacy_alter_table = OFF');
+      db.pragma('foreign_keys = ON');
+    }
   }
 
   console.log('🔄 Migración de schema completada');
