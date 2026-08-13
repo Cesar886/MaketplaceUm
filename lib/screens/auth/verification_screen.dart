@@ -8,12 +8,16 @@ import 'package:provider/provider.dart';
 import '../../app_theme.dart';
 import '../../constants/carreras_um.dart';
 import '../../constants/dominios_um.dart';
+import '../../models.dart';
+import '../../models/verification_requirement.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/location_picker.dart';
 import '../../widgets/otp_input.dart';
 import '../../widgets/static_mini_map.dart';
+import '../../widgets/verification_checklist.dart';
 import '../../features/payments/connect_mp_screen.dart';
+import '../profile/edit_profile_screen.dart';
 import 'account_created_screen.dart';
 
 /// Pantalla única de verificación de cuenta para los tres tipos.
@@ -428,6 +432,54 @@ class _VerificationScreenState extends State<VerificationScreen> {
     });
   }
 
+  /// Lleva a resolver un requisito del checklist y, al volver, lo reevalúa.
+  ///
+  /// El refresco al volver es lo que hace que la palomita cambie sola: sin
+  /// él, alguien que acaba de configurar su horario seguiría viendo la ✗ y
+  /// creería que no se guardó.
+  Future<void> _irAResolverRequisito(VerificationRequirement requisito) async {
+    switch (requisito.accion) {
+      case 'conectar_mercadopago':
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const ConnectMpScreen()),
+        );
+      case 'editar_perfil':
+        final seller = await _sellerDelUsuario();
+        if (!mounted || seller == null) break;
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => EditProfileScreen(seller: seller),
+          ),
+        );
+      case 'revisar_productos':
+        // Sin pantalla propia a la que mandar: los productos se editan uno
+        // por uno desde el perfil, y el detalle del requisito ya los nombra.
+        if (!mounted) break;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(requisito.detalle)));
+    }
+    if (mounted) await _auth.refrescarEstadoVerificacion();
+  }
+
+  /// El `Seller` del backend, que necesita "Editar perfil" para abrirse.
+  Future<Seller?> _sellerDelUsuario() async {
+    final id = _auth.backendSellerId;
+    if (id == null) return null;
+    try {
+      return await ApiService.getSeller(id);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo abrir tu perfil. Intenta de nuevo.'),
+          ),
+        );
+      }
+      return null;
+    }
+  }
+
   Future<void> _elegirUbicacion() async {
     final punto = await LocationPickerScreen.open(
       context,
@@ -518,6 +570,20 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   icono: Icons.build_rounded,
                 ),
                 const SizedBox(height: 16),
+              ],
+
+              // El checklist va ANTES del botón, no después de fallar.
+              // Intentar y fallar enseña un requisito por intento; con la
+              // lista delante se ve de un vistazo todo lo que falta.
+              //
+              // Solo en el paso de captura: durante el OTP la persona está
+              // tecleando seis dígitos y no puede resolver nada de esto.
+              if (!_esperandoCodigo && !_faltaMercadoPago) ...[
+                VerificationChecklist(
+                  requisitos: context.watch<AuthProvider>().requisitos,
+                  onAccion: _irAResolverRequisito,
+                ),
+                const SizedBox(height: 20),
               ],
 
               if (_faltaMercadoPago)

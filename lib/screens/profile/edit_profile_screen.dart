@@ -222,7 +222,8 @@ class _EditProfileScreenState extends State<EditProfileScreen>
             ? _descriptionController.text.trim()
             : null,
         businessCategory: _isBusiness ? _selectedCategoryId : null,
-        businessHours: _isBusiness ? _businessHours : null,
+        // Sin `_isBusiness`: el horario aplica a todos los tipos de cuenta.
+        businessHours: _businessHours,
         locationLat: _isBusiness ? _locationLat : null,
         locationLng: _isBusiness ? _locationLng : null,
         paymentMethods: _selectedPaymentMethods.toList(),
@@ -406,11 +407,6 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                       ),
                     ),
                     const SizedBox(height: 16),
-                    BusinessHoursEditor(
-                      initialHours: _businessHours,
-                      onChanged: (hours) => _businessHours = hours,
-                    ),
-                    const SizedBox(height: 16),
                     Text(
                       'Ubicación del negocio (opcional)',
                       style: TextStyle(
@@ -465,7 +461,10 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                       decoration: const InputDecoration(
                         labelText: 'Instagram',
                         hintText: 'instagram.com/tunegocio',
-                        prefixIcon: FaIcon(FontAwesomeIcons.instagram, size: 20),
+                        prefixIcon: FaIcon(
+                          FontAwesomeIcons.instagram,
+                          size: 20,
+                        ),
                       ),
                       validator: (v) => validateSocialUrl('instagram', v ?? ''),
                     ),
@@ -503,6 +502,24 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                       validator: (v) => validateSocialUrl('twitter', v ?? ''),
                     ),
                   ],
+                  // El horario lo configuran TODOS los tipos de cuenta, no
+                  // solo los negocios: es requisito para verificarse, y es lo
+                  // que le dice al comprador si estás abierto cuando te
+                  // compra. Un estudiante que vende comida también cierra.
+                  const SizedBox(height: 20),
+                  Text(
+                    'Horario de atención',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: context.colors.muted,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  BusinessHoursEditor(
+                    initialHours: _businessHours,
+                    onChanged: (hours) => _businessHours = hours,
+                  ),
                   const SizedBox(height: 20),
                   Text(
                     'Métodos de pago que aceptas',

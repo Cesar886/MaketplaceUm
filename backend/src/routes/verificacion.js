@@ -29,7 +29,10 @@ const {
 } = require('../validation/verificacion');
 const { validateLocation } = require('../validation/sellerProfile');
 const { validarCarrera } = require('../validation/carreras');
-const { cuentaDePagosConectada } = require('../payments/methods');
+const {
+  requisitosDeVerificacion,
+  primerFaltante,
+} = require('../validation/requisitosVerificacion');
 
 // Envío de OTP: 3 solicitudes por ventana. Se cuenta por usuario Y por
 // destino, para que N cuentas no puedan bombardear un correo/teléfono ajeno
@@ -338,10 +341,8 @@ function crearRutasVerificacion({
    * la verificación en 'pendiente'.
    */
   function completarSiPuedeCobrar(res, verificacion, camposSellers) {
-    if (!cuentaDePagosConectada(verificacion.usuario_id)) {
-      const motivo = 'Conecta tu cuenta de Mercado Pago para completar la '
-        + 'verificación y poder cobrar en la app.';
-
+    const falta = primerFaltante(verificacion.usuario_id);
+    if (falta) {
       // `motivo_rechazo` y `campo_rechazado` se rellenan aunque el estado sea
       // 'pendiente' y no 'rechazado': son las columnas genéricas de "qué
       // falta por corregir", y es de donde la app lee el mensaje al refrescar
@@ -351,19 +352,28 @@ function crearRutasVerificacion({
           `UPDATE verificaciones SET
              estado = 'pendiente',
              motivo_rechazo = @motivo,
-             campo_rechazado = 'mercadopago'
+             campo_rechazado = @campo
            WHERE usuario_id = @usuarioId`,
         )
-        .run({ usuarioId: verificacion.usuario_id, motivo });
+        .run({
+          usuarioId: verificacion.usuario_id,
+          motivo: falta.detalle,
+          campo: falta.id,
+        });
 
       // 200 y no 4xx: la petición fue válida y se procesó; lo que se devuelve
       // es el estado del trámite, igual que en el flujo de negocio.
+      //
+      // Va la lista COMPLETA además del primer faltante: así la app pinta el
+      // checklist entero sin una segunda llamada, y quien arregla una cosa ve
+      // de una vez qué le queda en vez de descubrirlo de uno en uno.
       return res.json({
         verificado: false,
         estado: 'pendiente',
-        campo: 'mercadopago',
-        motivo,
-        motivo_rechazo: motivo,
+        campo: falta.id,
+        motivo: falta.detalle,
+        motivo_rechazo: falta.detalle,
+        requisitos: requisitosDeVerificacion(verificacion.usuario_id),
         tipo_cuenta: verificacion.tipo_cuenta,
       });
     }
@@ -728,6 +738,11 @@ function crearRutasVerificacion({
       // la cuenta de cobros. La app lo usa para retomar en ese paso en vez de
       // volver a mandar un código que no hace falta.
       identidad_confirmada: Boolean(verificacion?.identidad_confirmada_en),
+      // El checklist que la app pinta ANTES del botón de verificar. Se sirve
+      // siempre, también para quien ya está verificado: es lo que le permite
+      // ver que sigue cumpliendo (o que dejó de cumplir al desconectar su
+      // cuenta, por ejemplo) sin tener que intentar y fallar.
+      requisitos: requisitosDeVerificacion(req.user.id),
       puede_reintentar_en: puedeReintentar,
     });
   });
@@ -756,7 +771,7 @@ function crearRutasVerificacion({
 function completarVerificacionPendientePorPagos(usuarioId) {
   const db = require('../database');
   const { sellers } = require('../data');
-  const { cuentaDePagosConectada: conectada } = require('../payments/methods');
+  const { cumpleTodos } = require('../validation/requisitosVerificacion');
   const conexionDb = db.getDb();
 
   const fila = conexionDb
@@ -766,7 +781,12 @@ function completarVerificacionPendientePorPagos(usuarioId) {
   if (fila.estado === 'verificado') return false;
   if (!fila.identidad_confirmada_en) return false;
   if (fila.campo_rechazado !== 'mercadopago') return false;
-  if (!conectada(usuarioId)) return false;
+
+  // La lista COMPLETA, no solo la cuenta de cobros. Conectar Mercado Pago
+  // puede no ser lo único que faltaba —quizá tampoco tiene horario— y
+  // verificar aquí saltándose el resto abriría una puerta trasera a todos
+  // los demás requisitos.
+  if (!cumpleTodos(usuarioId)) return false;
 
   conexionDb.transaction(() => {
     conexionDb

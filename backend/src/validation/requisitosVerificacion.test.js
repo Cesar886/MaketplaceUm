@@ -1,0 +1,232 @@
+// Los requisitos que una cuenta debe cumplir para quedar verificada.
+//
+// El validador es la única fuente de esta regla: lo consumen el cierre de la
+// verificación, el cierre automático al conectar Mercado Pago y el endpoint
+// que pinta el checklist en la app. Si cada uno tuviera su propia versión,
+// el checklist diría "todo listo" mientras el backend sigue rechazando.
+
+const test = require('node:test');
+const assert = require('node:assert');
+const os = require('node:os');
+const path = require('node:path');
+const fs = require('node:fs');
+const crypto = require('node:crypto');
+
+process.env.MERCADITO_DB_PATH = path.join(
+  fs.mkdtempSync(path.join(os.tmpdir(), 'mercadito-requisitos-')),
+  'test.db',
+);
+process.env.JWT_SECRET = 'secreto-de-prueba';
+process.env.PAYMENTS_ENCRYPTION_KEY = crypto.randomBytes(32).toString('hex');
+
+const db = require('../database');
+db.initDatabase();
+
+const store = require('../payments/store');
+const {
+  requisitosDeVerificacion,
+  cumpleTodos,
+  primerFaltante,
+} = require('./requisitosVerificacion');
+
+const HORARIO_VALIDO = JSON.stringify({
+  '0': { open: '09:00', close: '18:00' },
+  '1': { open: '09:00', close: '18:00' },
+});
+
+let n = 0;
+
+/** Crea un vendedor. Por defecto cumple TODO menos lo que se le quite. */
+function crearVendedor({
+  horario = HORARIO_VALIDO,
+  metodos = ['efectivo'],
+  conectarMp = false,
+} = {}) {
+  const id = `u_req_${++n}`;
+  db.getDb().prepare(
+    `INSERT INTO sellers (id, name, email, avatarInitials, major, isBusiness,
+       verified, tipo_cuenta, businessHours, paymentMethods)
+     VALUES (?, ?, ?, 'TT', '', 1, 0, 'negocio', ?, ?)`,
+  ).run(id, `Test ${id}`, `${id}@x.com`, horario,
+    metodos === null ? null : JSON.stringify(metodos));
+
+  if (conectarMp) {
+    store.guardarCuentaVendedor(id, {
+      mpUserId: `mp_${id}`,
+      accessToken: 'tok',
+      refreshToken: 'ref',
+      expiresIn: 3600,
+      publicKey: 'APP_USR-pk',
+    });
+  }
+  return id;
+}
+
+function crearProducto(sellerId, { stock = 5 } = {}) {
+  const id = `p_req_${++n}`;
+  db.getDb().prepare(
+    `INSERT INTO products (id, title, price, priceNum, seller, category, stock_quantity)
+     VALUES (?, ?, '100', 100, ?, 'otros', ?)`,
+  ).run(id, `Producto ${id}`, sellerId, stock);
+  return id;
+}
+
+const req = (id, lista) => lista.find(r => r.id === id);
+
+// ─── Happy path ─────────────────────────────────────────────────
+
+test('un vendedor que cumple todo pasa los cuatro requisitos', () => {
+  const v = crearVendedor();
+  crearProducto(v);
+
+  const lista = requisitosDeVerificacion(v);
+
+  assert.strictEqual(lista.length, 4, 'son cuatro requisitos, ni más ni menos');
+  assert.ok(lista.every(r => r.cumplido), JSON.stringify(lista, null, 2));
+  assert.strictEqual(cumpleTodos(v), true);
+  assert.strictEqual(primerFaltante(v), null);
+});
+
+test('sin productos publicados el requisito de stock se da por cumplido', () => {
+  // No tener nada publicado no es un incumplimiento: es no haber empezado.
+  const v = crearVendedor();
+  assert.strictEqual(req('stock_productos', requisitosDeVerificacion(v)).cumplido, true);
+});
+
+// ─── Horario ────────────────────────────────────────────────────
+
+test('sin horario configurado no se puede verificar', () => {
+  const v = crearVendedor({ horario: null });
+  const r = req('horario', requisitosDeVerificacion(v));
+
+  assert.strictEqual(r.cumplido, false);
+  assert.ok(r.detalle, 'tiene que decir qué falta');
+  assert.strictEqual(r.accion, 'editar_perfil', 'la app usa esto para navegar');
+  assert.strictEqual(cumpleTodos(v), false);
+});
+
+test('un horario vacío tampoco cuenta como configurado', () => {
+  const v = crearVendedor({ horario: '{}' });
+  assert.strictEqual(req('horario', requisitosDeVerificacion(v)).cumplido, false);
+});
+
+test('un horario corrupto se trata como ausente, no revienta', () => {
+  const v = crearVendedor({ horario: 'no-es-json' });
+  assert.strictEqual(req('horario', requisitosDeVerificacion(v)).cumplido, false);
+});
+
+test('basta un solo día configurado', () => {
+  const v = crearVendedor({
+    horario: JSON.stringify({ '2': { open: '08:00', close: '14:00' } }),
+  });
+  assert.strictEqual(req('horario', requisitosDeVerificacion(v)).cumplido, true);
+});
+
+// ─── Métodos de pago ────────────────────────────────────────────
+
+test('sin ningún método de pago no se puede verificar', () => {
+  const v = crearVendedor({ metodos: null });
+  assert.strictEqual(req('metodos_pago', requisitosDeVerificacion(v)).cumplido, false);
+});
+
+test('una lista vacía de métodos tampoco vale', () => {
+  const v = crearVendedor({ metodos: [] });
+  assert.strictEqual(req('metodos_pago', requisitosDeVerificacion(v)).cumplido, false);
+});
+
+// ─── Mercado Pago: solo si acepta tarjeta ───────────────────────
+
+test('quien NO acepta tarjeta se verifica sin conectar Mercado Pago', () => {
+  const v = crearVendedor({ metodos: ['efectivo'], conectarMp: false });
+  crearProducto(v);
+
+  const r = req('mercadopago', requisitosDeVerificacion(v));
+  assert.strictEqual(r.cumplido, true,
+    'exigirle una cuenta de cobros a quien solo acepta efectivo no tiene sentido');
+  assert.strictEqual(cumpleTodos(v), true);
+});
+
+test('quien acepta tarjeta SIN conectar Mercado Pago no se verifica', () => {
+  const v = crearVendedor({ metodos: ['efectivo', 'tarjeta'], conectarMp: false });
+
+  const r = req('mercadopago', requisitosDeVerificacion(v));
+  assert.strictEqual(r.cumplido, false);
+  assert.strictEqual(r.accion, 'conectar_mercadopago');
+});
+
+test('quien acepta tarjeta y conectó Mercado Pago sí cumple', () => {
+  const v = crearVendedor({ metodos: ['tarjeta'], conectarMp: true });
+  assert.strictEqual(req('mercadopago', requisitosDeVerificacion(v)).cumplido, true);
+});
+
+test('desconectarse vuelve a incumplir el requisito', () => {
+  const v = crearVendedor({ metodos: ['tarjeta'], conectarMp: true });
+  store.desconectarVendedor(v, { motivo: 'prueba', por: 'user' });
+  assert.strictEqual(req('mercadopago', requisitosDeVerificacion(v)).cumplido, false);
+});
+
+// ─── Stock ──────────────────────────────────────────────────────
+
+test('un producto sin stock definido bloquea la verificación', () => {
+  const v = crearVendedor();
+  crearProducto(v, { stock: null });
+
+  const r = req('stock_productos', requisitosDeVerificacion(v));
+  assert.strictEqual(r.cumplido, false);
+  assert.strictEqual(r.accion, 'revisar_productos');
+});
+
+test('el requisito nombra los productos concretos que faltan', () => {
+  const v = crearVendedor();
+  const p1 = crearProducto(v, { stock: null });
+  const p2 = crearProducto(v, { stock: null });
+  crearProducto(v, { stock: 3 });
+
+  const r = req('stock_productos', requisitosDeVerificacion(v));
+  assert.strictEqual(r.productos.length, 2,
+    'decir "algún producto" obliga a revisarlos todos a mano');
+  assert.deepStrictEqual(r.productos.map(p => p.id).sort(), [p1, p2].sort());
+  assert.ok(r.productos.every(p => p.title), 'la app pinta el título, no el id');
+});
+
+test('stock 0 cuenta como definido: agotado es una respuesta', () => {
+  const v = crearVendedor();
+  crearProducto(v, { stock: 0 });
+  assert.strictEqual(req('stock_productos', requisitosDeVerificacion(v)).cumplido, true);
+});
+
+test('un producto pausado o vendido no bloquea: ya no está a la venta', () => {
+  const v = crearVendedor();
+  const p = crearProducto(v, { stock: null });
+  db.getDb().prepare('UPDATE products SET manual_status = ? WHERE id = ?').run('paused', p);
+
+  assert.strictEqual(req('stock_productos', requisitosDeVerificacion(v)).cumplido, true);
+});
+
+// ─── Mensaje al usuario ─────────────────────────────────────────
+
+test('primerFaltante devuelve el requisito incumplido, con su mensaje', () => {
+  const v = crearVendedor({ horario: null });
+  const falta = primerFaltante(v);
+
+  assert.strictEqual(falta.id, 'horario');
+  assert.ok(falta.detalle);
+  assert.ok(falta.titulo);
+});
+
+test('el orden es estable: siempre se pide lo mismo primero', () => {
+  // Si el orden bailara, alguien que arregla lo que se le pide vería
+  // aparecer otro requisito distinto cada vez, sin saber cuántos faltan.
+  const v = crearVendedor({ horario: null, metodos: null });
+  assert.deepStrictEqual(
+    requisitosDeVerificacion(v).map(r => r.id),
+    ['horario', 'metodos_pago', 'mercadopago', 'stock_productos'],
+  );
+});
+
+test('un vendedor que no existe no cumple nada y no revienta', () => {
+  const lista = requisitosDeVerificacion('u_fantasma');
+  assert.strictEqual(lista.length, 4);
+  assert.ok(lista.some(r => !r.cumplido));
+  assert.strictEqual(cumpleTodos('u_fantasma'), false);
+});

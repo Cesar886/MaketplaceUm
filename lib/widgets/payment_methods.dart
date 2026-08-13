@@ -105,7 +105,9 @@ class PaymentMethodsSelector extends StatelessWidget {
                       selected: activo && !bloqueado,
                       showCheckmark: true,
                       checkmarkColor: context.colors.primary,
-                      selectedColor: context.colors.primary.withValues(alpha: 0.12),
+                      selectedColor: context.colors.primary.withValues(
+                        alpha: 0.12,
+                      ),
                       labelStyle: TextStyle(
                         fontWeight: FontWeight.w600,
                         color: colorTexto,
@@ -133,7 +135,11 @@ class PaymentMethodsSelector extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.info_outline_rounded, size: 14, color: context.colors.muted),
+              Icon(
+                Icons.info_outline_rounded,
+                size: 14,
+                color: context.colors.muted,
+              ),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(

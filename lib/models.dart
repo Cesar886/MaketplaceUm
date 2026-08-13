@@ -291,11 +291,19 @@ class Seller {
 
   bool get hasLocation => locationLat != null && locationLng != null;
 
-  /// null = no aplica (no es negocio o no configuró horario, así que no hay
-  /// nada que decidir); true/false = abierto/cerrado en este momento según
-  /// [businessHours] y la hora local del dispositivo.
+  /// null = no configuró horario, así que no hay nada que decidir;
+  /// true/false = abierto/cerrado en este momento según [businessHours] y la
+  /// hora local del dispositivo.
+  ///
+  /// Ya no se filtra por `isBusiness`: el horario es requisito de
+  /// verificación para todos los tipos de cuenta, porque un estudiante que
+  /// vende comida también cierra.
+  ///
+  /// Esto es solo para PINTAR. La decisión de aceptar o rechazar un cobro
+  /// fuera de horario la toma el servidor (`validation/horarioNegocio.js`):
+  /// la hora del dispositivo la cambia quien lo usa.
   bool? get isOpenNow {
-    if (!isBusiness || businessHours.isEmpty) return null;
+    if (businessHours.isEmpty) return null;
     final now = DateTime.now();
     final day =
         now.weekday - 1; // DateTime: 1=Lunes..7=Domingo → 0=Lunes..6=Domingo
@@ -1254,12 +1262,17 @@ class ProductQuestion {
       id: json['id'] as String? ?? '',
       productId: json['productId'] as String? ?? '',
       questionText: json['questionText'] as String? ?? '',
-      answerText: (respuesta != null && respuesta.isNotEmpty) ? respuesta : null,
+      answerText: (respuesta != null && respuesta.isNotEmpty)
+          ? respuesta
+          : null,
       // El estado se lee del backend, que es quien manda, pero se cae a
       // deducirlo del texto si llegara vacío: una respuesta visible con
       // badge de "pendiente" al lado es peor que no tener el campo.
-      status: json['status'] as String? ??
-          ((respuesta != null && respuesta.isNotEmpty) ? 'answered' : 'pending'),
+      status:
+          json['status'] as String? ??
+          ((respuesta != null && respuesta.isNotEmpty)
+              ? 'answered'
+              : 'pending'),
       createdAt: _parseUtc(json['createdAt'] as String?),
       answeredAt: json['answeredAt'] == null
           ? null

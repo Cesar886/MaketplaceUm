@@ -135,7 +135,10 @@ class _GridProductCard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        if (showPrice) ...[PriceTag(product: product), const SizedBox(height: 4)],
+        if (showPrice) ...[
+          PriceTag(product: product),
+          const SizedBox(height: 4),
+        ],
         Text(
           product.title,
           maxLines: 2,

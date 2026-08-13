@@ -69,6 +69,27 @@ class _PayWithCardSectionState extends State<PayWithCardSection> {
     }
   }
 
+  /// Por qué no se puede pagar ahora mismo, o null si sí se puede.
+  ///
+  /// Es una comprobación de cortesía sobre datos ya cargados: la de verdad la
+  /// hace `/payments/checkout` contra el servidor, que es el único que no
+  /// depende de la hora del dispositivo ni de un stock que pudo cambiar hace
+  /// un segundo.
+  String? _motivoDeBloqueo() {
+    final product = widget.product;
+
+    final stock = product.stockQuantity;
+    if (stock != null && stock <= 0) {
+      return 'Agotado. Este producto no tiene unidades disponibles.';
+    }
+
+    if (product.seller.isOpenNow == false) {
+      return 'Cerrado ahora mismo. No se pueden procesar pagos hasta que '
+          'el vendedor vuelva a abrir.';
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     // `puedeCobrarConTarjeta` y no `aceptaTarjeta`: la condición es que su
@@ -78,6 +99,10 @@ class _PayWithCardSectionState extends State<PayWithCardSection> {
     if (_metodos?.puedeCobrarConTarjeta != true) return const SizedBox.shrink();
 
     final colors = context.colors;
+    // Cerrado o agotado NO ocultan la sección, la deshabilitan con el motivo.
+    // Si desapareciera, el comprador no entendería por qué y creería que el
+    // producto no se vende; así sabe que puede volver, y cuándo.
+    final bloqueo = _motivoDeBloqueo();
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -117,10 +142,44 @@ class _PayWithCardSectionState extends State<PayWithCardSection> {
           ),
           const SizedBox(height: 14),
 
+          if (bloqueo != null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.danger.withValues(alpha: 0.07),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: AppColors.danger.withValues(alpha: 0.25),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.schedule_rounded,
+                    size: 16,
+                    color: AppColors.danger,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      bloqueo,
+                      style: AppTypography.body(12.5, color: colors.ink),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: widget.pagando ? null : widget.onPagar,
+              onPressed: (widget.pagando || bloqueo != null)
+                  ? null
+                  : widget.onPagar,
               icon: widget.pagando
                   ? const SizedBox(
                       width: 16,

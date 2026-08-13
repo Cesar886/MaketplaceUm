@@ -36,10 +36,19 @@ void main() {
       final input = [
         _n('n0'),
         _n('n1'),
-        _p('p0'), _p('p1'), _p('p2'), _p('p3'),
+        _p('p0'),
+        _p('p1'),
+        _p('p2'),
+        _p('p3'),
         _n('n2'),
-        _p('p4'), _p('p5'), _p('p6'), _p('p7'),
-        _p('p8'), _p('p9'), _p('p10'), _p('p11'),
+        _p('p4'),
+        _p('p5'),
+        _p('p6'),
+        _p('p7'),
+        _p('p8'),
+        _p('p9'),
+        _p('p10'),
+        _p('p11'),
       ];
 
       final result = applyFeedLayoutRules(input);
@@ -56,7 +65,9 @@ void main() {
     test('no quedan dos negocios consecutivos', () {
       final input = [
         for (var i = 0; i < 10; i++) _p('p$i'),
-        _n('n0'), _n('n1'), _n('n2'),
+        _n('n0'),
+        _n('n1'),
+        _n('n2'),
         for (var i = 10; i < 30; i++) _p('p$i'),
       ];
 
@@ -78,11 +89,20 @@ void main() {
     test('el orden relativo de las publicaciones normales no cambia', () {
       final input = [
         _n('n0'),
-        _p('p0'), _w('w0'), _p('p1'),
+        _p('p0'),
+        _w('w0'),
+        _p('p1'),
         _n('n1'),
-        _w('w1'), _p('p2'), _p('p3'), _w('w2'),
+        _w('w1'),
+        _p('p2'),
+        _p('p3'),
+        _w('w2'),
         _n('n2'),
-        _p('p4'), _p('p5'), _p('p6'), _p('p7'), _p('p8'),
+        _p('p4'),
+        _p('p5'),
+        _p('p6'),
+        _p('p7'),
+        _p('p8'),
       ];
 
       final result = applyFeedLayoutRules(input);
@@ -92,12 +112,19 @@ void main() {
 
     test('no pierde ni duplica ítems', () {
       final input = [
-        _n('n0'), _n('n1'),
-        _p('p0'), _p('p1'), _p('p2'),
+        _n('n0'),
+        _n('n1'),
+        _p('p0'),
+        _p('p1'),
+        _p('p2'),
         _n('n2'),
-        _w('w0'), _w('w1'),
+        _w('w0'),
+        _w('w1'),
         _n('n3'),
-        _p('p3'), _p('p4'), _p('p5'), _p('p6'),
+        _p('p3'),
+        _p('p4'),
+        _p('p5'),
+        _p('p6'),
       ];
 
       final result = applyFeedLayoutRules(input);
@@ -113,15 +140,24 @@ void main() {
       final input = [
         for (var i = 0; i < 8; i++) _p('p$i'),
         _n('n0'),
-        _p('p8'), _p('p9'),
+        _p('p8'),
+        _p('p9'),
         _n('n1'),
-        _p('p10'), _p('p11'), _p('p12'),
+        _p('p10'),
+        _p('p11'),
+        _p('p12'),
       ];
 
       final result = applyFeedLayoutRules(input);
 
-      expect(result.map((i) => i.data).toList(), equals(input.map((i) => i.data).toList()));
-      expect(result.map((i) => i.type).toList(), equals(input.map((i) => i.type).toList()));
+      expect(
+        result.map((i) => i.data).toList(),
+        equals(input.map((i) => i.data).toList()),
+      );
+      expect(
+        result.map((i) => i.type).toList(),
+        equals(input.map((i) => i.type).toList()),
+      );
     });
 
     test('mueve el negocio a la primera posición válida, no al final', () {
@@ -129,7 +165,12 @@ void main() {
       // posición legal es exactamente la 4 — no el final de la lista.
       final input = [
         _n('n0'),
-        _p('p0'), _p('p1'), _p('p2'), _p('p3'), _p('p4'), _p('p5'),
+        _p('p0'),
+        _p('p1'),
+        _p('p2'),
+        _p('p3'),
+        _p('p4'),
+        _p('p5'),
       ];
 
       final result = applyFeedLayoutRules(
@@ -161,7 +202,10 @@ void main() {
     test('la invariante de gap se cumple hasta el último ítem normal', () {
       final input = [
         for (var i = 0; i < 12; i++) _p('p$i'),
-        _n('n0'), _n('n1'), _n('n2'), _n('n3'),
+        _n('n0'),
+        _n('n1'),
+        _n('n2'),
+        _n('n3'),
       ];
 
       final result = applyFeedLayoutRules(input);

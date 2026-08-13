@@ -85,16 +85,41 @@ test.after(async () => {
 
 let contador = 0;
 
-/** Crea un vendedor real en la base temporal y devuelve su id y token. */
-function crearUsuario(tipoCuenta, { verificado = false } = {}) {
+/**
+ * Crea un vendedor real en la base temporal y devuelve su id y token.
+ *
+ * Por defecto cumple los requisitos de verificación que NO son el objeto de
+ * cada test (horario y métodos de pago), para que un test sobre el OTP no
+ * falle por algo que no está probando. Los tests que sí van sobre un
+ * requisito lo quitan explícitamente.
+ */
+function crearUsuario(tipoCuenta, {
+  verificado = false,
+  horario = JSON.stringify({ '0': { open: '09:00', close: '18:00' } }),
+  metodos = ['efectivo'],
+} = {}) {
   const id = `u_test_${tipoCuenta}_${++contador}`;
   db.getDb()
     .prepare(
-      `INSERT INTO sellers (id, name, email, avatarInitials, major, isBusiness, verified, tipo_cuenta)
-       VALUES (?, ?, ?, 'TT', '', ?, ?, ?)`,
+      `INSERT INTO sellers (id, name, email, avatarInitials, major, isBusiness,
+         verified, tipo_cuenta, businessHours, paymentMethods)
+       VALUES (?, ?, ?, 'TT', '', ?, ?, ?, ?, ?)`,
     )
-    .run(id, `Test ${id}`, `${id}@ejemplo.com`, tipoCuenta === 'negocio' ? 1 : 0, verificado ? 1 : 0, tipoCuenta);
+    .run(id, `Test ${id}`, `${id}@ejemplo.com`, tipoCuenta === 'negocio' ? 1 : 0,
+      verificado ? 1 : 0, tipoCuenta, horario,
+      metodos === null ? null : JSON.stringify(metodos));
   return { id, token: generateToken(id) };
+}
+
+/**
+ * Deja al vendedor aceptando tarjeta, que es lo que hace obligatoria la
+ * cuenta de Mercado Pago. Sin esto, quien solo acepta efectivo se verifica
+ * sin conectar nada — que es justamente la regla nueva.
+ */
+function aceptarTarjeta(usuarioId) {
+  db.getDb()
+    .prepare('UPDATE sellers SET paymentMethods = ? WHERE id = ?')
+    .run(JSON.stringify(['efectivo', 'tarjeta']), usuarioId);
 }
 
 async function pedir(ruta, token, cuerpo) {
@@ -685,7 +710,9 @@ test('reporta el estado inicial de una cuenta que nunca inició verificación', 
   const usuario = crearUsuario('particular');
   const res = await pedir('/estado', usuario.token);
   assert.strictEqual(res.status, 200);
-  assert.deepStrictEqual(res.body, {
+
+  const { requisitos, ...resto } = res.body;
+  assert.deepStrictEqual(resto, {
     tipo_cuenta: 'particular',
     estado: 'pendiente',
     verificado: false,
@@ -694,6 +721,25 @@ test('reporta el estado inicial de una cuenta que nunca inició verificación', 
     identidad_confirmada: false,
     puede_reintentar_en: 0,
   });
+
+  // El checklist se sirve desde el primer momento: es lo que deja ver qué
+  // falta sin tener que intentar verificarse y fallar.
+  assert.deepStrictEqual(
+    requisitos.map(r => r.id),
+    ['horario', 'metodos_pago', 'mercadopago', 'stock_productos'],
+  );
+  assert.ok(requisitos.every(r => typeof r.cumplido === 'boolean'));
+});
+
+test('/estado marca como incumplido el requisito que de verdad falta', async () => {
+  const usuario = crearUsuario('estudiante', { horario: null });
+  const res = await pedir('/estado', usuario.token);
+
+  const porId = Object.fromEntries(res.body.requisitos.map(r => [r.id, r]));
+  assert.strictEqual(porId.horario.cumplido, false);
+  assert.strictEqual(porId.metodos_pago.cumplido, true);
+  // No acepta tarjeta, así que la cuenta de cobros no se le exige.
+  assert.strictEqual(porId.mercadopago.cumplido, true);
 });
 
 test('reporta el estado verificado después de completar el flujo', async () => {
@@ -733,6 +779,7 @@ test('reporta el motivo y el campo cuando la verificación fue rechazada', async
 
 test('un negocio SIN Mercado Pago conectado no llega a verificado', async () => {
   const usuario = crearUsuario('negocio');
+  aceptarTarjeta(usuario.id);
   linkResponde = { ok: true, motivo: null };
 
   const res = await pedir('/negocio/solicitar', usuario.token, {
@@ -758,6 +805,7 @@ test('un negocio SIN Mercado Pago conectado no llega a verificado', async () => 
 
 test('el negocio se verifica al reintentar después de conectar Mercado Pago', async () => {
   const usuario = crearUsuario('negocio');
+  aceptarTarjeta(usuario.id);
   linkResponde = { ok: true, motivo: null };
   const datos = {
     nombre_negocio: 'Tacos UM',
@@ -783,6 +831,7 @@ test('el negocio se verifica al reintentar después de conectar Mercado Pago', a
 
 test('un estudiante con el OTP correcto pero SIN Mercado Pago queda pendiente', async () => {
   const usuario = crearUsuario('estudiante');
+  aceptarTarjeta(usuario.id);
   const correo = '1220999@alumno.um.edu.mx';
 
   const sol = await pedir('/estudiante/solicitar', usuario.token, {
@@ -810,6 +859,7 @@ test('un estudiante con el OTP correcto pero SIN Mercado Pago queda pendiente', 
 
 test('el estudiante se verifica al volver de conectar, sin un código nuevo', async () => {
   const usuario = crearUsuario('estudiante');
+  aceptarTarjeta(usuario.id);
   await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1221000@alumno.um.edu.mx',
     tipo: 'estudiante',
@@ -837,6 +887,7 @@ test('el estudiante se verifica al volver de conectar, sin un código nuevo', as
 
 test('una cuenta externa SIN Mercado Pago tampoco llega a verificado', async () => {
   const usuario = crearUsuario('particular');
+  aceptarTarjeta(usuario.id);
   await pedir('/externo/solicitar', usuario.token, { telefono: '(443) 765-4321' });
 
   const res = await pedir('/externo/confirmar', usuario.token, {
@@ -875,6 +926,7 @@ test('un OTP incorrecto no prueba la identidad ni deja retomar sin código', asy
 
 test('/estado avisa de que solo falta conectar Mercado Pago', async () => {
   const usuario = crearUsuario('estudiante');
+  aceptarTarjeta(usuario.id);
   await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1221002@alumno.um.edu.mx',
     tipo: 'estudiante',
@@ -905,6 +957,7 @@ const {
 
 test('conectar la cuenta cierra una verificación que solo esperaba eso', async () => {
   const usuario = crearUsuario('estudiante');
+  aceptarTarjeta(usuario.id);
   await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1222000@alumno.um.edu.mx',
     tipo: 'estudiante',
@@ -965,4 +1018,139 @@ test('conectar la cuenta no rescata una verificación rechazada por el link', as
   assert.strictEqual(completarVerificacionPendientePorPagos(usuario.id), false);
   assert.strictEqual(estaVerificado(usuario.id), false);
   assert.strictEqual(filaVerificacion(usuario.id).campo_rechazado, 'link_red_social');
+});
+
+// ═══ REQUISITOS NUEVOS: horario y stock ══════════════════════
+//
+// Una cuenta verificada es una a la que se le puede comprar sin sorpresas:
+// que diga cuándo atiende y cuánto le queda de cada cosa. Sin esto se dan
+// los dos casos que motivaron todo: comprar a un negocio cerrado, y comprar
+// algo que ya no existe.
+
+function crearProducto(sellerId, { stock = 5 } = {}) {
+  const id = `p_verif_${++contador}`;
+  db.getDb().prepare(
+    `INSERT INTO products (id, title, price, priceNum, seller, category, stock_quantity)
+     VALUES (?, ?, '100', 100, ?, 'otros', ?)`,
+  ).run(id, `Producto ${id}`, sellerId, stock);
+  return id;
+}
+
+test('sin horario configurado la verificación queda pendiente', async () => {
+  const usuario = crearUsuario('estudiante', { horario: null });
+  await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: '1550001@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
+  });
+
+  const res = await pedir('/estudiante/confirmar', usuario.token, {
+    codigo_otp: enviados.email.at(-1).codigo,
+  });
+
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.body.verificado, false);
+  assert.strictEqual(res.body.campo, 'horario');
+  assert.match(res.body.motivo, /horario|Editar perfil/i,
+    'tiene que decir exactamente qué configurar y dónde');
+  assert.strictEqual(estaVerificado(usuario.id), false);
+});
+
+test('la respuesta trae el checklist entero, no solo lo primero que falla', async () => {
+  const usuario = crearUsuario('estudiante', { horario: null, metodos: null });
+  await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: '1550002@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
+  });
+
+  const res = await pedir('/estudiante/confirmar', usuario.token, {
+    codigo_otp: enviados.email.at(-1).codigo,
+  });
+
+  // Con la lista completa, quien arregla una cosa ve de una vez qué le
+  // queda, en vez de descubrirlo de uno en uno a base de reintentos.
+  const porId = Object.fromEntries(res.body.requisitos.map(r => [r.id, r]));
+  assert.strictEqual(porId.horario.cumplido, false);
+  assert.strictEqual(porId.metodos_pago.cumplido, false);
+});
+
+test('un producto sin stock definido deja la verificación pendiente', async () => {
+  const usuario = crearUsuario('estudiante');
+  crearProducto(usuario.id, { stock: null });
+
+  await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: '1550003@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
+  });
+  const res = await pedir('/estudiante/confirmar', usuario.token, {
+    codigo_otp: enviados.email.at(-1).codigo,
+  });
+
+  assert.strictEqual(res.body.verificado, false);
+  assert.strictEqual(res.body.campo, 'stock_productos');
+  assert.strictEqual(estaVerificado(usuario.id), false);
+});
+
+test('el mensaje nombra el producto concreto al que le falta stock', async () => {
+  const usuario = crearUsuario('estudiante');
+  const p = crearProducto(usuario.id, { stock: null });
+  const titulo = db.getDb()
+    .prepare('SELECT title FROM products WHERE id = ?').get(p).title;
+
+  await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: '1550004@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
+  });
+  const res = await pedir('/estudiante/confirmar', usuario.token, {
+    codigo_otp: enviados.email.at(-1).codigo,
+  });
+
+  assert.match(res.body.motivo, new RegExp(titulo),
+    'decir "algún producto" obliga al vendedor a revisarlos todos a mano');
+});
+
+test('al arreglar el stock se completa la verificación sin código nuevo', async () => {
+  const usuario = crearUsuario('estudiante');
+  const p = crearProducto(usuario.id, { stock: null });
+
+  await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: '1550005@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
+  });
+  await pedir('/estudiante/confirmar', usuario.token, {
+    codigo_otp: enviados.email.at(-1).codigo,
+  });
+  assert.strictEqual(estaVerificado(usuario.id), false);
+
+  db.getDb().prepare('UPDATE products SET stock_quantity = 7 WHERE id = ?').run(p);
+
+  const res = await pedir('/estudiante/confirmar', usuario.token, {});
+  assert.strictEqual(res.body.verificado, true);
+  assert.strictEqual(estaVerificado(usuario.id), true);
+});
+
+test('conectar Mercado Pago NO verifica si además falta el horario', async () => {
+  // El cierre automático del callback de OAuth tiene que mirar la lista
+  // completa. Si solo mirara la cuenta de cobros, conectarla sería una
+  // puerta trasera que se salta todos los demás requisitos.
+  const usuario = crearUsuario('estudiante', { horario: null });
+  aceptarTarjeta(usuario.id);
+
+  await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: '1550006@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
+  });
+  await pedir('/estudiante/confirmar', usuario.token, {
+    codigo_otp: enviados.email.at(-1).codigo,
+  });
+
+  conectarPagos(usuario.id);
+
+  assert.strictEqual(completarVerificacionPendientePorPagos(usuario.id), false);
+  assert.strictEqual(estaVerificado(usuario.id), false);
 });

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
+import '../models/verification_requirement.dart';
 import '../services/anonymous_id.dart';
 import '../services/api_service.dart';
 import '../services/db_helper.dart';
@@ -74,6 +75,15 @@ class AuthProvider extends ChangeNotifier {
   String? _campoRechazado;
   bool _identidadConfirmada = false;
   int _puedeReintentarEn = 0;
+  List<VerificationRequirement> _requisitos = const [];
+
+  /// Checklist de verificación tal como lo evalúa el backend. La app lo
+  /// pinta, no lo calcula: ver [VerificationRequirement].
+  List<VerificationRequirement> get requisitos => _requisitos;
+
+  /// Requisitos que todavía no se cumplen.
+  List<VerificationRequirement> get requisitosPendientes =>
+      _requisitos.where((r) => !r.cumplido).toList();
 
   bool get isVerified => _verificado;
   String get estadoVerificacion => _estadoVerificacion;
@@ -291,6 +301,13 @@ class AuthProvider extends ChangeNotifier {
     _campoRechazado = estado['campo_rechazado'] as String?;
     _identidadConfirmada = estado['identidad_confirmada'] as bool? ?? false;
     _puedeReintentarEn = (estado['puede_reintentar_en'] as num?)?.toInt() ?? 0;
+    final requisitos = VerificationRequirement.listaDeJson(
+      estado['requisitos'],
+    );
+    // Una respuesta sin `requisitos` (backend viejo) conserva la última lista
+    // conocida en vez de vaciar el checklist: pintar cero requisitos se
+    // leería como "no falta nada", que es justo lo contrario.
+    if (requisitos.isNotEmpty) _requisitos = requisitos;
   }
 
   /// Envía el código OTP al correo institucional del estudiante.

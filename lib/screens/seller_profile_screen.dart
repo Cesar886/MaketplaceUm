@@ -333,7 +333,8 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
           ),
         ),
         Center(child: SocialLinksRow(seller: seller)),
-        if (buildSocialLinkEntries(seller).isNotEmpty) const SizedBox(height: 16),
+        if (buildSocialLinkEntries(seller).isNotEmpty)
+          const SizedBox(height: 16),
         if (hasOperationalInfo) ...[
           const SizedBox(height: 28),
           if (seller.businessHours.isNotEmpty || seller.hasLocation) ...[

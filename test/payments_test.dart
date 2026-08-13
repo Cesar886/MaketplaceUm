@@ -86,7 +86,10 @@ void main() {
     test('un estado que no conocemos se trata como rechazo, no como éxito', () {
       // Si MP inventa un estado nuevo, darlo por bueno significaría decirle a
       // alguien que pagó cuando quizá no. El sesgo tiene que ir al otro lado.
-      expect(resultado('estado_futuro_desconocido').estado, EstadoPago.rechazado);
+      expect(
+        resultado('estado_futuro_desconocido').estado,
+        EstadoPago.rechazado,
+      );
     });
 
     test('cada código de rechazo da un mensaje accionable distinto', () {

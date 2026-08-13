@@ -351,6 +351,26 @@ function register(app) {
         productLocation = locationResult.value;
       }
 
+      // Inventario obligatorio. `stock_quantity` NULL significaba "sin
+      // límite", y esa opción se retira: un producto que se puede pagar
+      // dentro de la app necesita una cantidad contra la que descontar, o se
+      // acaba vendiendo algo que ya no existe. Se exige al PUBLICAR y se
+      // vuelve a exigir al verificar la cuenta, para los que ya estaban.
+      const stockCrudo = req.body?.stock_quantity;
+      if (stockCrudo === undefined || stockCrudo === null || stockCrudo === '') {
+        return res.status(400).json({
+          error: 'Indica cuántas unidades tienes disponibles.',
+          campo: 'stock_quantity',
+        });
+      }
+      const stockNum = Number(stockCrudo);
+      if (!Number.isInteger(stockNum) || stockNum < 0) {
+        return res.status(400).json({
+          error: 'La cantidad disponible debe ser un número entero de 0 o más.',
+          campo: 'stock_quantity',
+        });
+      }
+
       // Métodos de pago de esta publicación (opcional): si no se manda,
       // queda null y el cliente usa los del perfil del vendedor.
       const paymentMethodsResult = validatePaymentMethods(req.body?.paymentMethods);
@@ -394,9 +414,9 @@ function register(app) {
             isFeatured: false,
             isOffer: false,
             isFavorite: false,
-            stock_quantity: req.body?.stock_quantity !== undefined ? Number(req.body.stock_quantity) : null,
+            stock_quantity: stockNum,
             stock_reset_daily: req.body?.stock_reset_daily === 'true' || req.body?.stock_reset_daily === true,
-            stock_initial: req.body?.stock_initial !== undefined ? Number(req.body.stock_initial) : null,
+            stock_initial: req.body?.stock_initial !== undefined ? Number(req.body.stock_initial) : stockNum,
             stock_updated_at: new Date().toISOString(),
             availableDays,
             locationLat: productLocation ? productLocation.lat : null,

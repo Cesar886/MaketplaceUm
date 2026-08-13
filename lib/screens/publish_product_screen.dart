@@ -81,7 +81,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   final _extraPriceController = TextEditingController();
 
   // ─── Stock ─────────────────────────────────────────────
-  bool _isStockLimited = false;
+  // Ya no hay modo "sin límite": el inventario es obligatorio.
   bool _autoResetStock = false;
   final _stockController = TextEditingController();
 
@@ -142,7 +142,6 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     _seller = product.seller;
 
     if (product.stockQuantity != null) {
-      _isStockLimited = true;
       _autoResetStock = product.stockResetDaily;
       _stockController.text = product.stockQuantity.toString();
     }
@@ -289,20 +288,19 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       return;
     }
 
-    int? stockQuantity;
-    int? stockInitial;
-    bool stockResetDaily = false;
-
-    if (_isStockLimited) {
-      final parsedStock = int.tryParse(_stockController.text.trim());
-      if (parsedStock == null || parsedStock < 0) {
-        _showError('Ingresa una cantidad válida para el stock');
-        return;
-      }
-      stockQuantity = parsedStock;
-      stockInitial = parsedStock;
-      stockResetDaily = _autoResetStock;
+    // El inventario es obligatorio: sin una cantidad contra la que descontar
+    // al cobrar, se acaba vendiendo algo que ya no existe. El backend lo
+    // rechaza igual; esto solo evita el viaje.
+    final parsedStock = int.tryParse(_stockController.text.trim());
+    if (parsedStock == null || parsedStock < 0) {
+      _showError(
+        'Indica cuántas unidades tienes disponibles (0 si no te queda ninguna).',
+      );
+      return;
     }
+    final int stockQuantity = parsedStock;
+    final int stockInitial = parsedStock;
+    final bool stockResetDaily = _autoResetStock;
 
     setState(() => _publishing = true);
     try {
@@ -378,7 +376,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     required String title,
     required String price,
     required String description,
-    int? stockQuantity,
+    required int stockQuantity,
     required bool stockResetDaily,
   }) async {
     final product = widget.editingProduct!;
@@ -411,11 +409,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       }
     }
 
-    final stockChanged = _isStockLimited
-        ? (stockQuantity != product.stockQuantity ||
-              stockResetDaily != product.stockResetDaily)
-        : product.stockQuantity != null;
-    if (_isStockLimited && stockChanged && stockQuantity != null) {
+    final stockChanged =
+        stockQuantity != product.stockQuantity ||
+        stockResetDaily != product.stockResetDaily;
+    if (stockChanged) {
       try {
         await ApiService.setProductStock(
           product.id,
@@ -517,11 +514,9 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       return (mapped, null, null);
     }
 
-    if (_isStockLimited) {
-      final stock = int.tryParse(_stockController.text.trim());
-      if (stock != null && stock <= 0) {
-        return (ComputedStatus.soldOut, null, null);
-      }
+    final stock = int.tryParse(_stockController.text.trim());
+    if (stock != null && stock <= 0) {
+      return (ComputedStatus.soldOut, null, null);
     }
 
     final today = DateTime.now().weekday - 1; // 0=Lun..6=Dom
@@ -727,47 +722,34 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
             ],
           ),
           const SizedBox(height: 12),
+          // El inventario es obligatorio: sin una cantidad contra la que
+          // descontar, se acaba vendiendo algo que ya no existe. Se pide
+          // aquí y se vuelve a exigir al verificar la cuenta.
+          TextField(
+            controller: _stockController,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Cantidad disponible *',
+              helperText: 'Pon 0 si ahora mismo no te queda ninguno.',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+          ),
+          const SizedBox(height: 10),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text(
-              '¿Tiene cantidad limitada?',
+              '¿Se reinicia automáticamente cada día?',
               style: TextStyle(fontWeight: FontWeight.w600),
             ),
             subtitle: const Text(
-              'Útil si tienes un número fijo de unidades.',
+              'El stock volverá a esta cantidad a medianoche.',
               style: TextStyle(fontSize: 12),
             ),
-            value: _isStockLimited,
-            onChanged: (val) => setState(() => _isStockLimited = val),
+            value: _autoResetStock,
+            onChanged: (val) => setState(() => _autoResetStock = val),
             activeColor: context.colors.primary,
           ),
-          if (_isStockLimited) ...[
-            const SizedBox(height: 10),
-            TextField(
-              controller: _stockController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Cantidad disponible hoy',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-            ),
-            const SizedBox(height: 10),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text(
-                '¿Se reinicia automáticamente cada día?',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-              subtitle: const Text(
-                'El stock volverá a esta cantidad a medianoche.',
-                style: TextStyle(fontSize: 12),
-              ),
-              value: _autoResetStock,
-              onChanged: (val) => setState(() => _autoResetStock = val),
-              activeColor: context.colors.primary,
-            ),
-          ],
         ],
       ),
     );

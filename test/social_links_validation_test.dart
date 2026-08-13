@@ -3,7 +3,10 @@ import 'package:mercadito_um/validation/social_links.dart';
 
 void main() {
   test('acepta una URL https del dominio correcto', () {
-    expect(validateSocialUrl('facebook', 'https://facebook.com/minegocio'), isNull);
+    expect(
+      validateSocialUrl('facebook', 'https://facebook.com/minegocio'),
+      isNull,
+    );
     expect(validateSocialUrl('twitter', 'https://x.com/minegocio'), isNull);
   });
 
@@ -13,11 +16,17 @@ void main() {
   });
 
   test('rechaza el dominio de otra plataforma', () {
-    expect(validateSocialUrl('instagram', 'https://facebook.com/minegocio'), isNotNull);
+    expect(
+      validateSocialUrl('instagram', 'https://facebook.com/minegocio'),
+      isNotNull,
+    );
   });
 
   test('rechaza http', () {
-    expect(validateSocialUrl('tiktok', 'http://tiktok.com/@minegocio'), isNotNull);
+    expect(
+      validateSocialUrl('tiktok', 'http://tiktok.com/@minegocio'),
+      isNotNull,
+    );
   });
 
   test('WhatsApp: acepta solo dígitos con código de país', () {

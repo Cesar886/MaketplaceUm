@@ -209,7 +209,10 @@ class _ProductQuestionsScreenState extends State<ProductQuestionsScreen> {
     final texto = await mostrarModalPregunta(context);
     if (texto == null || !mounted) return;
     try {
-      final nueva = await ApiService.askProductQuestion(widget.productId, texto);
+      final nueva = await ApiService.askProductQuestion(
+        widget.productId,
+        texto,
+      );
       if (!mounted) return;
       setState(() {
         _preguntas.insert(0, nueva);
@@ -324,8 +327,8 @@ class _ProductQuestionsScreenState extends State<ProductQuestionsScreen> {
         texto: _soloPendientes
             ? 'No te queda ninguna pregunta sin responder.'
             : esDueno
-                ? 'Todavía nadie ha preguntado en esta publicación.'
-                : 'Sé el primero en preguntar sobre esta publicación.',
+            ? 'Todavía nadie ha preguntado en esta publicación.'
+            : 'Sé el primero en preguntar sobre esta publicación.',
       );
     }
 
@@ -406,7 +409,9 @@ class _FiltroPendientes extends StatelessWidget {
             ),
             ChoiceChip(
               label: Text(
-                pendientes > 0 ? 'Sin responder ($pendientes)' : 'Sin responder',
+                pendientes > 0
+                    ? 'Sin responder ($pendientes)'
+                    : 'Sin responder',
               ),
               selected: soloPendientes,
               onSelected: (_) => onCambiar(true),
@@ -441,8 +446,9 @@ class _AccionesDelVendedor extends StatefulWidget {
 }
 
 class _AccionesDelVendedorState extends State<_AccionesDelVendedor> {
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.pregunta.answerText ?? '');
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.pregunta.answerText ?? '',
+  );
   bool _enviando = false;
 
   @override
@@ -507,13 +513,16 @@ class _AccionesDelVendedorState extends State<_AccionesDelVendedor> {
           children: [
             TextButton(
               onPressed: _enviando ? null : widget.onCancelar,
-              style: TextButton.styleFrom(foregroundColor: context.colors.muted),
+              style: TextButton.styleFrom(
+                foregroundColor: context.colors.muted,
+              ),
               child: const Text('Cancelar'),
             ),
             const Spacer(),
             FilledButton(
-              onPressed:
-                  _controller.text.trim().isEmpty || _enviando ? null : _enviar,
+              onPressed: _controller.text.trim().isEmpty || _enviando
+                  ? null
+                  : _enviar,
               child: _enviando
                   ? const SizedBox(
                       width: 16,
@@ -547,7 +556,11 @@ class _MensajeCentrado extends StatelessWidget {
       // funcionando con la lista vacía.
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 80),
       children: [
-        Icon(icono, size: 40, color: context.colors.muted.withValues(alpha: 0.6)),
+        Icon(
+          icono,
+          size: 40,
+          color: context.colors.muted.withValues(alpha: 0.6),
+        ),
         const SizedBox(height: 12),
         Text(
           texto,

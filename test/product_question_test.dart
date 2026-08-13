@@ -32,7 +32,8 @@ void main() {
       'productId': 'p_1',
       'questionText': '¿Sigue disponible?',
       'answerText': answerText,
-      if (incluirStatus) 'status': status ?? (answerText == null ? 'pending' : 'answered'),
+      if (incluirStatus)
+        'status': status ?? (answerText == null ? 'pending' : 'answered'),
       'createdAt': '2026-08-08T18:00:00Z',
       'answeredAt': answeredAt,
       'author': autorJson(),

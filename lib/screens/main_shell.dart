@@ -76,8 +76,10 @@ class MainShellState extends State<MainShell> {
       Navigator.of(context)
           .push(
             MaterialPageRoute<void>(
-              builder: (_) =>
-                  ChatScreen(conversationId: convId, productId: productId ?? ''),
+              builder: (_) => ChatScreen(
+                conversationId: convId,
+                productId: productId ?? '',
+              ),
             ),
           )
           .then((_) {

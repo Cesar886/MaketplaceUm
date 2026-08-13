@@ -24,27 +24,53 @@ List<SocialLinkEntry> buildSocialLinkEntries(Seller seller) {
   final entries = <SocialLinkEntry>[];
   final facebookUrl = seller.facebookUrl;
   if (facebookUrl != null && facebookUrl.isNotEmpty) {
-    entries.add(SocialLinkEntry(icon: FontAwesomeIcons.facebook, url: facebookUrl, label: 'Facebook'));
+    entries.add(
+      SocialLinkEntry(
+        icon: FontAwesomeIcons.facebook,
+        url: facebookUrl,
+        label: 'Facebook',
+      ),
+    );
   }
   final instagramUrl = seller.instagramUrl;
   if (instagramUrl != null && instagramUrl.isNotEmpty) {
-    entries.add(SocialLinkEntry(icon: FontAwesomeIcons.instagram, url: instagramUrl, label: 'Instagram'));
+    entries.add(
+      SocialLinkEntry(
+        icon: FontAwesomeIcons.instagram,
+        url: instagramUrl,
+        label: 'Instagram',
+      ),
+    );
   }
   final whatsappNumber = seller.whatsappNumber;
   if (whatsappNumber != null && whatsappNumber.isNotEmpty) {
-    entries.add(SocialLinkEntry(
-      icon: FontAwesomeIcons.whatsapp,
-      url: 'https://wa.me/$whatsappNumber',
-      label: 'WhatsApp',
-    ));
+    entries.add(
+      SocialLinkEntry(
+        icon: FontAwesomeIcons.whatsapp,
+        url: 'https://wa.me/$whatsappNumber',
+        label: 'WhatsApp',
+      ),
+    );
   }
   final tiktokUrl = seller.tiktokUrl;
   if (tiktokUrl != null && tiktokUrl.isNotEmpty) {
-    entries.add(SocialLinkEntry(icon: FontAwesomeIcons.tiktok, url: tiktokUrl, label: 'TikTok'));
+    entries.add(
+      SocialLinkEntry(
+        icon: FontAwesomeIcons.tiktok,
+        url: tiktokUrl,
+        label: 'TikTok',
+      ),
+    );
   }
   final twitterUrl = seller.twitterUrl;
   if (twitterUrl != null && twitterUrl.isNotEmpty) {
-    entries.add(SocialLinkEntry(icon: FontAwesomeIcons.xTwitter, url: twitterUrl, label: 'X / Twitter'));
+    entries.add(
+      SocialLinkEntry(
+        icon: FontAwesomeIcons.xTwitter,
+        url: twitterUrl,
+        label: 'X / Twitter',
+      ),
+    );
   }
   return entries;
 }

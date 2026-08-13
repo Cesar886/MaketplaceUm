@@ -382,12 +382,57 @@ function actualizarPagoDeOrden(orderId, { mpPaymentId, paymentStatus }) {
     : ['rejected', 'cancelled'].includes(paymentStatus) ? 'cancelled'
     : orden.status;
 
-  db.getDb().prepare(`
-    UPDATE orders SET mp_payment_id = COALESCE(?, mp_payment_id),
-                      payment_status = ?, status = ?, updated_at = ?
-    WHERE id = ?
-  `).run(mpPaymentId ? String(mpPaymentId) : null, paymentStatus, status, ahora(), orderId);
+  // ¿Es ESTA llamada la que aprueba el pago? Se calcula ANTES del UPDATE,
+  // comparando contra el estado guardado. Es la única condición segura para
+  // descontar inventario:
+  //
+  // Mercado Pago reenvía el mismo webhook varias veces, y con el mismo
+  // estado. El UPDATE de abajo es idempotente (escribir 'approved' encima de
+  // 'approved' no cambia nada), pero un descuento NO lo es: sin esta guarda,
+  // tres entregas de la misma notificación descuentan tres veces y dejan el
+  // inventario en negativo sin que nadie haya comprado de más.
+  const apruebaAhora = paymentStatus === 'approved'
+    && orden.payment_status !== 'approved';
+
+  // Todo en una transacción: si el descuento falla, el pago no puede quedar
+  // registrado como cobrado — y al revés, una orden marcada como pagada sin
+  // descontar vende dos veces lo mismo.
+  db.getDb().transaction(() => {
+    db.getDb().prepare(`
+      UPDATE orders SET mp_payment_id = COALESCE(?, mp_payment_id),
+                        payment_status = ?, status = ?, updated_at = ?
+      WHERE id = ?
+    `).run(mpPaymentId ? String(mpPaymentId) : null, paymentStatus, status, ahora(), orderId);
+
+    if (apruebaAhora) descontarInventario(orderId);
+  })();
+
   return true;
+}
+
+/**
+ * Resta del inventario lo que se acaba de vender.
+ *
+ * `MAX(0, ...)` porque un stock negativo es peor que uno en cero: todos los
+ * cálculos de disponibilidad asumen >= 0, y uno negativo los rompe en
+ * silencio. No debería llegar aquí (el checkout comprueba existencias justo
+ * antes de cobrar), pero si dos compras entran a la vez, el dinero ya se
+ * cobró y lo que toca es dejar el inventario en un estado sano.
+ *
+ * `stock_quantity IS NOT NULL` deja fuera a los productos antiguos que
+ * todavía no tienen inventario definido: tumbar el registro de un pago ya
+ * cobrado por eso sería mucho peor que no descontar.
+ */
+function descontarInventario(orderId) {
+  const actualizar = db.getDb().prepare(`
+    UPDATE products
+    SET stock_quantity = MAX(0, stock_quantity - ?),
+        stock_updated_at = ?
+    WHERE id = ? AND stock_quantity IS NOT NULL
+  `);
+  for (const item of getItems(orderId)) {
+    actualizar.run(item.quantity || 1, ahora(), item.product_id);
+  }
 }
 
 /**

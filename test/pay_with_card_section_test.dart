@@ -37,7 +37,10 @@ Product _producto({
   double? precioAnterior,
   String? etiquetaDescuento,
   bool oferta = false,
+  int? stock,
+  Seller? vendedor,
 }) => Product(
+  stockQuantity: stock,
   id: 'p_1',
   title: 'Orden de tacos',
   price: precio,
@@ -47,7 +50,7 @@ Product _producto({
   category: _categoria,
   description: 'Ricos',
   publishedAgo: 'hace 1 h',
-  seller: _vendedor,
+  seller: vendedor ?? _vendedor,
   imageIcon: Icons.fastfood,
   imageColor: const Color(0xFF607D8B),
 );
@@ -213,4 +216,95 @@ void main() {
     expect(toques, 0);
     expect(find.text('Preparando tu pago…'), findsOneWidget);
   });
+
+  testWidgets('fuera de horario la sección se muestra pero no deja pagar', (
+    tester,
+  ) async {
+    var toques = 0;
+    await _montar(
+      tester,
+      producto: _producto(vendedor: _vendedorCerrado()),
+      cargar: (_) async => _metodos(tarjetaDisponible: true),
+      onPagar: () => toques++,
+    );
+
+    // Se ve, con el motivo — no desaparece. Si desapareciera, el comprador
+    // creería que el producto no se vende, en vez de volver más tarde.
+    expect(find.textContaining('Cerrado ahora mismo'), findsOneWidget);
+    expect(find.text('Pagar con tarjeta'), findsOneWidget);
+
+    await tester.tap(find.byType(FilledButton));
+    await tester.pump();
+    expect(toques, 0, reason: 'el botón tiene que estar inerte');
+  });
+
+  testWidgets('agotado tampoco deja pagar, y lo dice', (tester) async {
+    var toques = 0;
+    await _montar(
+      tester,
+      producto: _producto(stock: 0),
+      cargar: (_) async => _metodos(tarjetaDisponible: true),
+      onPagar: () => toques++,
+    );
+
+    expect(find.textContaining('Agotado'), findsOneWidget);
+    await tester.tap(find.byType(FilledButton));
+    await tester.pump();
+    expect(toques, 0);
+  });
+
+  testWidgets('con stock y dentro de horario sí se puede pagar', (
+    tester,
+  ) async {
+    var toques = 0;
+    await _montar(
+      tester,
+      producto: _producto(stock: 3),
+      cargar: (_) async => _metodos(tarjetaDisponible: true),
+      onPagar: () => toques++,
+    );
+
+    expect(find.textContaining('Cerrado'), findsNothing);
+    expect(find.textContaining('Agotado'), findsNothing);
+
+    await tester.tap(find.byType(FilledButton));
+    await tester.pump();
+    expect(toques, 1);
+  });
+
+  testWidgets('un producto sin stock definido no se bloquea', (tester) async {
+    // Quedan productos viejos con stock null. Bloquearlos castigaría al
+    // comprador por un dato que solo el vendedor puede arreglar.
+    var toques = 0;
+    await _montar(
+      tester,
+      producto: _producto(stock: null),
+      cargar: (_) async => _metodos(tarjetaDisponible: true),
+      onPagar: () => toques++,
+    );
+
+    await tester.tap(find.byType(FilledButton));
+    await tester.pump();
+    expect(toques, 1);
+  });
+}
+
+/// Vendedor cerrado ahora mismo, sea cual sea la hora a la que corra el test:
+/// se le configura horario solo en un día que no es hoy.
+Seller _vendedorCerrado() {
+  final hoy = DateTime.now().weekday - 1;
+  return Seller(
+    id: 'v_1',
+    name: 'Tacos UM',
+    avatarInitials: 'TU',
+    major: '',
+    rating: 5,
+    reviews: 3,
+    verified: true,
+    isBusiness: true,
+    paymentMethods: const ['tarjeta'],
+    businessHours: {
+      (hoy + 3) % 7: const BusinessHoursRange(open: '09:00', close: '18:00'),
+    },
+  );
 }

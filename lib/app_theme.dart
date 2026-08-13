@@ -580,10 +580,7 @@ Color normalizeCategoryColor(Color base, Brightness brightness) {
     }
   }
 
-  return hsl
-      .withSaturation(saturacion)
-      .withLightness((lo + hi) / 2)
-      .toColor();
+  return hsl.withSaturation(saturacion).withLightness((lo + hi) / 2).toColor();
 }
 
 extension AppColorsContext on BuildContext {

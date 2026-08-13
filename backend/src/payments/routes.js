@@ -26,6 +26,7 @@ const conexion = require('./connection');
 const { calcularComision, redondear2 } = require('./fees');
 const { tokenVigenteDeVendedor } = require('./vendorTokens');
 const { validarFirma, procesarEvento } = require('./webhook');
+const { estadoDeAtencion, mensajeCerrado } = require('../validation/horarioNegocio');
 
 const MENSAJE_GENERICO = 'No pudimos completar la operación. Intenta de nuevo en unos minutos.';
 
@@ -43,6 +44,34 @@ function fallo(res, contexto, err, { status = 502, mensaje = MENSAJE_GENERICO } 
 
 function getSeller(id) {
   return db.getDb().prepare('SELECT * FROM sellers WHERE id = ?').get(id) || null;
+}
+
+/**
+ * El primer producto de la orden cuyo inventario ya no alcanza, o null si
+ * todos alcanzan.
+ *
+ * Los productos con `stock_quantity` NULL (publicados antes de que el
+ * inventario fuera obligatorio) no bloquean: no sabemos cuántos hay, y
+ * rechazar el cobro por eso castigaría al comprador por un dato que solo el
+ * vendedor puede arreglar.
+ */
+function existenciasInsuficientes(orden) {
+  const consultar = db.getDb()
+    .prepare('SELECT id, title, stock_quantity FROM products WHERE id = ?');
+  for (const item of orden.items || []) {
+    const producto = consultar.get(item.product_id);
+    if (!producto || producto.stock_quantity === null) continue;
+    const pedido = item.quantity || 1;
+    if (producto.stock_quantity < pedido) {
+      return {
+        id: producto.id,
+        title: producto.title,
+        disponible: producto.stock_quantity,
+        pedido,
+      };
+    }
+  }
+  return null;
 }
 
 /**
@@ -656,6 +685,40 @@ function register(app) {
     } catch (err) {
       console.error(`[pagos] Comisión inválida en ${orden.id}: ${err.message}`);
       return res.status(503).json({ error: MENSAJE_GENERICO });
+    }
+
+    // ¿El vendedor está abierto? Se comprueba EN EL SERVIDOR: la app también
+    // lo pinta, pero la hora de un teléfono la cambia quien lo usa, y de esto
+    // depende que un cobro entre o no.
+    //
+    // Quien no tiene horario configurado no queda bloqueado: `abierto` es
+    // true en ese caso. Esa exigencia vive en la verificación, no aquí —
+    // cortarle las ventas a un vendedor por un requisito de perfil sería
+    // castigar al comprador por algo que no puede resolver.
+    const atencion = estadoDeAtencion(orden.vendor_id);
+    if (!atencion.abierto) {
+      return res.status(409).json({
+        error: mensajeCerrado(vendedor?.name, atencion)
+          + ' Escríbele por chat para acordar la entrega.',
+        motivo: 'fuera_de_horario',
+        abreA: atencion.abreA,
+        diaAbre: atencion.diaAbre,
+      });
+    }
+
+    // ¿Sigue habiendo existencias? Entre que el comprador abrió la pantalla y
+    // toca pagar, otra persona pudo llevarse la última unidad. Comprobarlo
+    // aquí no elimina la carrera (dos cobros simultáneos pueden pasar los dos),
+    // pero sí el caso común, y el descuento usa MAX(0, ...) para que ni
+    // siquiera esa carrera deje el inventario en negativo.
+    const sinExistencias = existenciasInsuficientes(orden);
+    if (sinExistencias) {
+      return res.status(409).json({
+        error: `${sinExistencias.title} ya no está disponible: `
+          + `quedan ${sinExistencias.disponible} y pediste ${sinExistencias.pedido}.`,
+        motivo: 'sin_stock',
+        productId: sinExistencias.id,
+      });
     }
 
     // Última comprobación antes de mover dinero: que la autorización del

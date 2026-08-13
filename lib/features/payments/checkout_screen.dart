@@ -57,7 +57,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     try {
       // En vivo y en este orden: si el vendedor ya no puede cobrar con
       // tarjeta, no tiene sentido ni pedir las tarjetas guardadas con él.
-      final metodos = await PaymentsApi.getMetodosDeVendedor(widget.orden.vendorId);
+      final metodos = await PaymentsApi.getMetodosDeVendedor(
+        widget.orden.vendorId,
+      );
       final tarjetas = metodos.aceptaTarjeta
           ? await PaymentsApi.getTarjetas(widget.orden.vendorId)
           : <SavedCard>[];
@@ -68,17 +70,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _seleccionada = tarjetas.where((t) => !t.estaVencida).firstOrNull;
         _error = metodos.aceptaTarjeta
             ? null
-            : (metodos.porId('tarjeta')?.unavailableReason
-                ?? '${widget.nombreVendedor ?? 'Este vendedor'} no acepta pagos con '
-                   'tarjeta en la app. Contáctalo por chat para acordar otra forma de pago.');
+            : (metodos.porId('tarjeta')?.unavailableReason ??
+                  '${widget.nombreVendedor ?? 'Este vendedor'} no acepta pagos con '
+                      'tarjeta en la app. Contáctalo por chat para acordar otra forma de pago.');
       });
     } catch (e, s) {
       if (!mounted) return;
-      setState(() => _error = mensajeDeError(
-        e,
-        fallback: 'No se pudo preparar el pago.',
-        stack: s,
-      ));
+      setState(
+        () => _error = mensajeDeError(
+          e,
+          fallback: 'No se pudo preparar el pago.',
+          stack: s,
+        ),
+      );
     }
   }
 
@@ -242,7 +246,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ],
             style: TextStyle(color: colors.ink),
             decoration: InputDecoration(
-              labelText: 'CVV de la tarjeta terminada en '
+              labelText:
+                  'CVV de la tarjeta terminada en '
                   '${_seleccionada!.lastFourDigits}',
               helperText: 'Se pide en cada compra por seguridad.',
               helperStyle: TextStyle(fontSize: 11, color: colors.muted),

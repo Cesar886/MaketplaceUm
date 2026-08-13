@@ -39,7 +39,8 @@ class ProductQuestionsSection extends StatefulWidget {
   final String sellerName;
 
   @override
-  State<ProductQuestionsSection> createState() => _ProductQuestionsSectionState();
+  State<ProductQuestionsSection> createState() =>
+      _ProductQuestionsSectionState();
 }
 
 class _ProductQuestionsSectionState extends State<ProductQuestionsSection> {
@@ -56,7 +57,9 @@ class _ProductQuestionsSectionState extends State<ProductQuestionsSection> {
 
   Future<void> _cargar() async {
     try {
-      final pagina = await ApiService.getProductQuestionsPreview(widget.productId);
+      final pagina = await ApiService.getProductQuestionsPreview(
+        widget.productId,
+      );
       if (!mounted) return;
       setState(() {
         _preguntas = pagina.questions;
@@ -115,7 +118,10 @@ class _ProductQuestionsSectionState extends State<ProductQuestionsSection> {
     if (texto == null || !mounted) return;
 
     try {
-      final nueva = await ApiService.askProductQuestion(widget.productId, texto);
+      final nueva = await ApiService.askProductQuestion(
+        widget.productId,
+        texto,
+      );
       if (!mounted) return;
       setState(() {
         // Entra arriba: es la que el usuario acaba de escribir y quiere ver.
@@ -124,13 +130,15 @@ class _ProductQuestionsSectionState extends State<ProductQuestionsSection> {
         _pendientes += 1;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pregunta enviada. Te avisamos cuando respondan.')),
+        const SnackBar(
+          content: Text('Pregunta enviada. Te avisamos cuando respondan.'),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_mensajeDeError(e))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_mensajeDeError(e))));
     }
   }
 
@@ -160,11 +168,7 @@ class _ProductQuestionsSectionState extends State<ProductQuestionsSection> {
       children: [
         Row(
           children: [
-            Icon(
-              Icons.forum_outlined,
-              size: 18,
-              color: context.colors.accent,
-            ),
+            Icon(Icons.forum_outlined, size: 18, color: context.colors.accent),
             const SizedBox(width: 8),
             Text(
               'Preguntas y respuestas',
@@ -320,8 +324,9 @@ class _HojaTexto extends StatefulWidget {
 }
 
 class _HojaTextoState extends State<_HojaTexto> {
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.valorInicial);
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.valorInicial,
+  );
 
   @override
   void dispose() {

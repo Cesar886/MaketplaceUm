@@ -453,3 +453,135 @@ test('quien ya está verificado sigue pudiendo conectar', async () => {
 
   assert.strictEqual(res.status, 200, JSON.stringify(res.datos));
 });
+
+// ─── Guardas antes de mover dinero: horario y existencias ───────
+//
+// Las dos van en el servidor y no solo en la app: la hora de un teléfono la
+// cambia quien lo usa, y el stock pudo agotarse entre que se pintó la
+// pantalla y se tocó el botón.
+
+function crearProductoConStock(sellerId, stock) {
+  const id = `p_gu_${++contador}`;
+  db.getDb().prepare(
+    `INSERT INTO products (id, title, price, priceNum, seller, category, stock_quantity)
+     VALUES (?, ?, '90', 90, ?, 'otros', ?)`,
+  ).run(id, `Producto ${id}`, sellerId, stock);
+  return id;
+}
+
+function ordenDe(compradorId, vendedorId, productoId, cantidad = 1) {
+  return store.crearOrden({
+    id: `ord_gu_${crypto.randomUUID()}`,
+    buyerId: compradorId, vendorId: vendedorId,
+    amount: 90 * cantidad, applicationFee: 4.5, currency: 'MXN', origin: 'direct',
+    paymentMethod: 'tarjeta',
+    items: [{ productId: productoId, quantity: cantidad, unitPrice: 90, title: 'X' }],
+  });
+}
+
+/** Deja al vendedor cerrado ahora mismo, sea cual sea la hora del test. */
+function cerrarAhora(vendedorId) {
+  const ayer = (new Date().getDay() + 6) % 7 === 0 ? 6 : (new Date().getDay() + 6) % 7 - 1;
+  db.getDb().prepare('UPDATE sellers SET businessHours = ? WHERE id = ?')
+    .run(JSON.stringify({ [String(ayer)]: { open: '09:00', close: '10:00' } }), vendedorId);
+}
+
+test('no se puede pagar a un vendedor cerrado', async () => {
+  const comprador = crearUsuario();
+  const vendedor = crearUsuario({ tipoCuenta: 'negocio', metodos: ['tarjeta'] });
+  conectar(vendedor.id);
+  cerrarAhora(vendedor.id);
+  const orden = ordenDe(comprador.id, vendedor.id, crearProductoConStock(vendedor.id, 5));
+
+  const res = await pedir('POST', '/api/payments/checkout', {
+    token: comprador.token,
+    body: { order_id: orden.id, card_token: 'ct_1' },
+  });
+
+  assert.strictEqual(res.status, 409);
+  assert.strictEqual(res.datos.motivo, 'fuera_de_horario');
+  assert.match(res.datos.error, /cerrado/i);
+  assert.ok(res.datos.abreA, 'el comprador tiene que saber cuándo volver');
+  assert.strictEqual(llamadasCrearPago.length, 0, 'no se debió llamar a MP');
+});
+
+test('un vendedor sin horario configurado sí puede cobrar', () => {
+  // La exigencia de tener horario vive en la verificación. Cortarle las
+  // ventas aquí castigaría al comprador por un requisito de perfil ajeno.
+  const vendedor = crearUsuario({ tipoCuenta: 'negocio', metodos: ['tarjeta'] });
+  const { estadoDeAtencion } = require('../validation/horarioNegocio');
+  assert.strictEqual(estadoDeAtencion(vendedor.id).abierto, true);
+});
+
+test('no se puede pagar un producto que ya no tiene existencias', async () => {
+  const comprador = crearUsuario();
+  const vendedor = crearUsuario({ tipoCuenta: 'negocio', metodos: ['tarjeta'] });
+  conectar(vendedor.id);
+  const producto = crearProductoConStock(vendedor.id, 1);
+  const orden = ordenDe(comprador.id, vendedor.id, producto, 1);
+
+  // Alguien se llevó la última unidad mientras esta pantalla estaba abierta.
+  db.getDb().prepare('UPDATE products SET stock_quantity = 0 WHERE id = ?').run(producto);
+
+  const res = await pedir('POST', '/api/payments/checkout', {
+    token: comprador.token,
+    body: { order_id: orden.id, card_token: 'ct_1' },
+  });
+
+  assert.strictEqual(res.status, 409);
+  assert.strictEqual(res.datos.motivo, 'sin_stock');
+  assert.match(res.datos.error, /ya no está disponible/i);
+  assert.strictEqual(llamadasCrearPago.length, 0);
+});
+
+test('pedir más unidades de las que quedan también se corta', async () => {
+  const comprador = crearUsuario();
+  const vendedor = crearUsuario({ tipoCuenta: 'negocio', metodos: ['tarjeta'] });
+  conectar(vendedor.id);
+  const producto = crearProductoConStock(vendedor.id, 2);
+  const orden = ordenDe(comprador.id, vendedor.id, producto, 5);
+
+  const res = await pedir('POST', '/api/payments/checkout', {
+    token: comprador.token,
+    body: { order_id: orden.id, card_token: 'ct_1' },
+  });
+
+  assert.strictEqual(res.status, 409);
+  assert.strictEqual(res.datos.motivo, 'sin_stock');
+  assert.match(res.datos.error, /quedan 2/);
+});
+
+test('un producto viejo sin stock definido no bloquea el cobro', async () => {
+  const comprador = crearUsuario();
+  const vendedor = crearUsuario({ tipoCuenta: 'negocio', metodos: ['tarjeta'] });
+  conectar(vendedor.id);
+  const orden = ordenDe(comprador.id, vendedor.id, crearProductoConStock(vendedor.id, null));
+
+  const res = await pedir('POST', '/api/payments/checkout', {
+    token: comprador.token,
+    body: { order_id: orden.id, card_token: 'ct_1' },
+  });
+
+  // No sabemos cuántos hay; rechazar el cobro castigaría al comprador por un
+  // dato que solo el vendedor puede arreglar.
+  assert.notStrictEqual(res.datos?.motivo, 'sin_stock');
+});
+
+test('con stock suficiente y abierto, el cobro llega a Mercado Pago', async () => {
+  const comprador = crearUsuario();
+  const vendedor = crearUsuario({ tipoCuenta: 'negocio', metodos: ['tarjeta'] });
+  conectar(vendedor.id);
+  const orden = ordenDe(comprador.id, vendedor.id, crearProductoConStock(vendedor.id, 9));
+
+  // `orders.mp_payment_id` es UNIQUE en toda la tabla, y el doble por defecto
+  // devuelve siempre el mismo id.
+  respuestaCrearPago = async () => ({ id: `pay_ok_${contador}`, status: 'approved' });
+
+  const res = await pedir('POST', '/api/payments/checkout', {
+    token: comprador.token,
+    body: { order_id: orden.id, card_token: 'ct_ok' },
+  });
+
+  assert.strictEqual(res.status, 200, JSON.stringify(res.datos));
+  assert.strictEqual(llamadasCrearPago.length, 1, 'las guardas no deben estorbar al camino feliz');
+});

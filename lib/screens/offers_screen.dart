@@ -175,9 +175,7 @@ class _MaxDiscountHeader extends StatelessWidget {
             ),
             Text(
               '${offers.length} ${offers.length == 1 ? 'oferta' : 'ofertas'}',
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
           ],
         ),

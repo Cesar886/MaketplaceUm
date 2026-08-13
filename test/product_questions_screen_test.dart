@@ -84,8 +84,9 @@ void main() {
           'questions': visibles,
           'nextCursor': null,
           'total': preguntas.length,
-          'pendingCount':
-              preguntas.where((q) => q['status'] == 'pending').length,
+          'pendingCount': preguntas
+              .where((q) => q['status'] == 'pending')
+              .length,
         }),
         200,
         headers: {'content-type': 'application/json; charset=utf-8'},
@@ -150,7 +151,11 @@ void main() {
   ) async {
     preguntas = [
       pregunta('q_1', texto: '¿Sigue disponible?'),
-      pregunta('q_2', texto: '¿Aceptas transferencia?', respuesta: 'Sí, claro.'),
+      pregunta(
+        'q_2',
+        texto: '¿Aceptas transferencia?',
+        respuesta: 'Sí, claro.',
+      ),
     ];
 
     await montar(tester);

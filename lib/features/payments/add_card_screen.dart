@@ -110,125 +110,123 @@ class _AddCardScreenState extends State<AddCardScreen> {
         // llega como parámetro desde el checkout, que es quien la consultó.
         // El formulario se pinta directo y los errores se muestran dentro.
         child: Form(
-                key: _formKey,
-                child: ListView(
-                  padding: const EdgeInsets.all(18),
-                  children: [
-                    _CampoTarjeta(
-                      controller: _numero,
-                      etiqueta: 'Número de tarjeta',
-                      hint: '4111 1111 1111 1111',
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.all(18),
+            children: [
+              _CampoTarjeta(
+                controller: _numero,
+                etiqueta: 'Número de tarjeta',
+                hint: '4111 1111 1111 1111',
+                teclado: TextInputType.number,
+                formatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(19),
+                  _EspaciadorTarjeta(),
+                ],
+                validador: _validarNumero,
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: _CampoTarjeta(
+                      controller: _vencimiento,
+                      etiqueta: 'Vencimiento',
+                      hint: 'MM/AA',
                       teclado: TextInputType.number,
                       formatters: [
                         FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(19),
-                        _EspaciadorTarjeta(),
+                        LengthLimitingTextInputFormatter(4),
+                        _FormateadorVencimiento(),
                       ],
-                      validador: _validarNumero,
+                      validador: _validarVencimiento,
                     ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _CampoTarjeta(
-                            controller: _vencimiento,
-                            etiqueta: 'Vencimiento',
-                            hint: 'MM/AA',
-                            teclado: TextInputType.number,
-                            formatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              LengthLimitingTextInputFormatter(4),
-                              _FormateadorVencimiento(),
-                            ],
-                            validador: _validarVencimiento,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _CampoTarjeta(
-                            controller: _cvv,
-                            etiqueta: 'CVV',
-                            hint: '123',
-                            teclado: TextInputType.number,
-                            ocultar: true,
-                            formatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              LengthLimitingTextInputFormatter(4),
-                            ],
-                            validador: (v) =>
-                                (v == null || v.length < 3)
-                                    ? 'CVV incompleto'
-                                    : null,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    _CampoTarjeta(
-                      controller: _titular,
-                      etiqueta: 'Nombre del titular',
-                      hint: 'Como aparece en la tarjeta',
-                      teclado: TextInputType.name,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _CampoTarjeta(
+                      controller: _cvv,
+                      etiqueta: 'CVV',
+                      hint: '123',
+                      teclado: TextInputType.number,
+                      ocultar: true,
                       formatters: [
-                        UpperCaseTextFormatter(),
-                        LengthLimitingTextInputFormatter(40),
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(4),
                       ],
-                      validador: (v) => (v == null || v.trim().length < 3)
-                          ? 'Escribe el nombre del titular'
-                          : null,
+                      validador: (v) =>
+                          (v == null || v.length < 3) ? 'CVV incompleto' : null,
                     ),
-                    const SizedBox(height: 20),
-                    if (_error != null) ...[
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: colors.danger.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: colors.danger.withValues(alpha: 0.3),
-                          ),
-                        ),
-                        child: Text(
-                          _error!,
-                          style: TextStyle(fontSize: 13, color: colors.ink),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                    FilledButton(
-                      onPressed: _guardando ? null : _guardar,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: _guardando
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Text('Guardar tarjeta'),
-                      ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              _CampoTarjeta(
+                controller: _titular,
+                etiqueta: 'Nombre del titular',
+                hint: 'Como aparece en la tarjeta',
+                teclado: TextInputType.name,
+                formatters: [
+                  UpperCaseTextFormatter(),
+                  LengthLimitingTextInputFormatter(40),
+                ],
+                validador: (v) => (v == null || v.trim().length < 3)
+                    ? 'Escribe el nombre del titular'
+                    : null,
+              ),
+              const SizedBox(height: 20),
+              if (_error != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: colors.danger.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: colors.danger.withValues(alpha: 0.3),
                     ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Icon(Icons.lock_outline, size: 14, color: colors.muted),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Los datos de tu tarjeta viajan cifrados a Mercado '
-                            'Pago. Mercadito UM nunca los recibe ni los guarda.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              height: 1.4,
-                              color: colors.muted,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                  ),
+                  child: Text(
+                    _error!,
+                    style: TextStyle(fontSize: 13, color: colors.ink),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              FilledButton(
+                onPressed: _guardando ? null : _guardar,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: _guardando
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Guardar tarjeta'),
                 ),
               ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Icon(Icons.lock_outline, size: 14, color: colors.muted),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Los datos de tu tarjeta viajan cifrados a Mercado '
+                      'Pago. Mercadito UM nunca los recibe ni los guarda.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.4,
+                        color: colors.muted,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -257,7 +255,8 @@ class _AddCardScreenState extends State<AddCardScreen> {
     if (v.length != 5) return 'MM/AA';
     final mes = int.tryParse(v.substring(0, 2));
     final anio = int.tryParse(v.substring(3));
-    if (mes == null || anio == null || mes < 1 || mes > 12) return 'Fecha inválida';
+    if (mes == null || anio == null || mes < 1 || mes > 12)
+      return 'Fecha inválida';
 
     // Una tarjeta vale hasta el ÚLTIMO día de su mes de vencimiento.
     final ahora = DateTime.now();

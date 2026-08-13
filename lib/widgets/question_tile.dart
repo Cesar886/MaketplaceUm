@@ -107,7 +107,11 @@ class _LineaPregunta extends StatelessWidget {
         ),
         if (autor.verified) ...[
           const SizedBox(width: 5),
-          InsigniaVerificada.desdeTipo(autor.tipoCuenta, compact: true, size: 14),
+          InsigniaVerificada.desdeTipo(
+            autor.tipoCuenta,
+            compact: true,
+            size: 14,
+          ),
         ],
         const SizedBox(width: 8),
         Text(

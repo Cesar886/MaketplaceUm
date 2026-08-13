@@ -26,22 +26,25 @@ void main() {
     expect(seller.twitterUrl, 'https://x.com/negocio');
   });
 
-  test('Seller.fromJson deja los campos en null cuando el backend no los manda', () {
-    final seller = Seller.fromJson({
-      'id': 's2',
-      'name': 'Negocio Viejo',
-      'avatarInitials': 'NV',
-      'major': '',
-      'isBusiness': true,
-      'rating': 0,
-      'reviews': 0,
-      'verified': true,
-    });
+  test(
+    'Seller.fromJson deja los campos en null cuando el backend no los manda',
+    () {
+      final seller = Seller.fromJson({
+        'id': 's2',
+        'name': 'Negocio Viejo',
+        'avatarInitials': 'NV',
+        'major': '',
+        'isBusiness': true,
+        'rating': 0,
+        'reviews': 0,
+        'verified': true,
+      });
 
-    expect(seller.facebookUrl, isNull);
-    expect(seller.instagramUrl, isNull);
-    expect(seller.whatsappNumber, isNull);
-    expect(seller.tiktokUrl, isNull);
-    expect(seller.twitterUrl, isNull);
-  });
+      expect(seller.facebookUrl, isNull);
+      expect(seller.instagramUrl, isNull);
+      expect(seller.whatsappNumber, isNull);
+      expect(seller.tiktokUrl, isNull);
+      expect(seller.twitterUrl, isNull);
+    },
+  );
 }
