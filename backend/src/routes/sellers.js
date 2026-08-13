@@ -15,6 +15,7 @@ const {
   validatePaymentMethods,
   validateColorAcento,
 } = require('../validation/sellerProfile');
+const { validarMetodosPermitidos } = require('../payments/methods');
 
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
 
@@ -104,6 +105,13 @@ function register(app) {
     if (paymentMethods !== undefined) {
       const paymentMethodsResult = validatePaymentMethods(paymentMethods, { required: true });
       if (paymentMethodsResult.error) return res.status(400).json({ error: paymentMethodsResult.error });
+
+      // 'tarjeta' además exige cuenta de pagos conectada. Sin esto un
+      // vendedor podría anunciar que acepta tarjeta y dejar al comprador
+      // frente a un método que va a fallar al cobrar.
+      const permitidos = validarMetodosPermitidos(req.params.id, paymentMethodsResult.value);
+      if (permitidos.error) return res.status(400).json({ error: permitidos.error });
+
       normalizedPaymentMethods = paymentMethodsResult.value;
     }
 

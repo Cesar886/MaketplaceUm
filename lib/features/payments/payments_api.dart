@@ -36,7 +36,10 @@ class PaymentsApi {
       headers: ApiService.authHeaders,
     );
     return PaymentsConfig.fromJson(
-      await _decodificar(res, fallback: 'No se pudo cargar la configuración de pagos.'),
+      await _decodificar(
+        res,
+        fallback: 'No se pudo cargar la configuración de pagos.',
+      ),
     );
   }
 
@@ -49,7 +52,10 @@ class PaymentsApi {
       headers: ApiService.authHeaders,
     );
     return VendorAccountStatus.fromJson(
-      await _decodificar(res, fallback: 'No se pudo consultar tu cuenta de pagos.'),
+      await _decodificar(
+        res,
+        fallback: 'No se pudo consultar tu cuenta de pagos.',
+      ),
     );
   }
 
@@ -85,14 +91,96 @@ class PaymentsApi {
 
   // ─── Comprador: tarjetas guardadas ────────────────────────
 
-  /// GET /api/payments/cards
-  static Future<List<SavedCard>> getTarjetas() async {
+  /// POST /api/payments/account/validate — comprueba contra Mercado Pago que
+  /// la autorización sigue viva.
+  ///
+  /// Hace falta porque el vendedor puede revocarla desde el panel de Mercado
+  /// Pago, fuera de la app. El webhook de revocación suele avisar, pero si se
+  /// pierde, sin esto el vendedor seguiría viendo "conectado" durante semanas
+  /// mientras sus cobros fallan.
+  static Future<bool> validarCuenta() async {
+    final res = await ApiService.client.post(
+      ApiService.apiUri('/payments/account/validate'),
+      headers: ApiService.authHeaders,
+    );
+    final datos = await _decodificar(
+      res,
+      fallback: 'No se pudo comprobar tu cuenta de pagos.',
+    );
+    return datos['connected'] == true;
+  }
+
+  /// Estado de la cuenta de cobros del vendedor, resuelto de la forma más
+  /// fiable posible.
+  ///
+  /// Se intenta primero [validarCuenta], que es la respuesta REAL (pregunta a
+  /// Mercado Pago si la autorización sigue viva). Pero ese endpoint responde
+  /// 503 si a la plataforma le falta cualquier variable de entorno de MP, y
+  /// además toca la red: tratar cualquiera de esos fallos como "sin conectar"
+  /// es cómo un vendedor con su cuenta perfectamente conectada ve
+  /// "Sin conectar" para siempre y no tiene forma de saber por qué.
+  ///
+  /// Por eso el fallback es [getEstadoCuenta] (`GET /payments/account`), que
+  /// ni exige la configuración completa ni sale a la red: lee el flag que ya
+  /// está guardado. Y si tampoco se puede, se devuelve [EstadoCobros.desconocido]
+  /// en vez de mentir en la dirección cómoda.
+  static Future<EstadoCobros> estadoDeCobros() async {
+    try {
+      return await validarCuenta()
+          ? EstadoCobros.conectado
+          : EstadoCobros.sinConectar;
+    } catch (_) {
+      try {
+        final estado = await getEstadoCuenta();
+        return estado.connected
+            ? EstadoCobros.conectado
+            : EstadoCobros.sinConectar;
+      } catch (_) {
+        return EstadoCobros.desconocido;
+      }
+    }
+  }
+
+  // ─── Métodos de pago de un vendedor ───────────────────────
+
+  /// GET /api/payments/vendors/:vendorId/methods
+  ///
+  /// Se consulta EN VIVO al abrir el checkout y no se cachea: entre que el
+  /// comprador vio el producto y paga, el vendedor pudo desconectar su
+  /// cuenta.
+  static Future<VendorPaymentMethods> getMetodosDeVendedor(
+    String vendorId,
+  ) async {
     final res = await ApiService.client.get(
-      ApiService.apiUri('/payments/cards'),
+      ApiService.apiUri('/payments/vendors/$vendorId/methods'),
+      headers: ApiService.authHeaders,
+    );
+    return VendorPaymentMethods.fromJson(
+      await _decodificar(
+        res,
+        fallback: 'No se pudieron cargar los métodos de pago.',
+      ),
+    );
+  }
+
+  // ─── Comprador: tarjetas guardadas ────────────────────────
+  //
+  // Todas van con el vendedor en la ruta. Una tarjeta guardada NO es del
+  // comprador a secas: vive dentro de la cuenta de Mercado Pago del vendedor
+  // con el que se registró, y el token de otro vendedor no puede cobrarla.
+  // Por eso el comprador registra su tarjeta una vez por cada vendedor.
+
+  /// GET /api/payments/vendors/:vendorId/cards
+  static Future<List<SavedCard>> getTarjetas(String vendorId) async {
+    final res = await ApiService.client.get(
+      ApiService.apiUri('/payments/vendors/$vendorId/cards'),
       headers: ApiService.authHeaders,
     );
     if (res.statusCode != 200) {
-      throw excepcionDeRespuesta(res, fallback: 'No se pudieron cargar tus tarjetas.');
+      throw excepcionDeRespuesta(
+        res,
+        fallback: 'No se pudieron cargar tus tarjetas.',
+      );
     }
     final datos = jsonDecode(res.body) as List<dynamic>;
     return datos
@@ -100,14 +188,20 @@ class PaymentsApi {
         .toList();
   }
 
-  /// POST /api/payments/cards — guarda una tarjeta ya tokenizada.
+  /// POST /api/payments/vendors/:vendorId/cards — guarda una tarjeta ya
+  /// tokenizada.
   ///
   /// [cardToken] es un token de un solo uso creado por [MpTokenizer] contra
-  /// la API pública de Mercado Pago. El número y el CVV NO viajan por aquí:
-  /// fueron del dispositivo a MP directamente.
-  static Future<SavedCard> guardarTarjeta(String cardToken) async {
+  /// la API pública de Mercado Pago, y con la PUBLIC KEY DEL VENDEDOR — un
+  /// token hecho con otra clave no pertenece a esa cuenta y MP lo rechaza.
+  /// El número y el CVV NO viajan por aquí: fueron del dispositivo a MP
+  /// directamente.
+  static Future<SavedCard> guardarTarjeta(
+    String vendorId,
+    String cardToken,
+  ) async {
     final res = await ApiService.client.post(
-      ApiService.apiUri('/payments/cards'),
+      ApiService.apiUri('/payments/vendors/$vendorId/cards'),
       headers: ApiService.authHeaders,
       body: jsonEncode({'token': cardToken}),
     );
@@ -120,10 +214,10 @@ class PaymentsApi {
     );
   }
 
-  /// DELETE /api/payments/cards/:cardId
-  static Future<void> eliminarTarjeta(String cardId) async {
+  /// DELETE /api/payments/vendors/:vendorId/cards/:cardId
+  static Future<void> eliminarTarjeta(String vendorId, String cardId) async {
     final res = await ApiService.client.delete(
-      ApiService.apiUri('/payments/cards/$cardId'),
+      ApiService.apiUri('/payments/vendors/$vendorId/cards/$cardId'),
       headers: ApiService.authHeaders,
     );
     await _decodificar(res, fallback: 'No se pudo eliminar la tarjeta.');
@@ -144,7 +238,9 @@ class PaymentsApi {
   static Future<List<PaymentOrder>> crearOrdenesDesdeCarrito() =>
       _crearOrden({'fromCart': true});
 
-  static Future<List<PaymentOrder>> _crearOrden(Map<String, dynamic> body) async {
+  static Future<List<PaymentOrder>> _crearOrden(
+    Map<String, dynamic> body,
+  ) async {
     final res = await ApiService.client.post(
       ApiService.apiUri('/orders'),
       headers: ApiService.authHeaders,
@@ -160,13 +256,18 @@ class PaymentsApi {
   }
 
   /// GET /api/orders?role=buyer|vendor
-  static Future<List<PaymentOrder>> getOrdenes({bool comoVendedor = false}) async {
+  static Future<List<PaymentOrder>> getOrdenes({
+    bool comoVendedor = false,
+  }) async {
     final res = await ApiService.client.get(
       ApiService.apiUri('/orders', {'role': comoVendedor ? 'vendor' : 'buyer'}),
       headers: ApiService.authHeaders,
     );
     if (res.statusCode != 200) {
-      throw excepcionDeRespuesta(res, fallback: 'No se pudieron cargar tus compras.');
+      throw excepcionDeRespuesta(
+        res,
+        fallback: 'No se pudieron cargar tus compras.',
+      );
     }
     final datos = jsonDecode(res.body) as List<dynamic>;
     return datos

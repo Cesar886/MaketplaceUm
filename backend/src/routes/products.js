@@ -6,6 +6,7 @@ const { requireAuth } = require('../auth');
 const db = require('../database');
 const { sendPush } = require('../push');
 const { validateLocation, validatePaymentMethods } = require('../validation/sellerProfile');
+const { validarMetodosPermitidos } = require('../payments/methods');
 
 // Configuración anti-abuso de ofertas
 const COOLDOWN_HOURS = 72;
@@ -356,6 +357,8 @@ function register(app) {
       if (paymentMethodsResult.error) {
         return res.status(400).json({ error: paymentMethodsResult.error });
       }
+      const permitidos = validarMetodosPermitidos(req.user.id, paymentMethodsResult.value);
+      if (permitidos.error) return res.status(400).json({ error: permitidos.error });
       const productPaymentMethods = paymentMethodsResult.value;
 
       // Convertir cada imagen a WebP usando Promise.all
@@ -487,6 +490,8 @@ function register(app) {
           if (paymentMethodsResult.error) {
             return res.status(400).json({ error: paymentMethodsResult.error });
           }
+          const permitidos = validarMetodosPermitidos(req.user.id, paymentMethodsResult.value);
+          if (permitidos.error) return res.status(400).json({ error: permitidos.error });
           paymentMethodsUpdate = paymentMethodsResult.value;
         }
 

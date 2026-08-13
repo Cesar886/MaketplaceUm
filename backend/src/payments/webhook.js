@@ -17,6 +17,7 @@
  */
 
 const crypto = require('crypto');
+const db = require('../database');
 const { config } = require('./config');
 const store = require('./store');
 const { obtenerPago, MpError } = require('./mpClient');
@@ -91,21 +92,48 @@ async function procesarEvento({ eventId, paymentId }) {
       accessToken = cuenta ? cuenta.accessToken : undefined;
     }
 
-    const pago = await obtenerPago(paymentId, accessToken);
+    let pago = await obtenerPago(paymentId, accessToken);
     if (!pago) return;
 
     if (!orden && pago.external_reference) {
       orden = store.getOrdenPorId(pago.external_reference);
+
+      // Este es justo el caso que el fallback por external_reference existe
+      // para cubrir: la orden no se conocía todavía, así que la primera
+      // consulta se hizo con el token de la plataforma (o sin ninguno), no
+      // con el del vendedor. El vendedor es el único que puede leer su
+      // propio pago con autoridad, así que ahora que se sabe de qué orden
+      // se trata, se busca su token y se vuelve a consultar con él antes de
+      // persistir nada.
+      if (orden) {
+        const cuenta = store.getCuentaVendedorConToken(orden.vendor_id);
+        if (cuenta) {
+          accessToken = cuenta.accessToken;
+          pago = await obtenerPago(paymentId, accessToken);
+          if (!pago) return;
+        }
+      }
     }
     if (!orden) {
       console.warn(`[pagos] Webhook de un pago sin orden asociada (payment ${paymentId})`);
       return;
     }
 
-    store.actualizarPagoDeOrden(orden.id, {
+    const actualizada = store.actualizarPagoDeOrden(orden.id, {
       mpPaymentId: pago.id,
       paymentStatus: pago.status,
     });
+
+    // Mismo efecto que produce el checkout cuando MP aprueba en el momento
+    // (ver routes.js): una orden de carrito que queda pagada saca sus
+    // productos del carrito. Si el pago pasó por revisión antifraude y se
+    // aprueba después, esta notificación es el ÚNICO aviso que va a haber —
+    // sin esto el comprador reencuentra en su carrito algo que ya pagó,
+    // listo para pagarlo por segunda vez.
+    if (actualizada && pago.status === 'approved' && orden.origin === 'cart') {
+      db.clearCartItems(orden.buyer_id, orden.items.map(i => i.product_id));
+    }
+
     store.marcarEventoProcesado(eventId);
     console.log(`[pagos] Orden ${orden.id} → ${pago.status}`);
   } catch (err) {

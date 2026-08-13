@@ -29,6 +29,7 @@ const {
 } = require('../validation/verificacion');
 const { validateLocation } = require('../validation/sellerProfile');
 const { validarCarrera } = require('../validation/carreras');
+const { cuentaDePagosConectada } = require('../payments/methods');
 
 // Envío de OTP: 3 solicitudes por ventana. Se cuenta por usuario Y por
 // destino, para que N cuentas no puedan bombardear un correo/teléfono ajeno
@@ -306,8 +307,85 @@ function crearRutasVerificacion({
     });
   }
 
+  /**
+   * Deja constancia de que la identidad quedó probada y consume el código.
+   *
+   * Se separa de `marcarVerificado` porque ya no son lo mismo: demostrar
+   * quién eres es un paso, y completar la verificación exige además tener
+   * dónde cobrar. Sin este registro, quien sale a conectar Mercado Pago
+   * vuelve con el código expirado y tiene que pedir otro.
+   */
+  function marcarIdentidadConfirmada(usuarioId, columnaCodigo, columnaExpira) {
+    getDb()
+      .prepare(
+        `UPDATE verificaciones SET
+           identidad_confirmada_en = COALESCE(identidad_confirmada_en, @ahora),
+           ${columnaCodigo} = NULL,
+           ${columnaExpira} = NULL,
+           intentos_confirmacion = 0
+         WHERE usuario_id = @usuarioId`,
+      )
+      .run({ usuarioId, ahora: ahora() });
+  }
+
+  /**
+   * Último paso común a los tres flujos: con la identidad ya probada, se
+   * verifica si además hay cuenta de cobros conectada.
+   *
+   * Conectar Mercado Pago es requisito para TODOS los tipos de cuenta, no
+   * solo para negocio: una cuenta verificada es una que puede cobrar dentro
+   * de la app. No conectar no impide publicar ni vender por chat — solo deja
+   * la verificación en 'pendiente'.
+   */
+  function completarSiPuedeCobrar(res, verificacion, camposSellers) {
+    if (!cuentaDePagosConectada(verificacion.usuario_id)) {
+      const motivo = 'Conecta tu cuenta de Mercado Pago para completar la '
+        + 'verificación y poder cobrar en la app.';
+
+      // `motivo_rechazo` y `campo_rechazado` se rellenan aunque el estado sea
+      // 'pendiente' y no 'rechazado': son las columnas genéricas de "qué
+      // falta por corregir", y es de donde la app lee el mensaje al refrescar
+      // el estado de verificación.
+      getDb()
+        .prepare(
+          `UPDATE verificaciones SET
+             estado = 'pendiente',
+             motivo_rechazo = @motivo,
+             campo_rechazado = 'mercadopago'
+           WHERE usuario_id = @usuarioId`,
+        )
+        .run({ usuarioId: verificacion.usuario_id, motivo });
+
+      // 200 y no 4xx: la petición fue válida y se procesó; lo que se devuelve
+      // es el estado del trámite, igual que en el flujo de negocio.
+      return res.json({
+        verificado: false,
+        estado: 'pendiente',
+        campo: 'mercadopago',
+        motivo,
+        motivo_rechazo: motivo,
+        tipo_cuenta: verificacion.tipo_cuenta,
+      });
+    }
+
+    marcarVerificado(verificacion.usuario_id, {}, camposSellers);
+    return res.json({
+      verificado: true,
+      estado: 'verificado',
+      tipo_cuenta: verificacion.tipo_cuenta,
+    });
+  }
+
   /** Valida el código recibido y marca verificado si corresponde. */
   function confirmarOtp(res, { verificacion, columnaCodigo, columnaExpira, camposSellers = {} }) {
+    // Identidad ya probada en un intento anterior: lo único que pudo faltar
+    // es la cuenta de cobros, así que se retoma ahí sin pedir otro código.
+    // Es seguro porque este endpoint va detrás de `requireAuth` y la columna
+    // solo se rellena tras un OTP válido DE ESTE MISMO usuario.
+    if (verificacion.identidad_confirmada_en) {
+      return completarSiPuedeCobrar(res, verificacion, camposSellers);
+    }
+
     const resultado = verificarCodigo(
       typeof res.req.body.codigo_otp === 'string' ? res.req.body.codigo_otp.trim() : '',
       verificacion[columnaCodigo],
@@ -315,12 +393,8 @@ function crearRutasVerificacion({
     );
 
     if (resultado.ok) {
-      marcarVerificado(verificacion.usuario_id, {}, camposSellers);
-      return res.json({
-        verificado: true,
-        estado: 'verificado',
-        tipo_cuenta: verificacion.tipo_cuenta,
-      });
+      marcarIdentidadConfirmada(verificacion.usuario_id, columnaCodigo, columnaExpira);
+      return completarSiPuedeCobrar(res, verificacion, camposSellers);
     }
 
     if (resultado.razon === 'sin_codigo') {
@@ -547,8 +621,25 @@ function crearRutasVerificacion({
         });
       }
 
-      marcarVerificado(req.user.id, datos);
-      return res.json({ estado: 'verificado', verificado: true });
+      // El link comprobado es la prueba de identidad del negocio, el
+      // equivalente al OTP de los otros dos flujos. Se registra ANTES de
+      // mirar la cuenta de cobros, y junto con los datos del negocio, por dos
+      // razones: al volver de conectar Mercado Pago no hay que teclearlo todo
+      // otra vez, y `identidad_confirmada_en` es justo lo que autoriza a
+      // conectarla estando aún sin verificar (ver `puedeVender`).
+      getDb()
+        .prepare(
+          `UPDATE verificaciones SET
+             identidad_confirmada_en = COALESCE(identidad_confirmada_en, @ahora),
+             nombre_negocio = @nombre_negocio,
+             ubicacion_lat = @ubicacion_lat,
+             ubicacion_lng = @ubicacion_lng,
+             link_red_social = @link_red_social
+           WHERE usuario_id = @usuarioId`,
+        )
+        .run({ usuarioId: req.user.id, ahora: ahora(), ...datos });
+
+      return completarSiPuedeCobrar(res, verificacion, {});
     },
   );
 
@@ -633,11 +724,83 @@ function crearRutasVerificacion({
       verificado: !!seller.verified,
       motivo_rechazo: verificacion?.motivo_rechazo || null,
       campo_rechazado: verificacion?.campo_rechazado || null,
+      // La identidad ya está probada y lo único que puede faltar es conectar
+      // la cuenta de cobros. La app lo usa para retomar en ese paso en vez de
+      // volver a mandar un código que no hace falta.
+      identidad_confirmada: Boolean(verificacion?.identidad_confirmada_en),
       puede_reintentar_en: puedeReintentar,
     });
   });
 
   return router;
+}
+
+/**
+ * Cierra una verificación que estaba esperando ÚNICAMENTE a que se conectara
+ * la cuenta de cobros. La llama el callback de OAuth en cuanto la conexión
+ * queda guardada.
+ *
+ * Existe porque conectar Mercado Pago no se hace solo desde el formulario de
+ * verificación: también desde "Editar perfil" y desde la pantalla de cobros.
+ * Si el cierre viviera únicamente en el reintento del formulario, quien
+ * conectara desde cualquier otro sitio se quedaría en 'pendiente' para
+ * siempre sin ninguna pista de qué le falta — no le falta nada.
+ *
+ * Es deliberadamente estricta: solo toca filas cuya identidad YA está probada
+ * y cuyo único pendiente anotado es 'mercadopago'. Una verificación rechazada
+ * por el link, o una que nunca confirmó su OTP, no se cierra por conectar una
+ * cuenta de pagos.
+ *
+ * @returns {boolean} true si esta llamada la dejó verificada.
+ */
+function completarVerificacionPendientePorPagos(usuarioId) {
+  const db = require('../database');
+  const { sellers } = require('../data');
+  const { cuentaDePagosConectada: conectada } = require('../payments/methods');
+  const conexionDb = db.getDb();
+
+  const fila = conexionDb
+    .prepare('SELECT * FROM verificaciones WHERE usuario_id = ?')
+    .get(usuarioId);
+  if (!fila) return false;
+  if (fila.estado === 'verificado') return false;
+  if (!fila.identidad_confirmada_en) return false;
+  if (fila.campo_rechazado !== 'mercadopago') return false;
+  if (!conectada(usuarioId)) return false;
+
+  conexionDb.transaction(() => {
+    conexionDb
+      .prepare(
+        `UPDATE verificaciones SET
+           estado = 'verificado',
+           fecha_verificacion = @fecha,
+           motivo_rechazo = NULL,
+           campo_rechazado = NULL
+         WHERE usuario_id = @usuarioId`,
+      )
+      .run({ usuarioId, fecha: ahora() });
+
+    // Las mismas banderas rápidas que copia `marcarVerificado`: el perfil las
+    // lee de `sellers` sin join contra `verificaciones`.
+    conexionDb
+      .prepare(
+        `UPDATE sellers SET verified = 1, carrera = @carrera, tipo_verificacion = @tipo
+         WHERE id = @usuarioId`,
+      )
+      .run({
+        usuarioId,
+        carrera: fila.carrera ?? null,
+        tipo: fila.tipo_verificacion ?? null,
+      });
+  })();
+
+  // data.js sirve los vendedores desde un array en memoria: sin esto seguiría
+  // diciendo `verified: false` hasta el siguiente reinicio.
+  sellers.length = 0;
+  sellers.push(...db.getSellers());
+
+  console.log(`[verificacion] ${usuarioId} quedó verificado al conectar su cuenta de cobros`);
+  return true;
 }
 
 /** Montaje real, con los adaptadores de producción. */
@@ -666,4 +829,8 @@ function register(app) {
   );
 }
 
-module.exports = { register, crearRutasVerificacion };
+module.exports = {
+  register,
+  crearRutasVerificacion,
+  completarVerificacionPendientePorPagos,
+};

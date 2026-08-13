@@ -807,10 +807,19 @@ function runMigrations() {
       application_fee REAL NOT NULL DEFAULT 0,
       currency TEXT NOT NULL DEFAULT 'MXN',
       status TEXT NOT NULL DEFAULT 'pending'
-        CHECK(status IN ('pending','paid','cancelled')),
+        CHECK(status IN ('pending','paid','cancelled','requires_other_method')),
       payment_status TEXT
         CHECK(payment_status IS NULL OR payment_status IN
-          ('pending','in_process','approved','rejected','refunded','cancelled','charged_back')),
+          ('pending','in_process','approved','authorized','in_mediation',
+           'rejected','refunded','cancelled','charged_back')),
+      -- Cómo se acordó pagar esta orden. Solo 'tarjeta' se cobra dentro de la
+      -- app; el resto son acuerdos entre las partes que la app únicamente
+      -- registra. El CHECK es defensa en profundidad: la autorización real
+      -- (¿este vendedor puede cobrar con tarjeta?) se valida en el servidor
+      -- al crear la orden y otra vez antes de cobrar.
+      payment_method TEXT
+        CHECK(payment_method IS NULL OR payment_method IN
+          ('efectivo','paypal','cripto','tarjeta')),
       mp_payment_id TEXT UNIQUE,
       origin TEXT NOT NULL DEFAULT 'direct' CHECK(origin IN ('direct','cart')),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -818,7 +827,83 @@ function runMigrations() {
     );
     CREATE INDEX IF NOT EXISTS idx_orders_buyer ON orders(buyer_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_orders_vendor ON orders(vendor_id, created_at DESC);
+  `);
 
+  // 30b. Migrar orders. Cubre tres cambios que solo se pueden aplicar
+  //      recreando la tabla, porque SQLite no permite alterar un CHECK:
+  //
+  //      1. payment_status no aceptaba 'authorized' ni 'in_mediation' —
+  //         estados reales de MP cuando el cobro YA se hizo (retención en
+  //         pago diferido, disputa abierta). Sin esto el UPDATE truena y el
+  //         mp_payment_id nunca se guarda: dinero cobrado sin registrar.
+  //      2. Falta la columna payment_method.
+  //      3. status no aceptaba 'requires_other_method', el estado al que va
+  //         una orden cuyo vendedor perdió la conexión con MP entre que se
+  //         creó y que se intentó cobrar. Sin un estado propio, esa orden se
+  //         queda como 'pending' y nadie sabe que hay que hacer algo con ella.
+  const ordersSql = db.prepare(
+    `SELECT sql FROM sqlite_master WHERE type='table' AND name='orders'`,
+  ).get();
+  const ordersDesactualizada = ordersSql && (
+    !ordersSql.sql.includes('authorized')
+    || !ordersSql.sql.includes('payment_method')
+    || !ordersSql.sql.includes('requires_other_method')
+  );
+  if (ordersDesactualizada) {
+    db.pragma('foreign_keys = OFF');
+    try {
+      const migrateOrders = db.transaction(() => {
+        db.exec(`
+          ALTER TABLE orders RENAME TO orders_legacy;
+
+          CREATE TABLE orders (
+            id TEXT PRIMARY KEY,
+            buyer_id TEXT NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+            vendor_id TEXT NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+            amount REAL NOT NULL,
+            application_fee REAL NOT NULL DEFAULT 0,
+            currency TEXT NOT NULL DEFAULT 'MXN',
+            status TEXT NOT NULL DEFAULT 'pending'
+              CHECK(status IN ('pending','paid','cancelled','requires_other_method')),
+            payment_status TEXT
+              CHECK(payment_status IS NULL OR payment_status IN
+                ('pending','in_process','approved','authorized','in_mediation',
+                 'rejected','refunded','cancelled','charged_back')),
+            payment_method TEXT
+              CHECK(payment_method IS NULL OR payment_method IN
+                ('efectivo','paypal','cripto','tarjeta')),
+            mp_payment_id TEXT UNIQUE,
+            origin TEXT NOT NULL DEFAULT 'direct' CHECK(origin IN ('direct','cart')),
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+
+          -- Columnas explícitas y NO 'SELECT *': la tabla nueva tiene una
+          -- columna más que la vieja, así que un SELECT * desalinearía los
+          -- valores o fallaría por número de columnas. Las órdenes
+          -- históricas se quedan con payment_method NULL, que es la verdad:
+          -- se crearon antes de que el método se registrara.
+          INSERT INTO orders
+            (id, buyer_id, vendor_id, amount, application_fee, currency,
+             status, payment_status, mp_payment_id, origin, created_at, updated_at)
+          SELECT
+             id, buyer_id, vendor_id, amount, application_fee, currency,
+             status, payment_status, mp_payment_id, origin, created_at, updated_at
+          FROM orders_legacy;
+
+          DROP TABLE orders_legacy;
+
+          CREATE INDEX IF NOT EXISTS idx_orders_buyer ON orders(buyer_id, created_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_orders_vendor ON orders(vendor_id, created_at DESC);
+        `);
+      });
+      migrateOrders();
+    } finally {
+      db.pragma('foreign_keys = ON');
+    }
+  }
+
+  db.exec(`
     -- Precio y título CONGELADOS al crear la orden. Si se leyeran de
     -- products en vez de copiarse, un vendedor que edite el precio después
     -- reescribiría el histórico de algo que alguien ya pagó.
@@ -835,39 +920,66 @@ function runMigrations() {
     -- Cuenta de Mercado Pago del VENDEDOR, vinculada por OAuth. Su
     -- access_token es lo que permite cobrar en su nombre quedándonos la
     -- comisión (application_fee).
+    -- La columna provider existe para que añadir otra pasarela a futuro no
+    -- obligue a rehacer la tabla: el UNIQUE es (seller_id, provider), así
+    -- que un mismo vendedor puede llegar a tener una cuenta por proveedor.
+    --
+    -- El estado conectado/desconectado NO tiene columna propia: es
+    -- revoked_at IS NULL. Una segunda columna que dijera lo mismo se
+    -- desincroniza en cuanto un camino actualice una y no la otra. La API
+    -- expone un campo status derivado de aquí.
     CREATE TABLE IF NOT EXISTS vendor_payment_accounts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      seller_id TEXT NOT NULL UNIQUE REFERENCES sellers(id) ON DELETE CASCADE,
+      seller_id TEXT NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL DEFAULT 'mercadopago',
       mp_user_id TEXT NOT NULL,
       mp_access_token_enc TEXT NOT NULL,
       mp_refresh_token_enc TEXT,
       mp_token_expires_at TEXT,
       mp_public_key TEXT,
       connected_at TEXT NOT NULL DEFAULT (datetime('now')),
-      revoked_at TEXT
+      revoked_at TEXT,
+      -- Por qué se desconectó y quién lo detectó ('user' | 'webhook' |
+      -- 'token_check'). Sin esto, un vendedor desconectado por revocación
+      -- externa es indistinguible de uno que se desconectó a propósito, y el
+      -- mensaje que se le muestra no puede ser el correcto.
+      disconnect_reason TEXT,
+      disconnected_by TEXT
+        CHECK(disconnected_by IS NULL OR disconnected_by IN ('user','webhook','token_check')),
+      UNIQUE(seller_id, provider)
     );
 
-    -- Customer de MP del COMPRADOR: es el contenedor al que se le cuelgan
-    -- las tarjetas guardadas.
+    -- Customer de MP del COMPRADOR: el contenedor al que se le cuelgan las
+    -- tarjetas guardadas.
+    --
+    -- Es por (comprador, VENDEDOR), no por comprador: en el modo marketplace
+    -- de MP el Customer y sus tarjetas viven dentro de la cuenta del
+    -- vendedor que los creó, y el token de otro vendedor no puede cobrarlos
+    -- (devuelve "Card Token not found"). Por eso un comprador registra su
+    -- tarjeta una vez por cada vendedor al que le compra.
     CREATE TABLE IF NOT EXISTS buyer_mp_customers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      seller_id TEXT NOT NULL UNIQUE REFERENCES sellers(id) ON DELETE CASCADE,
+      seller_id TEXT NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+      vendor_id TEXT NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
       mp_customer_id TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(seller_id, vendor_id)
     );
 
     CREATE TABLE IF NOT EXISTS saved_cards (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       seller_id TEXT NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+      vendor_id TEXT NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
       mp_card_id TEXT NOT NULL,
       last_four_digits TEXT,
       payment_method TEXT,
       expiration_month INTEGER,
       expiration_year INTEGER,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(seller_id, mp_card_id)
+      UNIQUE(seller_id, vendor_id, mp_card_id)
     );
-    CREATE INDEX IF NOT EXISTS idx_saved_cards_seller ON saved_cards(seller_id);
+    CREATE INDEX IF NOT EXISTS idx_saved_cards_seller
+      ON saved_cards(seller_id, vendor_id);
 
     -- Idempotencia del webhook: MP reintenta la misma notificación varias
     -- veces (y ante un timeout, muchas). El UNIQUE sobre event_id es lo que
@@ -892,6 +1004,108 @@ function runMigrations() {
     );
   `);
 
+  const tieneColumna = (tabla, columna) =>
+    db.prepare(`PRAGMA table_info('${tabla}')`).all().some(c => c.name === columna);
+
+  /** Recrea una tabla (única vía en SQLite para tocar UNIQUE o CHECK). */
+  const recrear = (nombre, ddl) => {
+    db.pragma('foreign_keys = OFF');
+    try {
+      db.transaction(() => db.exec(ddl))();
+    } finally {
+      db.pragma('foreign_keys = ON');
+    }
+  };
+
+  // 30c. vendor_payment_accounts: añadir `provider` y el motivo de
+  //      desconexión, y pasar el UNIQUE de (seller_id) a (seller_id,
+  //      provider). Las cuentas ya conectadas se conservan tal cual y se
+  //      etiquetan como 'mercadopago', que es lo único que había.
+  if (!tieneColumna('vendor_payment_accounts', 'provider')) {
+    recrear('vendor_payment_accounts', `
+      ALTER TABLE vendor_payment_accounts RENAME TO vpa_legacy;
+
+      CREATE TABLE vendor_payment_accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        seller_id TEXT NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL DEFAULT 'mercadopago',
+        mp_user_id TEXT NOT NULL,
+        mp_access_token_enc TEXT NOT NULL,
+        mp_refresh_token_enc TEXT,
+        mp_token_expires_at TEXT,
+        mp_public_key TEXT,
+        connected_at TEXT NOT NULL DEFAULT (datetime('now')),
+        revoked_at TEXT,
+        disconnect_reason TEXT,
+        disconnected_by TEXT
+          CHECK(disconnected_by IS NULL OR disconnected_by IN ('user','webhook','token_check')),
+        UNIQUE(seller_id, provider)
+      );
+
+      INSERT INTO vendor_payment_accounts
+        (id, seller_id, provider, mp_user_id, mp_access_token_enc,
+         mp_refresh_token_enc, mp_token_expires_at, mp_public_key,
+         connected_at, revoked_at)
+      SELECT
+         id, seller_id, 'mercadopago', mp_user_id, mp_access_token_enc,
+         mp_refresh_token_enc, mp_token_expires_at, mp_public_key,
+         connected_at, revoked_at
+      FROM vpa_legacy;
+
+      DROP TABLE vpa_legacy;
+    `);
+  }
+
+  // 30d y 30e. buyer_mp_customers y saved_cards pasan a ser por (comprador,
+  //      vendedor).
+  //
+  //      Las filas existentes NO se migran, se descartan. No es negligencia:
+  //      esos Customers y esas tarjetas se crearon bajo la cuenta de la
+  //      PLATAFORMA, y en el modo marketplace de MP el token de un vendedor
+  //      no puede cobrar una tarjeta que vive en otra cuenta — devuelve
+  //      "Card Token not found". Son datos que ya no sirven para cobrar
+  //      nada, así que arrastrarlos con un vendor_id inventado solo
+  //      produciría fallos en el momento del pago. Los compradores vuelven a
+  //      registrar su tarjeta la primera vez que le compren a cada vendedor.
+  //      Del lado de MP los Customers siguen existiendo; limpiarlos allá es
+  //      opcional y no afecta a la app.
+  if (!tieneColumna('buyer_mp_customers', 'vendor_id')) {
+    recrear('buyer_mp_customers', `
+      DROP TABLE buyer_mp_customers;
+      CREATE TABLE buyer_mp_customers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        seller_id TEXT NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+        vendor_id TEXT NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+        mp_customer_id TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(seller_id, vendor_id)
+      );
+    `);
+  }
+
+  if (!tieneColumna('saved_cards', 'vendor_id')) {
+    recrear('saved_cards', `
+      DROP TABLE saved_cards;
+      CREATE TABLE saved_cards (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        seller_id TEXT NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+        vendor_id TEXT NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+        mp_card_id TEXT NOT NULL,
+        last_four_digits TEXT,
+        payment_method TEXT,
+        expiration_month INTEGER,
+        expiration_year INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(seller_id, vendor_id, mp_card_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_saved_cards_seller
+        ON saved_cards(seller_id, vendor_id);
+    `);
+  }
+
+  // 30f. 'transferencia' sale del catálogo de métodos de pago.
+  purgarMetodoDePago(db, 'transferencia');
+
   // 31. Responder a un mensaje concreto del chat (estilo WhatsApp).
   //     Nullable: la enorme mayoría de los mensajes no son respuesta.
   //     ON DELETE SET NULL y no CASCADE: si el mensaje citado desapareciera,
@@ -908,7 +1122,101 @@ function runMigrations() {
     `);
   }
 
+  // 32. `identidad_confirmada_en`: cuándo se demostró la identidad (OTP de
+  //     correo o SMS confirmado), independientemente de si la verificación
+  //     llegó a completarse.
+  //
+  //     Hace falta porque conectar Mercado Pago pasó a ser requisito de la
+  //     verificación para TODOS los tipos de cuenta, y conectarlo obliga a
+  //     salir al navegador y volver — un viaje que dura más que los 10
+  //     minutos de vida del código. Sin esta columna, quien va a conectar su
+  //     cuenta vuelve con el código ya expirado y tiene que pedir otro, que
+  //     es exactamente el bucle que hace que la gente abandone.
+  //
+  //     También es lo que autoriza a conectar Mercado Pago antes de estar
+  //     verificado (ver `puedeVender` en payments/routes.js): sin ella la
+  //     regla sería circular —no te verificas sin conectar, no conectas sin
+  //     estar verificado— y nadie podría completar ninguna de las dos.
+  const verifColsIdentidad = db.prepare("PRAGMA table_info('verificaciones')").all();
+  if (!verifColsIdentidad.some(c => c.name === 'identidad_confirmada_en')) {
+    db.exec(`ALTER TABLE verificaciones ADD COLUMN identidad_confirmada_en TEXT`);
+    // Quien ya está verificado demostró su identidad por definición. Sin
+    // este relleno, un verificado que se desverificara quedaría con la
+    // columna en NULL y tendría que repetir el OTP sin motivo.
+    db.exec(`
+      UPDATE verificaciones SET identidad_confirmada_en = COALESCE(fecha_verificacion, creado_en)
+      WHERE identidad_confirmada_en IS NULL AND estado = 'verificado'
+    `);
+  }
+
   console.log('🔄 Migración de schema completada');
+}
+
+/**
+ * Retira un método de pago del catálogo en todos los sitios donde quedó
+ * guardado como JSON. Idempotente: correrla de nuevo no cambia nada.
+ *
+ * El "qué hacer si queda vacío" NO es el mismo en las tres tablas, y es todo
+ * el motivo de que esto sea una función y no un UPDATE:
+ *
+ * - `sellers.paymentMethods` exige al menos un método. Dejarlo en [] rompe
+ *   el perfil del vendedor y le bloquea guardar cualquier cambio hasta que
+ *   se dé cuenta, así que cae a ['efectivo'], que es el mínimo universal.
+ * - En `products` y `wanted_posts`, NULL significa "hereda del perfil". Ahí
+ *   quedarse vacío sí tiene una respuesta correcta y no destructiva: volver
+ *   a NULL y heredar.
+ *
+ * @returns {{sellers:number, products:number, wanted:number}} filas tocadas
+ */
+function purgarMetodoDePago(conexion, metodo) {
+  const tocadas = { sellers: 0, products: 0, wanted: 0 };
+
+  const purgarTabla = (tabla, columnaId, siQuedaVacio) => {
+    const existe = conexion.prepare(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
+    ).get(tabla);
+    if (!existe) return 0;
+
+    const filas = conexion.prepare(
+      `SELECT ${columnaId} AS id, paymentMethods FROM ${tabla}
+       WHERE paymentMethods IS NOT NULL AND paymentMethods LIKE ?`,
+    ).all(`%${metodo}%`);
+
+    const actualizar = conexion.prepare(
+      `UPDATE ${tabla} SET paymentMethods = ? WHERE ${columnaId} = ?`,
+    );
+
+    let n = 0;
+    for (const fila of filas) {
+      let lista;
+      try {
+        lista = JSON.parse(fila.paymentMethods);
+      } catch {
+        continue; // JSON corrupto: no es asunto de esta migración tocarlo.
+      }
+      if (!Array.isArray(lista) || !lista.includes(metodo)) continue;
+
+      const restantes = lista.filter(m => m !== metodo);
+      const valor = restantes.length > 0 ? JSON.stringify(restantes) : siQuedaVacio;
+      actualizar.run(valor, fila.id);
+      n++;
+    }
+    return n;
+  };
+
+  conexion.transaction(() => {
+    tocadas.sellers = purgarTabla('sellers', 'id', JSON.stringify(['efectivo']));
+    tocadas.products = purgarTabla('products', 'id', null);
+    tocadas.wanted = purgarTabla('wanted_posts', 'id', null);
+  })();
+
+  if (tocadas.sellers || tocadas.products || tocadas.wanted) {
+    console.log(
+      `🔄 Método de pago '${metodo}' retirado: ${tocadas.sellers} vendedores, `
+      + `${tocadas.products} productos, ${tocadas.wanted} búsquedas`,
+    );
+  }
+  return tocadas;
 }
 
 // ─── helpers para convertir filas a objetos y viceversa ─────
@@ -2666,6 +2974,7 @@ module.exports = {
   updateCartItem,
   deleteCartItem,
   clearCartItems,
+  purgarMetodoDePago,
   getAllListings,
   addListing,
   // Price history

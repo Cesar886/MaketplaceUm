@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import '../../app_theme.dart';
 import '../../services/api_error.dart';
 import 'mp_tokenizer.dart';
-import 'payment_models.dart';
 import 'payments_api.dart';
 
 /// Formulario de tarjeta nueva.
@@ -14,8 +13,22 @@ import 'payments_api.dart';
 /// [MpTokenizer]) y lo único que llega a nuestro servidor es el token
 /// resultante. Los controladores se limpian al salir para no dejar los
 /// datos vivos en memoria más de lo necesario.
+/// La tarjeta se registra CON UN VENDEDOR concreto: en el modo marketplace
+/// de Mercado Pago vive dentro de la cuenta de quien va a cobrarla, y el
+/// token de otro vendedor no puede usarla. De ahí que haga falta el
+/// [vendorId] y, sobre todo, la [publicKey] de ese vendedor — tokenizar con
+/// la clave de la plataforma produciría un token que MP rechaza al cobrar.
 class AddCardScreen extends StatefulWidget {
-  const AddCardScreen({super.key});
+  const AddCardScreen({
+    super.key,
+    required this.vendorId,
+    required this.publicKey,
+    this.nombreVendedor,
+  });
+
+  final String vendorId;
+  final String publicKey;
+  final String? nombreVendedor;
 
   @override
   State<AddCardScreen> createState() => _AddCardScreenState();
@@ -28,15 +41,8 @@ class _AddCardScreenState extends State<AddCardScreen> {
   final _cvv = TextEditingController();
   final _titular = TextEditingController();
 
-  PaymentsConfig? _config;
   String? _error;
   bool _guardando = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _cargarConfig();
-  }
 
   @override
   void dispose() {
@@ -51,25 +57,8 @@ class _AddCardScreenState extends State<AddCardScreen> {
     super.dispose();
   }
 
-  Future<void> _cargarConfig() async {
-    try {
-      final config = await PaymentsApi.getConfig();
-      if (!mounted) return;
-      setState(() => _config = config);
-    } catch (e, s) {
-      if (!mounted) return;
-      setState(() => _error = mensajeDeError(
-        e,
-        fallback: 'Los pagos no están disponibles en este momento.',
-        stack: s,
-      ));
-    }
-  }
-
   Future<void> _guardar() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    final config = _config;
-    if (config == null) return;
 
     setState(() {
       _guardando = true;
@@ -84,7 +73,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
 
       // 1) Tarjeta → Mercado Pago, DIRECTO desde el dispositivo.
       final token = await MpTokenizer.tokenizarTarjetaNueva(
-        publicKey: config.publicKey,
+        publicKey: widget.publicKey,
         numero: _numero.text,
         mesVencimiento: mes,
         anioVencimiento: anio,
@@ -93,7 +82,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
       );
 
       // 2) Solo el token → nuestro backend.
-      final tarjeta = await PaymentsApi.guardarTarjeta(token);
+      final tarjeta = await PaymentsApi.guardarTarjeta(widget.vendorId, token);
 
       if (!mounted) return;
       Navigator.pop(context, tarjeta);
@@ -117,20 +106,10 @@ class _AddCardScreenState extends State<AddCardScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Agregar tarjeta')),
       body: SafeArea(
-        child: _config == null && _error != null
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    _error!,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: colors.muted),
-                  ),
-                ),
-              )
-            : _config == null
-            ? const Center(child: CircularProgressIndicator())
-            : Form(
+        // Ya no hay carga asíncrona previa: la clave pública del vendedor
+        // llega como parámetro desde el checkout, que es quien la consultó.
+        // El formulario se pinta directo y los errores se muestran dentro.
+        child: Form(
                 key: _formKey,
                 child: ListView(
                   padding: const EdgeInsets.all(18),

@@ -60,13 +60,31 @@ class _ConnectMpScreenState extends State<ConnectMpScreen>
         _estado = estado;
         _error = null;
       });
+      // `getEstadoCuenta` solo lee el flag guardado. Comprobar contra Mercado
+      // Pago que la autorización sigue viva es una segunda pregunta que puede
+      // fallar sola (503 de una plataforma a medio configurar, red caída), y
+      // ese fallo NO debe borrar lo que ya se pintó: la respuesta de arriba
+      // sigue siendo la mejor que tenemos.
+      final real = await PaymentsApi.estadoDeCobros();
+      if (!mounted || real == EstadoCobros.desconocido) return;
+      if (real.estaConectado != estado.connected) {
+        setState(
+          () => _estado = VendorAccountStatus(
+            connected: real.estaConectado,
+            canConnect: estado.canConnect,
+            connectedAt: estado.connectedAt,
+          ),
+        );
+      }
     } catch (e, s) {
       if (!mounted) return;
-      setState(() => _error = mensajeDeError(
-        e,
-        fallback: 'No se pudo consultar tu cuenta de pagos.',
-        stack: s,
-      ));
+      setState(
+        () => _error = mensajeDeError(
+          e,
+          fallback: 'No se pudo consultar tu cuenta de pagos.',
+          stack: s,
+        ),
+      );
     }
   }
 
@@ -82,16 +100,20 @@ class _ConnectMpScreenState extends State<ConnectMpScreen>
       if (!abierto) {
         _abriendo = false;
         if (!mounted) return;
-        setState(() => _error = 'No se pudo abrir Mercado Pago en tu navegador.');
+        setState(
+          () => _error = 'No se pudo abrir Mercado Pago en tu navegador.',
+        );
       }
     } catch (e, s) {
       _abriendo = false;
       if (!mounted) return;
-      setState(() => _error = mensajeDeError(
-        e,
-        fallback: 'No se pudo iniciar la conexión con Mercado Pago.',
-        stack: s,
-      ));
+      setState(
+        () => _error = mensajeDeError(
+          e,
+          fallback: 'No se pudo iniciar la conexión con Mercado Pago.',
+          stack: s,
+        ),
+      );
     }
   }
 
@@ -126,11 +148,13 @@ class _ConnectMpScreenState extends State<ConnectMpScreen>
       await _cargar();
     } catch (e, s) {
       if (!mounted) return;
-      setState(() => _error = mensajeDeError(
-        e,
-        fallback: 'No se pudo desconectar tu cuenta.',
-        stack: s,
-      ));
+      setState(
+        () => _error = mensajeDeError(
+          e,
+          fallback: 'No se pudo desconectar tu cuenta.',
+          stack: s,
+        ),
+      );
     }
   }
 
@@ -162,8 +186,9 @@ class _ConnectMpScreenState extends State<ConnectMpScreen>
           else if (!_estado!.canConnect)
             const _Aviso(
               texto:
-                  'Para recibir pagos necesitas una cuenta verificada de negocio '
-                  'o de estudiante. Verifica tu cuenta desde tu perfil.',
+                  'Antes de conectar tu cuenta de cobros tienes que confirmar el '
+                  'código que te enviamos por correo o SMS. Empieza la verificación '
+                  'desde tu perfil.',
               esError: false,
             )
           else

@@ -31,7 +31,10 @@ class CheckoutScreen extends StatefulWidget {
 class _CheckoutScreenState extends State<CheckoutScreen> {
   final _cvv = TextEditingController();
 
-  PaymentsConfig? _config;
+  /// Métodos y clave pública DEL VENDEDOR de esta orden. Sustituye a la
+  /// configuración global de la plataforma: la tokenización tiene que
+  /// hacerse con la clave del vendedor que va a cobrar.
+  VendorPaymentMethods? _metodos;
   List<SavedCard>? _tarjetas;
   SavedCard? _seleccionada;
   String? _error;
@@ -52,14 +55,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _cargar() async {
     try {
-      final config = await PaymentsApi.getConfig();
-      final tarjetas = await PaymentsApi.getTarjetas();
+      // En vivo y en este orden: si el vendedor ya no puede cobrar con
+      // tarjeta, no tiene sentido ni pedir las tarjetas guardadas con él.
+      final metodos = await PaymentsApi.getMetodosDeVendedor(widget.orden.vendorId);
+      final tarjetas = metodos.aceptaTarjeta
+          ? await PaymentsApi.getTarjetas(widget.orden.vendorId)
+          : <SavedCard>[];
       if (!mounted) return;
       setState(() {
-        _config = config;
+        _metodos = metodos;
         _tarjetas = tarjetas;
         _seleccionada = tarjetas.where((t) => !t.estaVencida).firstOrNull;
-        _error = null;
+        _error = metodos.aceptaTarjeta
+            ? null
+            : (metodos.porId('tarjeta')?.unavailableReason
+                ?? '${widget.nombreVendedor ?? 'Este vendedor'} no acepta pagos con '
+                   'tarjeta en la app. Contáctalo por chat para acordar otra forma de pago.');
       });
     } catch (e, s) {
       if (!mounted) return;
@@ -72,9 +83,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _agregarTarjeta() async {
+    final metodos = _metodos;
+    if (metodos == null || !metodos.aceptaTarjeta) return;
+
     final nueva = await Navigator.push<SavedCard>(
       context,
-      MaterialPageRoute(builder: (_) => const AddCardScreen()),
+      MaterialPageRoute(
+        builder: (_) => AddCardScreen(
+          vendorId: widget.orden.vendorId,
+          publicKey: metodos.cardPublicKey!,
+          nombreVendedor: widget.nombreVendedor,
+        ),
+      ),
     );
     if (nueva == null) return;
     await _cargar();
@@ -83,9 +103,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _pagar() async {
-    final config = _config;
+    final metodos = _metodos;
     final tarjeta = _seleccionada;
-    if (config == null || tarjeta == null) return;
+    if (metodos == null || !metodos.aceptaTarjeta || tarjeta == null) return;
 
     if (_cvv.text.length < 3) {
       setState(() => _error = 'Escribe el código de seguridad (CVV).');
@@ -101,7 +121,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       // Token nuevo por cobro, generado contra la API pública de MP: el CVV
       // va del dispositivo a Mercado Pago sin pasar por nuestro servidor.
       final token = await MpTokenizer.tokenizarTarjetaGuardada(
-        publicKey: config.publicKey,
+        publicKey: metodos.cardPublicKey!,
         cardId: tarjeta.id,
         cvv: _cvv.text,
       );

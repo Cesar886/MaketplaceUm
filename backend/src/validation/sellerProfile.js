@@ -135,7 +135,17 @@ function validateLocation(lat, lng) {
 
 // Catálogo fijo de métodos de pago — no crece con input de usuario, por eso
 // se valida contra esta lista cerrada en vez de contra una tabla externa.
-const VALID_PAYMENT_METHODS = ['efectivo', 'transferencia', 'paypal', 'cripto'];
+// 'transferencia' salió del catálogo: la app pasó a cobrar tarjeta de verdad
+// y una transferencia bancaria manual no es algo que pueda registrar ni
+// conciliar. Los vendedores que la tenían guardada se migraron en
+// database.js (ver purgarMetodoDePago).
+//
+// 'tarjeta' es el único método que la app COBRA, no solo anuncia, así que
+// tiene un requisito que los demás no: que el vendedor tenga cuenta de pagos
+// conectada. Eso no se comprueba aquí — esta función es validación pura de
+// catálogo, sin base de datos — sino en payments/methods.js, que es lo que
+// aplican las rutas que guardan métodos.
+const VALID_PAYMENT_METHODS = ['efectivo', 'tarjeta', 'paypal', 'cripto'];
 
 // Métodos de pago aceptados: array de strings del catálogo fijo.
 // - required=true (registro/perfil): al menos 1 método es obligatorio.

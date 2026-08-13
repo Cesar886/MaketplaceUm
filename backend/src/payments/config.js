@@ -68,6 +68,7 @@ const REQUERIDAS = [
   ['MP_ACCESS_TOKEN', 'accessToken'],
   ['MP_CLIENT_ID', 'clientId'],
   ['MP_CLIENT_SECRET', 'clientSecret'],
+  ['MP_WEBHOOK_SECRET', 'webhookSecret'],
   ['PAYMENTS_ENCRYPTION_KEY', 'encryptionKey'],
   ['APP_PUBLIC_URL', 'appPublicUrl'],
 ];

@@ -13,6 +13,7 @@ import '../../services/api_service.dart';
 import '../../widgets/location_picker.dart';
 import '../../widgets/otp_input.dart';
 import '../../widgets/static_mini_map.dart';
+import '../../features/payments/connect_mp_screen.dart';
 import 'account_created_screen.dart';
 
 /// Pantalla única de verificación de cuenta para los tres tipos.
@@ -53,6 +54,11 @@ class _VerificationScreenState extends State<VerificationScreen> {
   /// Cambia de la captura de datos al ingreso del código.
   bool _esperandoCodigo = false;
   String? _destinoCodigo;
+
+  /// El código ya se confirmó y lo ÚNICO que falta para verificarse es
+  /// conectar la cuenta de cobros. Cambia el paso del código por el de
+  /// conectar: volver a pedir un código que ya se usó no tendría sentido.
+  bool _faltaMercadoPago = false;
 
   /// Código tal como va quedando en [OtpInput]. Solo sirve para habilitar el
   /// botón "Verificar código" (y para reintentar con el mismo código sin
@@ -101,6 +107,28 @@ class _VerificationScreenState extends State<VerificationScreen> {
       // `mounted` porque FocusNode.dispose() puede notificar al desenfocar, y
       // el setState de _validarCorreo reventaría sobre un State ya desmontado.
       if (mounted && !_focoMatricula.hasFocus) _validarCorreo();
+    });
+    _retomarDondeQuedo();
+  }
+
+  /// Si la persona ya confirmó su código en una sesión anterior y solo le
+  /// falta conectar la cuenta de cobros, se entra directo a ese paso.
+  ///
+  /// Sin esto, quien cerró la app en mitad del trámite vuelve a la pantalla
+  /// de pedir un correo y un código que ya confirmó — y como el backend ya no
+  /// se lo va a volver a pedir, se queda dando vueltas sin entender qué pasa.
+  Future<void> _retomarDondeQuedo() async {
+    // El flujo de negocio ya pinta su fila de conectar dentro del formulario,
+    // con los datos del negocio que hay que conservar a la vista.
+    if (widget.tipo == AccountType.negocio) return;
+
+    await _auth.refrescarEstadoVerificacion();
+    if (!mounted) return;
+    if (!_auth.soloFaltaConectarCobros) return;
+    setState(() {
+      _faltaMercadoPago = true;
+      _campoConError = 'mercadopago';
+      _error = _auth.motivoRechazo;
     });
   }
 
@@ -320,14 +348,52 @@ class _VerificationScreenState extends State<VerificationScreen> {
     });
   }
 
+  /// Confirma el código. Si el código era correcto pero falta conectar la
+  /// cuenta de cobros, NO se sale de la pantalla: se pasa al paso de conectar,
+  /// que es lo único que queda por hacer.
   Future<void> _confirmarCodigo(String codigo) {
     return _ejecutar(() async {
-      if (widget.tipo == AccountType.estudiante) {
-        await _auth.confirmarVerificacionEstudiante(codigo);
-      } else {
-        await _auth.confirmarVerificacionExterno(codigo);
+      final verificado = widget.tipo == AccountType.estudiante
+          ? await _auth.confirmarVerificacionEstudiante(codigo)
+          : await _auth.confirmarVerificacionExterno(codigo);
+      if (!mounted) return;
+      if (verificado) {
+        _terminar(verificado: true);
+        return;
       }
-      if (mounted) _terminar(verificado: true);
+      setState(() {
+        _faltaMercadoPago = true;
+        _error =
+            _auth.motivoRechazo ??
+            'Conecta tu cuenta de Mercado Pago para completar la verificación.';
+        _campoConError = _auth.campoRechazado;
+      });
+    });
+  }
+
+  /// Reintenta el cierre tras volver de conectar Mercado Pago.
+  ///
+  /// Va sin código a propósito: la identidad ya quedó probada en el intento
+  /// anterior y el backend lo sabe (ver `identidad_confirmada_en`). Pedir otro
+  /// código aquí sería absurdo — el anterior ya expiró mientras la persona
+  /// estaba en el navegador de Mercado Pago, que es exactamente el bucle que
+  /// hace que la gente abandone.
+  Future<void> _reintentarTrasConectar() {
+    return _ejecutar(() async {
+      final verificado = widget.tipo == AccountType.estudiante
+          ? await _auth.confirmarVerificacionEstudiante('')
+          : await _auth.confirmarVerificacionExterno('');
+      if (!mounted) return;
+      if (verificado) {
+        _terminar(verificado: true);
+        return;
+      }
+      setState(() {
+        _error =
+            _auth.motivoRechazo ??
+            'Todavía no vemos tu cuenta de Mercado Pago conectada.';
+        _campoConError = 'mercadopago';
+      });
     });
   }
 
@@ -408,12 +474,19 @@ class _VerificationScreenState extends State<VerificationScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                _esperandoCodigo ? 'Ingresa tu código' : _titulo,
+                _faltaMercadoPago
+                    ? 'Último paso'
+                    : _esperandoCodigo
+                    ? 'Ingresa tu código'
+                    : _titulo,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 6),
               Text(
-                _esperandoCodigo
+                _faltaMercadoPago
+                    ? 'Tu identidad ya quedó confirmada. Conecta tu cuenta de '
+                          'Mercado Pago para terminar de verificarte.'
+                    : _esperandoCodigo
                     ? 'Enviamos un código de 6 dígitos a $_destinoCodigo. Vence en 10 minutos.'
                     : _descripcion,
                 style: TextStyle(
@@ -426,7 +499,8 @@ class _VerificationScreenState extends State<VerificationScreen> {
               // En el paso del código el error se pinta bajo las casillas
               // (ver _buildIngresoCodigo), que es donde el usuario está
               // mirando; duplicarlo arriba solo empuja el contenido.
-              if (_error != null && !_esperandoCodigo) ...[
+              if (_error != null &&
+                  (!_esperandoCodigo || _faltaMercadoPago)) ...[
                 _CajaAviso(
                   mensaje: _error!,
                   color: AppColors.danger,
@@ -446,7 +520,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 const SizedBox(height: 16),
               ],
 
-              if (_esperandoCodigo)
+              if (_faltaMercadoPago)
+                _buildConectarCobros()
+              else if (_esperandoCodigo)
                 _buildIngresoCodigo()
               else
                 _buildFormulario(),
@@ -490,6 +566,35 @@ class _VerificationScreenState extends State<VerificationScreen> {
     AccountType.negocio => _buildFormNegocio(),
     AccountType.particular => _buildFormExterno(),
   };
+
+  // ─── Conectar la cuenta de cobros (estudiante y externo) ───
+  //
+  // Paso propio y no un aviso dentro del formulario: en este punto ya no hay
+  // nada más que hacer, y dejar a la vista las casillas del código —vacías,
+  // con el código ya consumido— solo invita a teclear algo que no sirve.
+
+  Widget _buildConectarCobros() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _FilaConectarMercadoPago(
+          destacado: _campoConError == 'mercadopago',
+          habilitado: !_enviando,
+          // Al volver de conectar se reintenta solo: la persona no tiene por
+          // qué saber que hace falta un segundo paso.
+          onConectado: () {
+            if (mounted) _reintentarTrasConectar();
+          },
+        ),
+        const SizedBox(height: 18),
+        _BotonPrincipal(
+          etiqueta: 'Ya la conecté, verificar',
+          cargando: _enviando,
+          onPressed: _reintentarTrasConectar,
+        ),
+      ],
+    );
+  }
 
   // ─── Ingreso del código (estudiante y externo) ─────────────
 
@@ -683,12 +788,103 @@ class _VerificationScreenState extends State<VerificationScreen> {
           conError: _campoConError == 'link_red_social',
         ),
         const SizedBox(height: 24),
+
+        // Conectar Mercado Pago es requisito SOLO para negocio: un negocio
+        // verificado es uno que puede cobrar en la app. Se ofrece desde aquí
+        // para que no haya que salir al perfil a buscarlo, y se destaca
+        // cuando el backend dice que es justo lo que falta.
+        _FilaConectarMercadoPago(
+          destacado: _campoConError == 'mercadopago',
+          habilitado: !_enviando,
+          onConectado: () {
+            // Al volver de conectar, se reintenta solo: el usuario ya tiene
+            // el formulario lleno y repetirlo a mano sería absurdo.
+            if (mounted) _verificarNegocio();
+          },
+        ),
+        const SizedBox(height: 18),
+
         _BotonPrincipal(
           etiqueta: 'Verificar negocio',
           cargando: _enviando,
           onPressed: _verificarNegocio,
         ),
       ],
+    );
+  }
+}
+
+/// Acceso a la conexión de Mercado Pago desde el formulario de verificación
+/// de negocio.
+class _FilaConectarMercadoPago extends StatelessWidget {
+  const _FilaConectarMercadoPago({
+    required this.destacado,
+    required this.habilitado,
+    required this.onConectado,
+  });
+
+  /// El backend indicó que esto es lo único que falta para verificarse.
+  final bool destacado;
+  final bool habilitado;
+  final VoidCallback onConectado;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final color = destacado ? AppColors.danger : colors.border;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color),
+        color: destacado
+            ? AppColors.danger.withValues(alpha: 0.05)
+            : Colors.transparent,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.account_balance_wallet_outlined,
+                size: 18,
+                color: destacado ? AppColors.danger : colors.muted,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Cuenta de cobros *',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: colors.ink,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Una cuenta verificada puede cobrar dentro de la app. '
+            'Conecta tu cuenta de Mercado Pago para completar la verificación.',
+            style: TextStyle(fontSize: 12, color: colors.muted),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: habilitado
+                ? () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const ConnectMpScreen(),
+                      ),
+                    );
+                    onConectado();
+                  }
+                : null,
+            icon: const Icon(Icons.link_rounded),
+            label: const Text('Conectar Mercado Pago'),
+          ),
+        ],
+      ),
     );
   }
 }

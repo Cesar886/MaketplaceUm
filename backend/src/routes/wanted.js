@@ -3,6 +3,7 @@ const { sellers, categories } = require('../data');
 const { sendPush } = require('../push');
 const { requireAuth } = require('../auth');
 const { validateLocation, validatePaymentMethods } = require('../validation/sellerProfile');
+const { validarMetodosPermitidos } = require('../payments/methods');
 
 const VALID_TYPES = ['producto', 'servicio'];
 const DAILY_LIMIT = 3;
@@ -89,6 +90,8 @@ function register(app) {
     // queda null y el cliente usa los del perfil del publicante.
     const paymentMethodsResult = validatePaymentMethods(req.body?.paymentMethods);
     if (paymentMethodsResult.error) return res.status(400).json({ error: paymentMethodsResult.error });
+    const metodosPermitidos = validarMetodosPermitidos(userId, paymentMethodsResult.value);
+    if (metodosPermitidos.error) return res.status(400).json({ error: metodosPermitidos.error });
 
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
     const countToday = db.countWantedPostsSince(userId, since);
@@ -183,6 +186,8 @@ function register(app) {
 
     const paymentMethodsResult = validatePaymentMethods(req.body?.paymentMethods);
     if (paymentMethodsResult.error) return res.status(400).json({ error: paymentMethodsResult.error });
+    const metodosPermitidos = validarMetodosPermitidos(req.user.id, paymentMethodsResult.value);
+    if (metodosPermitidos.error) return res.status(400).json({ error: metodosPermitidos.error });
 
     const updated = db.updateWantedPost(req.params.id, {
       title: validated.title,

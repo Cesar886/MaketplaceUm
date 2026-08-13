@@ -58,6 +58,19 @@ const routes = [
   require('./payments/routes'),
 ];
 
+// Igual que el log de JWT_SECRET arriba: dice si los pagos están listos y,
+// si no, exactamente qué falta — nunca los valores. Sin esto, una variable
+// faltante (p.ej. MP_WEBHOOK_SECRET) solo se descubre cuando el webhook ya
+// lleva rato fallando en silencio con 401 en producción.
+{
+  const { resumenSeguro } = require('./payments/config');
+  const resumen = resumenSeguro();
+  console.log(
+    `[boot] Pagos (Mercado Pago): ${resumen.configurado ? 'OK' : 'SIN CONFIGURAR'}` +
+    (resumen.configurado ? '' : ` — faltan: ${resumen.faltantes.join(', ')}`),
+  );
+}
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -317,6 +330,16 @@ app.post('/api/auth/register', (req, res) => {
   // un cliente viejo que no mande este campo.
   const paymentMethodsResult = validatePaymentMethods(paymentMethods, { required: true });
   if (paymentMethodsResult.error) return res.status(400).json({ error: paymentMethodsResult.error });
+
+  // 'tarjeta' exige una cuenta de Mercado Pago conectada, y una cuenta que
+  // se está creando en este mismo request todavía no puede tenerla: el OAuth
+  // ocurre después, desde el perfil o el flujo de verificación. Aceptarlo
+  // aquí dejaría el método puesto sin nada detrás.
+  if ((paymentMethodsResult.value || []).includes('tarjeta')) {
+    return res.status(400).json({
+      error: 'Para aceptar tarjeta primero conecta tu cuenta de Mercado Pago desde tu perfil.',
+    });
+  }
 
   // Generar un ID único basado en el email (parte local + hash corto).
   // Es solo un identificador legible; la unicidad real de cuenta la

@@ -72,17 +72,27 @@ class AuthProvider extends ChangeNotifier {
   String? _tipoCuentaBackend;
   String? _motivoRechazo;
   String? _campoRechazado;
+  bool _identidadConfirmada = false;
   int _puedeReintentarEn = 0;
 
   bool get isVerified => _verificado;
   String get estadoVerificacion => _estadoVerificacion;
 
-  /// Mensaje del backend explicando por qué se rechazó la verificación
-  /// (solo aplica al flujo de negocio).
+  /// Mensaje del backend explicando por qué la verificación no se completó.
   String? get motivoRechazo => _motivoRechazo;
 
-  /// Campo concreto que hay que corregir cuando el estado es 'rechazado'.
+  /// Campo concreto que hay que corregir. 'mercadopago' significa que lo
+  /// único que falta es conectar la cuenta de cobros.
   String? get campoRechazado => _campoRechazado;
+
+  /// El OTP ya se confirmó (o el negocio ya pasó la comprobación del link).
+  /// Junto con [campoRechazado] == 'mercadopago' es lo que permite retomar la
+  /// verificación en el paso de conectar en vez de empezar de cero.
+  bool get identidadConfirmada => _identidadConfirmada;
+
+  /// Solo falta conectar la cuenta de cobros para quedar verificado.
+  bool get soloFaltaConectarCobros =>
+      !_verificado && _identidadConfirmada && _campoRechazado == 'mercadopago';
 
   /// Minutos que faltan para poder pedir otro código, o 0 si puede pedirlo ya.
   int get puedeReintentarEn => _puedeReintentarEn;
@@ -279,6 +289,7 @@ class AuthProvider extends ChangeNotifier {
     _tipoCuentaBackend = estado['tipo_cuenta'] as String?;
     _motivoRechazo = estado['motivo_rechazo'] as String?;
     _campoRechazado = estado['campo_rechazado'] as String?;
+    _identidadConfirmada = estado['identidad_confirmada'] as bool? ?? false;
     _puedeReintentarEn = (estado['puede_reintentar_en'] as num?)?.toInt() ?? 0;
   }
 
@@ -298,9 +309,17 @@ class AuthProvider extends ChangeNotifier {
     return res['codigo_dev'] as String?;
   }
 
-  Future<void> confirmarVerificacionEstudiante(String codigo) async {
-    await ApiService.confirmarVerificacionEstudiante(codigo);
+  /// Confirma el código del estudiante. Devuelve true si la cuenta quedó
+  /// verificada.
+  ///
+  /// Un false NO significa que el código estuviera mal (eso llega como
+  /// excepción): significa que el código era correcto y falta un requisito,
+  /// hoy siempre conectar la cuenta de cobros. El motivo queda en
+  /// [motivoRechazo] / [campoRechazado].
+  Future<bool> confirmarVerificacionEstudiante(String codigo) async {
+    final res = await ApiService.confirmarVerificacionEstudiante(codigo);
     await refrescarEstadoVerificacion();
+    return res['verificado'] == true;
   }
 
   /// Verifica un negocio en una sola llamada. Devuelve true si quedó
@@ -327,9 +346,11 @@ class AuthProvider extends ChangeNotifier {
     return res['codigo_dev'] as String?;
   }
 
-  Future<void> confirmarVerificacionExterno(String codigo) async {
-    await ApiService.confirmarVerificacionExterno(codigo);
+  /// Igual que [confirmarVerificacionEstudiante], por SMS.
+  Future<bool> confirmarVerificacionExterno(String codigo) async {
+    final res = await ApiService.confirmarVerificacionExterno(codigo);
     await refrescarEstadoVerificacion();
+    return res['verificado'] == true;
   }
 
   Future<void> createBusinessProfile({

@@ -12,6 +12,10 @@ import '../services/api_service.dart';
 import '../services/favorite_products_service.dart';
 import '../services/recent_products_service.dart';
 import '../services/view_cooldown.dart';
+import '../features/payments/checkout_screen.dart';
+import '../features/payments/pay_with_card_section.dart';
+import '../features/payments/payment_models.dart';
+import '../features/payments/payments_api.dart';
 import '../widgets/badges.dart';
 import '../widgets/payment_methods.dart';
 import '../widgets/product_carousel_section.dart';
@@ -73,6 +77,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     with SingleTickerProviderStateMixin {
   late bool _favorite = widget.product.isFavorite;
   late Product _product;
+
+  /// Evita dobles toques mientras la orden se está creando en el servidor.
+  /// Sin esto, dos toques rápidos crean dos órdenes para la misma compra.
+  bool _creandoOrden = false;
   double? _lowest30d;
   late final AnimationController _priceTagController;
 
@@ -558,6 +566,22 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       ),
                     ],
                   ],
+                  // ─── Pagar con tarjeta ────────────────────────────
+                  //
+                  // Se decide sola: si este vendedor no puede cobrar con
+                  // tarjeta ahora mismo, no dibuja nada (ver
+                  // [PayWithCardSection]). Va aquí, justo después de la
+                  // descripción y los extras, porque es lo que termina de
+                  // responder "¿me lo llevo?" — más abajo competiría con las
+                  // calificaciones y el vendedor.
+                  if (_puedeComprarse) ...[
+                    const SizedBox(height: 22),
+                    PayWithCardSection(
+                      product: product,
+                      pagando: _creandoOrden,
+                      onPagar: () => _comprar(context),
+                    ),
+                  ],
                   // ─── Calificaciones del producto — no aplica a "se busca" ──────
                   if (!product.isWantedPost) ...[
                     const SizedBox(height: 24),
@@ -755,11 +779,110 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         ),
                       ),
               ),
+              // Comprar solo aparece si este vendedor anuncia que acepta
+              // tarjeta. Es una comprobación barata sobre datos que ya
+              // tenemos cargados; la de verdad —¿su cuenta sigue viva AHORA?—
+              // la hace el checkout contra el servidor, que es el único sitio
+              // donde puede ser fiable.
+              if (_puedeComprarse) ...[
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _creandoOrden ? null : () => _comprar(context),
+                    icon: _creandoOrden
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.credit_card_rounded),
+                    label: const Text('Comprar'),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
       ),
     );
+  }
+
+  /// Si tiene sentido ofrecer la compra dentro de la app para este producto.
+  bool get _puedeComprarse {
+    if (product.isWantedPost || !product.isAvailable) return false;
+    if (context.read<AuthProvider>().backendSellerId == product.seller.id) {
+      return false; // No puedes comprarte a ti mismo (el backend también lo corta).
+    }
+    final metodos = product.paymentMethods ?? product.seller.paymentMethods;
+    return metodos.contains('tarjeta');
+  }
+
+  /// Crea la orden en el servidor y abre el checkout.
+  ///
+  /// La orden se crea aquí y no en el checkout porque el precio se congela al
+  /// crearla: es el servidor quien lo lee de la base de datos, así que lo que
+  /// se paga no puede cambiar por lo que mande el cliente.
+  Future<void> _comprar(BuildContext context) async {
+    if (context.read<AuthProvider>().backendSellerId == null) {
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => const LoginScreen()));
+      return;
+    }
+
+    // Se capturan antes de cualquier await: después del checkout el context
+    // de este callback ya no es una referencia de la que fiarse.
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    setState(() => _creandoOrden = true);
+    try {
+      final ordenes = await PaymentsApi.crearOrdenDirecta(product.id);
+      if (!mounted) return;
+      setState(() => _creandoOrden = false);
+      if (ordenes.isEmpty) return;
+
+      final resultado = await navigator.push<CheckoutResult>(
+        MaterialPageRoute<CheckoutResult>(
+          builder: (_) => CheckoutScreen(
+            orden: ordenes.first,
+            nombreVendedor: product.seller.name,
+          ),
+        ),
+      );
+      if (!mounted) return;
+
+      // null = se salió del checkout sin pagar. Es una decisión, no un fallo:
+      // avisarlo con un snackbar sería regañar a alguien por cambiar de
+      // opinión. El resto sí necesita cierre, porque el comprador se queda en
+      // esta pantalla y sin esto no sabría en qué quedó su pago.
+      final aviso = switch (resultado?.estado) {
+        null => null,
+        EstadoPago.aprobado => '¡Pago aprobado! El vendedor ya fue notificado.',
+        EstadoPago.pendiente =>
+          'Tu pago quedó en proceso. Te avisamos en cuanto se confirme.',
+        EstadoPago.rechazado =>
+          'El pago no se completó. Puedes intentarlo con otra tarjeta '
+              'o escribirle al vendedor.',
+      };
+      if (aviso != null) {
+        messenger.showSnackBar(SnackBar(content: Text(aviso)));
+      }
+    } catch (e, s) {
+      if (!mounted) return;
+      setState(() => _creandoOrden = false);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            mensajeDeError(
+              e,
+              fallback: 'No se pudo iniciar la compra.',
+              stack: s,
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   /// Datos para el código QR de la publicación.

@@ -215,6 +215,46 @@ test('un estado final no retrocede por una notificación tardía', () => {
   assert.strictEqual(store.getOrdenPorId(orden.id).payment_status, 'approved');
 });
 
+test('un pago con estado authorized (cobro ya hecho en MP) se guarda sin error', () => {
+  const comprador = crearUsuario();
+  const vendedor = crearUsuario({ tipoCuenta: 'negocio' });
+  const producto = crearProducto(vendedor.id, 80);
+  const orden = store.crearOrden({
+    id: `ord_${crypto.randomUUID()}`,
+    buyerId: comprador.id, vendorId: vendedor.id,
+    amount: 80, applicationFee: 4, currency: 'MXN', origin: 'direct',
+    items: [{ productId: producto, quantity: 1, unitPrice: 80, title: 'X' }],
+  });
+
+  // MP ya cobró la tarjeta (retención en un pago diferido/mediado) — si el
+  // CHECK del esquema no acepta este estado, el UPDATE truena y el
+  // mp_payment_id nunca queda registrado: dinero cobrado sin rastro.
+  const actualizado = store.actualizarPagoDeOrden(orden.id, {
+    mpPaymentId: '333', paymentStatus: 'authorized',
+  });
+  assert.strictEqual(actualizado, true);
+  assert.strictEqual(store.getOrdenPorId(orden.id).payment_status, 'authorized');
+  assert.strictEqual(store.getOrdenPorId(orden.id).mp_payment_id, '333');
+});
+
+test('un pago con estado in_mediation (disputa abierta) se guarda sin error', () => {
+  const comprador = crearUsuario();
+  const vendedor = crearUsuario({ tipoCuenta: 'negocio' });
+  const producto = crearProducto(vendedor.id, 60);
+  const orden = store.crearOrden({
+    id: `ord_${crypto.randomUUID()}`,
+    buyerId: comprador.id, vendorId: vendedor.id,
+    amount: 60, applicationFee: 3, currency: 'MXN', origin: 'direct',
+    items: [{ productId: producto, quantity: 1, unitPrice: 60, title: 'X' }],
+  });
+
+  const actualizado = store.actualizarPagoDeOrden(orden.id, {
+    mpPaymentId: '444', paymentStatus: 'in_mediation',
+  });
+  assert.strictEqual(actualizado, true);
+  assert.strictEqual(store.getOrdenPorId(orden.id).payment_status, 'in_mediation');
+});
+
 test('un reembolso posterior sí puede cambiar un pago aprobado', () => {
   const comprador = crearUsuario();
   const vendedor = crearUsuario({ tipoCuenta: 'negocio' });
@@ -235,24 +275,29 @@ test('un reembolso posterior sí puede cambiar un pago aprobado', () => {
 test('no se puede borrar la tarjeta de otro usuario', async () => {
   const duenio = crearUsuario();
   const intruso = crearUsuario();
-  store.guardarTarjeta(duenio.id, {
+  const vendedor = crearUsuario({ tipoCuenta: 'negocio' });
+  store.guardarTarjeta(duenio.id, vendedor.id, {
     mpCardId: 'card_del_duenio', lastFour: '4242',
     paymentMethod: 'visa', expMonth: 12, expYear: 2030,
   });
 
-  const res = await pedir('DELETE', '/api/payments/cards/card_del_duenio', { token: intruso.token });
+  const res = await pedir(
+    'DELETE', `/api/payments/vendors/${vendedor.id}/cards/card_del_duenio`,
+    { token: intruso.token },
+  );
   assert.strictEqual(res.status, 404);
   // Y sigue existiendo.
-  assert.ok(store.getTarjeta(duenio.id, 'card_del_duenio'));
+  assert.ok(store.getTarjeta(duenio.id, vendedor.id, 'card_del_duenio'));
 });
 
 test('listar tarjetas solo devuelve las propias, sin datos sensibles', async () => {
   const a = crearUsuario();
   const b = crearUsuario();
-  store.guardarTarjeta(a.id, { mpCardId: 'card_a', lastFour: '1111', paymentMethod: 'visa' });
-  store.guardarTarjeta(b.id, { mpCardId: 'card_b', lastFour: '2222', paymentMethod: 'master' });
+  const vendedor = crearUsuario({ tipoCuenta: 'negocio' });
+  store.guardarTarjeta(a.id, vendedor.id, { mpCardId: 'card_a', lastFour: '1111', paymentMethod: 'visa' });
+  store.guardarTarjeta(b.id, vendedor.id, { mpCardId: 'card_b', lastFour: '2222', paymentMethod: 'master' });
 
-  const res = await pedir('GET', '/api/payments/cards', { token: a.token });
+  const res = await pedir('GET', `/api/payments/vendors/${vendedor.id}/cards`, { token: a.token });
   assert.strictEqual(res.status, 200);
   assert.strictEqual(res.datos.length, 1);
   assert.strictEqual(res.datos[0].id, 'card_a');
@@ -261,6 +306,39 @@ test('listar tarjetas solo devuelve las propias, sin datos sensibles', async () 
   for (const prohibida of ['number', 'cvv', 'security', 'token']) {
     assert.ok(!claves.toLowerCase().includes(prohibida), `expone ${prohibida}`);
   }
+});
+
+test('una tarjeta guardada con un vendedor no aparece con otro', async () => {
+  const comprador = crearUsuario();
+  const v1 = crearUsuario({ tipoCuenta: 'negocio' });
+  const v2 = crearUsuario({ tipoCuenta: 'negocio' });
+
+  // En el modo marketplace de MP la tarjeta vive dentro de la cuenta del
+  // vendedor con el que se registró. Ofrecérsela al comprador para pagarle a
+  // OTRO vendedor sería ofrecerle algo que va a fallar al cobrar con un
+  // "Card Token not found" — justo el error que motivó este modelo.
+  store.guardarTarjeta(comprador.id, v1.id, { mpCardId: 'card_v1', lastFour: '1111' });
+
+  const conV1 = await pedir('GET', `/api/payments/vendors/${v1.id}/cards`, { token: comprador.token });
+  assert.strictEqual(conV1.datos.length, 1);
+  assert.strictEqual(conV1.datos[0].id, 'card_v1');
+
+  const conV2 = await pedir('GET', `/api/payments/vendors/${v2.id}/cards`, { token: comprador.token });
+  assert.deepStrictEqual(conV2.datos, [],
+    'la tarjeta registrada con v1 no es cobrable por v2 y no debe ofrecerse');
+});
+
+test('el mismo comprador tiene Customers distintos por vendedor', () => {
+  const comprador = crearUsuario();
+  const v1 = crearUsuario({ tipoCuenta: 'negocio' });
+  const v2 = crearUsuario({ tipoCuenta: 'negocio' });
+
+  store.guardarCustomerId(comprador.id, v1.id, 'cus_en_v1');
+  store.guardarCustomerId(comprador.id, v2.id, 'cus_en_v2');
+
+  assert.strictEqual(store.getCustomerId(comprador.id, v1.id), 'cus_en_v1');
+  assert.strictEqual(store.getCustomerId(comprador.id, v2.id), 'cus_en_v2');
+  assert.strictEqual(store.getCustomerId(comprador.id, crearUsuario().id), null);
 });
 
 test('no se puede pagar la orden de otro comprador', async () => {
@@ -366,9 +444,9 @@ test('una cuenta verificada de negocio recibe una URL de autorización de MP', a
 
 test('todos los endpoints de pagos exigen autenticación', async () => {
   for (const [metodo, ruta] of [
-    ['GET', '/api/payments/cards'],
-    ['POST', '/api/payments/cards'],
-    ['DELETE', '/api/payments/cards/x'],
+    ['GET', '/api/payments/vendors/v1/cards'],
+    ['POST', '/api/payments/vendors/v1/cards'],
+    ['DELETE', '/api/payments/vendors/v1/cards/x'],
     ['POST', '/api/payments/checkout'],
     ['GET', '/api/payments/oauth/connect'],
     ['POST', '/api/orders'],

@@ -13,13 +13,16 @@
  *   $1000.
  */
 
-const { randomUUID } = require('crypto');
+const { randomUUID, createHash } = require('crypto');
+const rateLimit = require('express-rate-limit');
 
 const { requireAuth } = require('../auth');
 const db = require('../database');
 const cfg = require('./config');
 const store = require('./store');
 const mp = require('./mpClient');
+const metodos = require('./methods');
+const conexion = require('./connection');
 const { calcularComision, redondear2 } = require('./fees');
 const { tokenVigenteDeVendedor } = require('./vendorTokens');
 const { validarFirma, procesarEvento } = require('./webhook');
@@ -42,11 +45,28 @@ function getSeller(id) {
   return db.getDb().prepare('SELECT * FROM sellers WHERE id = ?').get(id) || null;
 }
 
-/** Solo negocios y estudiantes verificados pueden recibir dinero. */
+/**
+ * ¿Este vendedor puede conectar una cuenta de cobros?
+ *
+ * La condición NO es "ya está verificado", y no puede serlo: conectar Mercado
+ * Pago es requisito para verificarse, así que exigir la verificación para
+ * conectar deja la regla mordiéndose la cola y a nadie le sale ninguna de las
+ * dos. Lo que se exige es lo que de verdad protege el endpoint: que la
+ * persona haya DEMOSTRADO SU IDENTIDAD con el OTP de su correo institucional
+ * o su teléfono (`verificaciones.identidad_confirmada_en`). Quien ya está
+ * verificado lo cumple por definición.
+ *
+ * Tampoco se filtra ya por tipo de cuenta: 'particular' también debe conectar
+ * para verificarse, y dejarlo fuera de la lista lo condenaba a no poder
+ * verificarse nunca.
+ */
 function puedeVender(seller) {
   if (!seller) return false;
-  if (!seller.verified) return false;
-  return seller.tipo_cuenta === 'negocio' || seller.tipo_cuenta === 'estudiante';
+  if (seller.verified) return true;
+  const verificacion = db.getDb()
+    .prepare('SELECT identidad_confirmada_en FROM verificaciones WHERE usuario_id = ?')
+    .get(seller.id);
+  return Boolean(verificacion?.identidad_confirmada_en);
 }
 
 function tarjetaPublica(fila) {
@@ -62,6 +82,63 @@ function tarjetaPublica(fila) {
   };
 }
 
+/**
+ * Tope de intentos por COMPRADOR sobre un endpoint que mueve dinero.
+ *
+ * Por comprador y no por IP a propósito: en la red del campus todo el mundo
+ * sale por la misma IP, así que un límite por IP dejaría sin comprar a media
+ * universidad en cuanto una persona se pasara. El principal autenticado es
+ * la unidad correcta — y como estos endpoints van detrás de `requireAuth`,
+ * `req.user.id` siempre está.
+ *
+ * Debe montarse SIEMPRE después de requireAuth: sin `req.user` no hay clave.
+ */
+function limitePorComprador({ minutos, max }) {
+  return rateLimit({
+    windowMs: minutos * 60 * 1000,
+    limit: max,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    keyGenerator: req => req.user.id,
+    message: {
+      error: 'Demasiados intentos de pago. Espera unos minutos antes de volver a intentarlo.',
+    },
+  });
+}
+
+/**
+ * Identifica un intento de cobro concreto sin exponer el card_token, que es
+ * de un solo uso pero sensible igual. Un prefijo del SHA-256 basta: solo
+ * tiene que distinguir dos tarjetas sobre la misma orden.
+ */
+function huellaDelIntento(cardToken) {
+  return createHash('sha256').update(String(cardToken)).digest('hex').slice(0, 32);
+}
+
+/**
+ * Avisa a las dos partes de que esa orden no se puede cobrar con tarjeta.
+ * Son dos mensajes distintos porque las acciones son distintas: el comprador
+ * tiene que elegir otro método, el vendedor tiene que reconectar su cuenta
+ * (a ese ya lo avisó `conexion.desconectar`; aquí se le da el contexto de la
+ * venta concreta que se quedó a medias).
+ */
+function avisarPagoNoDisponible(orden, vendedor) {
+  db.createNotification(
+    `ntf_${randomUUID()}`, orden.buyer_id, 'order_requires_other_method',
+    'Tu pago con tarjeta no se pudo procesar',
+    `${vendedor?.name || 'El vendedor'} no puede cobrar con tarjeta en este momento. `
+      + 'Contáctalo por chat para acordar otra forma de pago.',
+    { orderId: orden.id, vendorId: orden.vendor_id },
+  );
+  db.createNotification(
+    `ntf_${randomUUID()}`, orden.vendor_id, 'order_requires_other_method',
+    'Una venta se quedó sin poder cobrarse',
+    'Un comprador intentó pagarte con tarjeta y tu cuenta de pagos no está conectada. '
+      + 'Reconéctala desde tu perfil para no perder más ventas.',
+    { orderId: orden.id, buyerId: orden.buyer_id },
+  );
+}
+
 function ordenPublica(orden) {
   return {
     id: orden.id,
@@ -72,6 +149,7 @@ function ordenPublica(orden) {
     currency: orden.currency,
     status: orden.status,
     paymentStatus: orden.payment_status,
+    paymentMethod: orden.payment_method,
     origin: orden.origin,
     createdAt: orden.created_at,
     items: (orden.items || []).map(i => ({
@@ -106,7 +184,8 @@ function register(app) {
     const seller = getSeller(req.user.id);
     if (!puedeVender(seller)) {
       return res.status(403).json({
-        error: 'Necesitas una cuenta verificada de negocio o estudiante para recibir pagos.',
+        error: 'Antes de conectar tu cuenta de cobros tienes que confirmar el código '
+          + 'que te enviamos por correo o SMS.',
       });
     }
 
@@ -120,21 +199,39 @@ function register(app) {
   // Lo abre el navegador del vendedor, no la app: por eso responde HTML y
   // no JSON, y termina mandando de vuelta al deep link.
   app.get('/api/payments/oauth/callback', async (req, res) => {
+    // Paleta y tipografía espejo de `website/app/globals.css` (que a su vez
+    // espeja `lib/app_theme.dart`), para que esta pantalla combine con la
+    // landing aunque no comparta build system con ella.
+    const iconoExito = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#a84b37" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>`;
+    const iconoError = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3d5c70" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
+
     const paginaFinal = (titulo, texto, ok) => `<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${titulo}</title>
 <style>
- body{font-family:system-ui,-apple-system,sans-serif;background:#0F2740;color:#fff;
-      display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;padding:24px}
- .c{max-width:420px;text-align:center}
- h1{font-size:20px;margin:0 0 12px}p{opacity:.8;line-height:1.5;margin:0 0 24px}
- a{display:inline-block;background:#C77B4A;color:#fff;text-decoration:none;
-   padding:12px 24px;border-radius:12px;font-weight:600}
-</style></head><body><div class="c">
+ *{box-sizing:border-box}
+ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+      background:#fafaf8;color:#1b1a16;
+      display:flex;min-height:100vh;align-items:center;justify-content:center;
+      margin:0;padding:24px;line-height:1.55}
+ .tarjeta{width:100%;max-width:380px;background:#fff;border-radius:20px;
+      box-shadow:0 4px 24px rgba(27,26,22,.08);padding:40px 28px;text-align:center}
+ .icono{width:56px;height:56px;border-radius:999px;display:flex;
+      align-items:center;justify-content:center;margin:0 auto 20px;
+      background:${ok ? 'rgba(168,75,55,.12)' : 'rgba(61,92,112,.1)'}}
+ h1{font-size:21px;font-weight:700;letter-spacing:-.01em;color:#2b4150;margin:0 0 10px}
+ p{font-size:14px;color:#6e6b64;margin:0 0 28px}
+ a{display:inline-block;width:100%;background:#a84b37;color:#fff;text-decoration:none;
+   padding:14px 24px;border-radius:12px;font-weight:600;font-size:15px}
+ a:active{background:#8f3f2e}
+</style></head><body>
+<div class="tarjeta">
+<div class="icono">${ok ? iconoExito : iconoError}</div>
 <h1>${titulo}</h1><p>${texto}</p>
 <a href="${cfg.config.appDeepLinkScheme}://payments/connected?ok=${ok ? '1' : '0'}">Volver a Mercadito UM</a>
-</div></body></html>`;
+</div>
+</body></html>`;
 
     try {
       if (!cfg.estaConfigurado()) {
@@ -172,6 +269,20 @@ function register(app) {
       });
       console.log(`[pagos] Vendedor ${sellerId} conectó su cuenta de Mercado Pago`);
 
+      // Conectar la cuenta puede ser lo ÚNICO que le faltaba a una
+      // verificación. Se cierra aquí, en el punto por el que pasan todas las
+      // conexiones, y no en la pantalla que la inició: se conecta desde el
+      // formulario de verificación, desde "Editar perfil" y desde la pantalla
+      // de cobros, y solo uno de esos tres sitios sabe reintentar.
+      //
+      // Un fallo aquí no puede tumbar la conexión, que ya está guardada: el
+      // usuario se quedaría sin cuenta conectada Y sin verificar.
+      try {
+        require('../routes/verificacion').completarVerificacionPendientePorPagos(sellerId);
+      } catch (err) {
+        console.error(`[pagos] No se pudo cerrar la verificación de ${sellerId}: ${err.stack}`);
+      }
+
       res.send(paginaFinal('¡Cuenta conectada!',
         'Ya puedes recibir pagos en Mercadito UM.', true));
     } catch (err) {
@@ -195,17 +306,57 @@ function register(app) {
   });
 
   app.delete('/api/payments/account', requireAuth, (req, res) => {
-    store.desconectarVendedor(req.user.id);
+    // Pasa por conexion.desconectar y no por store: desconectar implica
+    // además retirar 'tarjeta' de sus métodos y borrar las tarjetas que ya
+    // no se pueden cobrar. Hacerlo "a mano" aquí es cómo se queda un
+    // vendedor anunciando un método muerto.
+    conexion.desconectar(req.user.id, { motivo: 'El vendedor la desconectó', por: 'user' });
     res.json({ ok: true });
   });
 
-  // ─── 3. Guardar una tarjeta ───────────────────────────────
+  // ─── Validación bajo demanda del token del vendedor ───────
+  //
+  // Red de seguridad para cuando el webhook de revocación no llegó. La app
+  // la llama al abrir la pantalla de pagos del vendedor, para que vea su
+  // estado real y no uno que quedó viejo hace semanas.
+  app.post('/api/payments/account/validate', requireAuth, async (req, res) => {
+    if (!cfg.assertConfigurado(res)) return;
+    const resultado = await conexion.validarConexion(req.user.id);
+    res.json({ connected: resultado.conectado, reason: resultado.motivo || null });
+  });
+
+  // ─── Métodos de pago disponibles de un vendedor ───────────
+  //
+  // Lo consume el checkout para decidir qué ofrecerle al comprador. Se
+  // evalúa EN VIVO en cada llamada y no se cachea: entre que el comprador
+  // abrió la pantalla y paga, el vendedor pudo revocar la autorización desde
+  // su panel de Mercado Pago.
+  app.get('/api/payments/vendors/:vendorId/methods', requireAuth, (req, res) => {
+    const vendorId = String(req.params.vendorId);
+    if (!getSeller(vendorId)) {
+      return res.status(404).json({ error: 'Vendedor no encontrado.' });
+    }
+    res.json(metodos.metodosDeVendedor(vendorId));
+  });
+
+  // ─── 3. Guardar una tarjeta (con un vendedor concreto) ────
+  //
+  // La ruta lleva el vendedor en el path y no en el body a propósito: en
+  // este modelo una tarjeta NO es del comprador a secas, es del comprador
+  // CON un vendedor. Que el ámbito esté en la URL hace imposible escribir un
+  // handler que se olvide de él.
   //
   // `token` es un card_token de un solo uso generado EN EL CLIENTE contra
-  // https://api.mercadopago.com/v1/card_tokens con la MP_PUBLIC_KEY. El
-  // número de tarjeta y el CVV van del dispositivo a MP directamente: no
-  // pasan por este servidor y no se guardan en ninguna parte.
-  app.post('/api/payments/cards', requireAuth, async (req, res) => {
+  // https://api.mercadopago.com/v1/card_tokens con la PUBLIC KEY DEL
+  // VENDEDOR (la sirve GET /api/sellers/:id/payment-methods). El número de
+  // tarjeta y el CVV van del dispositivo a MP directamente: no pasan por
+  // este servidor y no se guardan en ninguna parte.
+  //
+  // Mismo riesgo que el checkout: asociar una tarjeta la valida contra MP, y
+  // la respuesta distingue una tarjeta buena de una mala. Sirve igual de bien
+  // para probar números robados, y aquí ni siquiera hace falta una orden.
+  app.post('/api/payments/vendors/:vendorId/cards', requireAuth,
+    limitePorComprador({ minutos: 60, max: 10 }), async (req, res) => {
     if (!cfg.assertConfigurado(res)) return;
 
     const { token } = req.body || {};
@@ -220,26 +371,39 @@ function register(app) {
       });
     }
 
-    try {
-      let customerId = store.getCustomerId(req.user.id);
+    const vendorId = String(req.params.vendorId);
+    const vendedor = getSeller(vendorId);
 
-      if (!customerId) {
-        // MP rechaza crear un Customer con un email que ya tiene uno, así
-        // que se busca primero. Pasa cuando la fila local se perdió pero el
-        // Customer sigue existiendo del lado de MP.
-        const existente = await mp.buscarCustomerPorEmail(seller.email);
-        const customer = existente || await mp.crearCustomer({
-          email: seller.email,
-          nombre: seller.name,
+    try {
+      // El Customer se crea DENTRO de la cuenta del vendedor, así que hace
+      // falta su token antes de tocar nada.
+      const tokenVendedor = await tokenVigenteDeVendedor(vendorId);
+      if (!tokenVendedor?.accessToken) {
+        return res.status(409).json({
+          error: `${vendedor?.name || 'Este vendedor'} no puede recibir pagos con tarjeta ahora mismo.`,
         });
-        customerId = customer.id;
-        store.guardarCustomerId(req.user.id, customerId);
       }
 
-      // Endpoint: POST /v1/customers/{id}/cards — credencial de plataforma.
-      const tarjeta = await mp.guardarTarjetaEnCustomer(customerId, token);
+      let customerId = store.getCustomerId(req.user.id, vendorId);
 
-      store.guardarTarjeta(req.user.id, {
+      if (!customerId) {
+        // MP rechaza crear un Customer con un email que ya tiene uno en esa
+        // cuenta, así que se busca primero. Pasa cuando la fila local se
+        // perdió pero el Customer sigue existiendo del lado de MP.
+        const existente = await mp.buscarCustomerPorEmail(seller.email, tokenVendedor.accessToken);
+        const customer = existente || await mp.crearCustomer(
+          { email: seller.email, nombre: seller.name },
+          tokenVendedor.accessToken,
+        );
+        customerId = customer.id;
+        store.guardarCustomerId(req.user.id, vendorId, customerId);
+      }
+
+      const tarjeta = await mp.guardarTarjetaEnCustomer(
+        customerId, token, tokenVendedor.accessToken,
+      );
+
+      store.guardarTarjeta(req.user.id, vendorId, {
         mpCardId: tarjeta.id,
         lastFour: tarjeta.last_four_digits,
         paymentMethod: tarjeta.payment_method?.id || tarjeta.payment_method?.name,
@@ -247,7 +411,9 @@ function register(app) {
         expYear: tarjeta.expiration_year,
       });
 
-      res.status(201).json(tarjetaPublica(store.getTarjeta(req.user.id, tarjeta.id)));
+      res.status(201).json(
+        tarjetaPublica(store.getTarjeta(req.user.id, vendorId, tarjeta.id)),
+      );
     } catch (err) {
       // Un 4xx de MP aquí casi siempre es tarjeta inválida o token ya usado:
       // merece un mensaje accionable, sin reenviar nada de MP.
@@ -261,25 +427,35 @@ function register(app) {
     }
   });
 
-  // ─── 4. Listar tarjetas guardadas ─────────────────────────
-  app.get('/api/payments/cards', requireAuth, (req, res) => {
-    res.json(store.listarTarjetas(req.user.id).map(tarjetaPublica));
+  // ─── 4. Listar tarjetas guardadas con un vendedor ─────────
+  app.get('/api/payments/vendors/:vendorId/cards', requireAuth, (req, res) => {
+    res.json(
+      store.listarTarjetas(req.user.id, String(req.params.vendorId)).map(tarjetaPublica),
+    );
   });
 
   // ─── 5. Eliminar una tarjeta ──────────────────────────────
-  app.delete('/api/payments/cards/:cardId', requireAuth, async (req, res) => {
+  app.delete('/api/payments/vendors/:vendorId/cards/:cardId', requireAuth, async (req, res) => {
     if (!cfg.assertConfigurado(res)) return;
+
+    const vendorId = String(req.params.vendorId);
 
     // Pertenencia ANTES de tocar MP: el cardId viene del cliente y sin esto
     // cualquiera podría borrar la tarjeta de otra persona pasando su id.
-    const tarjeta = store.getTarjeta(req.user.id, req.params.cardId);
+    const tarjeta = store.getTarjeta(req.user.id, vendorId, req.params.cardId);
     if (!tarjeta) return res.status(404).json({ error: 'Tarjeta no encontrada.' });
 
-    const customerId = store.getCustomerId(req.user.id);
+    const customerId = store.getCustomerId(req.user.id, vendorId);
     try {
       if (customerId) {
-        // Endpoint: DELETE /v1/customers/{id}/cards/{card_id}
-        await mp.eliminarTarjetaDeCustomer(customerId, tarjeta.mp_card_id);
+        // Si el vendedor ya no está conectado no hay token con el que borrar
+        // en MP. El borrado local se hace igual: la tarjeta ya es inútil.
+        const tokenVendedor = await tokenVigenteDeVendedor(vendorId);
+        if (tokenVendedor?.accessToken) {
+          await mp.eliminarTarjetaDeCustomer(
+            customerId, tarjeta.mp_card_id, tokenVendedor.accessToken,
+          );
+        }
       }
     } catch (err) {
       // Si ya no existe en MP (404), el borrado local es correcto igual.
@@ -288,7 +464,7 @@ function register(app) {
       }
     }
 
-    store.borrarTarjeta(req.user.id, tarjeta.mp_card_id);
+    store.borrarTarjeta(req.user.id, vendorId, tarjeta.mp_card_id);
     res.json({ ok: true });
   });
 
@@ -298,7 +474,13 @@ function register(app) {
   // token de un vendedor concreto. Un carrito con productos de dos negocios
   // produce dos órdenes y dos cobros.
   app.post('/api/orders', requireAuth, (req, res) => {
-    const { productId, quantity, fromCart } = req.body || {};
+    const { productId, quantity, fromCart, paymentMethod } = req.body || {};
+
+    // Cómo se acordó pagar. Opcional por compatibilidad con clientes que no
+    // lo mandan; cuando viene, se valida contra el vendedor ANTES de crear
+    // nada. No basta con que la app haya consultado /methods: ese endpoint
+    // informa, no autoriza, y nada impide llamar a este directamente.
+    const metodoSolicitado = paymentMethod == null ? null : String(paymentMethod);
 
     let lineas;
     if (fromCart) {
@@ -350,6 +532,24 @@ function register(app) {
       });
     }
 
+    // Se valida el método contra TODOS los vendedores antes de crear
+    // ninguna orden: un carrito de dos negocios no puede acabar con la
+    // primera orden creada y la segunda rechazada.
+    if (metodoSolicitado) {
+      for (const vendorId of porVendedor.keys()) {
+        const disponibles = metodos.metodosDeVendedor(vendorId);
+        const elegido = disponibles.methods.find(m => m.id === metodoSolicitado);
+        if (!elegido || !elegido.available) {
+          const vendedor = getSeller(vendorId);
+          return res.status(409).json({
+            error: elegido?.unavailableReason
+              || `${vendedor?.name || 'Este vendedor'} no acepta ese método de pago.`,
+            vendorId,
+          });
+        }
+      }
+    }
+
     const creadas = [];
     for (const [vendorId, items] of porVendedor) {
       const total = redondear2(items.reduce((s, i) => s + i.unitPrice * i.quantity, 0));
@@ -369,6 +569,7 @@ function register(app) {
         applicationFee: comision,
         currency: cfg.config.moneda,
         origin: fromCart ? 'cart' : 'direct',
+        paymentMethod: metodoSolicitado,
         items,
       }));
     }
@@ -391,7 +592,13 @@ function register(app) {
   });
 
   // ─── 6. Checkout ──────────────────────────────────────────
-  app.post('/api/payments/checkout', requireAuth, async (req, res) => {
+  // Poder reintentar tras un rechazo es correcto para el comprador, pero es
+  // también el mecanismo del "card testing": probar tarjetas robadas una tras
+  // otra contra un endpoint que responde si el cargo pasó. 10 intentos por
+  // cuarto de hora es holgado para una persona que se equivoca de tarjeta y
+  // ridículo para quien valida números en lote.
+  app.post('/api/payments/checkout', requireAuth,
+    limitePorComprador({ minutos: 15, max: 10 }), async (req, res) => {
     if (!cfg.assertConfigurado(res)) return;
 
     const { order_id: orderId, card_token: cardToken, installments,
@@ -405,7 +612,12 @@ function register(app) {
     // simplemente no aparece.
     const orden = store.getOrden(req.user.id, String(orderId));
     if (!orden) return res.status(404).json({ error: 'Orden no encontrada.' });
-    if (orden.status !== 'pending' || orden.payment_status === 'approved') {
+    // Un intento anterior solo deja reintentar si murió sin cobrar (una
+    // tarjeta rechazada). No basta con mirar `orden.status`: un pago que MP
+    // dejó 'in_process' deja la orden en 'pending', y cobrar otra vez ahí
+    // sería un cargo duplicado real. El criterio vive en el store, junto a
+    // los conjuntos de estados.
+    if (!store.admiteNuevoIntentoDePago(orden)) {
       return res.status(409).json({ error: 'Esta orden ya fue procesada.' });
     }
 
@@ -446,6 +658,22 @@ function register(app) {
       return res.status(503).json({ error: MENSAJE_GENERICO });
     }
 
+    // Última comprobación antes de mover dinero: que la autorización del
+    // vendedor siga viva AHORA. Entre que se creó la orden y este momento
+    // pudo revocarla desde su panel de MP, y el webhook pudo no haber
+    // llegado. Sin esto la llamada de cobro falla con un error opaco y la
+    // orden se queda en 'pending' sin que nadie sepa qué hacer con ella.
+    const conectado = await conexion.validarConexion(orden.vendor_id);
+    if (!conectado.conectado) {
+      store.marcarRequiereOtroMetodo(orden.id);
+      avisarPagoNoDisponible(orden, vendedor);
+      return res.status(409).json({
+        error: `${vendedor?.name || 'Este vendedor'} ya no puede cobrar con tarjeta. `
+             + 'Contáctalo por chat para acordar otra forma de pago.',
+        orderStatus: 'requires_other_method',
+      });
+    }
+
     try {
       const tokenVendedor = await tokenVigenteDeVendedor(orden.vendor_id);
       if (!tokenVendedor?.accessToken) {
@@ -463,10 +691,18 @@ function register(app) {
       // entra a la cuenta de Mercado Pago del vendedor. Ese es el split.
       const pago = await mp.crearPago({
         accessTokenVendedor: tokenVendedor.accessToken,
-        // Idempotencia atada a la orden: si la red se cae tras enviar el
-        // cobro y la app reintenta, MP devuelve el mismo pago en vez de
-        // cobrarle dos veces al comprador.
-        idempotencyKey: `order-${orden.id}`,
+        // Idempotencia atada al INTENTO (orden + tarjeta), no solo a la
+        // orden. Si la red se cae tras enviar el cobro y la app reenvía la
+        // misma petición, la clave se repite y MP devuelve el mismo pago en
+        // vez de cobrarle dos veces al comprador. Pero un reintento
+        // deliberado con OTRA tarjeta tras un rechazo es un cobro distinto:
+        // con la clave atada solo a la orden, MP devolvería el pago cacheado
+        // y el comprador vería otra vez el rechazo de la tarjeta que ya
+        // descartó, sin que la nueva llegara a intentarse nunca.
+        //
+        // Va el hash, no el card_token: es un dato sensible y no tiene por
+        // qué viajar en una cabecera ni acabar en un log de MP.
+        idempotencyKey: `order-${orden.id}-${huellaDelIntento(cardToken)}`,
         pago: {
           transaction_amount: total,
           token: cardToken,
@@ -507,6 +743,23 @@ function register(app) {
         amount: total,
       });
     } catch (err) {
+      // Un 401/403 aquí no es "tarjeta rechazada": es que el token del
+      // vendedor dejó de valer entre la validación de arriba y este cobro.
+      // La ventana es corta pero existe, y el resultado sin esto sería el
+      // mismo agujero: orden en 'pending' que nadie sabe cómo resolver.
+      if (err instanceof mp.MpError && (err.status === 401 || err.status === 403)) {
+        conexion.desconectar(orden.vendor_id, {
+          motivo: 'Mercado Pago rechazó el token del vendedor al cobrar',
+          por: 'token_check',
+        });
+        store.marcarRequiereOtroMetodo(orden.id);
+        avisarPagoNoDisponible(orden, vendedor);
+        return fallo(res, `Checkout de la orden ${orden.id} (token del vendedor revocado)`, err, {
+          status: 409,
+          mensaje: `${vendedor?.name || 'Este vendedor'} ya no puede cobrar con tarjeta. `
+                 + 'Contáctalo por chat para acordar otra forma de pago.',
+        });
+      }
       if (err instanceof mp.MpError && err.status >= 400 && err.status < 500) {
         return fallo(res, `Checkout de la orden ${orden.id} (rechazo de MP)`, err, {
           status: 400,
@@ -538,6 +791,44 @@ function register(app) {
     const topic = cuerpo.type || cuerpo.topic || req.query.type || req.query.topic;
     const paymentId = cuerpo.data?.id || req.query['data.id'] || req.query.id;
 
+    // ─── Revocación de la autorización del vendedor ─────────
+    //
+    // Cuando un vendedor quita la aplicación desde su panel de Mercado Pago,
+    // MP avisa por aquí. El identificador que trae es SU user_id, no el
+    // nuestro, así que hay que traducirlo.
+    //
+    // Se exige una señal EXPLÍCITA de desautorización, y no basta con que el
+    // topic sea 'application' o 'mp-connect'. Por esos topics también llegan
+    // eventos que no son revocaciones (una autorización nueva, sin ir más
+    // lejos), y equivocarse en esta dirección le corta el cobro a un vendedor
+    // que no hizo nada.
+    //
+    // Quedarse corto es mucho más barato: si MP cambia el nombre del evento y
+    // este `if` deja de reconocerlo, la validación del token antes de cada
+    // cobro detecta la revocación igual. Al revés no hay red que lo salve.
+    const accion = String(cuerpo.action || '').toLowerCase();
+    const esRevocacion = accion.includes('deauthorized')
+      || accion.includes('unauthorized')
+      || accion === 'revoked';
+
+    if (esRevocacion) {
+      const mpUserId = cuerpo.user_id || cuerpo.data?.id || req.query['data.id'];
+      res.status(200).json({ ok: true });
+
+      if (mpUserId) {
+        const cuenta = store.getVendedorPorMpUserId(mpUserId);
+        if (cuenta) {
+          conexion.desconectar(cuenta.seller_id, {
+            motivo: 'El vendedor revocó la autorización desde Mercado Pago',
+            por: 'webhook',
+          });
+        } else {
+          console.warn(`[pagos] Revocación de un mp_user_id sin cuenta local (${mpUserId})`);
+        }
+      }
+      return;
+    }
+
     if (topic !== 'payment' || !paymentId) {
       // Otros temas (merchant_order, etc.) no se procesan todavía, pero se
       // responde 200 para que MP no los reintente indefinidamente.
@@ -558,7 +849,13 @@ function register(app) {
     // real (consultar el pago, actualizar la orden) va después de responder.
     res.status(200).json({ ok: true });
 
-    if (!esNuevo) {
+    // `esNuevo` solo dice si esta ENTREGA ya se había visto, no si se
+    // procesó con éxito: un intento anterior pudo haber reventado a medias
+    // (obtenerPago caído, timeout, etc.) sin llegar a marcarse como
+    // procesado. Descartar el reintento en ese caso perdería el evento para
+    // siempre, así que el criterio real para ignorar es "ya se procesó",
+    // nunca "ya se recibió".
+    if (!esNuevo && store.eventoFueProcesado(eventId)) {
       console.log(`[pagos] Webhook ${eventId} ya procesado, se ignora`);
       return;
     }

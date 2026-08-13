@@ -55,26 +55,39 @@ function limpiarOAuthStatesViejos() {
 
 // ─── Cuenta de Mercado Pago del vendedor ────────────────────
 
-function guardarCuentaVendedor(sellerId, { mpUserId, accessToken, refreshToken, expiresIn, publicKey }) {
+// Único proveedor implementado hoy. La columna `provider` existe para que
+// añadir otro no obligue a migrar la tabla; mientras tanto, todo lo que no
+// diga otra cosa habla de Mercado Pago.
+const PROVEEDOR_POR_DEFECTO = 'mercadopago';
+
+function guardarCuentaVendedor(sellerId, { mpUserId, accessToken, refreshToken, expiresIn, publicKey },
+  provider = PROVEEDOR_POR_DEFECTO) {
   const expiraEn = Number.isFinite(expiresIn)
     ? new Date(Date.now() + expiresIn * 1000).toISOString()
     : null;
 
   db.getDb().prepare(`
     INSERT INTO vendor_payment_accounts
-      (seller_id, mp_user_id, mp_access_token_enc, mp_refresh_token_enc,
-       mp_token_expires_at, mp_public_key, connected_at, revoked_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
-    ON CONFLICT(seller_id) DO UPDATE SET
+      (seller_id, provider, mp_user_id, mp_access_token_enc, mp_refresh_token_enc,
+       mp_token_expires_at, mp_public_key, connected_at, revoked_at,
+       disconnect_reason, disconnected_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)
+    ON CONFLICT(seller_id, provider) DO UPDATE SET
       mp_user_id = excluded.mp_user_id,
       mp_access_token_enc = excluded.mp_access_token_enc,
       mp_refresh_token_enc = excluded.mp_refresh_token_enc,
       mp_token_expires_at = excluded.mp_token_expires_at,
       mp_public_key = excluded.mp_public_key,
       connected_at = excluded.connected_at,
-      revoked_at = NULL
+      -- Reconectar limpia el rastro de la desconexión anterior: si no, un
+      -- vendedor que ya volvió seguiría viendo el aviso de "reconecta tu
+      -- cuenta" para siempre.
+      revoked_at = NULL,
+      disconnect_reason = NULL,
+      disconnected_by = NULL
   `).run(
     sellerId,
+    provider,
     String(mpUserId),
     cifrar(accessToken),
     refreshToken ? cifrar(refreshToken) : null,
@@ -85,10 +98,22 @@ function guardarCuentaVendedor(sellerId, { mpUserId, accessToken, refreshToken, 
 }
 
 /** Fila cruda (tokens aún cifrados). Para saber si está conectado. */
-function getCuentaVendedor(sellerId) {
+function getCuentaVendedor(sellerId, provider = PROVEEDOR_POR_DEFECTO) {
   return db.getDb()
-    .prepare('SELECT * FROM vendor_payment_accounts WHERE seller_id = ? AND revoked_at IS NULL')
-    .get(sellerId) || null;
+    .prepare(`SELECT * FROM vendor_payment_accounts
+              WHERE seller_id = ? AND provider = ? AND revoked_at IS NULL`)
+    .get(sellerId, provider) || null;
+}
+
+/**
+ * Cuenta incluso si está desconectada. La necesita la UI para poder decir
+ * "tu conexión se cayó, reconéctala" en vez de "no tienes cuenta", que son
+ * dos situaciones distintas para el vendedor.
+ */
+function getCuentaVendedorIncluyendoRevocada(sellerId, provider = PROVEEDOR_POR_DEFECTO) {
+  return db.getDb()
+    .prepare('SELECT * FROM vendor_payment_accounts WHERE seller_id = ? AND provider = ?')
+    .get(sellerId, provider) || null;
 }
 
 /**
@@ -96,8 +121,21 @@ function getCuentaVendedor(sellerId) {
  * token existe en claro en el proceso; el valor devuelto no debe guardarse
  * en ninguna estructura de larga vida ni loguearse.
  */
-function getCuentaVendedorConToken(sellerId) {
-  const fila = getCuentaVendedor(sellerId);
+/**
+ * Vendedor dueño de una cuenta de MP, buscado por el id de usuario DE MP.
+ * Es lo único que trae el webhook de revocación: MP habla de su propio
+ * user_id, no del nuestro. Busca también entre las revocadas para que un
+ * reenvío del webhook encuentre la cuenta y no genere un aviso de
+ * "desconocido" en los logs.
+ */
+function getVendedorPorMpUserId(mpUserId, provider = PROVEEDOR_POR_DEFECTO) {
+  return db.getDb()
+    .prepare('SELECT * FROM vendor_payment_accounts WHERE mp_user_id = ? AND provider = ?')
+    .get(String(mpUserId), provider) || null;
+}
+
+function getCuentaVendedorConToken(sellerId, provider = PROVEEDOR_POR_DEFECTO) {
+  const fila = getCuentaVendedor(sellerId, provider);
   if (!fila) return null;
   return {
     ...fila,
@@ -106,7 +144,8 @@ function getCuentaVendedorConToken(sellerId) {
   };
 }
 
-function actualizarTokensVendedor(sellerId, { accessToken, refreshToken, expiresIn }) {
+function actualizarTokensVendedor(sellerId, { accessToken, refreshToken, expiresIn },
+  provider = PROVEEDOR_POR_DEFECTO) {
   const expiraEn = Number.isFinite(expiresIn)
     ? new Date(Date.now() + expiresIn * 1000).toISOString()
     : null;
@@ -114,46 +153,66 @@ function actualizarTokensVendedor(sellerId, { accessToken, refreshToken, expires
     UPDATE vendor_payment_accounts
     SET mp_access_token_enc = ?, mp_refresh_token_enc = COALESCE(?, mp_refresh_token_enc),
         mp_token_expires_at = ?
-    WHERE seller_id = ?
-  `).run(cifrar(accessToken), refreshToken ? cifrar(refreshToken) : null, expiraEn, sellerId);
+    WHERE seller_id = ? AND provider = ?
+  `).run(cifrar(accessToken), refreshToken ? cifrar(refreshToken) : null, expiraEn,
+    sellerId, provider);
 }
 
-function desconectarVendedor(sellerId) {
-  db.getDb()
-    .prepare('UPDATE vendor_payment_accounts SET revoked_at = ? WHERE seller_id = ?')
-    .run(ahora(), sellerId);
+/**
+ * Marca la cuenta como desconectada. `motivo` y `por` quedan guardados para
+ * que la app distinga una desconexión voluntaria de una revocación detectada
+ * desde fuera: el mensaje que se le muestra al vendedor no es el mismo.
+ *
+ * @param {'user'|'webhook'|'token_check'} por quién detectó la desconexión
+ * @returns {boolean} true si esta llamada la desconectó (false si ya lo estaba)
+ */
+function desconectarVendedor(sellerId, { motivo = null, por = 'user',
+  provider = PROVEEDOR_POR_DEFECTO } = {}) {
+  const cambios = db.getDb().prepare(`
+    UPDATE vendor_payment_accounts
+    SET revoked_at = ?, disconnect_reason = ?, disconnected_by = ?
+    WHERE seller_id = ? AND provider = ? AND revoked_at IS NULL
+  `).run(ahora(), motivo, por, sellerId, provider).changes;
+  return cambios > 0;
 }
 
 // ─── Customer y tarjetas del comprador ──────────────────────
+//
+// Todo lo de aquí va por PAREJA (comprador, vendedor). El Customer de MP y
+// sus tarjetas viven dentro de la cuenta del vendedor que los creó, así que
+// una tarjeta no es del comprador a secas: es del comprador CON ese vendedor.
+// La columna se sigue llamando `seller_id` por herencia del esquema (esa
+// tabla de usuarios se llama `sellers`), pero aquí siempre es el comprador.
 
-function getCustomerId(sellerId) {
+function getCustomerId(buyerId, vendorId) {
   const fila = db.getDb()
-    .prepare('SELECT mp_customer_id FROM buyer_mp_customers WHERE seller_id = ?')
-    .get(sellerId);
+    .prepare('SELECT mp_customer_id FROM buyer_mp_customers WHERE seller_id = ? AND vendor_id = ?')
+    .get(buyerId, vendorId);
   return fila ? fila.mp_customer_id : null;
 }
 
-function guardarCustomerId(sellerId, mpCustomerId) {
+function guardarCustomerId(buyerId, vendorId, mpCustomerId) {
   db.getDb().prepare(`
-    INSERT INTO buyer_mp_customers (seller_id, mp_customer_id, created_at)
-    VALUES (?, ?, ?)
-    ON CONFLICT(seller_id) DO UPDATE SET mp_customer_id = excluded.mp_customer_id
-  `).run(sellerId, mpCustomerId, ahora());
+    INSERT INTO buyer_mp_customers (seller_id, vendor_id, mp_customer_id, created_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(seller_id, vendor_id) DO UPDATE SET mp_customer_id = excluded.mp_customer_id
+  `).run(buyerId, vendorId, mpCustomerId, ahora());
 }
 
-function guardarTarjeta(sellerId, tarjeta) {
+function guardarTarjeta(buyerId, vendorId, tarjeta) {
   db.getDb().prepare(`
     INSERT INTO saved_cards
-      (seller_id, mp_card_id, last_four_digits, payment_method,
+      (seller_id, vendor_id, mp_card_id, last_four_digits, payment_method,
        expiration_month, expiration_year, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(seller_id, mp_card_id) DO UPDATE SET
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(seller_id, vendor_id, mp_card_id) DO UPDATE SET
       last_four_digits = excluded.last_four_digits,
       payment_method = excluded.payment_method,
       expiration_month = excluded.expiration_month,
       expiration_year = excluded.expiration_year
   `).run(
-    sellerId,
+    buyerId,
+    vendorId,
     tarjeta.mpCardId,
     tarjeta.lastFour || null,
     tarjeta.paymentMethod || null,
@@ -163,35 +222,50 @@ function guardarTarjeta(sellerId, tarjeta) {
   );
 }
 
-function listarTarjetas(sellerId) {
+function listarTarjetas(buyerId, vendorId) {
   return db.getDb()
-    .prepare('SELECT * FROM saved_cards WHERE seller_id = ? ORDER BY created_at DESC')
-    .all(sellerId);
+    .prepare(`SELECT * FROM saved_cards WHERE seller_id = ? AND vendor_id = ?
+              ORDER BY created_at DESC`)
+    .all(buyerId, vendorId);
 }
 
-/** null si la tarjeta no existe O no es de este usuario. */
-function getTarjeta(sellerId, mpCardId) {
+/** null si no existe, no es de este comprador, o es de otro vendedor. */
+function getTarjeta(buyerId, vendorId, mpCardId) {
   return db.getDb()
-    .prepare('SELECT * FROM saved_cards WHERE seller_id = ? AND mp_card_id = ?')
-    .get(sellerId, mpCardId) || null;
+    .prepare('SELECT * FROM saved_cards WHERE seller_id = ? AND vendor_id = ? AND mp_card_id = ?')
+    .get(buyerId, vendorId, mpCardId) || null;
 }
 
-function borrarTarjeta(sellerId, mpCardId) {
+function borrarTarjeta(buyerId, vendorId, mpCardId) {
   return db.getDb()
-    .prepare('DELETE FROM saved_cards WHERE seller_id = ? AND mp_card_id = ?')
-    .run(sellerId, mpCardId).changes > 0;
+    .prepare('DELETE FROM saved_cards WHERE seller_id = ? AND vendor_id = ? AND mp_card_id = ?')
+    .run(buyerId, vendorId, mpCardId).changes > 0;
+}
+
+/**
+ * Borra las tarjetas que un vendedor ya no puede cobrar. Se usa cuando su
+ * cuenta se desconecta: esos Customers dejan de ser alcanzables, así que
+ * seguir ofreciéndolas en el checkout solo produce cobros fallidos.
+ */
+function borrarTarjetasDeVendedor(vendorId) {
+  const db_ = db.getDb();
+  const n = db_.prepare('DELETE FROM saved_cards WHERE vendor_id = ?').run(vendorId).changes;
+  db_.prepare('DELETE FROM buyer_mp_customers WHERE vendor_id = ?').run(vendorId);
+  return n;
 }
 
 // ─── Órdenes ────────────────────────────────────────────────
 
-function crearOrden({ id, buyerId, vendorId, amount, applicationFee, currency, origin, items }) {
+function crearOrden({ id, buyerId, vendorId, amount, applicationFee, currency, origin,
+  paymentMethod = null, items }) {
   const crear = db.getDb().transaction(() => {
     db.getDb().prepare(`
       INSERT INTO orders
         (id, buyer_id, vendor_id, amount, application_fee, currency,
-         status, payment_status, origin, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, 'pending', NULL, ?, ?, ?)
-    `).run(id, buyerId, vendorId, amount, applicationFee, currency, origin, ahora(), ahora());
+         status, payment_status, payment_method, origin, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending', NULL, ?, ?, ?, ?)
+    `).run(id, buyerId, vendorId, amount, applicationFee, currency,
+      paymentMethod, origin, ahora(), ahora());
 
     const insItem = db.getDb().prepare(`
       INSERT INTO order_items (order_id, product_id, quantity, unit_price, title_snapshot)
@@ -255,14 +329,50 @@ function listarOrdenesDeVendedor(vendorId, limite = 50) {
  */
 const ESTADOS_FINALES = new Set(['approved', 'refunded', 'charged_back', 'cancelled']);
 
+/**
+ * Estados en los que el pago guardado está MUERTO: no cobró y ya no va a
+ * cobrar. Son los únicos desde los que la orden admite un intento de cobro
+ * nuevo — con otra tarjeta, típicamente.
+ *
+ * Todo lo demás (approved, authorized, in_process, pending, in_mediation,
+ * refunded, charged_back) significa que hay o hubo dinero de por medio;
+ * lanzar un segundo cobro ahí es un cargo duplicado real.
+ */
+const ESTADOS_MUERTOS = new Set(['rejected', 'cancelled']);
+
+/**
+ * ¿Se puede intentar cobrar esta orden? Vive aquí, junto a los conjuntos de
+ * estados, para que el checkout no tenga que reimplementar el criterio con
+ * un `if` que se desincronice de ESTADOS_MUERTOS.
+ */
+function admiteNuevoIntentoDePago(orden) {
+  if (!orden) return false;
+  if (orden.status === 'paid') return false;
+  return !orden.payment_status || ESTADOS_MUERTOS.has(orden.payment_status);
+}
+
 function actualizarPagoDeOrden(orderId, { mpPaymentId, paymentStatus }) {
   const orden = db.getDb().prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
   if (!orden) return false;
 
-  if (orden.payment_status && ESTADOS_FINALES.has(orden.payment_status)
+  // ¿Esta notificación es de OTRO pago del que ya teníamos guardado? Pasa
+  // cuando el comprador reintentó con otra tarjeta tras un rechazo: la orden
+  // acumula varios intentos de cobro y solo uno es el bueno.
+  const esOtroPago = Boolean(
+    mpPaymentId && orden.mp_payment_id
+    && String(orden.mp_payment_id) !== String(mpPaymentId),
+  );
+
+  if (esOtroPago) {
+    // El intento nuevo solo sustituye al guardado si el guardado está
+    // muerto. Al revés no: el webhook tardío de un intento rechazado no
+    // puede tumbar la orden que otro pago ya dejó aprobada.
+    if (!ESTADOS_MUERTOS.has(orden.payment_status)) return false;
+  } else if (orden.payment_status && ESTADOS_FINALES.has(orden.payment_status)
       && orden.payment_status !== paymentStatus) {
-    // Salvo que el nuevo estado sea también final y posterior (un reembolso
-    // después de una aprobación), se ignora.
+    // Mismo pago: MP no garantiza el orden de entrega, así que un estado
+    // final no retrocede. Salvo que el nuevo estado sea también final y
+    // posterior (un reembolso después de una aprobación).
     if (!(orden.payment_status === 'approved' && ESTADOS_FINALES.has(paymentStatus))) {
       return false;
     }
@@ -278,6 +388,19 @@ function actualizarPagoDeOrden(orderId, { mpPaymentId, paymentStatus }) {
     WHERE id = ?
   `).run(mpPaymentId ? String(mpPaymentId) : null, paymentStatus, status, ahora(), orderId);
   return true;
+}
+
+/**
+ * Marca que esta orden no se puede cobrar por el método elegido y hace falta
+ * otro. No es lo mismo que 'cancelled': la compra sigue en pie, lo que falló
+ * es la forma de pagarla. Sin un estado propio se quedaría en 'pending' y
+ * nadie —ni el comprador ni el vendedor— sabría que hay algo que hacer.
+ */
+function marcarRequiereOtroMetodo(orderId) {
+  return db.getDb().prepare(`
+    UPDATE orders SET status = 'requires_other_method', updated_at = ?
+    WHERE id = ? AND status = 'pending'
+  `).run(ahora(), orderId).changes > 0;
 }
 
 // ─── Idempotencia del webhook ───────────────────────────────
@@ -306,12 +429,28 @@ function marcarEventoProcesado(eventId) {
     .run(ahora(), String(eventId));
 }
 
+/**
+ * Si es true, esta entrega ya se procesó CON ÉXITO y no hay nada que hacer.
+ * Si es false, puede que nunca haya llegado o que haya llegado y fallado a
+ * medias (obtenerPago reventó, por ejemplo) — en ambos casos se debe
+ * procesar, para que un reintento de MP no se pierda por un fallo previo.
+ */
+function eventoFueProcesado(eventId) {
+  const fila = db.getDb()
+    .prepare('SELECT processed_at FROM mp_webhook_events WHERE event_id = ?')
+    .get(String(eventId));
+  return !!(fila && fila.processed_at);
+}
+
 module.exports = {
   crearOAuthState,
   consumirOAuthState,
   limpiarOAuthStatesViejos,
+  PROVEEDOR_POR_DEFECTO,
   guardarCuentaVendedor,
   getCuentaVendedor,
+  getCuentaVendedorIncluyendoRevocada,
+  getVendedorPorMpUserId,
   getCuentaVendedorConToken,
   actualizarTokensVendedor,
   desconectarVendedor,
@@ -321,6 +460,7 @@ module.exports = {
   listarTarjetas,
   getTarjeta,
   borrarTarjeta,
+  borrarTarjetasDeVendedor,
   crearOrden,
   getOrden,
   getOrdenPorId,
@@ -328,6 +468,9 @@ module.exports = {
   listarOrdenesDeComprador,
   listarOrdenesDeVendedor,
   actualizarPagoDeOrden,
+  admiteNuevoIntentoDePago,
+  marcarRequiereOtroMetodo,
   registrarEventoWebhook,
+  eventoFueProcesado,
   marcarEventoProcesado,
 };

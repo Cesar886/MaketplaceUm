@@ -22,6 +22,9 @@ process.env.VERIFICATION_STUDENT_DOMAINS = 'alumno.um.edu.mx';
 // comentario ahí). El test firma sus propios tokens, así que le basta un
 // secreto cualquiera, pero tiene que estar puesto ANTES del require.
 process.env.JWT_SECRET = 'secreto-de-prueba';
+// Verificar un negocio exige cuenta de pagos conectada, y guardarla cifra el
+// token. Sin esta clave, payments/crypto.js revienta al cargarse.
+process.env.PAYMENTS_ENCRYPTION_KEY = require('crypto').randomBytes(32).toString('hex');
 
 const express = require('express');
 const db = require('../database');
@@ -106,6 +109,21 @@ async function pedir(ruta, token, cuerpo) {
   return { status: res.status, body: await res.json() };
 }
 
+/**
+ * Conecta una cuenta de pagos al vendedor. Completar la verificación lo
+ * exige en LOS TRES flujos: una cuenta verificada es una que puede cobrar
+ * dentro de la app.
+ */
+function conectarPagos(usuarioId) {
+  require('../payments/store').guardarCuentaVendedor(usuarioId, {
+    mpUserId: `mp_${usuarioId}`,
+    accessToken: 'vendor-access-token',
+    refreshToken: 'vendor-refresh-token',
+    expiresIn: 30 * 24 * 60 * 60,
+    publicKey: 'APP_USR-pk',
+  });
+}
+
 function filaVerificacion(usuarioId) {
   return db.getDb().prepare('SELECT * FROM verificaciones WHERE usuario_id = ?').get(usuarioId);
 }
@@ -118,6 +136,7 @@ function estaVerificado(usuarioId) {
 
 test('un estudiante se verifica con el código enviado a su correo institucional', async () => {
   const usuario = crearUsuario('estudiante');
+  conectarPagos(usuario.id);
   const correo = '1220326@alumno.um.edu.mx';
 
   const solicitud = await pedir('/estudiante/solicitar', usuario.token, {
@@ -176,6 +195,7 @@ test('rechaza la solicitud si no se manda carrera', async () => {
 
 test('el personal se verifica con su correo @um.edu.mx, sin matrícula ni carrera', async () => {
   const usuario = crearUsuario('estudiante');
+  conectarPagos(usuario.id);
   const correo = 'cesar.herrera@um.edu.mx';
 
   const solicitud = await pedir('/estudiante/solicitar', usuario.token, {
@@ -288,6 +308,7 @@ test('el código deja de existir en la base después de usarse', async () => {
 
 test('el mismo código no sirve dos veces', async () => {
   const usuario = crearUsuario('estudiante');
+  conectarPagos(usuario.id);
   await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1330002@alumno.um.edu.mx',
     tipo: 'estudiante',
@@ -380,6 +401,7 @@ test('un código nuevo invalida el anterior', async () => {
 
 test('rechaza un correo institucional ya usado por otra cuenta verificada', async () => {
   const primero = crearUsuario('estudiante');
+  conectarPagos(primero.id);
   const correo = '1440001@alumno.um.edu.mx';
   await pedir('/estudiante/solicitar', primero.token, {
     correo_institucional: correo,
@@ -472,6 +494,7 @@ test('bloquea el envío a un correo que ya recibió 3 códigos desde otra cuenta
 
 test('un negocio se verifica en la misma respuesta, sin cola de revisión', async () => {
   const usuario = crearUsuario('negocio');
+  conectarPagos(usuario.id);
   linkResponde = { ok: true, motivo: null };
 
   const res = await pedir('/negocio/solicitar', usuario.token, {
@@ -493,6 +516,7 @@ test('un negocio se verifica en la misma respuesta, sin cola de revisión', asyn
 
 test('rechaza el negocio cuando el link no responde, señalando el campo', async () => {
   const usuario = crearUsuario('negocio');
+  conectarPagos(usuario.id);
   linkResponde = { ok: false, motivo: 'La página del link no existe.' };
 
   const res = await pedir('/negocio/solicitar', usuario.token, {
@@ -512,6 +536,7 @@ test('rechaza el negocio cuando el link no responde, señalando el campo', async
 
 test('un negocio rechazado puede corregir el dato y verificarse', async () => {
   const usuario = crearUsuario('negocio');
+  conectarPagos(usuario.id);
   const datos = {
     nombre_negocio: 'Tacos UM',
     ubicacion_lat: 19.7,
@@ -573,6 +598,7 @@ test('rechaza un link de un dominio que no es red social ni Maps', async () => {
 
 test('una cuenta externa se verifica con el código enviado por SMS', async () => {
   const usuario = crearUsuario('particular');
+  conectarPagos(usuario.id);
 
   const solicitud = await pedir('/externo/solicitar', usuario.token, {
     telefono: '(443) 123-4567',
@@ -636,6 +662,7 @@ test('exige autenticación en todos los endpoints', async () => {
 test('ignora un usuario_id mandado en el body y usa el del token', async () => {
   const victima = crearUsuario('estudiante');
   const atacante = crearUsuario('estudiante');
+  conectarPagos(atacante.id);
 
   await pedir('/estudiante/solicitar', atacante.token, {
     correo_institucional: '1990001@alumno.um.edu.mx',
@@ -664,12 +691,14 @@ test('reporta el estado inicial de una cuenta que nunca inició verificación', 
     verificado: false,
     motivo_rechazo: null,
     campo_rechazado: null,
+    identidad_confirmada: false,
     puede_reintentar_en: 0,
   });
 });
 
 test('reporta el estado verificado después de completar el flujo', async () => {
   const usuario = crearUsuario('negocio');
+  conectarPagos(usuario.id);
   linkResponde = { ok: true, motivo: null };
   await pedir('/negocio/solicitar', usuario.token, {
     nombre_negocio: 'Café UM',
@@ -698,4 +727,242 @@ test('reporta el motivo y el campo cuando la verificación fue rechazada', async
   assert.strictEqual(res.body.estado, 'rechazado');
   assert.strictEqual(res.body.campo_rechazado, 'link_red_social');
   assert.ok(res.body.motivo_rechazo);
+});
+
+// ═══ NEGOCIO: la cuenta de pagos es requisito ════════════════
+
+test('un negocio SIN Mercado Pago conectado no llega a verificado', async () => {
+  const usuario = crearUsuario('negocio');
+  linkResponde = { ok: true, motivo: null };
+
+  const res = await pedir('/negocio/solicitar', usuario.token, {
+    nombre_negocio: 'Tacos UM',
+    ubicacion_lat: 19.7,
+    ubicacion_lng: -101.1,
+    link_red_social: 'https://www.instagram.com/tacos_um/',
+  });
+
+  // 200 y no 4xx: el trámite es válido y sus datos quedan guardados. Lo que
+  // pasa es que le falta un requisito, y eso es un ESTADO del trámite, igual
+  // que el rechazo por link — no un error de la petición.
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.body.estado, 'pendiente');
+  assert.strictEqual(res.body.campo, 'mercadopago');
+  assert.ok(res.body.motivo, 'el negocio tiene que saber qué le falta');
+  assert.strictEqual(estaVerificado(usuario.id), false);
+
+  // Y los datos del negocio NO se pierden: al volver tras conectar, no
+  // tiene que teclearlo todo otra vez.
+  assert.strictEqual(filaVerificacion(usuario.id).nombre_negocio, 'Tacos UM');
+});
+
+test('el negocio se verifica al reintentar después de conectar Mercado Pago', async () => {
+  const usuario = crearUsuario('negocio');
+  linkResponde = { ok: true, motivo: null };
+  const datos = {
+    nombre_negocio: 'Tacos UM',
+    ubicacion_lat: 19.7,
+    ubicacion_lng: -101.1,
+    link_red_social: 'https://www.instagram.com/tacos_um/',
+  };
+
+  const sinMp = await pedir('/negocio/solicitar', usuario.token, datos);
+  assert.strictEqual(sinMp.body.estado, 'pendiente');
+
+  conectarPagos(usuario.id);
+
+  const conMp = await pedir('/negocio/solicitar', usuario.token, datos);
+  assert.strictEqual(conMp.body.estado, 'verificado');
+  assert.strictEqual(estaVerificado(usuario.id), true);
+});
+
+// ═══ ESTUDIANTE Y EXTERNO: la cuenta de pagos también ════════
+//
+// Conectar Mercado Pago es requisito en los TRES flujos, no solo en negocio:
+// una cuenta verificada es una que puede cobrar dentro de la app.
+
+test('un estudiante con el OTP correcto pero SIN Mercado Pago queda pendiente', async () => {
+  const usuario = crearUsuario('estudiante');
+  const correo = '1220999@alumno.um.edu.mx';
+
+  const sol = await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: correo,
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
+  });
+  assert.strictEqual(sol.status, 200, `solicitar: ${JSON.stringify(sol.body)}`);
+  const codigo = enviados.email.at(-1).codigo;
+  const res = await pedir('/estudiante/confirmar', usuario.token, { codigo_otp: codigo });
+
+  // 200 y no 4xx: el código ERA correcto. Lo que falta es un requisito del
+  // trámite, y eso es un estado, no un error de la petición.
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.body.verificado, false);
+  assert.strictEqual(res.body.estado, 'pendiente');
+  assert.strictEqual(res.body.campo, 'mercadopago');
+  assert.ok(res.body.motivo, 'el estudiante tiene que saber qué le falta');
+  assert.strictEqual(estaVerificado(usuario.id), false);
+
+  // La identidad SÍ quedó probada: es lo que le permite ir a conectar su
+  // cuenta y volver sin repetir el OTP.
+  assert.ok(filaVerificacion(usuario.id).identidad_confirmada_en);
+});
+
+test('el estudiante se verifica al volver de conectar, sin un código nuevo', async () => {
+  const usuario = crearUsuario('estudiante');
+  await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: '1221000@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
+  });
+  const codigo = enviados.email.at(-1).codigo;
+  await pedir('/estudiante/confirmar', usuario.token, { codigo_otp: codigo });
+  assert.strictEqual(estaVerificado(usuario.id), false);
+
+  conectarPagos(usuario.id);
+
+  // Sin `codigo_otp`: conectar Mercado Pago obliga a salir al navegador, un
+  // viaje que dura más que los 10 minutos de vida del código. Exigir uno
+  // nuevo al volver es el bucle que hace que la gente abandone.
+  const res = await pedir('/estudiante/confirmar', usuario.token, {});
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.body.verificado, true);
+  assert.strictEqual(estaVerificado(usuario.id), true);
+
+  // Y la carrera capturada en la solicitud original se copia igual a
+  // `sellers`, aunque el paso final ya no evaluara ningún código.
+  const fila = db.getDb().prepare('SELECT carrera FROM sellers WHERE id = ?').get(usuario.id);
+  assert.strictEqual(fila.carrera, CARRERA_VALIDA);
+});
+
+test('una cuenta externa SIN Mercado Pago tampoco llega a verificado', async () => {
+  const usuario = crearUsuario('particular');
+  await pedir('/externo/solicitar', usuario.token, { telefono: '(443) 765-4321' });
+
+  const res = await pedir('/externo/confirmar', usuario.token, {
+    codigo_otp: enviados.sms.at(-1).codigo,
+  });
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.body.estado, 'pendiente');
+  assert.strictEqual(res.body.campo, 'mercadopago');
+  assert.strictEqual(estaVerificado(usuario.id), false);
+
+  conectarPagos(usuario.id);
+  const reintento = await pedir('/externo/confirmar', usuario.token, {});
+  assert.strictEqual(reintento.body.verificado, true);
+  assert.strictEqual(estaVerificado(usuario.id), true);
+});
+
+test('un OTP incorrecto no prueba la identidad ni deja retomar sin código', async () => {
+  const usuario = crearUsuario('estudiante');
+  await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: '1221001@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
+  });
+
+  const malo = await pedir('/estudiante/confirmar', usuario.token, { codigo_otp: '000000' });
+  assert.strictEqual(malo.status, 400);
+  assert.strictEqual(filaVerificacion(usuario.id).identidad_confirmada_en, null);
+
+  // Conectar la cuenta de pagos NO puede saltarse la prueba de identidad:
+  // sin OTP válido, el atajo de "retomar sin código" no existe.
+  conectarPagos(usuario.id);
+  const sinCodigo = await pedir('/estudiante/confirmar', usuario.token, {});
+  assert.strictEqual(sinCodigo.status, 400);
+  assert.strictEqual(estaVerificado(usuario.id), false);
+});
+
+test('/estado avisa de que solo falta conectar Mercado Pago', async () => {
+  const usuario = crearUsuario('estudiante');
+  await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: '1221002@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
+  });
+  await pedir('/estudiante/confirmar', usuario.token, {
+    codigo_otp: enviados.email.at(-1).codigo,
+  });
+
+  const res = await pedir('/estado', usuario.token);
+  assert.strictEqual(res.body.verificado, false);
+  assert.strictEqual(res.body.campo_rechazado, 'mercadopago');
+  assert.ok(res.body.motivo_rechazo);
+  // Con esto la app sabe que puede saltar directo al paso de conectar en vez
+  // de volver a pedir un correo y un código.
+  assert.strictEqual(res.body.identidad_confirmada, true);
+});
+
+// ═══ CIERRE AUTOMÁTICO AL CONECTAR LA CUENTA ═════════════════
+//
+// Conectar Mercado Pago se hace desde tres sitios y solo uno (el formulario)
+// sabe reintentar. El cierre vive en el callback de OAuth, que es por donde
+// pasan los tres.
+
+const {
+  completarVerificacionPendientePorPagos,
+} = require('./verificacion');
+
+test('conectar la cuenta cierra una verificación que solo esperaba eso', async () => {
+  const usuario = crearUsuario('estudiante');
+  await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: '1222000@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
+  });
+  await pedir('/estudiante/confirmar', usuario.token, {
+    codigo_otp: enviados.email.at(-1).codigo,
+  });
+  assert.strictEqual(estaVerificado(usuario.id), false);
+
+  conectarPagos(usuario.id);
+  const cerrada = completarVerificacionPendientePorPagos(usuario.id);
+
+  assert.strictEqual(cerrada, true);
+  assert.strictEqual(estaVerificado(usuario.id), true);
+
+  const fila = filaVerificacion(usuario.id);
+  assert.strictEqual(fila.estado, 'verificado');
+  assert.strictEqual(fila.campo_rechazado, null);
+  assert.ok(fila.fecha_verificacion);
+
+  // Las banderas rápidas de `sellers` se copian igual que en el cierre normal.
+  const seller = db.getDb()
+    .prepare('SELECT carrera, tipo_verificacion FROM sellers WHERE id = ?').get(usuario.id);
+  assert.strictEqual(seller.carrera, CARRERA_VALIDA);
+  assert.strictEqual(seller.tipo_verificacion, 'estudiante');
+});
+
+test('conectar la cuenta NO verifica a quien nunca confirmó su código', async () => {
+  const usuario = crearUsuario('estudiante');
+  await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: '1222001@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
+  });
+
+  conectarPagos(usuario.id);
+
+  // Tener con qué cobrar no dice nada sobre quién eres: sin OTP no hay
+  // identidad probada, y conectar una cuenta no puede ser un atajo.
+  assert.strictEqual(completarVerificacionPendientePorPagos(usuario.id), false);
+  assert.strictEqual(estaVerificado(usuario.id), false);
+});
+
+test('conectar la cuenta no rescata una verificación rechazada por el link', async () => {
+  const usuario = crearUsuario('negocio');
+  linkResponde = { ok: false, motivo: 'La página del link no existe.' };
+  await pedir('/negocio/solicitar', usuario.token, {
+    nombre_negocio: 'Café UM',
+    ubicacion_lat: 19.7,
+    ubicacion_lng: -101.1,
+    link_red_social: 'https://facebook.com/noexiste',
+  });
+  linkResponde = { ok: true, motivo: null };
+
+  conectarPagos(usuario.id);
+
+  assert.strictEqual(completarVerificacionPendientePorPagos(usuario.id), false);
+  assert.strictEqual(estaVerificado(usuario.id), false);
+  assert.strictEqual(filaVerificacion(usuario.id).campo_rechazado, 'link_red_social');
 });

@@ -152,46 +152,54 @@ async function refrescarTokenVendedor(refreshToken) {
 
 // ─── Customers y tarjetas guardadas (comprador) ─────────────
 //
-// Van con el token de LA PLATAFORMA: las tarjetas guardadas son del
-// marketplace, no de un vendedor concreto — el comprador las reutiliza para
-// comprarle a cualquiera.
+// Van con el token DEL VENDEDOR, no con el de la plataforma. En el modo
+// marketplace de MP un Customer y sus tarjetas pertenecen a la cuenta que
+// los creó: una tarjeta guardada bajo la plataforma NO es cobrable con el
+// token de un vendedor — MP responde "Card Token not found". Se comprobó
+// contra la API real antes de elegir este modelo.
+//
+// Consecuencia de producto: el comprador registra su tarjeta una vez por
+// cada vendedor al que le compra. No hay forma de compartirla entre
+// vendedores sin que la plataforma pase a ser quien cobra.
 
 /**
- * Busca un Customer por email.
+ * Busca un Customer por email dentro de la cuenta de un vendedor.
  * Endpoint: GET /v1/customers/search
- * Credencial: MP_ACCESS_TOKEN (plataforma).
+ * Credencial: access_token DEL VENDEDOR.
  */
-async function buscarCustomerPorEmail(email) {
+async function buscarCustomerPorEmail(email, accessTokenVendedor) {
   const datos = await peticion('GET', `/v1/customers/search?email=${encodeURIComponent(email)}`, {
-    accessToken: config.accessToken,
+    accessToken: accessTokenVendedor,
   });
   return datos?.results?.[0] || null;
 }
 
 /**
- * Crea un Customer.
+ * Crea un Customer dentro de la cuenta de un vendedor.
  * Endpoint: POST /v1/customers
- * Credencial: MP_ACCESS_TOKEN (plataforma).
+ * Credencial: access_token DEL VENDEDOR.
  */
-async function crearCustomer({ email, nombre }) {
+async function crearCustomer({ email, nombre }, accessTokenVendedor) {
   return peticion('POST', '/v1/customers', {
-    accessToken: config.accessToken,
+    accessToken: accessTokenVendedor,
     body: { email, first_name: nombre || undefined },
   });
 }
 
 /**
- * Asocia una tarjeta ya tokenizada a un Customer.
+ * Asocia una tarjeta ya tokenizada a un Customer del vendedor.
  * Endpoint: POST /v1/customers/{customer_id}/cards
- * Credencial: MP_ACCESS_TOKEN (plataforma).
+ * Credencial: access_token DEL VENDEDOR.
  *
  * `token` es el card_token de un solo uso generado EN EL CLIENTE contra la
- * API pública de MP. Nunca vemos el PAN ni el CVV: llegan a MP directo desde
+ * API pública de MP — y con la PUBLIC KEY DEL VENDEDOR, no la de la
+ * plataforma: un token creado con otra public key no pertenece a esta cuenta
+ * y MP lo rechaza. Nunca vemos el PAN ni el CVV: llegan a MP directo desde
  * el dispositivo. El token se usa aquí y se descarta — no se guarda.
  */
-async function guardarTarjetaEnCustomer(customerId, token) {
+async function guardarTarjetaEnCustomer(customerId, token, accessTokenVendedor) {
   return peticion('POST', `/v1/customers/${encodeURIComponent(customerId)}/cards`, {
-    accessToken: config.accessToken,
+    accessToken: accessTokenVendedor,
     body: { token },
   });
 }
@@ -199,14 +207,27 @@ async function guardarTarjetaEnCustomer(customerId, token) {
 /**
  * Elimina una tarjeta guardada.
  * Endpoint: DELETE /v1/customers/{customer_id}/cards/{card_id}
- * Credencial: MP_ACCESS_TOKEN (plataforma).
+ * Credencial: access_token DEL VENDEDOR.
  */
-async function eliminarTarjetaDeCustomer(customerId, cardId) {
+async function eliminarTarjetaDeCustomer(customerId, cardId, accessTokenVendedor) {
   return peticion(
     'DELETE',
     `/v1/customers/${encodeURIComponent(customerId)}/cards/${encodeURIComponent(cardId)}`,
-    { accessToken: config.accessToken },
+    { accessToken: accessTokenVendedor },
   );
+}
+
+/**
+ * Comprobación barata de que un access_token de vendedor sigue siendo
+ * válido. Se usa como red de seguridad cuando el webhook de revocación no
+ * llegó: si el vendedor quitó la autorización desde su panel de MP, esto
+ * responde 401 y la app se entera antes de intentar cobrarle a alguien.
+ *
+ * Endpoint: GET /users/me
+ * Credencial: access_token DEL VENDEDOR.
+ */
+async function validarTokenVendedor(accessTokenVendedor) {
+  return peticion('GET', '/users/me', { accessToken: accessTokenVendedor });
 }
 
 // ─── Cobro con split ────────────────────────────────────────
@@ -257,6 +278,7 @@ module.exports = {
   crearCustomer,
   guardarTarjetaEnCustomer,
   eliminarTarjetaDeCustomer,
+  validarTokenVendedor,
   crearPago,
   obtenerPago,
 };

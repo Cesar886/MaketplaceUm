@@ -212,6 +212,20 @@ class CheckoutResult {
 }
 
 /// Estado de la cuenta de Mercado Pago de un vendedor.
+/// Estado de la cuenta de cobros tal como puede pintarlo la app.
+///
+/// [desconocido] existe porque "no pude comprobarlo" y "no está conectada"
+/// son cosas distintas y llevan a acciones distintas: la primera se
+/// reintenta, la segunda se resuelve conectando. Colapsarlas en un bool deja
+/// al vendedor mirando "Sin conectar" mientras su cuenta funciona.
+enum EstadoCobros {
+  conectado,
+  sinConectar,
+  desconocido;
+
+  bool get estaConectado => this == EstadoCobros.conectado;
+}
+
 class VendorAccountStatus {
   const VendorAccountStatus({
     required this.connected,
@@ -255,4 +269,68 @@ class PaymentsConfig {
   final String publicKey;
   final String currency;
   final double feePercent;
+}
+
+/// Métodos de pago que un vendedor concreto acepta, y cuáles de ellos
+/// funcionan ahora mismo.
+///
+/// La distinción importa: un vendedor puede tener 'tarjeta' entre sus
+/// métodos y aun así no poder cobrarla porque su cuenta de Mercado Pago se
+/// desconectó. En ese caso llega `available: false` con un motivo legible,
+/// para que el checkout pueda explicarlo en vez de esconder la opción.
+class VendorPaymentMethod {
+  const VendorPaymentMethod({
+    required this.id,
+    required this.available,
+    this.unavailableReason,
+  });
+
+  final String id;
+  final bool available;
+  final String? unavailableReason;
+
+  factory VendorPaymentMethod.fromJson(Map<String, dynamic> json) {
+    return VendorPaymentMethod(
+      id: json['id'] as String? ?? '',
+      available: json['available'] == true,
+      unavailableReason: json['unavailableReason'] as String?,
+    );
+  }
+}
+
+class VendorPaymentMethods {
+  const VendorPaymentMethods({
+    required this.vendorId,
+    required this.methods,
+    this.cardPublicKey,
+  });
+
+  final String vendorId;
+  final List<VendorPaymentMethod> methods;
+
+  /// Clave pública DEL VENDEDOR con la que hay que tokenizar. Llega null si
+  /// no puede cobrar con tarjeta; nunca es la clave de la plataforma.
+  final String? cardPublicKey;
+
+  bool get aceptaTarjeta =>
+      methods.any((m) => m.id == 'tarjeta' && m.available) &&
+      cardPublicKey != null;
+
+  VendorPaymentMethod? porId(String id) {
+    for (final m in methods) {
+      if (m.id == id) return m;
+    }
+    return null;
+  }
+
+  factory VendorPaymentMethods.fromJson(Map<String, dynamic> json) {
+    final lista = (json['methods'] as List<dynamic>? ?? const [])
+        .map((e) => VendorPaymentMethod.fromJson(e as Map<String, dynamic>))
+        .toList();
+    return VendorPaymentMethods(
+      vendorId: json['vendorId'] as String? ?? '',
+      methods: lista,
+      cardPublicKey: json['cardPublicKey'] as String?,
+    );
+  }
 }
