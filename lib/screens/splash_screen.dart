@@ -6,6 +6,7 @@ import '../app_theme.dart';
 import '../providers/accent_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/anonymous_id.dart';
+import '../services/deep_link_service.dart';
 import '../widgets/app_logo.dart';
 import 'main_shell.dart';
 
@@ -54,6 +55,11 @@ class _SplashScreenState extends State<SplashScreen> {
     Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(builder: (_) => const MainShell()),
     );
+
+    // Recién ahora hay una pantalla sobre la cual apilar. Si la app se abrió
+    // desde un link compartido, el deep link quedó esperando aquí: apilarlo
+    // antes lo habría borrado el pushReplacement de la línea anterior.
+    DeepLinkService.instance.marcarAppLista();
   }
 
   @override

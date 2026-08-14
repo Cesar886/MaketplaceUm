@@ -1,4 +1,4 @@
-import type { ProductoPublico } from './tipos';
+import type { PublicacionPublica } from './tipos';
 
 /**
  * URL del backend. Sin `NEXT_PUBLIC_` porque el fetch ocurre en el servidor
@@ -21,16 +21,19 @@ export function urlFoto(ruta: string): string {
 }
 
 /**
- * Devuelve el producto, o null si no existe (404).
+ * Devuelve la publicación (producto o búsqueda), o null si no existe (404).
+ *
+ * El endpoint resuelve ambas contra el mismo id porque la app comparte una
+ * sola forma de URL; qué llegó se distingue por el campo `tipo`.
  *
  * Solo el 404 devuelve null. Cualquier otro fallo (500, red caída, JSON
  * inválido) LANZA: si el backend está mal, la página debe reventar y dejar
- * que Next sirva el error, no fingir que el producto no existe y emitir un
+ * que Next sirva el error, no fingir que la publicación no existe y emitir un
  * 404 que los buscadores tomarían como permanente.
  */
-export async function obtenerProducto(
+export async function obtenerPublicacion(
   id: string,
-): Promise<ProductoPublico | null> {
+): Promise<PublicacionPublica | null> {
   const res = await fetch(
     `${API_URL}/api/public/productos/${encodeURIComponent(id)}`,
     {
@@ -42,7 +45,9 @@ export async function obtenerProducto(
 
   if (res.status === 404) return null;
   if (!res.ok) {
-    throw new Error(`El backend respondió ${res.status} para el producto ${id}`);
+    throw new Error(
+      `El backend respondió ${res.status} para la publicación ${id}`,
+    );
   }
-  return (await res.json()) as ProductoPublico;
+  return (await res.json()) as PublicacionPublica;
 }

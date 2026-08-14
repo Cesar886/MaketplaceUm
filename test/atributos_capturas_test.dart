@@ -8,14 +8,18 @@
 //
 // Se ejecuta a mano cuando se toca el diseño de estas secciones:
 //
-//   flutter test test/atributos_capturas_test.dart
+//   CAPTURAS=1 flutter test test/atributos_capturas_test.dart
+//
+// Sin esa variable los tests montan las pantallas igual (así una excepción de
+// layout sigue saliendo en la corrida normal) pero no escriben los PNG:
+// rasterizar por software cada captura cuesta minutos.
 //
 // Carga Roboto de verdad desde el SDK porque el entorno de prueba no resuelve
 // Google Fonts: con la tipografía de respaldo los anchos se van un 80 % y la
 // captura no representaría nada.
 
 import 'dart:io';
-import 'dart:typed_data';
+import 'dart:ui' show ImageByteFormat;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -28,6 +32,9 @@ import 'package:mercadito_um/widgets/product_attributes_section.dart';
 import 'package:mercadito_um/widgets/product_card.dart';
 
 const _dirSalida = 'build/capturas_atributos';
+
+/// Escribir los PNG solo se pide a mano, con `CAPTURAS=1`.
+final _generarPng = Platform.environment['CAPTURAS'] == '1';
 
 Future<void> _cargarRoboto() async {
   const raiz = '/home/daniel/flutter/bin/cache/artifacts/material_fonts';
@@ -55,27 +62,37 @@ void main() {
   /// que el texto se vea en la captura.
   Widget marco(Widget child, {required Color fondo}) {
     final base = AppTheme.light();
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: base.copyWith(
-        textTheme: base.textTheme.apply(fontFamily: 'Roboto'),
-        primaryTextTheme: base.primaryTextTheme.apply(fontFamily: 'Roboto'),
+    return RepaintBoundary(
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: base.copyWith(
+          textTheme: base.textTheme.apply(fontFamily: 'Roboto'),
+          primaryTextTheme: base.primaryTextTheme.apply(fontFamily: 'Roboto'),
+        ),
+        home: Scaffold(backgroundColor: fondo, body: child),
       ),
-      home: Scaffold(backgroundColor: fondo, body: child),
     );
   }
 
-  Future<void> capturar(WidgetTester tester, String nombre) async {
-    final imagen = await _pintarARchivo(tester);
-    File('$_dirSalida/$nombre.png').writeAsBytesSync(imagen);
-  }
-
-  Future<Uint8List> _pintarARchivo(WidgetTester tester) async {
-    final elemento = find.byType(MaterialApp).evaluate().single;
-    final objeto = elemento.renderObject! as RenderRepaintBoundary;
+  /// El PNG del árbol montado. Se pinta desde el [RepaintBoundary] que [marco]
+  /// pone por fuera: el elemento del MaterialApp no es una capa propia y su
+  /// renderObject no se puede convertir a imagen.
+  Future<Uint8List> pintarAPng(WidgetTester tester) async {
+    final objeto = tester.renderObject<RenderRepaintBoundary>(
+      find.byType(RepaintBoundary).first,
+    );
     final imagen = await objeto.toImage(pixelRatio: 2);
     final datos = await imagen.toByteData(format: ImageByteFormat.png);
     return datos!.buffer.asUint8List();
+  }
+
+  Future<void> capturar(WidgetTester tester, String nombre) async {
+    // Sin CAPTURAS=1 los tests montan igual todas las pantallas —que es lo que
+    // atrapa un overflow o una excepción de layout— pero no escriben el PNG:
+    // rasterizar por software cada captura tarda minutos, y pagarlos en cada
+    // `flutter test` volvería la suite inusable para todo lo demás.
+    if (!_generarPng) return;
+    File('$_dirSalida/$nombre.png').writeAsBytesSync(await pintarAPng(tester));
   }
 
   Product producto({
@@ -93,11 +110,7 @@ void main() {
       'description': descripcion,
       'publishedAgo': 'hace 2 días',
       'seller': 's_1',
-      'categoryObj': {
-        'id': categoria,
-        'name': nombreCategoria,
-        'emoji': '👕',
-      },
+      'categoryObj': {'id': categoria, 'name': nombreCategoria, 'emoji': '👕'},
       'images': <String>[],
       'extras': <dynamic>[],
       'views': 128,
@@ -180,8 +193,10 @@ void main() {
     addTearDown(tester.view.reset);
 
     var respuestas = <String, dynamic>{
-      'incluye_renta': ['Luz', 'Agua', 'Internet'],
-      'requisitos': ['Aval', 'Depósito'],
+      // Con un chip propio en cada pregunta: la captura tiene que mostrar
+      // que se ven igual que los del catálogo, con su ✕ para quitarlos.
+      'incluye_renta': ['Luz', 'Agua', 'Internet', 'Wifi 300mb'],
+      'requisitos': ['Aval', 'Depósito', 'Sin fiadores'],
       'acepta_mascotas': true,
       'exclusivo_para': 'Solo estudiantes',
     };
@@ -221,9 +236,10 @@ void main() {
               atributos: {
                 'acepta_devoluciones': false,
                 'precio_negociable': true,
-                'lugar_entrega': 'Ambos',
-                'incluye_renta': ['Luz', 'Agua', 'Internet'],
-                'requisitos': ['Aval', 'Depósito'],
+                // Sin `lugar_entrega`: hospedaje ya no la pregunta —una renta
+                // se visita, no se entrega— y la sección no la pintaría.
+                'incluye_renta': ['Luz', 'Agua', 'Internet', 'Wifi 300mb'],
+                'requisitos': ['Aval', 'Depósito', 'Sin fiadores'],
                 'acepta_mascotas': true,
                 'exclusivo_para': 'Solo estudiantes',
                 'monto_deposito': r'$3,000',
@@ -316,11 +332,7 @@ void main() {
                       'label': 'Estado',
                       'value': 'Con detalles/subrayado',
                     },
-                    {
-                      'key': 'edicion',
-                      'label': 'Edición',
-                      'value': 'Original',
-                    },
+                    {'key': 'edicion', 'label': 'Edición', 'value': 'Original'},
                   ],
                 ),
               ),
@@ -346,7 +358,7 @@ void main() {
           child: Column(
             children: [
               SizedBox(
-                height: 118,
+                height: 122,
                 child: ProductCard(
                   product: producto(
                     categoria: 'clothes',
@@ -366,7 +378,7 @@ void main() {
               ),
               const SizedBox(height: 12),
               SizedBox(
-                height: 118,
+                height: 122,
                 child: ProductCard(
                   product: producto(
                     categoria: 'food',

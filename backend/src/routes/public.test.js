@@ -8,7 +8,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { aVistaPublica } = require('./public');
+const { aVistaPublica, aVistaPublicaBusqueda } = require('./public');
 
 /** Producto completo tal como lo deja `attachRelations`. */
 function productoCompleto(extra = {}) {
@@ -118,6 +118,10 @@ test('propaga el estado de vendido en vez de ocultar el producto', () => {
   assert.strictEqual(vista.disponible, false);
 });
 
+test('marca la publicación como producto para que la web sepa qué pintar', () => {
+  assert.strictEqual(aVistaPublica(productoCompleto()).tipo, 'producto');
+});
+
 test('tolera un producto sin fotos, sin categoría y sin vendedor', () => {
   const vista = aVistaPublica({
     id: 'p_2',
@@ -135,4 +139,119 @@ test('tolera un producto sin fotos, sin categoría y sin vendedor', () => {
   assert.strictEqual(vista.categoria, null);
   assert.strictEqual(vista.vendedor, null);
   assert.strictEqual(vista.ubicacion, null);
+});
+
+// ─── Publicaciones "se busca" ────────────────────────────────────────────
+//
+// Comparten la URL pública con los productos (/producto/:id), así que pasan
+// por el mismo endpoint. La proyección es distinta porque los datos lo son:
+// una búsqueda no tiene fotos ni precio único, sino un rango.
+
+/** Publicación "se busca" tal como la deja `attachWantedRelations`. */
+function busquedaCompleta(extra = {}) {
+  return {
+    id: 'w_1',
+    userId: 's_1',
+    title: 'Busco calculadora TI-84',
+    description: 'Para Cálculo II, de preferencia con estuche.',
+    categoryId: 'c_lib',
+    type: 'producto',
+    priceMin: 800,
+    priceMax: 1500,
+    status: 'abierta',
+    createdAt: '2026-08-01T18:30:00.000Z',
+    resolvedWithUserId: 's_9',
+    locationLat: 25.18,
+    locationLng: -99.82,
+    views: 42,
+    paymentMethods: ['efectivo'],
+    postType: 'se_busca',
+    categoryObj: { id: 'c_lib', name: 'Libros', icon: '📚' },
+    sellerObj: {
+      id: 's_1',
+      name: 'Ana Valdés',
+      phone: '+528112345678',
+      avatarInitials: 'AV',
+      major: 'Estudiante',
+      isBusiness: false,
+      verified: true,
+      tipoCuenta: 'estudiante',
+      carrera: 'Ingeniería en Sistemas Computacionales',
+      tipoVerificacion: 'estudiante',
+    },
+    ...extra,
+  };
+}
+
+test('la búsqueda tampoco expone el teléfono ni el id de quien publica', () => {
+  const vista = aVistaPublicaBusqueda(busquedaCompleta());
+  const serializado = JSON.stringify(vista);
+
+  assert.ok(!serializado.includes('+528112345678'), 'el teléfono se filtró');
+  assert.strictEqual(vista.vendedor.phone, undefined);
+  // `userId` y `resolvedWithUserId` identifican cuentas: publicarlos permite
+  // cruzar quién le compró a quién desde fuera de la app.
+  assert.ok(!serializado.includes('s_1'));
+  assert.ok(!serializado.includes('s_9'));
+  assert.strictEqual(vista.views, undefined);
+});
+
+test('incluye el rango de precio y se distingue de un producto', () => {
+  const vista = aVistaPublicaBusqueda(busquedaCompleta());
+
+  assert.strictEqual(vista.tipo, 'busqueda');
+  assert.strictEqual(vista.titulo, 'Busco calculadora TI-84');
+  assert.strictEqual(vista.precioMin, 800);
+  assert.strictEqual(vista.precioMax, 1500);
+  // No hay un `precio` suelto: la web tiene que decidir cómo pintar el rango,
+  // y un precio único inventado ahí mentiría sobre lo que pide el comprador.
+  assert.strictEqual(vista.precio, undefined);
+  assert.strictEqual(vista.fotos, undefined);
+  assert.strictEqual(vista.busca, 'producto');
+  assert.strictEqual(vista.categoria.nombre, 'Libros');
+});
+
+test('una búsqueda abierta se distingue de una ya resuelta', () => {
+  assert.strictEqual(aVistaPublicaBusqueda(busquedaCompleta()).abierta, true);
+  assert.strictEqual(
+    aVistaPublicaBusqueda(busquedaCompleta({ status: 'resuelta' })).abierta,
+    false,
+  );
+});
+
+test('omite la ubicación de la búsqueda si quien publica no es un negocio', () => {
+  assert.strictEqual(aVistaPublicaBusqueda(busquedaCompleta()).ubicacion, null);
+});
+
+test('incluye la ubicación de la búsqueda cuando es un negocio', () => {
+  const busqueda = busquedaCompleta();
+  busqueda.sellerObj.isBusiness = true;
+
+  assert.deepStrictEqual(aVistaPublicaBusqueda(busqueda).ubicacion, {
+    lat: 25.18,
+    lng: -99.82,
+  });
+});
+
+test('tolera una búsqueda sin rango, sin categoría y sin publicante', () => {
+  const vista = aVistaPublicaBusqueda({
+    id: 'w_2',
+    title: 'Busco algo',
+    description: null,
+    type: 'servicio',
+    priceMin: null,
+    priceMax: null,
+    status: 'abierta',
+    createdAt: null,
+    categoryObj: null,
+    sellerObj: null,
+  });
+
+  assert.strictEqual(vista.precioMin, null);
+  assert.strictEqual(vista.precioMax, null);
+  assert.strictEqual(vista.descripcion, '');
+  assert.strictEqual(vista.categoria, null);
+  assert.strictEqual(vista.vendedor, null);
+  assert.strictEqual(vista.ubicacion, null);
+  assert.strictEqual(vista.publicadoEn, null);
 });

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../app_theme.dart';
+import '../config/app_config.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/anonymous_id.dart';
@@ -913,18 +914,32 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   }
 
   /// Datos para el código QR de la publicación.
-  String get _qrData {
-    final scheme = product.isWantedPost ? 'wanted' : 'product';
-    return 'mercaditoum://$scheme/${product.id}';
-  }
+  ///
+  /// Es la misma URL del sitio que genera "Compartir", y no el esquema propio
+  /// `mercaditoum://`: así un QR escaneado con la cámara del sistema por
+  /// alguien que NO tiene la app abre la web en vez de no hacer nada. Con la
+  /// app instalada, el App Link la abre directo, igual que antes.
+  String get _qrData => AppConfig.urlPublicacion(product.id);
 
   /// Comparte la publicación usando share_plus.
+  ///
+  /// El texto termina en un link real a mercaditoum.site, no en texto suelto:
+  ///   - Si quien lo abre tiene la app, Android intercepta el link (App Links,
+  ///     ver AndroidManifest.xml) y cae directo en esta misma pantalla.
+  ///   - Si no la tiene, abre la versión web de la publicación, que además
+  ///     ofrece descargar la app.
+  /// De paso, WhatsApp arma la vista previa con foto y precio a partir de las
+  /// meta tags Open Graph que sirve el sitio.
   void _shareProduct(BuildContext context) {
     final title = product.title;
     final seller = product.seller.name;
+    // Productos y búsquedas comparten la ruta: el link es el mismo, y el sitio
+    // (y la app al recibirlo) resuelven cuál de los dos es.
+    final url = AppConfig.urlPublicacion(product.id);
+
     final text = product.isWantedPost
-        ? 'Mira esta búsqueda en Mercadito UM:\n\n$title\nPublicado por: $seller'
-        : 'Mira este producto en Mercadito UM:\n\n$title - ${Product.formatPrice(product.price)}\nVendedor: $seller';
+        ? 'Mira esta búsqueda en Mercadito UM:\n\n$title\nPublicado por: $seller\n\n$url'
+        : 'Mira este producto en Mercadito UM:\n\n$title - ${Product.formatPrice(product.price)}\nVendedor: $seller\n\n$url';
     Share.share(text);
   }
 

@@ -261,7 +261,13 @@ class _HorizontalProductCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  Expanded(
+                  // Los dos textos ceden espacio y se recortan; el ícono de
+                  // categoría, las vistas y el badge de estado no. En esta
+                  // tarjeta la fila mide 226 px y lleva cuatro cosas: con un
+                  // solo Expanded, "hace 2 días" empujaba al badge fuera del
+                  // borde (45 px de overflow en resultados de búsqueda). Con
+                  // ambos flexibles la fila se aprieta en vez de desbordarse.
+                  Flexible(
                     child: Text(
                       product.category.name,
                       maxLines: 1,
@@ -272,9 +278,18 @@ class _HorizontalProductCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Text(
-                    product.publishedAgo,
-                    style: AppTypography.body(11, color: context.colors.muted),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      product.publishedAgo,
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.body(
+                        11,
+                        color: context.colors.muted,
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 6),
                   ViewsCounter(views: product.views),

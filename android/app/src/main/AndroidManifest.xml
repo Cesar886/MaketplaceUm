@@ -41,6 +41,46 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="mercaditoum" android:host="payments"/>
             </intent-filter>
+            <!-- App Links: los links compartidos de una publicación
+                 (https://mercaditoum.site/producto/<id>) abren la app directo,
+                 sin pasar por el navegador y sin preguntarle al usuario.
+
+                 android:autoVerify="true" es lo que elimina el diálogo de
+                 "¿con qué app abrir?": al instalar, Android descarga
+                 https://mercaditoum.site/.well-known/assetlinks.json y solo
+                 concede el link si la huella SHA-256 de ahí coincide con la
+                 del certificado que firmó ESTE APK. Si no coincide (o la
+                 lista está vacía), no hay error visible: el link simplemente
+                 abre el navegador y cae en la versión web, que es el fallback
+                 buscado.
+
+                 El pathPrefix acota la captura al detalle de una publicación.
+                 Sin él la app se quedaría también con la home y con cualquier
+                 página futura del sitio, que deben seguir abriendo en el
+                 navegador.
+
+                 Va en un intent-filter aparte del de Mercado Pago a
+                 propósito: autoVerify aplica a TODOS los hosts http/https del
+                 mismo filtro, y mezclarlos haría que un fallo de verificación
+                 arrastrara al otro deep link.
+
+                 Para verificar en un dispositivo:
+                   adb shell pm get-app-links com.example.mercadito_um
+                   adb shell am start -a android.intent.action.VIEW \
+                     -d "https://mercaditoum.site/producto/<id>" -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https"
+                      android:host="mercaditoum.site"
+                      android:pathPrefix="/producto/"/>
+                <!-- Solo el host desnudo. `www.mercaditoum.site` es un dominio
+                     DISTINTO para la verificación y necesitaría su propio
+                     assetlinks.json; agregarlo aquí sin eso haría fallar la
+                     verificación del filtro entero en Android 11 y anteriores,
+                     donde es todo-o-nada entre los hosts de un mismo filtro. -->
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

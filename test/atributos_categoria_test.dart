@@ -48,6 +48,14 @@ void main() {
     );
   }
 
+  /// La tabla de "Detalles adicionales" vive colapsada dentro de un
+  /// acordeón; los tests que verifican renglones puntuales necesitan
+  /// abrirlo primero.
+  Future<void> expandirDetalles(WidgetTester tester) async {
+    await tester.tap(find.text('Ver todos los detalles'));
+    await tester.pumpAndSettle();
+  }
+
   // ─── Modelo ────────────────────────────────────────────────
 
   group('Product.fromJson', () {
@@ -108,8 +116,33 @@ void main() {
     });
 
     test('conserva las generales en cualquier categoría', () {
-      final limpio = depurarRespuestas({'precio_negociable': true}, 'food');
+      final limpio = depurarRespuestas({'precio_negociable': true}, 'books');
       expect(limpio, {'precio_negociable': true});
+    });
+
+    test('descarta las generales que la categoría no pregunta', () {
+      // Comida no pregunta ninguna de las cuatro generales; un cliente viejo
+      // (o el formulario recién cambiado de categoría) todavía las manda.
+      final limpio = depurarRespuestas({
+        'acepta_devoluciones': false,
+        'precio_negociable': true,
+        'lugar_entrega': 'Campus',
+        'tiene_garantia': true,
+        'duracion_garantia': '3 meses',
+        'opciones_veg': true,
+      }, 'food');
+      expect(limpio, {'opciones_veg': true});
+    });
+
+    test('excluir una pregunta se lleva su campo condicional', () {
+      // `duracion_garantia` no está en la lista de exclusiones de apuntes:
+      // cuelga de `tiene_garantia` y tiene que caerse con ella.
+      final limpio = depurarRespuestas({
+        'tiene_garantia': true,
+        'duracion_garantia': '3 meses',
+        'formato': 'Digital PDF',
+      }, 'notes');
+      expect(limpio, {'formato': 'Digital PDF'});
     });
 
     test('descarta el condicional si su padre está apagado', () {
@@ -317,6 +350,153 @@ void main() {
       expect(leer().containsKey('incluye_renta'), isFalse);
     });
 
+    testWidgets('cada categoría solo pinta las generales que le aplican', (
+      tester,
+    ) async {
+      const entrega = '¿Entregas en punto de encuentro o solo en campus?';
+      const devoluciones = '¿Aceptas devoluciones/reembolsos?';
+
+      await montar(tester, categoria: 'housing');
+      expect(find.text(entrega), findsNothing);
+      expect(find.text('¿Tiene garantía?'), findsOneWidget);
+
+      await montar(tester, categoria: 'food');
+      expect(find.text(entrega), findsNothing);
+      expect(find.text(devoluciones), findsNothing);
+      expect(find.text('¿El precio es negociable?'), findsNothing);
+      expect(find.text('¿Tiene garantía?'), findsNothing);
+      expect(find.text('¿Cómo entregas el pedido?'), findsOneWidget);
+
+      await montar(tester, categoria: 'notes');
+      expect(find.text('¿Tiene garantía?'), findsNothing);
+      expect(find.text(entrega), findsOneWidget);
+      expect(find.text(devoluciones), findsOneWidget);
+
+      await montar(tester, categoria: 'services');
+      expect(find.text(entrega), findsNothing);
+      expect(find.text(devoluciones), findsNothing);
+      expect(find.text('Modalidad'), findsOneWidget);
+
+      // Una categoría sin exclusiones conserva las cuatro.
+      await montar(tester, categoria: 'clothes');
+      expect(find.text(entrega), findsOneWidget);
+      expect(find.text(devoluciones), findsOneWidget);
+    });
+
+    // ─── Chips propios ───────────────────────────────────────
+
+    /// Escribe un chip personalizado en la primera pregunta que lo permita
+    /// (¿qué incluye la renta?) y lo confirma con el "enter" del teclado.
+    Future<void> agregarChip(WidgetTester tester, String texto) async {
+      await tester.tap(find.text('Agregar').first);
+      await tester.pumpAndSettle();
+      // Hospedaje tiene varios campos de texto; el del chip es el único con
+      // este hint.
+      final input = find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration?.hintText == 'Escribe y presiona enter',
+      );
+      await tester.enterText(input.first, texto);
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('el chip Agregar solo existe donde la pregunta lo permite', (
+      tester,
+    ) async {
+      await montar(tester, categoria: 'housing');
+      // Las dos multiselect de hospedaje: qué incluye y qué requisitos.
+      expect(find.text('Agregar'), findsNWidgets(2));
+
+      await montar(tester, categoria: 'books');
+      expect(find.text('Agregar'), findsNothing);
+    });
+
+    testWidgets('lo escrito se guarda en la misma lista que los predefinidos', (
+      tester,
+    ) async {
+      final leer = await montar(tester, categoria: 'housing');
+      await tester.tap(find.text('Luz'));
+      await tester.pump();
+      await agregarChip(tester, 'Wifi 300mb');
+
+      // Mismo campo, mismo formato: primero las del catálogo en su orden,
+      // después las propias.
+      expect(leer()['incluye_renta'], ['Luz', 'Wifi 300mb']);
+      expect(find.text('Wifi 300mb'), findsOneWidget);
+      // Y el campo se cerró dejando otra vez el chip de "+ Agregar".
+      expect(find.text('Agregar'), findsNWidgets(2));
+    });
+
+    testWidgets('se pueden agregar varios chips propios seguidos', (
+      tester,
+    ) async {
+      final leer = await montar(tester, categoria: 'housing');
+      await agregarChip(tester, 'Wifi 300mb');
+      await agregarChip(tester, 'Limpieza');
+      expect(leer()['incluye_renta'], ['Wifi 300mb', 'Limpieza']);
+    });
+
+    testWidgets('un chip propio se quita con su ✕', (tester) async {
+      final leer = await montar(tester, categoria: 'housing');
+      await agregarChip(tester, 'Wifi 300mb');
+
+      final equis = find.descendant(
+        of: find.ancestor(
+          of: find.text('Wifi 300mb'),
+          matching: find.byType(Row),
+        ),
+        matching: find.byIcon(Icons.close_rounded),
+      );
+      await tester.tap(equis.first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Wifi 300mb'), findsNothing);
+      expect(leer().containsKey('incluye_renta'), isFalse);
+    });
+
+    testWidgets('un texto vacío o repetido no agrega un chip', (tester) async {
+      final leer = await montar(tester, categoria: 'housing');
+      await agregarChip(tester, '   ');
+      expect(leer().containsKey('incluye_renta'), isFalse);
+
+      await agregarChip(tester, 'Wifi 300mb');
+      await agregarChip(tester, 'wifi 300mb');
+      expect(leer()['incluye_renta'], ['Wifi 300mb']);
+    });
+
+    testWidgets('escribir una opción del catálogo enciende ese chip', (
+      tester,
+    ) async {
+      // Sin esto quedaban dos chips casi iguales, "Luz" y "luz", y el de
+      // arriba seguía apagado.
+      final leer = await montar(tester, categoria: 'housing');
+      await agregarChip(tester, 'luz');
+
+      expect(leer()['incluye_renta'], ['Luz']);
+      expect(find.text('luz'), findsNothing);
+    });
+
+    testWidgets('el chip Agregar desaparece al llegar al tope', (tester) async {
+      final leer = await montar(tester, categoria: 'housing');
+      for (var i = 0; i < maxOpcionesCustom; i++) {
+        await agregarChip(tester, 'Extra $i');
+      }
+      expect((leer()['incluye_renta'] as List).length, maxOpcionesCustom);
+      // Queda solo el de la otra pregunta.
+      expect(find.text('Agregar'), findsOneWidget);
+    });
+
+    testWidgets('el texto del chip propio no pasa del tope de caracteres', (
+      tester,
+    ) async {
+      final leer = await montar(tester, categoria: 'housing');
+      await agregarChip(tester, 'x' * (maxLargoOpcionCustom + 10));
+      expect(
+        (leer()['incluye_renta'] as List).single,
+        'x' * maxLargoOpcionCustom,
+      );
+    });
+
     testWidgets('escribir en un campo de texto lo guarda recortado', (
       tester,
     ) async {
@@ -354,6 +534,7 @@ void main() {
         productoJson(atributos: {'talla': 'M', 'marca': 'Nike'}),
       );
       await tester.pumpWidget(envolver(ProductAttributesSection(product: producto)));
+      await expandirDetalles(tester);
 
       expect(find.text('Detalles adicionales'), findsOneWidget);
       expect(find.text('Talla'), findsOneWidget);
@@ -379,6 +560,7 @@ void main() {
         productoJson(atributos: {'cambio_talla': true}),
       );
       await tester.pumpWidget(envolver(ProductAttributesSection(product: producto)));
+      await expandirDetalles(tester);
 
       expect(find.text('Aplica cambio de talla si no queda'), findsOneWidget);
       expect(find.text('¿Aplica cambio de talla si no queda?'), findsNothing);
@@ -393,6 +575,7 @@ void main() {
         productoJson(atributos: {'acepta_devoluciones': false}),
       );
       await tester.pumpWidget(envolver(ProductAttributesSection(product: producto)));
+      await expandirDetalles(tester);
 
       expect(find.text('Aceptas devoluciones/reembolsos'), findsOneWidget);
       expect(find.text('No'), findsOneWidget);
@@ -410,6 +593,7 @@ void main() {
         ),
       );
       await tester.pumpWidget(envolver(ProductAttributesSection(product: producto)));
+      await expandirDetalles(tester);
 
       expect(find.text('Luz'), findsOneWidget);
       expect(find.text('Agua'), findsOneWidget);
@@ -437,6 +621,7 @@ void main() {
         productoJson(atributos: {'talla': 'M', 'pregunta_del_futuro': 'valor'}),
       );
       await tester.pumpWidget(envolver(ProductAttributesSection(product: producto)));
+      await expandirDetalles(tester);
       expect(find.text('valor'), findsNothing);
       expect(find.text('M'), findsOneWidget);
     });
@@ -470,6 +655,7 @@ void main() {
       await tester.pumpWidget(
         envolver(ProductAttributesSection(product: producto)),
       );
+      await expandirDetalles(tester);
       expect(find.text('Sí'), findsOneWidget);
       expect(find.text('Opción veggie'), findsNothing);
     });
@@ -482,6 +668,7 @@ void main() {
         ),
       );
       await tester.pumpWidget(envolver(ProductAttributesSection(product: producto)));
+      await expandirDetalles(tester);
 
       double y(String texto) => tester.getTopLeft(find.text(texto)).dy;
       // General primero, luego las de la categoría en el orden de la config.

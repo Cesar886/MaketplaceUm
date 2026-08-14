@@ -10,6 +10,7 @@ import 'providers/theme_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/splash_screen.dart';
 import 'services/api_service.dart';
+import 'services/deep_link_service.dart';
 import 'services/push_service.dart';
 
 /// Llaves globales: el cierre de sesión por token inválido se dispara desde
@@ -52,6 +53,12 @@ void main() async {
 
   // Inicializar Push Service (FCM)
   await PushService.instance.initialize();
+
+  // Escuchar los links de mercaditoum.site ANTES de runApp: en un arranque en
+  // frío, el link con el que se abrió la app ya está esperando, y suscribirse
+  // después podría perderlo. El servicio lo guarda hasta que SplashScreen
+  // avise que ya hay dónde navegar.
+  DeepLinkService.instance.iniciar();
 
   runApp(
     MultiProvider(

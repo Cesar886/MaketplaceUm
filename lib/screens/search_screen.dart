@@ -372,7 +372,11 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
           else
             for (final product in results) ...[
               SizedBox(
-                height: 118,
+                // 122 y no 118, igual que en ofertas: con un título de dos
+                // renglones MÁS la fila de atributos destacados (que sustituyó
+                // a la descripción y es más alta que ella), el contenido pide
+                // exactamente esos 4 px de más.
+                height: 122,
                 child: ProductCard(
                   product: product,
                   horizontal: true,

@@ -107,6 +107,26 @@ img {
   background: color-mix(in srgb, var(--primary) 8%, transparent);
 }
 
+/* Encabezado de sección ("Descripción", "Dispuesto a pagar"). Es un <h2> real
+   por jerarquía de documento, pero visualmente pesa menos que el título. */
+.rotulo {
+  margin: 0;
+  font-size: 13px;
+  font-family: var(--fuente-cuerpo);
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Antigüedad de la publicación, al pie. */
+.pie-fecha {
+  margin: 22px 0 0;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
 .boton-principal {
   display: flex;
   align-items: center;

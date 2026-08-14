@@ -23,6 +23,11 @@
  *               necesitan los booleanos destacados: su `label` es una
  *               pregunta ("¿Aceptas mascotas?") y como badge tiene que ser
  *               una afirmación ("Acepta mascotas").
+ *   allowCustom (solo multiselect) el usuario puede agregar valores propios
+ *               además de los de `options`. La validación deja de exigir que
+ *               cada valor esté en la lista y en su lugar limita cuántos
+ *               extras caben y qué tan largos pueden ser, para que el chip
+ *               siga cabiendo en un renglón.
  *   showIf      { key, equals } — la pregunta solo aplica si otra respuesta
  *               tiene cierto valor. Se usa para los campos de detalle que
  *               cuelgan de un booleano ("¿tiene garantía?" → "¿cuánto dura?").
@@ -72,6 +77,44 @@ const ATRIBUTOS_GENERALES = [
     showIf: { key: 'tiene_garantia', equals: true },
   },
 ];
+
+/**
+ * Preguntas generales que NO aplican a ciertas categorías, por category.id.
+ *
+ * Las generales son generales porque le sirven a casi todo el catálogo, no
+ * porque le sirvan a todo. Preguntarle a quien renta un cuarto si entrega en
+ * el campus, o a quien vende tacos si acepta devoluciones, no es una pregunta
+ * opcional de más: es una pregunta que no tiene respuesta posible, y el
+ * vendedor que la lee entiende que el formulario no es para él.
+ *
+ * Se excluye por key. Los condicionales que cuelgan de una key excluida se
+ * caen solos (ver `preguntasDeCategoria`): quitar `tiene_garantia` se lleva
+ * `duracion_garantia` sin tener que listarlo aquí.
+ *
+ * Lo que ya está guardado no se toca. Un producto de comida publicado antes
+ * de este cambio conserva su `acepta_devoluciones` en la base, pero nadie lo
+ * pinta ni lo vuelve a guardar: tanto la normalización del servidor como el
+ * detalle en Flutter recorren las preguntas de la categoría, y una respuesta
+ * cuya pregunta ya no está deja de existir para todos los efectos.
+ */
+const GENERALES_EXCLUIDAS = {
+  // La comida no se devuelve ni se garantiza, y su entrega ya la resuelve su
+  // propia pregunta (`tipo_entrega`: domicilio / pickup / ambos).
+  food: [
+    'acepta_devoluciones',
+    'precio_negociable',
+    'lugar_entrega',
+    'tiene_garantia',
+  ],
+  // Una renta no se entrega en un punto de encuentro: se visita.
+  housing: ['lugar_entrega'],
+  // Unos apuntes no traen garantía; lo demás (negociar, dónde se entregan)
+  // sí aplica.
+  notes: ['tiene_garantia'],
+  // Un servicio no se devuelve ni se entrega en un lugar: para dónde se da
+  // está `modalidad` (presencial / remoto / ambos).
+  services: ['acepta_devoluciones', 'lugar_entrega'],
+};
 
 /** Preguntas propias de cada categoría, indexadas por category.id. */
 const ATRIBUTOS_POR_CATEGORIA = {
@@ -210,6 +253,11 @@ const ATRIBUTOS_POR_CATEGORIA = {
       type: 'multiselect',
       options: ['Luz', 'Agua', 'Internet', 'Gas', 'Amueblado'],
       required: false,
+      // Ningún catálogo cubre lo que incluye un cuarto ("Wifi 300mb",
+      // "Limpieza semanal"), y la lista larga tampoco: se vuelve una reja de
+      // chips que nadie lee. Cinco opciones frecuentes más lo que el dueño
+      // quiera escribir cubre el caso sin inflar el formulario.
+      allowCustom: true,
     },
     {
       key: 'requisitos',
@@ -217,6 +265,7 @@ const ATRIBUTOS_POR_CATEGORIA = {
       type: 'multiselect',
       options: ['Aval', 'Depósito', 'Contrato', 'Identificación'],
       required: false,
+      allowCustom: true,
     },
     {
       key: 'acepta_mascotas',
@@ -374,13 +423,25 @@ const ATRIBUTOS_POR_CATEGORIA = {
 };
 
 /**
- * Todas las preguntas que aplican a una categoría: las generales primero,
- * luego las propias. Una categoría desconocida (o nula) recibe solo las
- * generales en vez de reventar — un producto viejo con una categoría que ya
- * no existe en el catálogo debe seguir pudiendo guardarse.
+ * Todas las preguntas que aplican a una categoría: las generales que no estén
+ * excluidas primero, luego las propias. Una categoría desconocida (o nula)
+ * recibe solo las generales en vez de reventar — un producto viejo con una
+ * categoría que ya no existe en el catálogo debe seguir pudiendo guardarse.
  */
 function preguntasDeCategoria(categoryId) {
-  return [...ATRIBUTOS_GENERALES, ...(ATRIBUTOS_POR_CATEGORIA[categoryId] || [])];
+  const excluidas = new Set(GENERALES_EXCLUIDAS[categoryId] || []);
+  const generales = [];
+  for (const pregunta of ATRIBUTOS_GENERALES) {
+    // Un hijo se va con su padre: el `showIf` de una pregunta que ya no se
+    // pinta no se cumpliría nunca, y dejarla suelta la volvería visible.
+    if (excluidas.has(pregunta.key)) continue;
+    if (pregunta.showIf && excluidas.has(pregunta.showIf.key)) {
+      excluidas.add(pregunta.key);
+      continue;
+    }
+    generales.push(pregunta);
+  }
+  return [...generales, ...(ATRIBUTOS_POR_CATEGORIA[categoryId] || [])];
 }
 
 /**
@@ -405,9 +466,20 @@ const ATRIBUTOS_DESTACADOS = {
 
 const MAX_ATRIBUTOS_DESTACADOS = 2;
 
+/**
+ * Topes de los valores personalizados de un multiselect con `allowCustom`.
+ * Seis chips llenan dos renglones en un teléfono angosto y veinte caracteres
+ * es lo que cabe en un chip sin que tenga que truncarse.
+ */
+const MAX_OPCIONES_CUSTOM = 6;
+const MAX_LARGO_OPCION_CUSTOM = 20;
+
 module.exports = {
   ATRIBUTOS_GENERALES,
   ATRIBUTOS_POR_CATEGORIA,
+  GENERALES_EXCLUIDAS,
+  MAX_OPCIONES_CUSTOM,
+  MAX_LARGO_OPCION_CUSTOM,
   ATRIBUTOS_DESTACADOS,
   MAX_ATRIBUTOS_DESTACADOS,
   preguntasDeCategoria,

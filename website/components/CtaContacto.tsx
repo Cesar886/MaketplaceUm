@@ -17,9 +17,13 @@ import { detectarPlataforma, urlTienda, type Plataforma } from '@/lib/tiendas';
 export default function CtaContacto({
   urlProducto,
   nombreVendedor,
+  // Genérico cuando no hay nombre. En una publicación "se busca" no hay
+  // vendedor, así que la vista pasa 'a quien busca' y el texto no miente.
+  sinNombre = 'al vendedor',
 }: {
   urlProducto: string;
   nombreVendedor: string | null;
+  sinNombre?: string;
 }) {
   const [plataforma, setPlataforma] = useState<Plataforma | null>(null);
 
@@ -32,7 +36,7 @@ export default function CtaContacto({
   }
 
   const destino = plataforma ? urlTienda(plataforma) : null;
-  const aQuien = nombreVendedor ? `a ${nombreVendedor}` : 'al vendedor';
+  const aQuien = nombreVendedor ? `a ${nombreVendedor}` : sinNombre;
 
   return (
     <div>

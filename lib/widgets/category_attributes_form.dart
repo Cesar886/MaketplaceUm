@@ -186,6 +186,12 @@ class _CategoryAttributesFormState extends State<CategoryAttributesForm> {
       case AtributoTipo.seleccionMultiple:
         final crudo = widget.respuestas[pregunta.key];
         return _MultiSelectField(
+          // El único hijo con estado propio (si su campo de texto está
+          // abierto). Sin key, Flutter reusaría el State por posición: abrir
+          // "+ Agregar" en "¿qué incluye la renta?" y que apareciera otra
+          // pregunta arriba movería el campo abierto a "¿qué requisitos
+          // pides?", con lo escrito a medias adentro.
+          key: ValueKey(pregunta.key),
           pregunta: pregunta,
           valores: crudo is List ? crudo.cast<String>() : const [],
           enFalta: widget.faltantes.contains(pregunta.key),
@@ -362,8 +368,16 @@ class _SelectField extends StatelessWidget {
 }
 
 /// Pregunta de varias opciones (qué incluye la renta, qué requisitos pides).
-class _MultiSelectField extends StatelessWidget {
+///
+/// Cuando la pregunta trae `permiteCustom`, después de los chips del catálogo
+/// va uno de "+ Agregar" que se convierte en un campo de texto: lo que el
+/// usuario escriba entra a la MISMA lista que los predefinidos, sin marca que
+/// los distinga. El detalle del producto pinta ambos igual y el servidor los
+/// guarda en el mismo campo — un chip propio no es un dato de otra clase, es
+/// una opción que al catálogo le faltaba.
+class _MultiSelectField extends StatefulWidget {
   const _MultiSelectField({
+    super.key,
     required this.pregunta,
     required this.valores,
     required this.enFalta,
@@ -376,31 +390,156 @@ class _MultiSelectField extends StatelessWidget {
   final ValueChanged<List<String>> onChanged;
 
   @override
+  State<_MultiSelectField> createState() => _MultiSelectFieldState();
+}
+
+class _MultiSelectFieldState extends State<_MultiSelectField> {
+  final TextEditingController _controller = TextEditingController();
+  final FocusNode _focus = FocusNode();
+
+  /// El chip "+ Agregar" está abierto como campo de texto.
+  bool _escribiendo = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // El borde de foco se pinta a mano (el campo no es un TextField con
+    // decoración del tema), así que hay que repintar al entrar y salir.
+    _focus.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  /// Los valores que no salieron del catálogo: los escribió el usuario.
+  List<String> get _propios => widget.valores
+      .where((v) => !widget.pregunta.options.contains(v))
+      .toList();
+
+  /// Emite la lista ordenada como la guarda el servidor: primero las opciones
+  /// del catálogo en el orden de la config —para que dos publicaciones con lo
+  /// mismo incluido se lean igual—, después las propias en el orden en que se
+  /// escribieron, que ahí es el único orden que significa algo.
+  void _emitir(List<String> valores) {
+    final opciones = widget.pregunta.options;
+    widget.onChanged([
+      ...opciones.where(valores.contains),
+      ...valores.where((v) => !opciones.contains(v)),
+    ]);
+  }
+
+  void _alternar(String valor) {
+    _emitir(
+      widget.valores.contains(valor)
+          ? widget.valores.where((v) => v != valor).toList()
+          : [...widget.valores, valor],
+    );
+  }
+
+  void _abrirInput() {
+    setState(() => _escribiendo = true);
+    // El foco se pide después del frame: el campo todavía no existe en el
+    // árbol cuando se llama a setState.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
+  }
+
+  void _cerrarInput() {
+    _controller.clear();
+    if (mounted) setState(() => _escribiendo = false);
+  }
+
+  /// Convierte lo escrito en un chip y deja el campo listo para el siguiente.
+  ///
+  /// Un texto vacío o repetido simplemente cierra el campo: son errores del
+  /// dedo, no algo que valga una alerta.
+  void _confirmar() {
+    final texto = _controller.text.trim();
+    if (texto.isEmpty) return _cerrarInput();
+
+    bool igual(String otro) => otro.toLowerCase() == texto.toLowerCase();
+
+    // Escribir "luz" cuando "Luz" es un chip del catálogo no crea un chip
+    // propio casi idéntico al de al lado: enciende el que ya existe. Quien
+    // escribe no está pensando en cuáles opciones venían y cuáles no.
+    final delCatalogo = widget.pregunta.options.where(igual).firstOrNull;
+    if (delCatalogo != null) {
+      if (!widget.valores.contains(delCatalogo)) _alternar(delCatalogo);
+      return _cerrarInput();
+    }
+
+    // El tope también se respeta aquí y no solo escondiendo el chip de
+    // "+ Agregar": al editar una publicación los valores llegan de fuera y
+    // podrían venir ya en el límite.
+    final repetido = widget.valores.any(igual);
+    if (!repetido && _propios.length < maxOpcionesCustom) {
+      _emitir([...widget.valores, texto]);
+    }
+    _cerrarInput();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final propios = _propios;
+    final cabenMas = propios.length < maxOpcionesCustom;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _EtiquetaPregunta(pregunta: pregunta, enFalta: enFalta),
+        _EtiquetaPregunta(pregunta: widget.pregunta, enFalta: widget.enFalta),
         const SizedBox(height: 8),
         Wrap(
           spacing: 7,
           runSpacing: 7,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            for (final opcion in pregunta.options)
+            for (final opcion in widget.pregunta.options)
               _Chip(
                 texto: opcion,
-                activo: valores.contains(opcion),
-                onTap: () {
-                  // Se reconstruye desde `options` en vez de agregar al final,
-                  // para que el orden guardado no dependa del orden en que el
-                  // usuario fue tocando.
-                  final elegidos = valores.contains(opcion)
-                      ? valores.where((v) => v != opcion).toSet()
-                      : {...valores, opcion};
-                  onChanged(
-                    pregunta.options.where(elegidos.contains).toList(),
-                  );
-                },
+                activo: widget.valores.contains(opcion),
+                onTap: () => _alternar(opcion),
+              ),
+            // Los propios van siempre seleccionados —existen porque el usuario
+            // los escribió— así que su toque no alterna: los quita.
+            for (final propio in propios)
+              _Chip(
+                texto: propio,
+                activo: true,
+                quitable: true,
+                onTap: () => _alternar(propio),
+              ),
+            if (widget.pregunta.permiteCustom)
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 150),
+                switchInCurve: Curves.easeOut,
+                switchOutCurve: Curves.easeIn,
+                transitionBuilder: (child, animation) => FadeTransition(
+                  opacity: animation,
+                  child: ScaleTransition(
+                    scale: Tween<double>(begin: 0.94, end: 1).animate(animation),
+                    child: child,
+                  ),
+                ),
+                child: _escribiendo
+                    ? _CustomChipInput(
+                        key: const ValueKey('input'),
+                        controller: _controller,
+                        focus: _focus,
+                        onConfirmar: _confirmar,
+                      )
+                    : cabenMas
+                    ? _ChipAgregar(
+                        key: const ValueKey('agregar'),
+                        onTap: _abrirInput,
+                      )
+                    // Con el tope alcanzado no queda ni el hueco: un chip
+                    // deshabilitado solo invita a tocarlo para nada.
+                    : const SizedBox.shrink(key: ValueKey('tope')),
               ),
           ],
         ),
@@ -409,15 +548,164 @@ class _MultiSelectField extends StatelessWidget {
   }
 }
 
+/// Chip que abre el campo de texto. Va en outline y no relleno: los rellenos
+/// de esta fila significan "elegido", y este no es una opción sino una acción.
+/// El "+" toma el gris del texto secundario para no competir con los chips
+/// activos, que son lo que hay que poder contar de un vistazo.
+class _ChipAgregar extends StatelessWidget {
+  const _ChipAgregar({super.key, required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: context.colors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.add_rounded, size: 15, color: context.colors.muted),
+            const SizedBox(width: 4),
+            Text(
+              'Agregar',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: context.colors.muted,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// El chip "+ Agregar" abierto: un campo del mismo alto y con el mismo radio,
+/// para que la fila no salte al abrirlo. El borde se tiñe del acento mientras
+/// tiene el foco —un halo de 2px, no una sombra dura— y el botón de confirmar
+/// vive dentro del chip: en un teclado móvil el "enter" no siempre está a la
+/// vista, y sin él no habría forma obvia de cerrar lo escrito.
+class _CustomChipInput extends StatelessWidget {
+  const _CustomChipInput({
+    super.key,
+    required this.controller,
+    required this.focus,
+    required this.onConfirmar,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focus;
+  final VoidCallback onConfirmar;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = context.colors.accent;
+    final enfocado = focus.hasFocus;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOut,
+      width: 190,
+      padding: const EdgeInsets.only(left: 12, right: 4),
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: enfocado ? accent : context.colors.border,
+        ),
+        boxShadow: enfocado
+            ? [
+                BoxShadow(
+                  color: accent.withValues(alpha: 0.18),
+                  blurRadius: 3,
+                  spreadRadius: 1,
+                ),
+              ]
+            : null,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Expanded(
+            child: TextField(
+              controller: controller,
+              focusNode: focus,
+              autofocus: true,
+              // El tope se aplica al escribir y no al confirmar: enterarse de
+              // que sobran letras justo cuando el chip ya no aparece es peor
+              // que no poder teclear la vigésimo primera.
+              maxLength: maxLargoOpcionCustom,
+              textCapitalization: TextCapitalization.sentences,
+              textInputAction: TextInputAction.done,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: context.colors.ink,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                counterText: '',
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                hintText: 'Escribe y presiona enter',
+                hintStyle: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w400,
+                  color: context.colors.muted,
+                ),
+              ),
+              onSubmitted: (_) => onConfirmar(),
+              // Tocar fuera cierra el campo, y lo que ya estaba escrito se
+              // vuelve chip en vez de perderse: quien escribió "Wifi 300mb" y
+              // se distrajo tocando otra pregunta no quiso descartarlo.
+              onTapOutside: (_) => onConfirmar(),
+            ),
+          ),
+          IconButton(
+            onPressed: onConfirmar,
+            icon: const Icon(Icons.check_rounded, size: 16),
+            color: context.colors.accent,
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            tooltip: 'Agregar',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Chip de opción. Sin borde cuando está apagado — el relleno tenue basta
 /// para leerlo como tocable, y ocho chips con borde en una misma pantalla se
 /// vuelven una reja.
 class _Chip extends StatelessWidget {
-  const _Chip({required this.texto, required this.activo, required this.onTap});
+  const _Chip({
+    required this.texto,
+    required this.activo,
+    required this.onTap,
+    this.quitable = false,
+  });
 
   final String texto;
   final bool activo;
   final VoidCallback onTap;
+
+  /// Solo los chips escritos por el usuario: llevan una ✕ a la vista —y no
+  /// escondida tras una pulsación larga— porque un chip con un texto que solo
+  /// existe aquí no se lee como algo que se pueda apagar tocándolo. La ✕ es
+  /// lo que dice que se puede deshacer; quien lo hace sigue siendo [onTap].
+  final bool quitable;
 
   @override
   Widget build(BuildContext context) {
@@ -437,7 +725,9 @@ class _Chip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (activo) ...[
+            // La palomita y la ✕ dirían lo mismo dos veces: un chip propio
+            // solo existe si está elegido.
+            if (activo && !quitable) ...[
               Icon(Icons.check_rounded, size: 14, color: primary),
               const SizedBox(width: 5),
             ],
@@ -449,6 +739,14 @@ class _Chip extends StatelessWidget {
                 color: activo ? primary : context.colors.ink,
               ),
             ),
+            if (quitable) ...[
+              const SizedBox(width: 5),
+              // La ✕ no tiene gesto propio: el blanco es el chip entero, que
+              // ya quita el valor al tocarlo. Un ícono de 14 px con su propio
+              // onTap sería un objetivo del tamaño de una uña, y agrandarlo
+              // con padding estiraría el chip a lo alto.
+              Icon(Icons.close_rounded, size: 14, color: primary),
+            ],
           ],
         ),
       ),

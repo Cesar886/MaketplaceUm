@@ -3,7 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../app_theme.dart';
-import '../services/api_service.dart';
+import '../services/deep_link_parser.dart';
+import '../services/publicacion_lookup.dart';
 import 'product_detail_screen.dart';
 
 /// Pantalla que escanea códigos QR de productos de Mercadito UM.
@@ -131,10 +132,16 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
         return;
       }
 
-      // Buscar producto en la API
-      final product = await ApiService.getProduct(productId);
+      // El QR puede ser de un producto o de una publicación "se busca" (la
+      // app genera ambos); buscarPublicacion resuelve cuál es.
+      final product = await buscarPublicacion(productId);
 
       if (!mounted) return;
+
+      if (product == null) {
+        _showError('Publicación no encontrada. Verifica que el código sea válido.');
+        return;
+      }
 
       // Navegar al detalle del producto (reemplazando esta pantalla)
       Navigator.of(context).pushReplacement(
@@ -143,30 +150,21 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
         ),
       );
     } catch (e) {
-      _showError('Producto no encontrado. Verifica que el código sea válido.');
+      _showError('Publicación no encontrada. Verifica que el código sea válido.');
     }
   }
 
-  /// Parsea el ID del producto desde el formato:
-  ///   mercaditoum://product/ID_DEL_PRODUCTO
+  /// Parsea el ID de la publicación desde el contenido del QR.
+  ///
+  /// Reusa el mismo parser que los deep links (idDePublicacionEnLink) en vez
+  /// de tener su propia copia: así un QR con la URL del sitio
+  /// (https://mercaditoum.site/producto/ID) funciona igual que uno con el
+  /// esquema propio, y las reglas de qué link se acepta viven en un solo
+  /// lugar, con sus tests.
   String? _parseProductId(String raw) {
-    final uri = Uri.tryParse(raw);
+    final uri = Uri.tryParse(raw.trim());
     if (uri == null) return null;
-
-    // Formato URL: mercaditoum://product/ID
-    if (uri.scheme == 'mercaditoum' &&
-        uri.host == 'product' &&
-        uri.pathSegments.isNotEmpty) {
-      return uri.pathSegments.first;
-    }
-
-    // Fallback: si el texto empieza con el prefijo
-    const prefix = 'mercaditoum://product/';
-    if (raw.startsWith(prefix)) {
-      return raw.substring(prefix.length).trim();
-    }
-
-    return null;
+    return idDePublicacionEnLink(uri);
   }
 
   void _showError(String message) {

@@ -2,10 +2,32 @@ const {
   preguntasDeCategoria,
   ATRIBUTOS_DESTACADOS,
   MAX_ATRIBUTOS_DESTACADOS,
+  MAX_OPCIONES_CUSTOM,
+  MAX_LARGO_OPCION_CUSTOM,
 } = require('../config/atributosCategoria');
 
 /** Tope de caracteres de una respuesta de texto libre. */
 const MAX_LARGO_TEXTO = 200;
+
+/** Segmentador reutilizado: construirlo por llamada es caro. */
+const SEGMENTADOR = typeof Intl !== 'undefined' && Intl.Segmenter
+  ? new Intl.Segmenter('es', { granularity: 'grapheme' })
+  : null;
+
+/**
+ * Largo de un texto en caracteres COMO LOS CUENTA EL USUARIO.
+ *
+ * `'🇲🇽'.length` es 4 en JavaScript y 1 en Flutter, que corta la escritura por
+ * grafemas. Sin esta cuenta, un chip de "🇲🇽 incluido" que el formulario deja
+ * teclear entero lo rechaza el servidor al publicar, con un error que habla
+ * de un tope que el usuario nunca vio pasar.
+ */
+function grafemas(texto) {
+  if (!SEGMENTADOR) return [...texto].length;
+  let n = 0;
+  for (const _ of SEGMENTADOR.segment(texto)) n++;
+  return n;
+}
 
 /**
  * Normaliza y valida las respuestas a las preguntas dinámicas de una
@@ -120,15 +142,46 @@ function normalizarRespuesta(crudo, pregunta) {
       if (!Array.isArray(lista)) {
         return { error: `"${pregunta.label}" debe ser una lista.` };
       }
-      const unicos = [...new Set(lista)];
-      for (const opcion of unicos) {
-        if (typeof opcion !== 'string' || !pregunta.options.includes(opcion)) {
+      const unicos = [];
+      for (const opcion of lista) {
+        if (typeof opcion !== 'string') {
           return { error: `Opción inválida en "${pregunta.label}": ${opcion}` };
         }
+        const texto = opcion.trim();
+        if (!texto) continue;
+        if (!unicos.includes(texto)) unicos.push(texto);
       }
-      // Se reordenan según la config y no según lo que mandó el cliente, para
-      // que dos productos con lo mismo incluido se lean igual en el detalle.
-      const ordenados = pregunta.options.filter(o => unicos.includes(o));
+
+      // Los valores escritos por el usuario: los que no salieron del catálogo.
+      // En una pregunta sin `allowCustom` no puede haber ninguno — que llegue
+      // uno significa que el cliente tiene otro catálogo que el servidor, y
+      // guardarlo dejaría un producto con un dato que la UI no sabe pintar.
+      const custom = unicos.filter(o => !pregunta.options.includes(o));
+      if (custom.length > 0) {
+        if (!pregunta.allowCustom) {
+          return { error: `Opción inválida en "${pregunta.label}": ${custom[0]}` };
+        }
+        if (custom.length > MAX_OPCIONES_CUSTOM) {
+          return {
+            error: `"${pregunta.label}" admite hasta ${MAX_OPCIONES_CUSTOM} opciones propias.`,
+          };
+        }
+        const largo = custom.find(o => grafemas(o) > MAX_LARGO_OPCION_CUSTOM);
+        if (largo !== undefined) {
+          return {
+            error: `"${largo}" no puede pasar de ${MAX_LARGO_OPCION_CUSTOM} caracteres.`,
+          };
+        }
+      }
+
+      // Las del catálogo se reordenan según la config y no según lo que mandó
+      // el cliente, para que dos productos con lo mismo incluido se lean igual
+      // en el detalle. Las propias van después, en el orden en que se
+      // escribieron: ahí no hay un orden canónico que respetar.
+      const ordenados = [
+        ...pregunta.options.filter(o => unicos.includes(o)),
+        ...custom,
+      ];
       return { value: ordenados.length > 0 ? ordenados : null };
     }
 

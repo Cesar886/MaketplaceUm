@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Universal Links de iOS. Preparado por adelantado: hoy solo se publica en
+  Android, pero tener el archivo evita que la parte de iOS se descubra tarde.
+
+  ESTE ARCHIVO SOLO NO BASTA. Xcode tiene que saber que existe, y eso no se
+  puede hacer editando project.pbxproj a mano sin arriesgar el proyecto. En
+  una Mac con Xcode:
+
+    1. Abrir ios/Runner.xcworkspace
+    2. Runner → Signing & Capabilities → "+ Capability" → Associated Domains
+    3. Agregar la entrada: applinks:mercaditoum.site
+       (Xcode enlaza este mismo archivo y escribe CODE_SIGN_ENTITLEMENTS)
+    4. Poner APPLE_TEAM_ID en website/lib/app.ts con el Team ID real, para que
+       /.well-known/apple-app-site-association deje de servir la lista vacía.
+    5. Extender ios/Runner/SceneDelegate.swift, que hoy está vacío. app_links
+       6.x en iOS NO recibe nada por sí solo cuando la app usa escenas: hay que
+       reenviarle los links desde scene(_:willConnectTo:options:),
+       scene(_:openURLContexts:) y scene(_:continue:) llamando a
+       AppLinks.shared.handleLink(url:). Sin esto, DeepLinkService funciona en
+       Android y queda mudo en iOS.
+
+  Sin los pasos 3 y 5, iOS no abre la app desde el link y este cae en Safari —
+  que es el fallback web que ya funciona, así que no se rompe nada mientras
+  tanto.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<!-- Sin ruta: iOS filtra por los `components` declarados en el
+		     apple-app-site-association del servidor (ahí se acota a
+		     /producto/*), no aquí. -->
+		<string>applinks:mercaditoum.site</string>
+	</array>
+</dict>
+</plist>

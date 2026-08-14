@@ -26,6 +26,7 @@ class AtributoPregunta {
     this.obligatoria = false,
     this.placeholder,
     this.badgeLabel,
+    this.permiteCustom = false,
     this.showIfKey,
     this.showIfEquals,
   });
@@ -54,6 +55,11 @@ class AtributoPregunta {
   /// afirmación.
   final String? badgeLabel;
 
+  /// Solo en selección múltiple: el usuario puede agregar valores propios
+  /// además de los de [options]. Se guardan en la misma lista, sin marca que
+  /// los distinga — para quien lee el detalle son un chip más.
+  final bool permiteCustom;
+
   /// La pregunta solo aplica si la respuesta de [showIfKey] es
   /// [showIfEquals]. Se usa para los campos que cuelgan de un switch
   /// ("¿tiene garantía?" → "¿cuánto dura?").
@@ -64,6 +70,12 @@ class AtributoPregunta {
   bool aplicaCon(Map<String, dynamic> respuestas) =>
       showIfKey == null || respuestas[showIfKey] == showIfEquals;
 }
+
+/// Topes de los valores personalizados de una pregunta con [permiteCustom].
+/// Seis chips llenan dos renglones en un teléfono angosto y veinte caracteres
+/// es lo que cabe en un chip sin truncarse. El servidor aplica los mismos.
+const int maxOpcionesCustom = 6;
+const int maxLargoOpcionCustom = 20;
 
 /// Preguntas que aplican a TODAS las categorías.
 const List<AtributoPregunta> atributosGenerales = [
@@ -97,6 +109,34 @@ const List<AtributoPregunta> atributosGenerales = [
     showIfEquals: true,
   ),
 ];
+
+/// Preguntas generales que NO aplican a ciertas categorías.
+///
+/// Las generales son generales porque le sirven a casi todo el catálogo, no
+/// porque le sirvan a todo. Preguntarle a quien renta un cuarto si entrega en
+/// el campus, o a quien vende tacos si acepta devoluciones, no es una pregunta
+/// opcional de más: es una que no tiene respuesta posible, y quien la lee
+/// entiende que el formulario no es para él.
+///
+/// Se excluye por key; los condicionales que cuelgan de una key excluida se
+/// caen solos (ver [preguntasDeCategoria]).
+const Map<String, List<String>> generalesExcluidas = {
+  // La comida no se devuelve ni se garantiza, y su entrega ya la resuelve su
+  // propia pregunta (`tipo_entrega`).
+  'food': [
+    'acepta_devoluciones',
+    'precio_negociable',
+    'lugar_entrega',
+    'tiene_garantia',
+  ],
+  // Una renta no se entrega en un punto de encuentro: se visita.
+  'housing': ['lugar_entrega'],
+  // Unos apuntes no traen garantía; lo demás sí aplica.
+  'notes': ['tiene_garantia'],
+  // Un servicio no se devuelve ni se entrega en un lugar: para dónde se da
+  // está `modalidad`.
+  'services': ['acepta_devoluciones', 'lugar_entrega'],
+};
 
 /// Preguntas propias de cada categoría, indexadas por `MarketplaceCategory.id`.
 const Map<String, List<AtributoPregunta>> atributosPorCategoria = {
@@ -215,12 +255,17 @@ const Map<String, List<AtributoPregunta>> atributosPorCategoria = {
       label: '¿Qué incluye la renta?',
       tipo: AtributoTipo.seleccionMultiple,
       options: ['Luz', 'Agua', 'Internet', 'Gas', 'Amueblado'],
+      // Ningún catálogo cubre lo que incluye un cuarto ("Wifi 300mb",
+      // "Limpieza semanal"), y alargar la lista tampoco: se vuelve una reja
+      // de chips que nadie lee.
+      permiteCustom: true,
     ),
     AtributoPregunta(
       key: 'requisitos',
       label: '¿Qué requisitos pides?',
       tipo: AtributoTipo.seleccionMultiple,
       options: ['Aval', 'Depósito', 'Contrato', 'Identificación'],
+      permiteCustom: true,
     ),
     AtributoPregunta(
       key: 'acepta_mascotas',
@@ -355,14 +400,25 @@ const Map<String, List<AtributoPregunta>> atributosPorCategoria = {
   ],
 };
 
-/// Todas las preguntas que aplican a una categoría: las generales primero,
-/// luego las propias. Una categoría desconocida recibe solo las generales en
-/// vez de reventar — un producto viejo con una categoría retirada del
-/// catálogo debe seguir pudiéndose editar.
-List<AtributoPregunta> preguntasDeCategoria(String categoryId) => [
-  ...atributosGenerales,
-  ...?atributosPorCategoria[categoryId],
-];
+/// Todas las preguntas que aplican a una categoría: las generales que no estén
+/// excluidas primero, luego las propias. Una categoría desconocida recibe solo
+/// las generales en vez de reventar — un producto viejo con una categoría
+/// retirada del catálogo debe seguir pudiéndose editar.
+List<AtributoPregunta> preguntasDeCategoria(String categoryId) {
+  final excluidas = {...?generalesExcluidas[categoryId]};
+  final generales = <AtributoPregunta>[];
+  for (final pregunta in atributosGenerales) {
+    // Un hijo se va con su padre: el showIf de una pregunta que ya no se
+    // pinta no se cumpliría nunca, y dejarla suelta la volvería visible.
+    if (excluidas.contains(pregunta.key)) continue;
+    if (pregunta.showIfKey != null && excluidas.contains(pregunta.showIfKey)) {
+      excluidas.add(pregunta.key);
+      continue;
+    }
+    generales.add(pregunta);
+  }
+  return [...generales, ...?atributosPorCategoria[categoryId]];
+}
 
 /// Busca una pregunta por su key dentro de una categoría. Devuelve null si no
 /// existe: el detalle de un producto puede traer respuestas de una versión de

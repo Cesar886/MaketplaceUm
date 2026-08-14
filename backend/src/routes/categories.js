@@ -4,6 +4,7 @@ const {
   ATRIBUTOS_GENERALES,
   ATRIBUTOS_POR_CATEGORIA,
   ATRIBUTOS_DESTACADOS,
+  GENERALES_EXCLUIDAS,
 } = require('../config/atributosCategoria');
 
 function register(app) {
@@ -19,9 +20,16 @@ function register(app) {
   // para lo que sí necesita la versión del servidor: una UI de filtros que
   // quiera construir las facetas sin recompilar la app, y para poder
   // verificar desde afuera qué está aceptando el servidor hoy.
+  //
+  // `generales` NO aplica entero a toda categoría: hay que restarle
+  // `generalesExcluidas[categoria]` (y con ella los condicionales que
+  // cuelguen de una key excluida). Quien arme facetas con esto y omita esa
+  // resta ofrecería filtrar comida por "acepta devoluciones", que ninguna
+  // publicación de comida puede responder.
   app.get('/api/categories/atributos', (_req, res) => {
     res.json({
       generales: ATRIBUTOS_GENERALES,
+      generalesExcluidas: GENERALES_EXCLUIDAS,
       porCategoria: ATRIBUTOS_POR_CATEGORIA,
       destacados: ATRIBUTOS_DESTACADOS,
     });

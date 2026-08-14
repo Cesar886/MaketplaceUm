@@ -1,4 +1,9 @@
-import type { EstadoProducto, ProductoPublico } from './tipos';
+import type {
+  BusquedaPublica,
+  EstadoProducto,
+  ProductoPublico,
+  VendedorPublico,
+} from './tipos';
 
 const formateadorMXN = new Intl.NumberFormat('es-MX', {
   style: 'currency',
@@ -56,9 +61,7 @@ export function etiquetaEstado(producto: ProductoPublico): {
  * `major` no viaja a la web (es un campo interno del que el backend deriva
  * otros datos), así que para negocio y particular se usa una etiqueta fija.
  */
-export function subtituloRol(
-  vendedor: ProductoPublico['vendedor'],
-): string | null {
+export function subtituloRol(vendedor: VendedorPublico | null): string | null {
   if (!vendedor) return null;
 
   if (vendedor.tipoCuenta !== 'estudiante') {
@@ -67,6 +70,74 @@ export function subtituloRol(
   if (!vendedor.verificado) return null;
   if (vendedor.tipoVerificacion === 'empleado') return 'Personal UM';
   return vendedor.carrera && vendedor.carrera.length > 0 ? vendedor.carrera : null;
+}
+
+/**
+ * Rango de precio de una búsqueda, en lenguaje natural.
+ *
+ * Devuelve null cuando no hay ningún extremo: entonces la página dice
+ * "Presupuesto abierto" en vez de un "$0" que se leería como una oferta real.
+ */
+export function formatearRango(
+  min: number | null,
+  max: number | null,
+): string | null {
+  if (min != null && max != null) {
+    // Un rango donde ambos extremos coinciden es un precio, no un rango.
+    if (min === max) return formatearPrecio(min);
+    return `${formatearPrecio(min)} – ${formatearPrecio(max)}`;
+  }
+  if (max != null) return `Hasta ${formatearPrecio(max)}`;
+  if (min != null) return `Desde ${formatearPrecio(min)}`;
+  return null;
+}
+
+/**
+ * Antigüedad en palabras, réplica de `lib/utils/tiempo_relativo.dart`.
+ *
+ * Las búsquedas mandan la fecha ISO cruda (los productos mandan un texto ya
+ * formateado y congelado al publicar), así que el cálculo ocurre aquí, al
+ * renderizar. Se corta en semanas: más allá de eso la fecha exacta importa
+ * más que el "hace cuánto".
+ */
+export function tiempoRelativo(iso: string | null): string | null {
+  if (!iso) return null;
+
+  const fecha = new Date(iso);
+  if (Number.isNaN(fecha.getTime())) return null;
+
+  const segundos = Math.floor((Date.now() - fecha.getTime()) / 1000);
+  // Un reloj desfasado puede dar una fecha en el futuro; "hace -3 minutos" es
+  // peor que redondear a "hace un momento".
+  if (segundos < 60) return 'hace un momento';
+
+  const minutos = Math.floor(segundos / 60);
+  if (minutos < 60) return `hace ${minutos} ${minutos === 1 ? 'minuto' : 'minutos'}`;
+
+  const horas = Math.floor(minutos / 60);
+  if (horas < 24) return `hace ${horas} ${horas === 1 ? 'hora' : 'horas'}`;
+
+  const dias = Math.floor(horas / 24);
+  if (dias < 7) return `hace ${dias} ${dias === 1 ? 'día' : 'días'}`;
+
+  const semanas = Math.floor(dias / 7);
+  if (semanas < 5) return `hace ${semanas} ${semanas === 1 ? 'semana' : 'semanas'}`;
+
+  return fecha.toLocaleDateString('es-MX', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+/** Verbo y encabezado de una búsqueda, según pida un producto o un servicio. */
+export function textoBusqueda(busqueda: BusquedaPublica): {
+  encabezado: string;
+  etiquetaPresupuesto: string;
+} {
+  return busqueda.busca === 'servicio'
+    ? { encabezado: 'Busca contratar', etiquetaPresupuesto: 'Presupuesto' }
+    : { encabezado: 'Busca comprar', etiquetaPresupuesto: 'Dispuesto a pagar' };
 }
 
 /** Recorta la descripción para `og:description` sin partir una palabra. */

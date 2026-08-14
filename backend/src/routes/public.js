@@ -32,6 +32,11 @@ function aVistaPublica(producto) {
   const vendedor = producto.sellerObj;
 
   return {
+    // Discrimina la forma de la respuesta. Productos y búsquedas comparten la
+    // URL /producto/:id (el botón de compartir de la app es el mismo para
+    // ambos), así que el sitio necesita saber cuál de las dos recibió antes
+    // de intentar leer `precio` o `fotos`.
+    tipo: 'producto',
     id: producto.id,
     titulo: producto.title,
     descripcion: producto.description,
@@ -51,32 +56,91 @@ function aVistaPublica(producto) {
     estadoDetalle: producto.computed_status_detail ?? null,
     disponible: !!producto.is_available,
     publicadoHace: producto.publishedAgo ?? null,
-    // Ubicación solo si el vendedor es un negocio: un particular no debe
-    // quedar geolocalizado en una página pública indexable.
-    ubicacion:
-      vendedor && vendedor.isBusiness && producto.locationLat != null && producto.locationLng != null
-        ? { lat: producto.locationLat, lng: producto.locationLng }
-        : null,
-    vendedor: vendedor
-      ? {
-          nombre: vendedor.name,
-          iniciales: vendedor.avatarInitials || '',
-          esNegocio: !!vendedor.isBusiness,
-          verificado: !!vendedor.verified,
-          tipoCuenta: vendedor.tipoCuenta || null,
-          // Mismos dos campos que usa el subtítulo de rol en la app
-          // (lib/widgets/user_role.dart), para que la web muestre el mismo
-          // texto bajo el nombre y no se desincronicen.
-          carrera: vendedor.carrera || null,
-          tipoVerificacion: vendedor.tipoVerificacion || null,
-        }
+    ubicacion: aUbicacionPublica(producto, vendedor),
+    vendedor: aVendedorPublico(vendedor),
+  };
+}
+
+/**
+ * Ubicación solo si quien publica es un negocio: un particular no debe quedar
+ * geolocalizado en una página pública indexable.
+ */
+function aUbicacionPublica(publicacion, vendedor) {
+  const tieneCoordenadas =
+    publicacion.locationLat != null && publicacion.locationLng != null;
+
+  if (!vendedor || !vendedor.isBusiness || !tieneCoordenadas) return null;
+  return { lat: publicacion.locationLat, lng: publicacion.locationLng };
+}
+
+/**
+ * Lista blanca de quien publica. Deliberadamente FUERA: `id` (identifica la
+ * cuenta y permite cruzarla entre publicaciones), teléfono y correo.
+ */
+function aVendedorPublico(vendedor) {
+  if (!vendedor) return null;
+
+  return {
+    nombre: vendedor.name,
+    iniciales: vendedor.avatarInitials || '',
+    esNegocio: !!vendedor.isBusiness,
+    verificado: !!vendedor.verified,
+    tipoCuenta: vendedor.tipoCuenta || null,
+    // Mismos dos campos que usa el subtítulo de rol en la app
+    // (lib/widgets/user_role.dart), para que la web muestre el mismo texto
+    // bajo el nombre y no se desincronicen.
+    carrera: vendedor.carrera || null,
+    tipoVerificacion: vendedor.tipoVerificacion || null,
+  };
+}
+
+/**
+ * Proyección pública de una publicación "se busca".
+ *
+ * Es una función aparte y no un `if` dentro de `aVistaPublica` porque los
+ * datos no se solapan: una búsqueda no tiene fotos, ni precio único, ni el
+ * estado calculado de disponibilidad. Colapsarlas produciría un objeto lleno
+ * de campos nulos donde el sitio no podría distinguir "no aplica" de "falta".
+ *
+ * Deliberadamente FUERA: `userId` y `resolvedWithUserId` (identifican cuentas
+ * y publicarlos deja reconstruir desde fuera quién le compró a quién), los
+ * métodos de pago y el contador de vistas.
+ */
+function aVistaPublicaBusqueda(busqueda) {
+  const publicante = busqueda.sellerObj;
+
+  return {
+    tipo: 'busqueda',
+    id: busqueda.id,
+    titulo: busqueda.title,
+    descripcion: busqueda.description || '',
+    // Rango, no precio: es lo que la persona está dispuesta a pagar. Cualquiera
+    // de los dos extremos puede faltar (se pide "hasta X" o "desde Y").
+    precioMin: busqueda.priceMin ?? null,
+    precioMax: busqueda.priceMax ?? null,
+    // 'producto' | 'servicio' — cambia el texto de la página ("Busca comprar"
+    // vs "Busca contratar").
+    busca: busqueda.type,
+    categoria: busqueda.categoryObj
+      ? { id: busqueda.categoryObj.id, nombre: busqueda.categoryObj.name }
       : null,
+    // Una búsqueda resuelta sigue siendo visible (el link compartido no debe
+    // romperse), pero la página tiene que dejar claro que ya no está activa.
+    abierta: busqueda.status === 'abierta',
+    // ISO crudo: a diferencia de `publishedAgo` en productos, que es un texto
+    // congelado al crear, aquí la fecha real deja que el sitio calcule la
+    // antigüedad al momento de renderizar.
+    publicadoEn: busqueda.createdAt ?? null,
+    ubicacion: aUbicacionPublica(busqueda, publicante),
+    vendedor: aVendedorPublico(publicante),
   };
 }
 
 function register(app) {
+  const db = require('../database');
   const { products } = require('../data');
   const { attachRelations } = require('./products');
+  const { attachWantedRelations } = require('./wanted');
 
   const router = express.Router();
 
@@ -96,32 +160,54 @@ function register(app) {
   // completo y sin paginar es exactamente el volcado de catálogo que el rate
   // limit intenta evitar. Con esto el sitemap se arma sin abrir esa puerta.
   router.get('/productos', (_req, res) => {
+    // Las búsquedas van en la misma lista porque comparten la ruta del sitio
+    // (/producto/:id): separarlas obligaría al sitemap a pedir dos veces para
+    // armar URLs idénticas. Solo las abiertas — una búsqueda ya resuelta no
+    // debe empujarse al índice, aunque su link compartido siga funcionando.
+    const busquedas = db.listWantedPosts({ status: 'abierta' });
+
     res.json({
-      productos: products.map(p => ({
-        id: p.id,
-        actualizado: p.updated_at || p.created_at || null,
-      })),
+      productos: [
+        ...products.map(p => ({
+          id: p.id,
+          actualizado: p.updated_at || p.created_at || null,
+        })),
+        ...busquedas.map(b => ({
+          id: b.id,
+          actualizado: b.updatedAt || b.createdAt || null,
+        })),
+      ],
     });
   });
 
   // GET /api/public/productos/:id
   router.get('/productos/:id', (req, res) => {
     const producto = products.find(p => p.id === req.params.id);
-    // Un producto borrado desaparece del array (no hay soft delete), así que
-    // "no existe" y "fue eliminado" son el mismo 404 — y debe serlo: decir
-    // cuál de los dos es confirmaría que ese id existió.
-    if (!producto) {
-      return res.status(404).json({ error: 'Producto no encontrado' });
+
+    if (producto) {
+      // attachRelations es lo que resuelve sellerObj, categoryObj y el estado
+      // calculado. Se reusa en vez de recalcularlo aquí para que la web no se
+      // desincronice de la app cuando cambien las reglas de disponibilidad.
+      const completo = attachRelations([producto])[0];
+      return res.json(aVistaPublica(completo));
     }
 
-    // attachRelations es lo que resuelve sellerObj, categoryObj y el estado
-    // calculado. Se reusa en vez de recalcularlo aquí para que la web no se
-    // desincronice de la app cuando cambien las reglas de disponibilidad.
-    const completo = attachRelations([producto])[0];
-    res.json(aVistaPublica(completo));
+    // Las publicaciones "se busca" viven en otra tabla, pero comparten esta
+    // URL: el botón de compartir de la app es uno solo y genera
+    // /producto/:id para ambas. Se consulta después de products porque los
+    // productos son el caso mayoritario, y los ids no colisionan entre tablas.
+    const busqueda = db.getWantedPostById(req.params.id);
+    if (busqueda) {
+      return res.json(aVistaPublicaBusqueda(attachWantedRelations(busqueda)));
+    }
+
+    // Una publicación borrada desaparece de la tabla (no hay soft delete), así
+    // que "no existe" y "fue eliminada" son el mismo 404 — y debe serlo: decir
+    // cuál de los dos es confirmaría que ese id existió.
+    res.status(404).json({ error: 'Publicación no encontrada' });
   });
 
   app.use('/api/public', router);
 }
 
-module.exports = { register, aVistaPublica };
+module.exports = { register, aVistaPublica, aVistaPublicaBusqueda };

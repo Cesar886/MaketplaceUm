@@ -21,6 +21,7 @@ const path = require('node:path');
 const {
   ATRIBUTOS_GENERALES,
   ATRIBUTOS_POR_CATEGORIA,
+  GENERALES_EXCLUIDAS,
 } = require('./atributosCategoria');
 
 const RUTA_DART = path.join(
@@ -98,6 +99,7 @@ function parsearPreguntas(bloque) {
       type: TIPOS_DART_A_JS[tipoRaw[1]],
       options,
       required: /obligatoria:\s*true/.test(cuerpo),
+      allowCustom: /permiteCustom:\s*true/.test(cuerpo),
       placeholder: leer('placeholder'),
       badgeLabel: leer('badgeLabel'),
       ...(showIfKey
@@ -116,6 +118,7 @@ function normalizarJs(p) {
     type: p.type,
     options: p.options || [],
     required: p.required,
+    allowCustom: p.allowCustom === true,
     placeholder: p.placeholder,
     badgeLabel: p.badgeLabel,
     ...(p.showIf ? { showIf: { key: p.showIf.key, equals: p.showIf.equals } } : {}),
@@ -143,6 +146,15 @@ const porCategoriaDart = {};
   }
 }
 
+const excluidasDart = {};
+{
+  const inicio = fuenteDart.indexOf('generalesExcluidas');
+  const bloque = fuenteDart.slice(inicio, fuenteDart.indexOf('};', inicio));
+  for (const match of bloque.matchAll(/'(\w+)':\s*\[([^\]]*)\]/g)) {
+    excluidasDart[match[1]] = [...match[2].matchAll(/'([^']*)'/g)].map(m => m[1]);
+  }
+}
+
 // ─── Comparación ─────────────────────────────────────────────
 
 test('el parser sí encontró el catálogo Dart', () => {
@@ -154,6 +166,14 @@ test('el parser sí encontró el catálogo Dart', () => {
     Object.keys(porCategoriaDart).length > 0,
     'no se parseó ninguna categoría',
   );
+});
+
+test('las exclusiones de preguntas generales son idénticas en ambos lados', () => {
+  // Desincronizarlas es de los peores casos: la app pinta una pregunta que el
+  // servidor ya no guarda (el vendedor la contesta y su respuesta se pierde
+  // sin aviso), o la oculta cuando el servidor todavía la espera.
+  assert.ok(Object.keys(excluidasDart).length > 0, 'no se parsearon exclusiones');
+  assert.deepStrictEqual(excluidasDart, GENERALES_EXCLUIDAS);
 });
 
 test('las preguntas generales son idénticas en Dart y en el servidor', () => {

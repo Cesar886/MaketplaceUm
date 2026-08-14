@@ -1,23 +1,68 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
-import CtaContacto from '@/components/CtaContacto';
-import Galeria from '@/components/Galeria';
-import { obtenerProducto, SITE_URL, urlFoto } from '@/lib/api';
-import { etiquetaEstado, formatearPrecio, resumen, subtituloRol } from '@/lib/formato';
+import VistaBusqueda from '@/components/VistaBusqueda';
+import VistaProducto from '@/components/VistaProducto';
+import { obtenerPublicacion, SITE_URL, urlFoto } from '@/lib/api';
+import {
+  formatearPrecio,
+  formatearRango,
+  resumen,
+  textoBusqueda,
+} from '@/lib/formato';
+import type { PublicacionPublica } from '@/lib/tipos';
 
 type Props = { params: Promise<{ id: string }> };
 
 /**
- * Meta tags por producto. Es lo más importante de esta página: define cómo se
- * ve el link al pegarse en WhatsApp, y el crawler de preview NO ejecuta JS,
+ * `/producto/:id` sirve las dos cosas que la app deja compartir: un producto
+ * en venta y una publicación "se busca". El botón de compartir es uno solo y
+ * genera esta misma URL para ambas, así que la ruta las despacha por el campo
+ * `tipo` de la respuesta en vez de tener dos rutas que el usuario nunca
+ * distinguiría al pegar un link.
+ */
+
+/** Título, descripción e imagen de la vista previa, según el tipo. */
+function metaDe(publicacion: PublicacionPublica): {
+  titulo: string;
+  descripcion: string;
+  foto: string | null;
+} {
+  if (publicacion.tipo === 'busqueda') {
+    const { encabezado } = textoBusqueda(publicacion);
+    const rango = formatearRango(publicacion.precioMin, publicacion.precioMax);
+
+    return {
+      titulo: `${publicacion.titulo} - Se busca en Mercadito UM`,
+      descripcion: publicacion.descripcion
+        ? resumen(publicacion.descripcion)
+        : `${encabezado}${rango ? `: ${rango}` : ''}. Publicado en Mercadito UM.`,
+      // Una búsqueda no tiene fotos. Sin `og:image` WhatsApp cae a la tarjeta
+      // pequeña, que es lo correcto: inventar una imagen genérica haría que
+      // todas las búsquedas compartidas se vieran idénticas.
+      foto: null,
+    };
+  }
+
+  return {
+    titulo: `${publicacion.titulo} - Mercadito UM`,
+    descripcion: publicacion.descripcion
+      ? resumen(publicacion.descripcion)
+      : `${formatearPrecio(publicacion.precio)} · Disponible en Mercadito UM.`,
+    foto: publicacion.fotos[0] ? urlFoto(publicacion.fotos[0]) : null,
+  };
+}
+
+/**
+ * Meta tags por publicación. Es lo más importante de esta página: define cómo
+ * se ve el link al pegarse en WhatsApp, y el crawler de preview NO ejecuta JS,
  * así que todo esto tiene que resolverse en el servidor.
  */
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
-  const producto = await obtenerProducto(id);
+  const publicacion = await obtenerPublicacion(id);
 
-  if (!producto) {
+  if (!publicacion) {
     return {
       title: 'Publicación no disponible - Mercadito UM',
       // Un 404 no debe quedar indexado ni acumular señales de SEO.
@@ -25,12 +70,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     };
   }
 
-  const titulo = `${producto.titulo} - Mercadito UM`;
-  const descripcion = producto.descripcion
-    ? resumen(producto.descripcion)
-    : `${formatearPrecio(producto.precio)} · Disponible en Mercadito UM.`;
-  const foto = producto.fotos[0] ? urlFoto(producto.fotos[0]) : null;
-  const url = `${SITE_URL}/producto/${producto.id}`;
+  const { titulo, descripcion, foto } = metaDe(publicacion);
+  const url = `${SITE_URL}/producto/${publicacion.id}`;
 
   return {
     title: titulo,
@@ -46,7 +87,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       // que corresponde a un artículo a la venta es 'website' salvo que se
       // declare el namespace completo de product, que WhatsApp ignora.
       type: 'website',
-      images: foto ? [{ url: foto, alt: producto.titulo }] : [],
+      images: foto ? [{ url: foto, alt: publicacion.titulo }] : [],
     },
     twitter: {
       card: foto ? 'summary_large_image' : 'summary',
@@ -57,173 +98,21 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function PaginaProducto({ params }: Props) {
+export default async function PaginaPublicacion({ params }: Props) {
   const { id } = await params;
-  const producto = await obtenerProducto(id);
+  const publicacion = await obtenerPublicacion(id);
 
   // notFound() emite un 404 real, no una página 200 que dice "no existe":
   // sin el status correcto los buscadores indexarían publicaciones muertas.
-  if (!producto) notFound();
-
-  const estado = etiquetaEstado(producto);
-  const rol = subtituloRol(producto.vendedor);
-  const urlProducto = `${SITE_URL}/producto/${producto.id}`;
-  // Vendido o pausado no se oculta: se muestra el producto con su estado, que
-  // es la información que el visitante vino a buscar.
-  const yaNoDisponible = producto.estado === 'sold' || producto.estado === 'sold_out';
+  if (!publicacion) notFound();
 
   return (
     // El padding inferior deja aire para el SmartBanner fijo.
     <main className="contenedor" style={{ padding: '18px 18px 120px' }}>
-      <Galeria fotos={producto.fotos} titulo={producto.titulo} />
-
-      <div style={{ marginTop: 16 }}>
-        <span className={`pill pill--${estado.tono}`}>{estado.texto}</span>
-      </div>
-
-      <h1 style={{ margin: '10px 0 0', fontSize: 26, lineHeight: 1.25 }}>
-        {producto.titulo}
-      </h1>
-
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'baseline',
-          flexWrap: 'wrap',
-          gap: 10,
-          marginTop: 8,
-        }}
-      >
-        <span
-          style={{
-            fontFamily: 'var(--fuente-titulo)',
-            fontSize: 32,
-            fontWeight: 700,
-            color: yaNoDisponible ? 'var(--muted)' : 'var(--primary)',
-          }}
-        >
-          {formatearPrecio(producto.precio)}
-        </span>
-
-        {producto.precioAnterior != null &&
-          producto.precioAnterior > producto.precio && (
-            <>
-              <span
-                style={{
-                  color: 'var(--muted)',
-                  textDecoration: 'line-through',
-                  fontSize: 16,
-                }}
-              >
-                {formatearPrecio(producto.precioAnterior)}
-              </span>
-              {producto.etiquetaDescuento && (
-                <span
-                  className="pill"
-                  style={{
-                    color: 'var(--amber-dark)',
-                    background: 'var(--champagne)',
-                  }}
-                >
-                  {producto.etiquetaDescuento}
-                </span>
-              )}
-            </>
-          )}
-      </div>
-
-      {producto.descripcion && (
-        <>
-          <hr className="separador" />
-          <h2
-            style={{
-              fontSize: 13,
-              fontFamily: 'var(--fuente-cuerpo)',
-              fontWeight: 600,
-              color: 'var(--muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.04em',
-            }}
-          >
-            Descripción
-          </h2>
-          <p style={{ margin: '8px 0 0', fontSize: 15, whiteSpace: 'pre-line' }}>
-            {producto.descripcion}
-          </p>
-        </>
-      )}
-
-      {producto.categoria && (
-        <div style={{ marginTop: 14 }}>
-          <span
-            className="pill"
-            style={{ background: 'var(--surface-muted)', color: 'var(--muted)' }}
-          >
-            {producto.categoria.nombre}
-          </span>
-        </div>
-      )}
-
-      {producto.vendedor && (
-        <>
-          <hr className="separador" />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div
-              aria-hidden="true"
-              style={{
-                width: 44,
-                height: 44,
-                flexShrink: 0,
-                borderRadius: 999,
-                display: 'grid',
-                placeItems: 'center',
-                background: 'color-mix(in srgb, var(--primary) 12%, transparent)',
-                color: 'var(--primary)',
-                fontWeight: 700,
-                fontSize: 15,
-              }}
-            >
-              {producto.vendedor.iniciales}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <p style={{ margin: 0, fontWeight: 700, fontSize: 16 }}>
-                {producto.vendedor.nombre}
-                {producto.vendedor.verificado && (
-                  <span
-                    title="Cuenta verificada"
-                    style={{ marginLeft: 6, color: 'var(--primary)' }}
-                  >
-                    ✓
-                  </span>
-                )}
-              </p>
-              {/* Sin rol comprobado no se pinta la línea, igual que en la app. */}
-              {rol && (
-                <p style={{ margin: 0, fontSize: 13, color: 'var(--muted)' }}>{rol}</p>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-
-      <hr className="separador" />
-
-      <CtaContacto
-        urlProducto={urlProducto}
-        nombreVendedor={producto.vendedor?.nombre ?? null}
-      />
-
-      {producto.publicadoHace && (
-        <p
-          style={{
-            margin: '22px 0 0',
-            textAlign: 'center',
-            fontSize: 12.5,
-            color: 'var(--muted)',
-          }}
-        >
-          Publicado {producto.publicadoHace}
-        </p>
+      {publicacion.tipo === 'busqueda' ? (
+        <VistaBusqueda busqueda={publicacion} />
+      ) : (
+        <VistaProducto producto={publicacion} />
       )}
     </main>
   );

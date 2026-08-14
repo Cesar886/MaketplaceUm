@@ -338,6 +338,11 @@ class _NavItem extends StatelessWidget {
 
   final IconData icon;
   final IconData selectedIcon;
+
+  /// El nombre de la pestaña. NO se dibuja: la barra es solo de íconos, con el
+  /// "+" de oro al centro, y cuatro etiquetas de 10px alrededor lo rodeaban de
+  /// ruido. Se conserva porque un ícono suelto no dice nada a un lector de
+  /// pantalla: va como etiqueta semántica y como tooltip.
   final String label;
   final int index;
   final int currentIndex;
@@ -387,33 +392,27 @@ class _NavItem extends StatelessWidget {
       );
     }
 
+    // Sin etiqueta debajo, lo que distingue al activo es la luminosidad del
+    // ícono y su escala; el área tocable sigue siendo todo el alto de la
+    // barra, que es lo que importa para el dedo.
     return Expanded(
-      child: InkWell(
-        onTap: () => onTap(index),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedScale(
+      child: Semantics(
+        label: label,
+        selected: selected,
+        button: true,
+        child: Tooltip(
+          message: label,
+          child: InkWell(
+            onTap: () => onTap(index),
+            borderRadius: BorderRadius.circular(12),
+            child: Center(
+              child: AnimatedScale(
                 scale: selected ? 1.14 : 1.0,
                 duration: AppAnimations.fast,
                 curve: AppAnimations.spring,
                 child: iconWidget,
               ),
-              const SizedBox(height: 3),
-              AnimatedDefaultTextStyle(
-                duration: AppAnimations.fast,
-                curve: AppAnimations.spring,
-                style: AppTypography.label(
-                  10,
-                  weight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: color,
-                ),
-                child: Text(label),
-              ),
-            ],
+            ),
           ),
         ),
       ),

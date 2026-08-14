@@ -20,6 +20,9 @@ const {
   ATRIBUTOS_POR_CATEGORIA,
   ATRIBUTOS_DESTACADOS,
   MAX_ATRIBUTOS_DESTACADOS,
+  MAX_OPCIONES_CUSTOM,
+  MAX_LARGO_OPCION_CUSTOM,
+  GENERALES_EXCLUIDAS,
   preguntasDeCategoria,
 } = require('../config/atributosCategoria');
 
@@ -67,6 +70,77 @@ test('el padre de un condicional se declara antes que el hijo', () => {
       assert.ok(posPadre < i, `${pregunta.key} se declara antes que su padre`);
     });
   }
+});
+
+// ─── Exclusiones de preguntas generales ──────────────────────
+
+test('las keys excluidas existen entre las generales', () => {
+  const generales = ATRIBUTOS_GENERALES.map(p => p.key);
+  for (const [categoria, keys] of Object.entries(GENERALES_EXCLUIDAS)) {
+    for (const key of keys) {
+      assert.ok(
+        generales.includes(key),
+        `${categoria} excluye ${key}, que no es una pregunta general — probablemente se renombró`,
+      );
+    }
+  }
+});
+
+test('cada categoría deja de ver las preguntas que no le aplican', () => {
+  const keysDe = (c) => preguntasDeCategoria(c).map(p => p.key);
+
+  // Hospedaje: no se entrega en un punto de encuentro.
+  assert.ok(!keysDe('housing').includes('lugar_entrega'));
+
+  // Comida: ni devoluciones, ni negociación, ni entrega genérica, ni garantía.
+  for (const key of ['acepta_devoluciones', 'precio_negociable', 'lugar_entrega', 'tiene_garantia']) {
+    assert.ok(!keysDe('food').includes(key), `food no debería preguntar ${key}`);
+  }
+
+  // Apuntes: solo se va la garantía; lo demás sigue igual.
+  assert.ok(!keysDe('notes').includes('tiene_garantia'));
+  assert.ok(keysDe('notes').includes('precio_negociable'));
+  assert.ok(keysDe('notes').includes('lugar_entrega'));
+
+  // Servicios: ni devoluciones ni lugar de entrega.
+  assert.ok(!keysDe('services').includes('acepta_devoluciones'));
+  assert.ok(!keysDe('services').includes('lugar_entrega'));
+  assert.ok(keysDe('services').includes('precio_negociable'));
+
+  // Una categoría sin exclusiones conserva las cuatro generales.
+  assert.ok(keysDe('clothes').includes('lugar_entrega'));
+});
+
+test('excluir una pregunta se lleva sus campos condicionales', () => {
+  // `duracion_garantia` no está listada en las exclusiones: cuelga de
+  // `tiene_garantia` y tiene que caerse con ella, o quedaría una pregunta
+  // suelta cuyo showIf ya nadie puede cumplir.
+  for (const categoria of ['food', 'notes']) {
+    assert.ok(
+      !preguntasDeCategoria(categoria).some(p => p.key === 'duracion_garantia'),
+      `${categoria} quedó con el campo condicional de la garantía`,
+    );
+  }
+});
+
+test('una respuesta a una pregunta excluida no se guarda', () => {
+  // El caso real: un cliente viejo publicando comida sigue mandando las
+  // cuatro generales. No es un error —se descarta en silencio— pero no puede
+  // terminar en la base, o el detalle mostraría "No acepta devoluciones" en
+  // unos tacos.
+  const { value, error } = validarAtributosCategoria(
+    {
+      acepta_devoluciones: false,
+      precio_negociable: true,
+      lugar_entrega: 'Campus',
+      tiene_garantia: true,
+      duracion_garantia: '3 meses',
+      opciones_veg: true,
+    },
+    'food',
+  );
+  assert.strictEqual(error, undefined);
+  assert.deepStrictEqual(value, { opciones_veg: true });
 });
 
 test('los atributos destacados existen y no pasan del tope de la tarjeta', () => {
@@ -170,9 +244,72 @@ test('el multiselect acepta la lista stringificada', () => {
   assert.deepStrictEqual(value.requisitos, ['Aval', 'Contrato']);
 });
 
-test('un multiselect con una opción inventada se rechaza', () => {
-  const { error } = validarAtributosCategoria({ incluye_renta: ['Alberca'] }, 'housing');
+test('un multiselect sin allowCustom rechaza una opción inventada', (t) => {
+  // Hoy las dos únicas preguntas de selección múltiple del catálogo aceptan
+  // valores propios, así que la guarda se prueba con una pregunta postiza: es
+  // el comportamiento por omisión y el que va a regir a la siguiente que se
+  // agregue sin pensarlo.
+  ATRIBUTOS_POR_CATEGORIA.other.push({
+    key: 'multi_cerrado_de_prueba',
+    label: 'Pregunta de prueba',
+    type: 'multiselect',
+    options: ['Uno', 'Dos'],
+    required: false,
+  });
+  t.after(() => { ATRIBUTOS_POR_CATEGORIA.other.pop(); });
+
+  const { error } = validarAtributosCategoria(
+    { multi_cerrado_de_prueba: ['Tres'] },
+    'other',
+  );
   assert.match(error, /Opción inválida/);
+});
+
+test('un multiselect con allowCustom acepta valores escritos por el usuario', () => {
+  const { value } = validarAtributosCategoria(
+    { incluye_renta: ['Wifi 300mb', 'Luz'] },
+    'housing',
+  );
+  // Las del catálogo primero y en el orden de la config; las propias después,
+  // como se escribieron.
+  assert.deepStrictEqual(value.incluye_renta, ['Luz', 'Wifi 300mb']);
+});
+
+test('los valores propios se recortan y deduplican', () => {
+  const { value } = validarAtributosCategoria(
+    { requisitos: ['  Sin fiadores  ', 'Sin fiadores', '   '] },
+    'housing',
+  );
+  assert.deepStrictEqual(value.requisitos, ['Sin fiadores']);
+});
+
+test('un valor propio larguísimo se rechaza', () => {
+  const { error } = validarAtributosCategoria(
+    { incluye_renta: ['x'.repeat(MAX_LARGO_OPCION_CUSTOM + 1)] },
+    'housing',
+  );
+  assert.match(error, new RegExp(`${MAX_LARGO_OPCION_CUSTOM} caracteres`));
+});
+
+test('el tope del valor propio se mide como lo cuenta quien escribe', () => {
+  // El formulario corta por grafemas y el servidor tiene que coincidir, o
+  // rechazaría al publicar un chip que dejó teclear entero. '🇲🇽 incluido'
+  // son 11 caracteres para el usuario y 13 para String.length.
+  const { value, error } = validarAtributosCategoria(
+    { incluye_renta: ['🇲🇽 incluido'] },
+    'housing',
+  );
+  assert.strictEqual(error, undefined);
+  assert.deepStrictEqual(value.incluye_renta, ['🇲🇽 incluido']);
+});
+
+test('pasarse del tope de valores propios se rechaza', () => {
+  const custom = Array.from({ length: MAX_OPCIONES_CUSTOM + 1 }, (_, i) => `Extra ${i}`);
+  const { error } = validarAtributosCategoria(
+    { incluye_renta: ['Luz', ...custom] },
+    'housing',
+  );
+  assert.match(error, new RegExp(`hasta ${MAX_OPCIONES_CUSTOM} opciones propias`));
 });
 
 test('un multiselect vacío cuenta como sin responder', () => {

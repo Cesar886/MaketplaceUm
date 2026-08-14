@@ -21,6 +21,13 @@ const cuerpo = Work_Sans({
   display: 'swap',
 });
 
+// El favicon y el icono de iOS NO se declaran aquí ni con <link> a mano: Next
+// los toma por convención de archivo de `app/icon.png` y `app/apple-icon.png`,
+// y genera las etiquetas del <head> con un hash en la URL para romper caché.
+// Ambos salen de assets/icon/app_icon.png, el mismo icono de la app, para que
+// la pestaña del navegador y el ícono del launcher sean la misma marca.
+// `apple-icon.png` va aplanado sobre blanco a propósito: iOS no respeta la
+// transparencia en el icono de la pantalla de inicio y la pinta de negro.
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: 'Mercadito UM',
