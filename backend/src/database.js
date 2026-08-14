@@ -1305,6 +1305,43 @@ function runMigrations() {
     }
   }
 
+  // 36. Preguntas dinámicas por categoría (`atributos_categoria`).
+  //
+  //     Las respuestas viven como UN JSON en una columna del producto y no
+  //     en una tabla `product_attributes(product_id, key, value)`. Tres
+  //     razones concretas de este proyecto, no una preferencia de estilo:
+  //
+  //     a) La búsqueda de hoy no es SQL. `GET /api/products?search=` filtra
+  //        el array en memoria de data.js con Array.filter, así que un
+  //        filtro por atributo va a ser un predicado JS sobre un objeto ya
+  //        parseado. Un JOIN no ahorraría nada; solo obligaría a hidratar
+  //        el N:M por separado.
+  //
+  //     b) `saveData()` recorre TODOS los productos y hace upsert de cada
+  //        uno. Con tabla hija, cada guardado implicaría borrar y reinsertar
+  //        los atributos de todo el catálogo — exactamente el patrón que ya
+  //        costó caro con product_ratings (ver insertProduct) y con el
+  //        carrito global.
+  //
+  //     c) Los atributos siempre se leen completos, junto al producto. No
+  //        existe la consulta "dame solo la talla de este producto".
+  //
+  //     Además es el patrón que ya usan `images`, `extras`, `availableDays`
+  //     y `paymentMethods`: un modelo mixto sería la única inconsistencia.
+  //
+  //     El costo asumido es que no se puede indexar en SQL. Cuando la
+  //     búsqueda migre a consultas reales, SQLite permite montar un índice
+  //     de expresión sobre json_extract(atributos_categoria, '$.talla') sin
+  //     cambiar el esquema ni migrar datos.
+  //
+  //     NULL (no '{}') es el valor de "no contestó nada": es lo que ya
+  //     tienen las filas existentes y ahorra guardar una cadena inútil en
+  //     cada producto del histórico. rowToProduct lo traduce a {}.
+  const colsAtributos = db.prepare("PRAGMA table_info('products')").all();
+  if (!colsAtributos.some(c => c.name === 'atributos_categoria')) {
+    db.exec(`ALTER TABLE products ADD COLUMN atributos_categoria TEXT DEFAULT NULL`);
+  }
+
   console.log('🔄 Migración de schema completada');
 }
 
@@ -1414,7 +1451,25 @@ function rowToProduct(row) {
     locationLng: row.location_lng ?? null,
     paymentMethods: row.paymentMethods ? JSON.parse(row.paymentMethods) : null,
     views: row.views ?? 0,
+    // Respuestas a las preguntas dinámicas de la categoría. Siempre un
+    // objeto (nunca null) para que el cliente y las rutas puedan leerlo sin
+    // chequeo previo; los productos anteriores a la migración 36 lo tienen
+    // vacío. Un JSON corrupto se degrada a {} en vez de tumbar el arranque:
+    // getAllProducts corre al importar data.js y una sola fila mala dejaría
+    // el servidor entero sin levantar.
+    atributos: parseAtributosCategoria(row.atributos_categoria),
   };
+}
+
+/** Lectura tolerante de la columna JSON de atributos. Ver rowToProduct. */
+function parseAtributosCategoria(raw) {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 function productToRow(product) {
@@ -1453,6 +1508,13 @@ function productToRow(product) {
     location_lat: product.locationLat ?? null,
     location_lng: product.locationLng ?? null,
     paymentMethods: product.paymentMethods ? JSON.stringify(product.paymentMethods) : null,
+    // Se guarda NULL, no '{}', cuando no hay ninguna respuesta: así la
+    // columna distingue "sin contestar" de "contestó y quedó vacío" sin
+    // ocupar espacio en cada fila del histórico.
+    atributos_categoria:
+      product.atributos && Object.keys(product.atributos).length > 0
+        ? JSON.stringify(product.atributos)
+        : null,
   };
 }
 
@@ -1580,12 +1642,12 @@ function insertProduct(product) {
       images, imageIcon, imageColor, previousPrice, discountLabel,
       isFeatured, isOffer, isFavorite, status, manual_status, offerExpiresAt, extras,
       stock_quantity, stock_reset_daily, stock_initial, stock_updated_at, created_at, availableDays, updated_at,
-      location_lat, location_lng, paymentMethods)
+      location_lat, location_lng, paymentMethods, atributos_categoria)
     VALUES (@id, @title, @price, @priceNum, @category, @description, @publishedAgo, @seller,
       @images, @imageIcon, @imageColor, @previousPrice, @discountLabel,
       @isFeatured, @isOffer, @isFavorite, @status, @manual_status, @offerExpiresAt, @extras,
       @stock_quantity, @stock_reset_daily, @stock_initial, @stock_updated_at, @created_at, @availableDays, @updated_at,
-      @location_lat, @location_lng, @paymentMethods)
+      @location_lat, @location_lng, @paymentMethods, @atributos_categoria)
     ON CONFLICT(id) DO UPDATE SET
       title = excluded.title, price = excluded.price, priceNum = excluded.priceNum,
       category = excluded.category, description = excluded.description,
@@ -1598,7 +1660,8 @@ function insertProduct(product) {
       stock_initial = excluded.stock_initial, stock_updated_at = excluded.stock_updated_at,
       availableDays = excluded.availableDays, updated_at = excluded.updated_at,
       location_lat = excluded.location_lat, location_lng = excluded.location_lng,
-      paymentMethods = excluded.paymentMethods
+      paymentMethods = excluded.paymentMethods,
+      atributos_categoria = excluded.atributos_categoria
   `).run(row);
 }
 
@@ -1619,7 +1682,7 @@ function updateProduct(id, updates) {
       stock_initial = @stock_initial, stock_updated_at = @stock_updated_at,
       availableDays = @availableDays, updated_at = @updated_at,
       location_lat = @location_lat, location_lng = @location_lng,
-      paymentMethods = @paymentMethods
+      paymentMethods = @paymentMethods, atributos_categoria = @atributos_categoria
     WHERE id = ?
   `).run(row, id);
   return getProductById(id);

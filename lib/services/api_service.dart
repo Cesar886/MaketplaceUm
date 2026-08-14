@@ -761,6 +761,7 @@ class ApiService {
     double? locationLat,
     double? locationLng,
     List<String>? paymentMethods,
+    Map<String, dynamic> atributos = const {},
   }) async {
     // Si hay imágenes, usar multipart
     if (imagePaths != null && imagePaths.isNotEmpty) {
@@ -786,6 +787,13 @@ class ApiService {
       }
       if (paymentMethods != null) {
         request.fields['paymentMethods'] = jsonEncode(paymentMethods);
+      }
+      // Respuestas a las preguntas dinámicas de la categoría. Van
+      // stringificadas porque multipart no transporta objetos; el backend
+      // acepta ambas formas. Se omite el campo si no se respondió nada, para
+      // no mandar un "{}" que no significa nada.
+      if (atributos.isNotEmpty) {
+        request.fields['atributos'] = jsonEncode(atributos);
       }
       // El seller se obtiene del JWT en el backend (requireAuth)
       if (_token == null) {
@@ -822,6 +830,7 @@ class ApiService {
         'locationLng': locationLng,
       },
       if (paymentMethods != null) 'paymentMethods': paymentMethods,
+      if (atributos.isNotEmpty) 'atributos': atributos,
     };
     final res = await _client.post(
       _uri('/products'),
@@ -868,6 +877,7 @@ class ApiService {
     List<String> existingImageUrls = const [],
     List<String>? newImagePaths,
     List<String>? paymentMethods,
+    Map<String, dynamic> atributos = const {},
   }) async {
     if (_token == null) {
       throw Exception(
@@ -886,6 +896,11 @@ class ApiService {
     // override, hereda del perfil" — un arreglo vacío es una respuesta
     // válida, no "no tocar este campo".
     request.fields['paymentMethods'] = jsonEncode(paymentMethods ?? const []);
+    // Igual que paymentMethods: siempre se manda, aunque vaya vacío. El
+    // backend reemplaza el objeto completo con lo que llegue, así que omitir
+    // el campo significaría "no tocar" y sería imposible borrar una
+    // respuesta que el vendedor acaba de quitar.
+    request.fields['atributos'] = jsonEncode(atributos);
     request.headers['Authorization'] = 'Bearer $_token';
 
     for (final path in newImagePaths ?? const <String>[]) {

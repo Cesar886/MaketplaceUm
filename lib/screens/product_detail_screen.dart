@@ -18,6 +18,7 @@ import '../features/payments/payment_models.dart';
 import '../features/payments/payments_api.dart';
 import '../widgets/badges.dart';
 import '../widgets/payment_methods.dart';
+import '../widgets/product_attributes_section.dart';
 import '../widgets/product_carousel_section.dart';
 import '../widgets/product_comments_section.dart';
 import '../widgets/product_questions_section.dart';
@@ -567,6 +568,23 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       ),
                     ],
                   ],
+                  // ─── Detalles adicionales ───────────────────────
+                  //
+                  // Va aquí, entre la descripción y las calificaciones, por
+                  // dos razones: sigue respondiendo "qué estoy comprando"
+                  // (la descripción en prosa y estos datos duros son la
+                  // misma pregunta contestada de dos formas), y llega antes
+                  // que el bloque de pagar, que es donde el comprador toma
+                  // la decisión. Ponerlo después del botón de compra sería
+                  // dar la letra chica cuando ya se pagó.
+                  //
+                  // Sin SizedBox aquí a propósito: el widget se oculta solo
+                  // cuando no hay nada que pintar y lleva su propio aire
+                  // dentro, porque desde fuera no se puede saber si va a
+                  // dibujar algo (puede traer solo respuestas de preguntas
+                  // que esta versión no conoce) y el hueco quedaría igual.
+                  if (!product.isWantedPost)
+                    ProductAttributesSection(product: product),
                   // ─── Calificaciones del producto — no aplica a "se busca" ──────
                   if (!product.isWantedPost) ...[
                     const SizedBox(height: 24),
@@ -604,7 +622,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       PayWithCardSection(
                         product: product,
                         pagando: _creandoOrden,
-                        onPagar: () => _comprar(context),
+                        onPagar: (cantidad) => _comprar(context, cantidad),
                       ),
                     ],
                     // ─── También te puede interesar ─────────────────
@@ -825,7 +843,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   /// La orden se crea aquí y no en el checkout porque el precio se congela al
   /// crearla: es el servidor quien lo lee de la base de datos, así que lo que
   /// se paga no puede cambiar por lo que mande el cliente.
-  Future<void> _comprar(BuildContext context) async {
+  ///
+  /// [cantidad] es lo único que viaja del cliente, y el servidor la valida
+  /// contra el stock antes de cobrar nada.
+  Future<void> _comprar(BuildContext context, int cantidad) async {
     if (context.read<AuthProvider>().backendSellerId == null) {
       Navigator.of(
         context,
@@ -840,7 +861,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 
     setState(() => _creandoOrden = true);
     try {
-      final ordenes = await PaymentsApi.crearOrdenDirecta(product.id);
+      final ordenes = await PaymentsApi.crearOrdenDirecta(
+        product.id,
+        quantity: cantidad,
+      );
       if (!mounted) return;
       setState(() => _creandoOrden = false);
       if (ordenes.isEmpty) return;

@@ -116,23 +116,24 @@ function esEnlaceDeSandbox(url) {
  * genérica "Oh, no, algo anduvo mal" sin importar con qué cuenta —real o de
  * prueba— entre el comprador.
  *
- * Esto se decidía con `MP_USE_SANDBOX_INIT_POINT`, un interruptor manual en
- * el .env. Ese diseño falló exactamente como fallan los interruptores
- * manuales: quedó en 'false' en el servidor y estuvo mandando compradores al
- * checkout de producción con preferencias de prueba, sin que nada avisara.
- * Ahora la decisión sale del tipo de credencial y no hay nada que recordar.
+ * La respuesta, COMPROBADA a mano el 2026-08-14: siempre `init_point`,
+ * también con credenciales `TEST-`. Se abrió una preferencia creada con el
+ * token de un vendedor de prueba en www.mercadopago.com.mx sin sesión
+ * iniciada y su checkout pintó el formulario, aceptó la tarjeta de prueba y
+ * llegó a "Revisa tu pago". El entorno de sandbox de Mercado Pago ya no es
+ * un entorno aparte: su host sigue respondiendo, pero devuelve la misma
+ * página marcada `"productive": true` y sin `router_request_id`.
  *
- * Las dos señales, porque ninguna basta sola:
- *  - El token de la PLATAFORMA (`TEST-` vs `APP_USR-`), que sí se lee del
- *    .env pero no es con el que se crea la preferencia.
- *  - Quién es la cuenta del VENDEDOR, que es la que cobra y con cuyo token
- *    se crea. Su prefijo no dice nada —los usuarios de prueba que autorizan
- *    por OAuth también reciben tokens `APP_USR-`—, así que se mira quién es
- *    según `GET /users/me`.
+ * Esto se dejó por escrito porque la hipótesis contraria costó una noche
+ * entera. El síntoma —el checkout cargando "Oh, no, algo anduvo mal"— NO
+ * venía del enlace: venía de la cuenta compradora de prueba, a la que MP le
+ * exigía validar un código enviado a un buzón que no existe. Mandar al
+ * comprador a sandbox no lo arregló, porque nunca fue eso.
  *
- * Cualquiera de las dos en pruebas ⇒ sandbox. Las dos en producción ⇒
- * `init_point`. Y antes de devolver nada se comprueba que el enlace elegido
- * sea del checkout que toca (ver `verificarEnlaceCoherente`).
+ * Queda `MP_USE_SANDBOX_INIT_POINT=true` como salida de emergencia por si MP
+ * revive el entorno, y el log dice en cada preferencia qué se entregó y por
+ * qué, que es lo que faltaba para poder descartar esta hipótesis en un
+ * minuto en vez de en una noche.
  */
 function elegirInitPoint({ orden, preferencia, usuarioMpVendedor }) {
   const normal = preferencia?.init_point || '';
@@ -140,64 +141,55 @@ function elegirInitPoint({ orden, preferencia, usuarioMpVendedor }) {
 
   const plataformaEnPruebas = String(cfg.config.accessToken || '').startsWith('TEST-');
   const vendedorDePrueba = !!usuarioMpVendedor && esCuentaDePrueba(usuarioMpVendedor);
-  const enPruebas = plataformaEnPruebas || vendedorDePrueba;
   const forzado = cfg.forzarSandboxInitPoint();
-  const tocaSandbox = enPruebas || forzado;
 
-  const porque = forzado && !enPruebas
-    ? 'MP_USE_SANDBOX_INIT_POINT=true lo fuerza (salida de emergencia)'
-    : [
-      `plataforma ${plataformaEnPruebas ? 'TEST-' : 'APP_USR-'}`,
-      usuarioMpVendedor
-        ? `vendedor ${vendedorDePrueba ? 'de PRUEBA' : 'real'}`
-        : 'vendedor sin identificar',
-    ].join(', ');
+  const entorno = [
+    `plataforma ${plataformaEnPruebas ? 'TEST-' : 'APP_USR-'}`,
+    usuarioMpVendedor
+      ? `vendedor ${vendedorDePrueba ? 'de PRUEBA' : 'real'}`
+      : 'vendedor sin identificar',
+  ].join(', ');
 
-  console.log(
-    `[pagos] Orden ${orden.id}: usando ${tocaSandbox ? 'SANDBOX' : 'PRODUCCIÓN'} `
-    + `porque las credenciales son de ${tocaSandbox ? 'PRUEBA' : 'PRODUCCIÓN'} (${porque})`,
-  );
-
-  if (tocaSandbox && !sandbox) {
-    // No se puede inventar el enlace: se usa el normal y se deja dicho a
-    // gritos, porque ese checkout va a fallar y el log tiene que decir por
-    // qué antes de que nadie mire la URL a mano.
-    console.error(
-      `[pagos] Orden ${orden.id}: credenciales de PRUEBA pero Mercado Pago no devolvió `
-      + 'sandbox_init_point. Se manda el enlace de producción y su checkout fallará: '
-      + 'revisa que la preferencia se esté creando con credenciales de prueba.',
+  if (forzado && sandbox) {
+    console.warn(
+      `[pagos] Orden ${orden.id}: usando SANDBOX porque MP_USE_SANDBOX_INIT_POINT=true `
+      + `lo fuerza (salida de emergencia; ${entorno}). El checkout normal funciona `
+      + 'también con credenciales de prueba: quita la variable si no sabes por qué está.',
     );
-    return normal;
+    return sandbox;
   }
 
-  return tocaSandbox ? sandbox : normal;
+  // El orden de la frase no es casual: el entorno va AL FINAL. Ponerlo antes
+  // hacía que la línea de un vendedor real siguiera con "…de prueba" y
+  // pareciera decir lo contrario de lo que dice (hay una prueba que lo fija:
+  // una etiqueta mal leída ya costó un diagnóstico entero).
+  console.log(
+    `[pagos] Orden ${orden.id}: enlace elegido = checkout NORMAL (init_point), `
+    + `el correcto también en pruebas — ${entorno}`,
+  );
+  return normal;
 }
 
 /**
- * Última red antes de darle la URL al comprador: que el checkout del enlace
- * sea el del entorno de la credencial.
+ * Última red antes de darle la URL al comprador: que no se cuele un enlace
+ * de sandbox sin haberlo pedido.
  *
- * Lanza en vez de avisar. Un enlace cruzado NO es pagable —es la pantalla de
- * error de MP—, así que devolverlo solo cambia un fallo visible aquí por uno
- * que el comprador descubre en Mercado Pago y nosotros nunca.
+ * Lanza en vez de avisar. Es el fallo que acabamos de vivir —un enlace que
+ * MP acepta crear y que luego no lleva a ninguna parte—, y devolverlo solo
+ * cambia un error visible aquí por uno que descubre el comprador y nosotros
+ * no vemos nunca.
  */
-function verificarEnlaceCoherente({ orden, url, preferencia, usuarioMpVendedor }) {
-  const plataformaEnPruebas = String(cfg.config.accessToken || '').startsWith('TEST-');
-  const enPruebas = plataformaEnPruebas
-    || (!!usuarioMpVendedor && esCuentaDePrueba(usuarioMpVendedor));
-  const esSandbox = esEnlaceDeSandbox(url);
-
-  // Con credenciales de prueba y enlace de producción solo se tolera el caso
-  // de arriba: que MP no haya dado ninguna alternativa (ya registrado).
-  if (enPruebas && !esSandbox && preferencia?.sandbox_init_point) {
-    throw new mp.MpError(
-      `Enlace cruzado: credenciales de PRUEBA con checkout de PRODUCCIÓN (${url})`,
-    );
+function motivoEnlaceInutilizable(url) {
+  if (esEnlaceDeSandbox(url) && !cfg.forzarSandboxInitPoint()) {
+    return `apunta al checkout de sandbox: ${url}`;
   }
-  if (!enPruebas && !cfg.forzarSandboxInitPoint() && esSandbox) {
-    throw new mp.MpError(
-      `Enlace cruzado: credenciales de PRODUCCIÓN con checkout de SANDBOX (${url})`,
-    );
+  return null;
+}
+
+function verificarEnlaceCoherente({ orden, url }) {
+  const motivo = motivoEnlaceInutilizable(url);
+  if (motivo) {
+    throw new mp.MpError(`Orden ${orden.id}: el enlace de pago ${motivo}`);
   }
 }
 
@@ -1146,7 +1138,20 @@ function register(app) {
         db.clearCartItems(req.user.id, orden.items.map(i => i.product_id));
       }
 
-      console.log(`[pagos] Orden ${orden.id}: pago ${pago.id} → ${pago.status}`);
+      // `status_detail` va SIEMPRE que no sea una aprobación. Es el código
+      // que distingue "la tarjeta no tiene fondos" de "el CVV está mal" de
+      // "MP no admite comisión en este cobro" (cc_rejected_*, 2059…), y sin
+      // él un rechazo en el log es solo la palabra "rejected".
+      console.log(
+        `[pagos] Orden ${orden.id}: pago ${pago.id} → ${pago.status}`
+        + (pago.status === 'approved' ? '' : ` (${pago.status_detail || 'sin detalle'})`),
+      );
+      cfg.traza(
+        `orden ${orden.id}: cobro con tarjeta — monto=${total} `
+        + `comisión=${comisionAEnviar > 0 ? comisionAEnviar : '(ninguna)'} `
+        + `cuotas=${Number(installments) > 0 ? Number(installments) : 1} `
+        + `método=${paymentMethodId || '(el que deduzca MP)'}`,
+      );
 
       // `status_detail` de MP es un código estable ('cc_rejected_bad_filled_
       // security_code'), no un texto libre: se manda para que la app pueda
@@ -1238,6 +1243,28 @@ function register(app) {
     // veces. Es también lo que hace que volver a tocar "Pagar" tras salir al
     // navegador sea inofensivo.
     if (preferenciaViva?.initPoint) {
+      // La misma comprobación que al crearla. NO es redundante: este camino
+      // no pasa por `elegirInitPoint`, así que un enlace guardado por una
+      // versión anterior del código —o por un `MP_USE_SANDBOX_INIT_POINT`
+      // que ya se quitó— se seguiría entregando indefinidamente sin que
+      // ninguna guarda lo mirara. Ya pasó: las preferencias creadas mientras
+      // el código forzaba sandbox quedaron guardadas con ese enlace.
+      //
+      // Aquí se responde en vez de lanzar: esta rama está FUERA del
+      // try/catch del handler, y una excepción en un handler async de
+      // Express no la recoge nadie — la petición se quedaría colgada.
+      const motivo = motivoEnlaceInutilizable(preferenciaViva.initPoint);
+      if (motivo) {
+        console.error(
+          `[pagos] Orden ${orden.id}: la preferencia guardada no se puede entregar `
+          + `(${motivo}). Se creó con una configuración que ya no está vigente. `
+          + 'Se podrá pagar en cuanto caduque y se cree una nueva.',
+        );
+        return res.status(502).json({
+          error: 'No se pudo iniciar el pago. Vuelve a intentarlo en unos minutos.',
+        });
+      }
+
       return res.json({
         orderId: orden.id,
         preferenceId: preferenciaViva.id,
@@ -1413,7 +1440,7 @@ function register(app) {
       // Última red antes de que la URL salga de este proceso. Va DESPUÉS de
       // apuntarla por lo mismo que el caso de arriba: la preferencia ya
       // existe en MP y tiene que quedar registrada aunque esto lance.
-      verificarEnlaceCoherente({ orden, url: initPoint, preferencia, usuarioMpVendedor });
+      verificarEnlaceCoherente({ orden, url: initPoint });
 
       console.log(`[pagos] Orden ${orden.id}: preferencia ${preferencia.id} creada`);
 
@@ -1507,6 +1534,31 @@ function register(app) {
   // `express.json()` global): MP firma un manifest construido con `data.id`,
   // `x-request-id` y `ts` — el cuerpo no entra en la firma.
   app.post('/api/payments/webhook', (req, res) => {
+    // Antes que nada, y a propósito: una notificación que llega y se rechaza
+    // deja rastro, pero una que NUNCA llega no deja ninguno. Sin esta línea
+    // "MP no nos avisó" y "nos avisó y lo tiramos" se ven igual desde el
+    // log, y son problemas completamente distintos (uno es de red o de
+    // notification_url, el otro es del secreto de firma).
+    //
+    // Solo metadatos: nada del cuerpo, que aquí todavía no está autenticado.
+    // Todo pasa por `paraLog`: son valores de quien llame, sin firmar
+    // todavía. Un salto de línea aquí escribiría una línea falsa en el log,
+    // y este log es donde miramos para saber si un pago entró.
+    //
+    // El `if` es para no pagar los cuatro `paraLog` —cada uno un regex— en
+    // cada notificación cuando la traza está apagada, que es lo normal. Es
+    // el único sitio donde compensa: este corre en TODAS las entregas, y MP
+    // reenvía cada evento varias veces.
+    if (cfg.depuracionPagos()) {
+      cfg.traza(
+        `webhook recibido: topic=${cfg.paraLog(req.body?.type || req.body?.topic
+          || req.query.type || req.query.topic)} `
+        + `action=${cfg.paraLog(req.body?.action)} `
+        + `data.id=${cfg.paraLog(req.body?.data?.id || req.query['data.id'])} `
+        + `x-request-id=${cfg.paraLog(req.headers['x-request-id'])}`,
+      );
+    }
+
     const { valida, motivo } = validarFirma(req);
     if (!valida) {
       console.warn(`[pagos] Webhook rechazado: ${motivo}`);
@@ -1560,6 +1612,13 @@ function register(app) {
     if (topic !== 'payment' || !paymentId) {
       // Otros temas (merchant_order, etc.) no se procesan todavía, pero se
       // responde 200 para que MP no los reintente indefinidamente.
+      //
+      // Con traza porque este `return` silencioso se parece demasiado a un
+      // éxito: si MP empezara a mandar los pagos con otro topic, todo
+      // seguiría respondiendo 200 y ninguna orden se marcaría jamás.
+      cfg.traza(
+        `webhook ignorado: topic=${cfg.paraLog(topic)} data.id=${cfg.paraLog(paymentId)}`,
+      );
       return res.status(200).json({ ok: true, ignored: true });
     }
 

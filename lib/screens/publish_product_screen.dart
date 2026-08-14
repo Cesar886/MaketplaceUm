@@ -5,12 +5,14 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
+import '../constants/atributos_categoria.dart';
 import '../mock_data.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_error.dart';
 import '../services/api_service.dart';
 import '../widgets/badges.dart';
+import '../widgets/category_attributes_form.dart';
 import '../widgets/location_picker.dart';
 import '../widgets/payment_methods.dart';
 import '../widgets/publish_auth_gate.dart';
@@ -75,6 +77,15 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   final List<XFile> _selectedImages = [];
   final _picker = ImagePicker();
 
+  // ─── Preguntas dinámicas de la categoría ─────────────────
+  // El mapa se mantiene SIEMPRE depurado (ver depurarRespuestas): lo que
+  // hay aquí es exactamente lo que se manda al publicar, sin un paso de
+  // limpieza al final que se pueda olvidar. _atributosFaltantes se llena al
+  // intentar publicar con obligatorias sin responder — hoy nunca, porque
+  // ninguna pregunta del catálogo lo es.
+  Map<String, dynamic> _atributos = {};
+  Set<String> _atributosFaltantes = {};
+
   // ─── Extras opcionales ───────────────────────────────────
   final List<ProductExtra> _extras = [];
   final _extraNameController = TextEditingController();
@@ -94,11 +105,23 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   double? _customLocationLat;
   double? _customLocationLng;
 
-  // ─── Métodos de pago (opcional, hereda del perfil por defecto) ──
+  // ─── Métodos de pago ────────────────────────────────────────
+  //
+  // Se heredan del perfil y no se pueden tocar por publicación: tener el
+  // método declarado en dos sitios que pueden decir cosas distintas es una
+  // fuente de publicaciones que prometen un cobro que el vendedor no hace.
+  // La única excepción es el vendedor que aún no declaró ninguno en su
+  // perfil: ahí no hay nada que heredar, y sin esto publicaría sin decirle
+  // a nadie cómo pagarle.
   List<String> _sellerPaymentMethods = [];
-  bool _customizePaymentMethods = false;
   final Set<String> _customPaymentMethods = {};
   bool _showPaymentMethodsError = false;
+
+  /// Si esta pantalla es el sitio donde se eligen los métodos de pago.
+  ///
+  /// Solo cuando el perfil no declara ninguno. Si el perfil ya los tiene, la
+  /// publicación los hereda y aquí no se ofrece cambiarlos.
+  bool get _eligeMetodosDePago => _sellerPaymentMethods.isEmpty;
 
   // ─── Gestión de venta: estado manual pegajoso (solo editable en modo
   // edición) — null significa "sin override, badge calculado automático".
@@ -135,11 +158,14 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     _extras.addAll(product.extras);
     _sellerPaymentMethods = product.seller.paymentMethods;
     if (product.paymentMethods != null) {
-      _customizePaymentMethods = true;
       _customPaymentMethods.addAll(product.paymentMethods!);
     }
     _currentStatus = product.manualStatus;
     _seller = product.seller;
+    // Se depuran al precargar y no solo al guardar: un producto publicado
+    // por una versión anterior de la app puede traer respuestas de preguntas
+    // que ya no existen, y el formulario no sabría dónde pintarlas.
+    _atributos = depurarRespuestas(product.atributos, product.category.id);
 
     if (product.stockQuantity != null) {
       _autoResetStock = product.stockResetDaily;
@@ -282,11 +308,14 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       _showError('Agrega al menos una foto del producto');
       return;
     }
-    if (_customizePaymentMethods && _customPaymentMethods.isEmpty) {
+    // Solo se exige a quien no tiene métodos en el perfil: para el resto no
+    // hay nada que elegir aquí, ya vienen heredados.
+    if (_eligeMetodosDePago && _customPaymentMethods.isEmpty) {
       setState(() => _showPaymentMethodsError = true);
-      _showError('Selecciona al menos un método de pago para este producto');
+      _showError('Selecciona al menos un método de pago');
       return;
     }
+    if (!_validarAtributos()) return;
 
     // El inventario es obligatorio: sin una cantidad contra la que descontar
     // al cobrar, se acaba vendiendo algo que ya no existe. El backend lo
@@ -337,15 +366,25 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           stockInitial: stockInitial,
           locationLat: location?.$1,
           locationLng: location?.$2,
-          paymentMethods: _customizePaymentMethods
+          // null = hereda los del perfil, que es lo correcto siempre que el
+          // perfil tenga alguno.
+          paymentMethods: _eligeMetodosDePago
               ? _customPaymentMethods.toList()
               : null,
+          atributos: _atributos,
         );
         if (!mounted) return;
         _titleController.clear();
         _descriptionController.clear();
         _priceController.clear();
-        setState(() => _selectedImages.clear());
+        setState(() {
+          _selectedImages.clear();
+          // El formulario queda listo para otra publicación: dejar las
+          // respuestas anteriores haría que la siguiente saliera con la
+          // talla del producto pasado sin que nadie lo note.
+          _atributos = {};
+          _atributosFaltantes = {};
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Producto publicado exitosamente')),
         );
@@ -390,9 +429,12 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       availableDays: _selectedDays.toList()..sort(),
       existingImageUrls: _existingImageUrls,
       newImagePaths: _selectedImages.map((xf) => xf.path).toList(),
-      paymentMethods: _customizePaymentMethods
+      // null = hereda los del perfil, que es lo correcto siempre que el
+      // perfil tenga alguno.
+      paymentMethods: _eligeMetodosDePago
           ? _customPaymentMethods.toList()
           : null,
+      atributos: _atributos,
     );
 
     final warnings = <String>[];
@@ -438,6 +480,40 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       ),
     );
     Navigator.of(context).pop(true);
+  }
+
+  /// Comprueba las preguntas dinámicas marcadas como obligatorias en la
+  /// config y marca en rojo las que falten.
+  ///
+  /// Hoy no hay ninguna obligatoria, así que esto siempre pasa. Existe
+  /// completo igual porque el día que se active un `obligatoria: true` en la
+  /// config, el descubrimiento de que la validación nunca se escribió llega
+  /// tarde: el servidor devolvería un 400 genérico y el usuario no sabría
+  /// cuál de las doce preguntas le falta.
+  ///
+  /// Solo se exigen las preguntas VISIBLES: una obligatoria que cuelga de un
+  /// switch apagado no aplica y no debe bloquear la publicación.
+  bool _validarAtributos() {
+    final faltantes = preguntasDeCategoria(_selectedCategoryId)
+        .where((p) => p.obligatoria)
+        .where((p) => p.aplicaCon(_atributos))
+        .where((p) => !_atributos.containsKey(p.key))
+        .map((p) => p.key)
+        .toSet();
+
+    if (faltantes.isEmpty) {
+      if (_atributosFaltantes.isNotEmpty) {
+        setState(() => _atributosFaltantes = {});
+      }
+      return true;
+    }
+
+    setState(() => _atributosFaltantes = faltantes);
+    final primera = preguntasDeCategoria(
+      _selectedCategoryId,
+    ).firstWhere((p) => p.key == faltantes.first);
+    _showError('Falta responder: ${primera.label}');
+    return false;
   }
 
   void _showError(String msg) {
@@ -593,16 +669,6 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Reglas de disponibilidad',
-          style: AppTypography.heading(15, color: context.colors.ink),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'El badge que ven los demás se calcula solo a partir de estas reglas (y del horario del negocio, si aplica).',
-          style: TextStyle(color: context.colors.muted, fontSize: 13),
-        ),
-        const SizedBox(height: 10),
         _buildDaySelector(),
         const SizedBox(height: 12),
         _buildStockSection(),
@@ -1080,9 +1146,13 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     );
   }
 
-  /// Sección de métodos de pago de la publicación: por defecto hereda los
-  /// del perfil del vendedor sin ninguna acción; un toggle opcional permite
-  /// personalizarlos solo para esta publicación.
+  /// Sección de métodos de pago de la publicación.
+  ///
+  /// Con métodos en el perfil, esto es informativo y nada más: se heredan y
+  /// no se personalizan por publicación (ver [_eligeMetodosDePago]). Sin
+  /// ellos, es el único sitio donde el vendedor puede declararlos, así que
+  /// aquí sí se eligen — y son obligatorios, porque publicar sin ninguno deja
+  /// al comprador sin forma de pagar.
   Widget _buildPaymentMethodsSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1093,23 +1163,16 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
         ),
         const SizedBox(height: 4),
         Text(
-          _sellerPaymentMethods.isEmpty
-              ? 'Usa los métodos de tu perfil.'
-              : 'Usa: '
-                    '${_sellerPaymentMethods.map((id) => paymentMethodById(id)?.label ?? id).join(', ')}.',
+          _eligeMetodosDePago
+              ? 'Aún no tienes métodos de pago en tu perfil. Elige cómo te '
+                    'pueden pagar.'
+              : 'Usa los de tu perfil: '
+                    '${_sellerPaymentMethods.map((id) => paymentMethodById(id)?.label ?? id).join(', ')}. '
+                    'Para cambiarlos, edita tu perfil.',
           style: TextStyle(color: context.colors.muted, fontSize: 13),
         ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          value: _customizePaymentMethods,
-          onChanged: (value) => setState(() {
-            _customizePaymentMethods = value;
-            if (!value) _showPaymentMethodsError = false;
-          }),
-          title: const Text('Personalizar métodos de pago para este producto'),
-        ),
-        if (_customizePaymentMethods) ...[
-          const SizedBox(height: 6),
+        if (_eligeMetodosDePago) ...[
+          const SizedBox(height: 10),
           PaymentMethodsSelector(
             selected: _customPaymentMethods,
             showError: _showPaymentMethodsError,
@@ -1371,14 +1434,44 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                 ],
                 onChanged: (value) {
                   if (value == null) return;
-                  setState(() => _selectedCategoryId = value);
+                  setState(() {
+                    _selectedCategoryId = value;
+                    // Las respuestas que no existen en la categoría nueva se
+                    // caen aquí mismo, no al enviar: si el usuario vuelve a
+                    // la categoría original habiendo cambiado de opinión, no
+                    // deben reaparecer respuestas que ya no vio en pantalla.
+                    // Las generales sobreviven porque aplican a todas.
+                    _atributos = depurarRespuestas(_atributos, value);
+                    _atributosFaltantes = {};
+                  });
                 },
               ),
             ),
           ],
         ),
         if (_isEditing) ...[const SizedBox(height: 12), _buildStatusSection()],
-        const SizedBox(height: 20),
+
+        // ─── Preguntas dinámicas de la categoría ────────
+        // Van justo debajo del selector de categoría, que es donde el
+        // usuario acaba de decidir qué está vendiendo, y antes de la
+        // logística (disponibilidad, pago, ubicación): siguen hablando del
+        // producto, no de cómo se entrega.
+        const SizedBox(height: 26),
+        CategoryAttributesForm(
+          categoryId: _selectedCategoryId,
+          respuestas: _atributos,
+          faltantes: _atributosFaltantes,
+          onChanged: (valores) => setState(() {
+            _atributos = valores;
+            // El error se limpia en cuanto se responde, sin esperar a otro
+            // intento de publicar.
+            _atributosFaltantes = _atributosFaltantes
+                .where((k) => !valores.containsKey(k))
+                .toSet();
+          }),
+        ),
+
+        const SizedBox(height: 8),
         _buildAvailabilityRulesSection(),
         const SizedBox(height: 12),
         _buildExtrasSection(),
@@ -1393,9 +1486,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           _HighlightSection(
             plans: _plans,
             selectedPlanId: _selectedPlanId,
-            onSelectPlan: (planId) => setState(
-              () => _selectedPlanId = _selectedPlanId == planId ? null : planId,
-            ),
+            // null = sin plan, que es el estado por defecto y gratis. La
+            // sección lo manda tanto desde el chip "Sin plan" como al volver
+            // a tocar el plan que ya estaba elegido.
+            onSelectPlan: (planId) => setState(() => _selectedPlanId = planId),
           ),
         ],
         if (!_isEditing) ...[
@@ -1608,7 +1702,12 @@ class _ExistingImageThumbnail extends StatelessWidget {
   }
 }
 
-// ─── Highlight Section (sin cambios) ─────────────────────────
+// ─── Highlight Section ───────────────────────────────────────
+//
+// Los planes se eligen con una fila de chips y solo se despliega el detalle
+// del elegido. Apilar las cuatro tarjetas obligaba a leer cuatro precios y
+// cuatro descripciones para tomar una decisión opcional, en medio de un
+// formulario que ya es largo.
 class _HighlightSection extends StatelessWidget {
   const _HighlightSection({
     required this.plans,
@@ -1618,7 +1717,17 @@ class _HighlightSection extends StatelessWidget {
 
   final List<HighlightPlan> plans;
   final String? selectedPlanId;
-  final ValueChanged<String> onSelectPlan;
+
+  /// null = sin plan (gratis).
+  final ValueChanged<String?> onSelectPlan;
+
+  /// El plan elegido, o null si se publica gratis.
+  HighlightPlan? get _elegido {
+    for (final plan in plans) {
+      if (plan.id == selectedPlanId) return plan;
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1678,87 +1787,122 @@ class _HighlightSection extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          for (final plan in plans) ...[
-            _PlanCard(
-              plan: plan,
-              selected: selectedPlanId == plan.id,
-              onTap: () => onSelectPlan(plan.id),
+          // Los chips no caben en pantallas estrechas: se desplazan en vez de
+          // envolverse, para que la fila siga leyéndose como una sola tira de
+          // opciones y no como dos renglones desalineados.
+          SizedBox(
+            height: 42,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    selected: selectedPlanId == null,
+                    label: const Text('Sin plan'),
+                    // Deseleccionar tiene que ser una opción visible. Sin este
+                    // chip, quien elige un plan por curiosidad solo puede
+                    // deshacerlo adivinando que se toca otra vez.
+                    onSelected: (_) => onSelectPlan(null),
+                  ),
+                ),
+                for (final plan in plans)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      selected: selectedPlanId == plan.id,
+                      label: Text(_etiquetaCorta(plan)),
+                      onSelected: (elegido) =>
+                          onSelectPlan(elegido ? plan.id : null),
+                    ),
+                  ),
+              ],
             ),
-            if (plan != plans.last) const SizedBox(height: 10),
-          ],
+          ),
+          // El detalle del elegido. AnimatedSize para que la tarjeta crezca y
+          // se encoja en vez de dar un salto al cambiar de plan.
+          AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            alignment: Alignment.topCenter,
+            child: _elegido == null
+                ? const SizedBox(width: double.infinity)
+                : Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: _PlanDetail(plan: _elegido!),
+                  ),
+          ),
         ],
       ),
     );
   }
+
+  /// Nombre de chip a partir de la duración: "Destacado 7 dias" no cabe en un
+  /// chip, y en una fila donde todos empiezan por "Destacado" esa palabra no
+  /// distingue nada. Lo que diferencia a los planes es cuánto duran.
+  String _etiquetaCorta(HighlightPlan plan) {
+    if (plan.days <= 0) return plan.title;
+    if (plan.days == 1) return '24 h';
+    if (plan.days >= 30) return 'Mensual';
+    return '${plan.days} días';
+  }
 }
 
-class _PlanCard extends StatelessWidget {
-  const _PlanCard({
-    required this.plan,
-    required this.selected,
-    required this.onTap,
-  });
+/// Lo que se sabe del plan elegido. No es seleccionable: el chip de arriba ya
+/// es el control, y una tarjeta que también se pudiera tocar dejaría dos
+/// formas de hacer lo mismo a diez píxeles de distancia.
+///
+/// Sin borde ni radio propio marcado: va teñida, que ya la separa del fondo
+/// de la sección sin agregar otra caja dentro de la caja.
+class _PlanDetail extends StatelessWidget {
+  const _PlanDetail({required this.plan});
 
   final HighlightPlan plan;
-  final bool selected;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: selected
-              ? context.colors.primary.withValues(alpha: 0.08)
-              : context.colors.background,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: selected ? context.colors.accent : context.colors.border,
-            width: selected ? 1.5 : 1,
+    final colors = context.colors;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.accentTint,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  plan.title,
+                  style: AppTypography.heading(15, color: colors.ink),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                plan.price,
+                style: AppTypography.label(
+                  22,
+                  weight: FontWeight.w800,
+                  color: colors.accent,
+                ),
+              ),
+            ],
           ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              selected
-                  ? Icons.radio_button_checked_rounded
-                  : Icons.radio_button_off_rounded,
-              color: selected ? context.colors.accent : context.colors.muted,
+          const SizedBox(height: 6),
+          Text(
+            plan.description,
+            style: TextStyle(
+              color: colors.muted,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    plan.title,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    plan.description,
-                    style: TextStyle(
-                      color: context.colors.muted,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              plan.price,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: context.colors.accent,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

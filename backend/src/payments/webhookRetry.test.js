@@ -40,6 +40,7 @@ let respuestaObtenerPago; // función controlada por cada test
 mpClient.obtenerPago = async (paymentId, accessToken) => respuestaObtenerPago(paymentId, accessToken);
 
 const store = require('./store');
+const { capturandoLogs } = require('./testUtils');
 const { register } = require('./routes');
 
 let baseUrl;
@@ -265,4 +266,51 @@ test('una orden que no venía del carrito no toca el carrito del comprador', asy
 
   assert.strictEqual(db.getCartItems(comprador.id).length, 1,
     'una compra directa no puede llevarse por delante el carrito');
+});
+
+// ─── Los finales mudos del webhook ──────────────────────────────
+//
+// procesarEvento tiene varias salidas por `return` en las que no pasaba
+// nada y no se escribía nada. Desde el log, "MP nunca nos avisó", "nos
+// avisó y no pudimos leer el pago" y "lo leímos y la orden no cambió" se
+// veían exactamente igual: silencio. Son tres problemas distintos —red,
+// credenciales y estado— y perseguir el equivocado cuesta horas.
+//
+// Estas pruebas fijan que cada final deja su línea. No comprueban el texto
+// exacto, sino que el dato que hace falta para actuar esté ahí.
+
+
+test('un pago que MP no devuelve deja constancia en el log', async () => {
+  const paymentId = 'pay_ilegible';
+  respuestaObtenerPago = async () => null;
+
+  const logs = await capturandoLogs(async () => {
+    await enviarWebhook({
+      paymentId, requestId: 'req-ilegible', eventId: `evt_${crypto.randomUUID()}`,
+    });
+    // procesarEvento corre sin await, tras el 200.
+    await new Promise(r => setTimeout(r, 80));
+  });
+
+  assert.ok(logs.includes(paymentId),
+    `no se registró que el pago ${paymentId} no se pudo leer:\n${logs}`);
+});
+
+test('un pago sin orden asociada registra el external_reference que traía', async () => {
+  // Sin este dato el aviso es inaccionable: dice que algo falló, no qué
+  // buscar. Con el external_reference se puede ir a la BD a mirar.
+  const paymentId = 'pay_huerfano';
+  respuestaObtenerPago = async () => ({
+    id: paymentId, status: 'approved', external_reference: 'ord_que_no_existe',
+  });
+
+  const logs = await capturandoLogs(async () => {
+    await enviarWebhook({
+      paymentId, requestId: 'req-huerfano', eventId: `evt_${crypto.randomUUID()}`,
+    });
+    await new Promise(r => setTimeout(r, 80));
+  });
+
+  assert.ok(logs.includes('ord_que_no_existe'),
+    `el aviso no dice qué orden se buscó:\n${logs}`);
 });

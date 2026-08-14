@@ -149,14 +149,25 @@ class _GridProductCard extends StatelessWidget {
             color: context.colors.ink,
           ),
         ),
+        // Los atributos clave de la categoría (talla, estado, "Acepta
+        // mascotas") TOMAN EL LUGAR de la descripción, no se suman a ella: la
+        // celda tiene alto fijo y no hay renglón de sobra. Ver
+        // [AtributosDestacadosRow] para por qué el cambio también conviene
+        // aunque hubiera espacio.
+        //
+        // En `dense` no va ninguno de los dos: esa variante ya renunció a
+        // esta línea por falta de alto.
         if (!dense) ...[
           const SizedBox(height: 2),
-          Text(
-            product.description,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTypography.body(11.5, color: context.colors.muted),
-          ),
+          if (product.atributosDestacados.isNotEmpty)
+            AtributosDestacadosRow(atributos: product.atributosDestacados)
+          else
+            Text(
+              product.description,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.body(11.5, color: context.colors.muted),
+            ),
         ],
         const Spacer(),
         const SizedBox(height: 6),
@@ -227,12 +238,17 @@ class _HorizontalProductCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 3),
-              Text(
-                product.description,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.body(12, color: context.colors.muted),
-              ),
+              // Mismo intercambio que en la tarjeta de cuadrícula: los
+              // atributos sustituyen a la descripción.
+              if (product.atributosDestacados.isNotEmpty)
+                AtributosDestacadosRow(atributos: product.atributosDestacados)
+              else
+                Text(
+                  product.description,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.body(12, color: context.colors.muted),
+                ),
               const Spacer(),
               Row(
                 children: [

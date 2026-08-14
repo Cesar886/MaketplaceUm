@@ -18,7 +18,7 @@
 
 const crypto = require('crypto');
 const db = require('../database');
-const { config } = require('./config');
+const { config, traza } = require('./config');
 const store = require('./store');
 const { obtenerPago, MpError } = require('./mpClient');
 
@@ -79,21 +79,53 @@ function validarFirma(req) {
  * puede provocar un reintento innecesario de MP; se registra y ya.
  */
 async function procesarEvento({ eventId, paymentId }) {
+  traza(`evento ${eventId}: procesando pago ${paymentId}`);
   try {
     // La orden se localiza por external_reference (que es nuestro order_id)
     // o por el mp_payment_id si ya lo teníamos guardado del checkout.
     let orden = store.getOrdenPorPagoMp(paymentId);
+    traza(
+      `evento ${eventId}: búsqueda por mp_payment_id -> `
+      + `${orden ? `orden ${orden.id}` : 'sin resultado, se intentará por external_reference'}`,
+    );
 
     // El token del vendedor es el que puede consultar ese pago. Si aún no
     // sabemos de qué orden se trata, se intenta con el de la plataforma.
     let accessToken;
+    let sinTokenDelVendedor = false;
     if (orden) {
       const cuenta = store.getCuentaVendedorConToken(orden.vendor_id);
       accessToken = cuenta ? cuenta.accessToken : undefined;
+      sinTokenDelVendedor = !cuenta;
     }
 
     let pago = await obtenerPago(paymentId, accessToken);
-    if (!pago) return;
+    if (!pago) {
+      // Silencio absoluto hasta ahora. Este `return` es un final posible del
+      // webhook —el pago existe en MP pero no lo pudimos leer— y sin línea
+      // era indistinguible de "el evento nunca llegó".
+      //
+      // La causa probable va DENTRO de esta línea y no en un aviso propio
+      // más arriba: sin cuenta conectada la consulta se hace con la
+      // credencial de la plataforma y MP no devuelve un pago que no es suyo.
+      // Avisarlo por separado gastaba dos líneas en un solo hecho, y saltaba
+      // igual las veces en que la consulta sí funcionaba.
+      console.warn(
+        `[pagos] Webhook ${eventId}: Mercado Pago no devolvió el pago ${paymentId}`
+        + (sinTokenDelVendedor
+          ? ` (el vendedor ${orden.vendor_id} no tiene cuenta conectada, así que se `
+            + 'consultó con la credencial de la plataforma)'
+          : '')
+        + '. La orden se queda como está.',
+      );
+      return;
+    }
+    traza(
+      `evento ${eventId}: MP dice pago ${pago.id} status=${pago.status} `
+      + `detalle=${pago.status_detail || '—'} monto=${pago.transaction_amount} `
+      + `comisión=${pago.application_fee ?? '(ninguna)'} `
+      + `external_reference=${pago.external_reference || '—'}`,
+    );
 
     if (!orden && pago.external_reference) {
       orden = store.getOrdenPorId(pago.external_reference);
@@ -105,17 +137,33 @@ async function procesarEvento({ eventId, paymentId }) {
       // propio pago con autoridad, así que ahora que se sabe de qué orden
       // se trata, se busca su token y se vuelve a consultar con él antes de
       // persistir nada.
+      traza(
+        `evento ${eventId}: búsqueda por external_reference `
+        + `"${pago.external_reference}" -> ${orden ? `orden ${orden.id}` : 'sin resultado'}`,
+      );
+
       if (orden) {
         const cuenta = store.getCuentaVendedorConToken(orden.vendor_id);
         if (cuenta) {
           accessToken = cuenta.accessToken;
+          traza(`evento ${eventId}: releyendo el pago con el token del vendedor`);
           pago = await obtenerPago(paymentId, accessToken);
-          if (!pago) return;
+          if (!pago) {
+            console.warn(
+              `[pagos] Webhook ${eventId}: el pago ${paymentId} dejó de ser legible al `
+              + `releerlo con el token del vendedor ${orden.vendor_id}.`,
+            );
+            return;
+          }
         }
       }
     }
     if (!orden) {
-      console.warn(`[pagos] Webhook de un pago sin orden asociada (payment ${paymentId})`);
+      console.warn(
+        `[pagos] Webhook de un pago sin orden asociada (payment ${paymentId}, `
+        + `external_reference "${pago.external_reference || '—'}"). Si ese external_reference `
+        + 'es un id de orden nuestro, la orden se borró o nunca se guardó.',
+      );
       return;
     }
 
@@ -123,6 +171,25 @@ async function procesarEvento({ eventId, paymentId }) {
       mpPaymentId: pago.id,
       paymentStatus: pago.status,
     });
+
+    // `actualizada` en false se ignoraba en silencio. No siempre es un
+    // fallo: casi siempre es la guarda de `actualizarPagoDeOrden` haciendo
+    // su trabajo, porque MP no entrega los eventos en orden y un 'pending'
+    // tardío no puede tumbar una orden ya aprobada. Un reenvío del MISMO
+    // estado sí devuelve true, así que esto no se dispara en cada
+    // reintento.
+    //
+    // Se registra igualmente porque es indistinguible, desde fuera, del
+    // caso caro: el comprador pagó, MP avisó, y la orden no se marcó.
+    if (!actualizada) {
+      console.warn(
+        `[pagos] Webhook ${eventId}: la orden ${orden.id} se dejó como estaba `
+        + `(${orden.payment_status || 'sin estado'}) ante el pago ${pago.id} `
+        + `(${pago.status}). Normalmente es un evento que llega desordenado y la `
+        + 'guarda impide que un estado final retroceda. Si la orden se queda así '
+        + 'con un pago aprobado, eso sí es un fallo.',
+      );
+    }
 
     // Mismo efecto que produce el checkout cuando MP aprueba en el momento
     // (ver routes.js): una orden de carrito que queda pagada saca sus
@@ -132,10 +199,14 @@ async function procesarEvento({ eventId, paymentId }) {
     // listo para pagarlo por segunda vez.
     if (actualizada && pago.status === 'approved' && orden.origin === 'cart') {
       db.clearCartItems(orden.buyer_id, orden.items.map(i => i.product_id));
+      traza(`evento ${eventId}: orden ${orden.id} venía del carrito, productos retirados`);
     }
 
     store.marcarEventoProcesado(eventId);
-    console.log(`[pagos] Orden ${orden.id} → ${pago.status}`);
+    console.log(
+      `[pagos] Orden ${orden.id} → ${pago.status}`
+      + (pago.status === 'approved' ? '' : ` (${pago.status_detail || 'sin detalle'})`),
+    );
   } catch (err) {
     // Detalle completo al log del servidor; nadie más lo ve.
     const detalle = err instanceof MpError ? JSON.stringify(err.detalle) : err.message;

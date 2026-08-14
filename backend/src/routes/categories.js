@@ -1,9 +1,30 @@
 const { categories } = require('../data');
 const db = require('../database');
+const {
+  ATRIBUTOS_GENERALES,
+  ATRIBUTOS_POR_CATEGORIA,
+  ATRIBUTOS_DESTACADOS,
+} = require('../config/atributosCategoria');
 
 function register(app) {
   app.get('/api/categories', (_req, res) => {
     res.json(categories);
+  });
+
+  // GET /api/categories/atributos — el catálogo de preguntas dinámicas.
+  //
+  // El formulario de publicar NO depende de este endpoint: Flutter tiene su
+  // propio espejo de la config (lib/constants/atributos_categoria.dart) y
+  // pinta el form sin red, igual que hace con las categorías. Esto existe
+  // para lo que sí necesita la versión del servidor: una UI de filtros que
+  // quiera construir las facetas sin recompilar la app, y para poder
+  // verificar desde afuera qué está aceptando el servidor hoy.
+  app.get('/api/categories/atributos', (_req, res) => {
+    res.json({
+      generales: ATRIBUTOS_GENERALES,
+      porCategoria: ATRIBUTOS_POR_CATEGORIA,
+      destacados: ATRIBUTOS_DESTACADOS,
+    });
   });
 
   // GET /api/categories/ranked — todas las categorías ordenadas por

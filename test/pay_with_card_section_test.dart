@@ -78,7 +78,7 @@ Future<void> _montar(
   WidgetTester tester, {
   required Product producto,
   required Future<VendorPaymentMethods> Function(String) cargar,
-  VoidCallback? onPagar,
+  ValueChanged<int>? onPagar,
   bool pagando = false,
 }) async {
   await tester.pumpWidget(
@@ -88,7 +88,7 @@ Future<void> _montar(
         body: PayWithCardSection(
           product: producto,
           pagando: pagando,
-          onPagar: onPagar ?? () {},
+          onPagar: onPagar ?? (_) {},
           cargarMetodos: cargar,
         ),
       ),
@@ -110,7 +110,7 @@ void main() {
       cargar: (_) async => _metodos(tarjetaDisponible: true),
     );
 
-    expect(find.text('Pagar con tarjeta'), findsOneWidget);
+    expect(find.text('Pagar ahora'), findsOneWidget);
   });
 
   testWidgets('no dibuja NADA si la cuenta del vendedor está caída', (
@@ -124,7 +124,7 @@ void main() {
 
     // Ni el botón ni un aviso ni un hueco: el detalle de producto no es el
     // sitio donde explicarle al comprador la situación del vendedor.
-    expect(find.text('Pagar con tarjeta'), findsNothing);
+    expect(find.text('Pagar ahora'), findsNothing);
     expect(find.byType(FilledButton), findsNothing);
     final tamano = tester.getSize(find.byType(PayWithCardSection));
     expect(tamano.height, 0);
@@ -145,7 +145,7 @@ void main() {
             _metodos(tarjetaDisponible: true, declaraTarjeta: false),
       );
 
-      expect(find.text('Pagar con tarjeta'), findsOneWidget);
+      expect(find.text('Pagar ahora'), findsOneWidget);
     },
   );
 
@@ -161,7 +161,7 @@ void main() {
           _metodos(tarjetaDisponible: true, clavePublica: null),
     );
 
-    expect(find.text('Pagar con tarjeta'), findsNothing);
+    expect(find.text('Pagar ahora'), findsNothing);
   });
 
   testWidgets('no dibuja nada si la consulta al backend falla', (tester) async {
@@ -171,7 +171,7 @@ void main() {
       cargar: (_) async => throw Exception('sin red'),
     );
 
-    expect(find.text('Pagar con tarjeta'), findsNothing);
+    expect(find.text('Pagar ahora'), findsNothing);
     expect(tester.getSize(find.byType(PayWithCardSection)).height, 0);
   });
 
@@ -194,7 +194,7 @@ void main() {
     expect(find.textContaining('80'), findsNothing);
     expect(find.textContaining('100'), findsNothing);
     expect(find.text('-20%'), findsNothing);
-    expect(find.text('Pagar con tarjeta'), findsOneWidget);
+    expect(find.text('Pagar ahora'), findsOneWidget);
   });
 
   testWidgets('el botón queda inerte mientras se crea la orden', (
@@ -205,7 +205,7 @@ void main() {
       tester,
       producto: _producto(),
       cargar: (_) async => _metodos(tarjetaDisponible: true),
-      onPagar: () => toques++,
+      onPagar: (_) => toques++,
       pagando: true,
     );
 
@@ -225,13 +225,13 @@ void main() {
       tester,
       producto: _producto(vendedor: _vendedorCerrado()),
       cargar: (_) async => _metodos(tarjetaDisponible: true),
-      onPagar: () => toques++,
+      onPagar: (_) => toques++,
     );
 
     // Se ve, con el motivo — no desaparece. Si desapareciera, el comprador
     // creería que el producto no se vende, en vez de volver más tarde.
     expect(find.textContaining('Cerrado ahora mismo'), findsOneWidget);
-    expect(find.text('Pagar con tarjeta'), findsOneWidget);
+    expect(find.text('Pagar ahora'), findsOneWidget);
 
     await tester.tap(find.byType(FilledButton));
     await tester.pump();
@@ -244,7 +244,7 @@ void main() {
       tester,
       producto: _producto(stock: 0),
       cargar: (_) async => _metodos(tarjetaDisponible: true),
-      onPagar: () => toques++,
+      onPagar: (_) => toques++,
     );
 
     expect(find.textContaining('Agotado'), findsOneWidget);
@@ -261,7 +261,7 @@ void main() {
       tester,
       producto: _producto(stock: 3),
       cargar: (_) async => _metodos(tarjetaDisponible: true),
-      onPagar: () => toques++,
+      onPagar: (_) => toques++,
     );
 
     expect(find.textContaining('Cerrado'), findsNothing);
@@ -280,12 +280,126 @@ void main() {
       tester,
       producto: _producto(stock: null),
       cargar: (_) async => _metodos(tarjetaDisponible: true),
-      onPagar: () => toques++,
+      onPagar: (_) => toques++,
     );
 
     await tester.tap(find.byType(FilledButton));
     await tester.pump();
     expect(toques, 1);
+  });
+
+  // ─── Selector de cantidad ───────────────────────────────────
+
+  testWidgets('la cantidad arranca en 1 y no baja de ahí', (tester) async {
+    await _montar(
+      tester,
+      producto: _producto(stock: 5),
+      cargar: (_) async => _metodos(tarjetaDisponible: true),
+    );
+
+    expect(find.text('1'), findsOneWidget);
+
+    // El "−" está apagado en 1: comprar cero unidades no es una compra, y
+    // dejar bajar hasta 0 obligaría a validar un estado que no significa nada.
+    await tester.tap(find.byIcon(Icons.remove_rounded));
+    await tester.pump();
+    expect(find.text('1'), findsOneWidget);
+  });
+
+  testWidgets('la cantidad no pasa del stock disponible', (tester) async {
+    await _montar(
+      tester,
+      producto: _producto(stock: 2),
+      cargar: (_) async => _metodos(tarjetaDisponible: true),
+    );
+
+    await tester.tap(find.byIcon(Icons.add_rounded));
+    await tester.pump();
+    expect(find.text('2'), findsOneWidget);
+
+    // Tercer toque contra un stock de 2: el backend rechazaría la orden, así
+    // que el tope se respeta aquí y el comprador no llega al error.
+    await tester.tap(find.byIcon(Icons.add_rounded));
+    await tester.pump();
+    expect(find.text('2'), findsOneWidget);
+    expect(find.text('3'), findsNothing);
+  });
+
+  testWidgets('sin stock definido la cantidad no tiene techo', (tester) async {
+    await _montar(
+      tester,
+      producto: _producto(stock: null),
+      cargar: (_) async => _metodos(tarjetaDisponible: true),
+    );
+
+    for (var i = 0; i < 4; i++) {
+      await tester.tap(find.byIcon(Icons.add_rounded));
+      await tester.pump();
+    }
+    expect(find.text('5'), findsOneWidget);
+  });
+
+  testWidgets('la cantidad elegida es la que se manda a pagar', (tester) async {
+    int? pedida;
+    await _montar(
+      tester,
+      producto: _producto(stock: 5),
+      cargar: (_) async => _metodos(tarjetaDisponible: true),
+      onPagar: (cantidad) => pedida = cantidad,
+    );
+
+    await tester.tap(find.byIcon(Icons.add_rounded));
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.add_rounded));
+    await tester.pump();
+    await tester.tap(find.byType(FilledButton));
+    await tester.pump();
+
+    // Lo que se ve y lo que se cobra tienen que ser el mismo número.
+    expect(pedida, 3);
+  });
+
+  testWidgets('el total aparece solo al pasar de una unidad', (tester) async {
+    await _montar(
+      tester,
+      producto: _producto(precio: 120, stock: 5),
+      cargar: (_) async => _metodos(tarjetaDisponible: true),
+    );
+
+    // Con una unidad el total sería el precio de arriba otra vez.
+    expect(find.text('Total'), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.add_rounded));
+    await tester.pump();
+
+    expect(find.text('Total'), findsOneWidget);
+    expect(find.text('\$240'), findsOneWidget);
+  });
+
+  testWidgets('con una sola unidad en stock no se dibuja el selector', (
+    tester,
+  ) async {
+    await _montar(
+      tester,
+      producto: _producto(stock: 1),
+      cargar: (_) async => _metodos(tarjetaDisponible: true),
+    );
+
+    // Un stepper que no puede moverse ocupa una fila sin ofrecer ninguna
+    // decisión.
+    expect(find.text('Cantidad'), findsNothing);
+    expect(find.byIcon(Icons.add_rounded), findsNothing);
+    expect(find.text('Pagar ahora'), findsOneWidget);
+  });
+
+  testWidgets('agotado no ofrece selector de cantidad', (tester) async {
+    await _montar(
+      tester,
+      producto: _producto(stock: 0),
+      cargar: (_) async => _metodos(tarjetaDisponible: true),
+    );
+
+    expect(find.text('Cantidad'), findsNothing);
   });
 }
 

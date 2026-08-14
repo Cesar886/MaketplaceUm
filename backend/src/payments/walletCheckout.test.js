@@ -100,6 +100,7 @@ mpClient.validarTokenVendedor = async (accessToken) => respuestaValidarToken(acc
 
 const store = require('./store');
 const cfg = require('./config');
+const { capturandoLogs } = require('./testUtils');
 const { register } = require('./routes');
 
 let baseUrl;
@@ -190,28 +191,6 @@ async function pedir(metodo, ruta, { token, body } = {}) {
 const wallet = (token, orderId) =>
   pedir('POST', '/api/payments/checkout/wallet', { token, body: { order_id: orderId } });
 
-/**
- * Corre algo capturando lo que se escriba en consola.
- *
- * Los logs de diagnóstico son el producto de este endpoint tanto como su
- * respuesta: existen para poder ver, cuando el checkout falle en el
- * navegador, qué se le mandó exactamente a Mercado Pago y qué contestó. Si
- * no se prueban, se rompen sin que nadie se entere hasta que hacen falta.
- */
-async function capturandoLogs(fn) {
-  const lineas = [];
-  const original = { log: console.log, warn: console.warn, error: console.error };
-  for (const nivel of ['log', 'warn', 'error']) {
-    console[nivel] = (...args) => lineas.push(args.map(a =>
-      typeof a === 'string' ? a : JSON.stringify(a)).join(' '));
-  }
-  try {
-    await fn();
-  } finally {
-    Object.assign(console, original);
-  }
-  return lineas.join('\n');
-}
 
 test.beforeEach(() => {
   llamadasPreferencia = [];
@@ -986,17 +965,19 @@ test('avisa cuando MP devuelve un sandbox_init_point', async () => {
   assert.ok(/sandbox/i.test(logs), 'no se avisa de que hay un enlace de sandbox');
 });
 
-// ─── Qué checkout se abre: sandbox o producción ─────────────────
+// ─── Qué checkout se abre: siempre el normal ────────────────────
 //
-// Una preferencia creada con credenciales de PRUEBA solo es válida en el
-// checkout de sandbox. Abrirla en www.mercadopago.com.mx pinta "Oh, no, algo
-// anduvo mal" sin importar con qué cuenta entre el comprador.
+// COMPROBADO A MANO el 2026-08-14, y por eso está escrito aquí: una
+// preferencia creada con el token de un vendedor de prueba se abrió en
+// www.mercadopago.com.mx sin sesión iniciada, pintó el formulario, aceptó la
+// tarjeta de prueba y llegó a "Revisa tu pago". El `init_point` es el bueno
+// también en pruebas.
 //
-// Esto dependía de MP_USE_SANDBOX_INIT_POINT, un interruptor manual, y se
-// quedó en 'false' en el servidor mandando compradores al checkout de
-// producción con preferencias de prueba durante días. Ahora lo decide el
-// tipo de credencial; estas pruebas existen para que no vuelva a haber nada
-// que recordar.
+// Estas pruebas existen porque se creyó lo contrario durante una noche
+// entera. El checkout cargaba "Oh, no, algo anduvo mal" y se dio por hecho
+// que era el enlace; en realidad era la cuenta compradora de prueba, a la
+// que MP le exigía un código enviado a un buzón inexistente. Mandar al
+// comprador a sandbox no arregló nada, porque nunca fue eso.
 
 const CON_LOS_DOS_ENLACES = async () => ({
   id: 'pref_123',
@@ -1004,40 +985,22 @@ const CON_LOS_DOS_ENLACES = async () => ({
   sandbox_init_point: 'https://sandbox.mercadopago.com.mx/checkout/v1/redirect?pref_id=pref_123',
 });
 
-test('con credenciales de plataforma TEST- se manda al checkout de sandbox', async () => {
-  // Sin tocar MP_USE_SANDBOX_INIT_POINT: es el caso que fallaba.
+test('con credenciales TEST- se sigue mandando al checkout normal', async () => {
   const { comprador, orden } = escenario(200);
   respuestaPreferencia = CON_LOS_DOS_ENLACES;
 
   const res = await wallet(comprador.token, orden.id);
 
   assert.strictEqual(res.status, 200);
-  assert.ok(res.datos.initPoint.startsWith('https://sandbox.'),
-    `se devolvió ${res.datos.initPoint}`);
+  assert.strictEqual(
+    res.datos.initPoint,
+    'https://www.mercadopago.com.mx/checkout/v1/redirect?pref_id=pref_123',
+  );
 });
 
-test('un MP_USE_SANDBOX_INIT_POINT=false olvidado ya no manda a producción', async () => {
-  // El .env del servidor lo tenía así. Solo el valor exacto 'true' fuerza
-  // algo; 'false' no puede volver a desactivar la detección automática.
-  const { comprador, orden } = escenario(200);
-  process.env.MP_USE_SANDBOX_INIT_POINT = 'false';
-  respuestaPreferencia = CON_LOS_DOS_ENLACES;
-
-  const res = await wallet(comprador.token, orden.id);
-
-  assert.strictEqual(res.status, 200);
-  assert.ok(res.datos.initPoint.startsWith('https://sandbox.'),
-    `se devolvió ${res.datos.initPoint}`);
-});
-
-test('un vendedor de prueba manda a sandbox aunque la plataforma sea APP_USR-', async () => {
-  // El prefijo del token del vendedor no dice nada: los usuarios de prueba
-  // que autorizan por OAuth también reciben tokens APP_USR-. Quien lo dice
-  // es GET /users/me.
+test('un vendedor de prueba tampoco manda a sandbox', async () => {
   const { comprador, orden } = escenario(200, { accessToken: 'APP_USR-1234567890' });
-  const plataformaProd = 'APP_USR-plataforma';
   const original = process.env.MP_ACCESS_TOKEN;
-  cfg.config.accessToken = plataformaProd;
   respuestaValidarToken = async (t) => (
     t === original
       ? { id: 123 }
@@ -1046,62 +1009,47 @@ test('un vendedor de prueba manda a sandbox aunque la plataforma sea APP_USR-', 
   );
   respuestaPreferencia = CON_LOS_DOS_ENLACES;
 
-  try {
-    const res = await wallet(comprador.token, orden.id);
-    assert.strictEqual(res.status, 200);
-    assert.ok(res.datos.initPoint.startsWith('https://sandbox.'),
-      `se devolvió ${res.datos.initPoint}`);
-  } finally {
-    cfg.config.accessToken = original;
-  }
+  const res = await wallet(comprador.token, orden.id);
+
+  assert.strictEqual(res.status, 200);
+  assert.ok(!res.datos.initPoint.includes('sandbox.'),
+    `se devolvió ${res.datos.initPoint}`);
 });
 
-test('en producción se manda al checkout normal, no al de sandbox', async () => {
-  const { comprador, orden } = escenario(200, { accessToken: 'APP_USR-9999999999' });
-  const original = process.env.MP_ACCESS_TOKEN;
-  cfg.config.accessToken = 'APP_USR-plataforma';
+test('MP_USE_SANDBOX_INIT_POINT=true sigue sirviendo como salida de emergencia', async () => {
+  const { comprador, orden } = escenario(200);
+  process.env.MP_USE_SANDBOX_INIT_POINT = 'true';
   respuestaPreferencia = CON_LOS_DOS_ENLACES;
 
-  try {
-    const res = await wallet(comprador.token, orden.id);
-    assert.strictEqual(res.status, 200);
-    assert.strictEqual(
-      res.datos.initPoint,
-      'https://www.mercadopago.com.mx/checkout/v1/redirect?pref_id=pref_123',
-    );
-  } finally {
-    cfg.config.accessToken = original;
-  }
+  const res = await wallet(comprador.token, orden.id);
+
+  assert.strictEqual(res.status, 200);
+  assert.ok(res.datos.initPoint.startsWith('https://sandbox.'),
+    `se devolvió ${res.datos.initPoint}`);
 });
 
-test('el log dice en cada preferencia qué entorno se usó y por qué', async () => {
+test('el log dice en cada preferencia qué enlace se eligió y en qué entorno', async () => {
   const { comprador, orden } = escenario(200);
   respuestaPreferencia = CON_LOS_DOS_ENLACES;
 
   const logs = await capturandoLogs(() => wallet(comprador.token, orden.id));
 
-  assert.ok(/usando SANDBOX/i.test(logs), `el log no dice qué entorno se usó:\n${logs}`);
-  assert.ok(/TEST-/.test(logs), `el log no dice por qué:\n${logs}`);
+  assert.ok(/checkout NORMAL/i.test(logs), `el log no dice qué enlace se eligió:\n${logs}`);
+  assert.ok(/TEST-/.test(logs), `el log no dice en qué entorno:\n${logs}`);
 });
 
-test('nunca se entrega un enlace cruzado con el tipo de credencial', async () => {
-  // La red de seguridad: si por lo que sea se fuera a devolver el checkout
-  // de sandbox con credenciales de producción, falla aquí y no en la cara
-  // del comprador.
-  const { comprador, orden } = escenario(200, { accessToken: 'APP_USR-9999999999' });
-  const original = process.env.MP_ACCESS_TOKEN;
-  cfg.config.accessToken = 'APP_USR-plataforma';
+test('un enlace de sandbox no pedido no llega al comprador', async () => {
+  // La red de seguridad: si MP devolviera un `init_point` que apunta a
+  // sandbox, falla aquí y no en la cara del comprador.
+  const { comprador, orden } = escenario(200);
   respuestaPreferencia = async () => ({
     id: 'pref_123',
     init_point: 'https://sandbox.mercadopago.com.mx/checkout/v1/redirect?pref_id=pref_123',
   });
 
-  try {
-    const res = await wallet(comprador.token, orden.id);
-    assert.strictEqual(res.status, 502, `se entregó ${res.datos.initPoint}`);
-  } finally {
-    cfg.config.accessToken = original;
-  }
+  const res = await wallet(comprador.token, orden.id);
+
+  assert.strictEqual(res.status, 502, `se entregó ${res.datos.initPoint}`);
 });
 
 test('el interruptor de sandbox no rompe nada si MP no manda uno', async () => {
@@ -1276,4 +1224,41 @@ test('MP_DEBUG_PREFERENCIA=true vuelve a volcarlo todo', async () => {
   assert.ok(logs.includes('payload ->'), 'el modo depuración no vuelca el payload');
   assert.ok(/respuesta de Mercado Pago:/.test(logs), 'no vuelca la respuesta');
   assert.ok(logs.includes('external_reference'), 'el volcado está incompleto');
+});
+
+test('una preferencia guardada con un enlace de sandbox no se reentrega', async () => {
+  // El camino de reutilización devuelve el enlace GUARDADO sin volver a
+  // pasar por elegirInitPoint. Sin comprobarlo aquí, un enlace escrito por
+  // una versión anterior del código —o por un MP_USE_SANDBOX_INIT_POINT que
+  // ya se quitó— se seguiría entregando hasta que caducara. Pasó de verdad.
+  const { comprador, orden } = escenario(200);
+  store.guardarPreferenciaDeOrden(orden.id, {
+    preferenceId: 'pref_vieja',
+    initPoint: 'https://sandbox.mercadopago.com.mx/checkout/v1/redirect?pref_id=pref_vieja',
+    expiraEn: new Date(Date.now() + 10 * 60 * 1000),
+  });
+
+  const res = await wallet(comprador.token, orden.id);
+
+  assert.strictEqual(res.status, 502, `se entregó ${res.datos.initPoint}`);
+  assert.ok(!String(res.datos.initPoint || '').includes('sandbox'),
+    'el enlace de sandbox llegó al comprador');
+});
+
+test('el enlace guardado que sí sirve se sigue reutilizando', async () => {
+  // La comprobación anterior no puede romper el caso normal: reutilizar la
+  // misma preferencia es lo que evita dos enlaces vivos sobre una orden.
+  const { comprador, orden } = escenario(200);
+  const bueno = 'https://www.mercadopago.com.mx/checkout/v1/redirect?pref_id=pref_buena';
+  store.guardarPreferenciaDeOrden(orden.id, {
+    preferenceId: 'pref_buena',
+    initPoint: bueno,
+    expiraEn: new Date(Date.now() + 10 * 60 * 1000),
+  });
+
+  const res = await wallet(comprador.token, orden.id);
+
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.datos.initPoint, bueno);
+  assert.strictEqual(llamadasPreferencia.length, 0, 'no debió crear una preferencia nueva');
 });

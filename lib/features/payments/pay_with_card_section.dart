@@ -18,9 +18,10 @@ import 'payments_api.dart';
 /// detalle de producto no es el sitio donde explicarle al comprador la
 /// situación administrativa del vendedor.
 ///
-/// Deliberadamente NO muestra el precio: ya lo pinta la etiqueta grande del
-/// detalle, unos centímetros más arriba, y repetirlo dejaba dos precios
-/// compitiendo en la misma pantalla.
+/// Deliberadamente NO muestra el precio unitario: ya lo pinta la etiqueta
+/// grande del detalle, unos centímetros más arriba, y repetirlo dejaba dos
+/// precios compitiendo en la misma pantalla. El total solo aparece cuando la
+/// cantidad pasa de 1, que es justo cuando deja de poder deducirse de ahí.
 class PayWithCardSection extends StatefulWidget {
   const PayWithCardSection({
     super.key,
@@ -35,9 +36,10 @@ class PayWithCardSection extends StatefulWidget {
   /// Sustituible solo para pruebas: por defecto pregunta al backend.
   final Future<VendorPaymentMethods> Function(String vendorId)? cargarMetodos;
 
-  /// Arranca el checkout. La crea la pantalla contenedora porque la orden se
-  /// crea contra el servidor y su ciclo de vida (y sus errores) son suyos.
-  final VoidCallback onPagar;
+  /// Arranca el checkout con la cantidad elegida. La orden la crea la pantalla
+  /// contenedora porque se crea contra el servidor y su ciclo de vida (y sus
+  /// errores) son suyos.
+  final ValueChanged<int> onPagar;
 
   /// Hay una orden creándose. Bloquea el botón y lo pone en carga.
   final bool pagando;
@@ -49,10 +51,33 @@ class PayWithCardSection extends StatefulWidget {
 class _PayWithCardSectionState extends State<PayWithCardSection> {
   VendorPaymentMethods? _metodos;
 
+  /// Unidades a comprar. Nunca baja de 1 ni pasa de [_maximo].
+  int _cantidad = 1;
+
   @override
   void initState() {
     super.initState();
     _cargar();
+  }
+
+  /// Cuántas unidades se pueden pedir como mucho, o null si no hay tope.
+  ///
+  /// `stock_quantity` null son las publicaciones anteriores al control de
+  /// stock: el backend tampoco les pone techo (ver la comprobación de stock en
+  /// `/api/orders`), así que ponerlo aquí inventaría un límite que no existe.
+  int? get _maximo {
+    final stock = widget.product.stockQuantity;
+    if (stock == null || stock <= 0) return null;
+    return stock;
+  }
+
+  void _cambiarCantidad(int delta) {
+    final maximo = _maximo;
+    var nueva = _cantidad + delta;
+    if (nueva < 1) nueva = 1;
+    if (maximo != null && nueva > maximo) nueva = maximo;
+    if (nueva == _cantidad) return;
+    setState(() => _cantidad = nueva);
   }
 
   Future<void> _cargar() async {
@@ -186,12 +211,47 @@ class _PayWithCardSectionState extends State<PayWithCardSection> {
             const SizedBox(height: 12),
           ],
 
+          // Cantidad. Se omite cuando no hay nada que elegir —bloqueado, o una
+          // única unidad en stock— porque un stepper que no se puede mover es
+          // ruido: ocupa una fila para no ofrecer ninguna decisión.
+          if (bloqueo == null && _maximo != 1) ...[
+            _SelectorDeCantidad(
+              cantidad: _cantidad,
+              maximo: _maximo,
+              habilitado: !widget.pagando,
+              onCambiar: _cambiarCantidad,
+            ),
+            // El total solo cuando deja de ser deducible de la etiqueta de
+            // arriba. Con una unidad sería el mismo número dos veces.
+            if (_cantidad > 1) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Text(
+                    'Total',
+                    style: AppTypography.body(13, color: colors.muted),
+                  ),
+                  const Spacer(),
+                  Text(
+                    Product.formatPrice(widget.product.price * _cantidad),
+                    style: AppTypography.label(
+                      16,
+                      weight: FontWeight.w800,
+                      color: colors.ink,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 18),
+          ],
+
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
               onPressed: (widget.pagando || bloqueo != null)
                   ? null
-                  : widget.onPagar,
+                  : () => widget.onPagar(_cantidad),
               icon: widget.pagando
                   ? const SizedBox(
                       width: 16,
@@ -208,12 +268,12 @@ class _PayWithCardSectionState extends State<PayWithCardSection> {
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 // Sin estilo propio: el foreground lo pone el tema del botón,
                 // y fijarlo aquí lo dejaría ilegible al cambiar de swatch.
+                // El label no nombra el carril: el método real se elige en el
+                // checkout, y prometer "tarjeta" aquí se cae en las cuentas
+                // que solo cobran con Mercado Pago. Quien sí distingue es el
+                // icono, que no promete nada.
                 child: Text(
-                  widget.pagando
-                      ? 'Preparando tu pago…'
-                      : (soloCuentaMp
-                            ? 'Pagar con Mercado Pago'
-                            : 'Pagar con tarjeta'),
+                  widget.pagando ? 'Preparando tu pago…' : 'Pagar ahora',
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -237,6 +297,109 @@ class _PayWithCardSectionState extends State<PayWithCardSection> {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Stepper de cantidad: "−  2  +" con la etiqueta a la izquierda.
+///
+/// Sin caja propia ni bordes: vive dentro de la tarjeta de pago y otra caja
+/// anidada sería una frontera de más. Lo que separa esta fila del botón es el
+/// aire, no una línea.
+class _SelectorDeCantidad extends StatelessWidget {
+  const _SelectorDeCantidad({
+    required this.cantidad,
+    required this.maximo,
+    required this.habilitado,
+    required this.onCambiar,
+  });
+
+  final int cantidad;
+
+  /// Tope de unidades, o null si el producto no lleva control de stock.
+  final int? maximo;
+
+  final bool habilitado;
+  final ValueChanged<int> onCambiar;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final puedeBajar = habilitado && cantidad > 1;
+    final puedeSubir = habilitado && (maximo == null || cantidad < maximo!);
+
+    return Row(
+      children: [
+        Text('Cantidad', style: AppTypography.body(13, color: colors.muted)),
+        const Spacer(),
+        _PasoCantidad(
+          icon: Icons.remove_rounded,
+          tooltip: 'Quitar una unidad',
+          onPressed: puedeBajar ? () => onCambiar(-1) : null,
+        ),
+        // Ancho fijo para que el número no empuje los botones al pasar de una
+        // cifra a dos: el stepper se queda quieto mientras se toca.
+        SizedBox(
+          width: 44,
+          child: Text(
+            '$cantidad',
+            textAlign: TextAlign.center,
+            style: AppTypography.label(
+              17,
+              weight: FontWeight.w800,
+              color: colors.ink,
+            ),
+          ),
+        ),
+        _PasoCantidad(
+          icon: Icons.add_rounded,
+          tooltip: 'Agregar una unidad',
+          onPressed: puedeSubir ? () => onCambiar(1) : null,
+        ),
+      ],
+    );
+  }
+}
+
+/// Uno de los dos botones del stepper. Un disco teñido, sin borde.
+class _PasoCantidad extends StatelessWidget {
+  const _PasoCantidad({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final activo = onPressed != null;
+
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        // Apagado no se pinta gris: se pinta MÁS tenue del mismo tinte. Un
+        // gris nuevo mete un color que no está en la paleta.
+        color: colors.accentTint.withValues(alpha: activo ? 1 : 0.4),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onPressed,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Icon(
+              icon,
+              size: 18,
+              color: activo
+                  ? colors.accent
+                  : colors.muted.withValues(alpha: 0.45),
+            ),
+          ),
+        ),
       ),
     );
   }

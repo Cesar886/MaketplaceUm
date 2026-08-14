@@ -447,6 +447,8 @@ class Product {
     this.locationLng,
     this.paymentMethods,
     this.views = 0,
+    this.atributos = const {},
+    this.atributosDestacados = const [],
   });
 
   /// Adapta un [WantedPost] a la forma de [Product] para que
@@ -593,6 +595,30 @@ class Product {
       prevVal = null;
     }
 
+    /// Respuestas a las preguntas dinámicas. Las listas se normalizan a
+    /// `List<String>` aquí y no en cada lector: sin esto, un `List<dynamic>`
+    /// del decodificador de JSON revienta con un cast en la pantalla que lo
+    /// consuma, que es donde peor se diagnostica.
+    Map<String, dynamic> parseAtributos() {
+      final raw = json['atributos'];
+      if (raw is! Map) return const {};
+      return {
+        for (final entry in raw.entries)
+          entry.key.toString(): entry.value is List
+              ? (entry.value as List).map((e) => e.toString()).toList()
+              : entry.value,
+      };
+    }
+
+    List<AtributoDestacado> parseAtributosDestacados() {
+      final raw = json['atributosDestacados'];
+      if (raw is! List) return const [];
+      return raw
+          .whereType<Map<String, dynamic>>()
+          .map(AtributoDestacado.fromJson)
+          .toList(growable: false);
+    }
+
     List<ProductExtra> parseExtras() {
       if (json['extras'] != null && json['extras'] is List) {
         return (json['extras'] as List)
@@ -650,6 +676,8 @@ class Product {
           ?.map((e) => e as String)
           .toList(),
       views: (json['views'] as num?)?.toInt() ?? 0,
+      atributos: parseAtributos(),
+      atributosDestacados: parseAtributosDestacados(),
     );
   }
 
@@ -705,6 +733,20 @@ class Product {
   /// Conteo simple de vistas de detalle (no vistas únicas por usuario).
   final int views;
 
+  /// Respuestas a las preguntas dinámicas de la categoría, con la key de la
+  /// pregunta como llave (ver `constants/atributos_categoria.dart`).
+  ///
+  /// Siempre un mapa, nunca null: una publicación que no respondió nada trae
+  /// `{}`, igual que una anterior a que existieran las preguntas. Los valores
+  /// son `bool`, `String`, `num` o `List<String>` según el tipo de pregunta.
+  final Map<String, dynamic> atributos;
+
+  /// Los 1-2 atributos que la tarjeta del listado muestra como badge, ya
+  /// resueltos por el servidor. Se recibe hecho a propósito: la tarjeta se
+  /// pinta en cuatro pantallas y ninguna debería tener su propia opinión
+  /// sobre cuál es el dato clave de un producto de ropa.
+  final List<AtributoDestacado> atributosDestacados;
+
   bool get isWantedPost => postType == 'se_busca';
   bool get hasLocation => locationLat != null && locationLng != null;
 
@@ -712,6 +754,37 @@ class Product {
   /// si se personalizaron, o los del perfil del vendedor si no.
   List<String> get effectivePaymentMethods =>
       paymentMethods ?? seller.paymentMethods;
+}
+
+/// Un atributo listo para pintarse como badge en la tarjeta del listado.
+///
+/// El servidor decide cuáles son (máximo dos por categoría) y ya los resuelve
+/// a texto: los booleanos llegan con su afirmación corta ("Acepta mascotas")
+/// en vez de la pregunta, y las listas llegan unidas. La tarjeta solo pinta.
+class AtributoDestacado {
+  const AtributoDestacado({
+    required this.key,
+    required this.label,
+    required this.value,
+  });
+
+  factory AtributoDestacado.fromJson(Map<String, dynamic> json) {
+    return AtributoDestacado(
+      key: json['key'] as String? ?? '',
+      label: json['label'] as String? ?? '',
+      value: json['value']?.toString() ?? '',
+    );
+  }
+
+  /// Key de la pregunta de origen. No se pinta; sirve para que un filtro
+  /// futuro pueda saber sobre qué atributo está el badge.
+  final String key;
+
+  /// La pregunta completa, para tooltips o accesibilidad.
+  final String label;
+
+  /// Lo que se muestra dentro del badge.
+  final String value;
 }
 
 /// El detalle de una publicación: el producto más los dos carruseles que

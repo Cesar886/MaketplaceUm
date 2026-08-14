@@ -101,6 +101,48 @@ function depuracionPreferencia() {
   return String(process.env.MP_DEBUG_PREFERENCIA || '').toLowerCase() === 'true';
 }
 
+/**
+ * Traza detallada del flujo de pago: qué entra por el webhook, cómo se
+ * resuelve la orden, qué contestó MP y qué se guardó.
+ *
+ * Existe porque perseguir un pago que "se hizo pero no aparece" con los logs
+ * de siempre obliga a adivinar en qué de los seis pasos se rompió. Con esto
+ * encendido cada paso deja su línea y el fallo se señala solo.
+ *
+ * Apagado por defecto: son ~8 líneas por notificación y MP reenvía cada
+ * evento varias veces. Lo imprescindible —el estado final de la orden y
+ * TODOS los fallos— se registra siempre, con esto apagado.
+ */
+function depuracionPagos() {
+  return String(process.env.DEBUG_PAGOS || '').toLowerCase() === 'true';
+}
+
+/**
+ * Log de traza: solo sale con `DEBUG_PAGOS=true`.
+ *
+ * Se consulta la variable en cada llamada, no al arrancar, para poder
+ * encenderla con `pm2 restart --update-env` sin editar código.
+ */
+function traza(mensaje) {
+  if (depuracionPagos()) console.log(`[pagos][traza] ${mensaje}`);
+}
+
+/**
+ * Deja un valor ajeno en condiciones de entrar en una línea de log.
+ *
+ * Hace falta de verdad: el webhook registra `topic`, `action` y `data.id`
+ * ANTES de validar la firma, o sea que son datos de quien llame, sea quien
+ * sea. Un salto de línea ahí permite escribir líneas enteras inventadas en
+ * el log —"[pagos] Orden ord_x → approved", por ejemplo—, y este log es
+ * justo donde miramos para saber si un pago entró. Un log que se puede
+ * falsificar no sirve para decidir nada.
+ */
+function paraLog(valor, maximo = 120) {
+  if (valor === undefined || valor === null) return '—';
+  const limpio = String(valor).replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
+  return limpio.length > maximo ? `${limpio.slice(0, maximo)}…` : limpio;
+}
+
 /** Porcentaje de comisión de la plataforma. Configurable, nunca hardcodeado. */
 function porcentajeComision() {
   const crudo = process.env.PLATFORM_FEE_PERCENT;
@@ -171,6 +213,9 @@ module.exports = {
   comisionHabilitada,
   forzarSandboxInitPoint,
   depuracionPreferencia,
+  depuracionPagos,
+  traza,
+  paraLog,
   estaConfigurado,
   assertConfigurado,
   faltantes,

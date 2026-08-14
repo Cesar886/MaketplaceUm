@@ -336,6 +336,67 @@ class RachaBadge extends StatelessWidget {
   }
 }
 
+/// Los 1-2 atributos clave de una publicación, para la tarjeta del listado:
+/// la talla en ropa, el estado en libros, "Acepta mascotas" en hospedaje.
+///
+/// Cuáles son los decide el SERVIDOR (`atributosDestacados`), no esta clase.
+/// La tarjeta aparece en el home, la búsqueda, el perfil del vendedor y los
+/// carruseles del detalle: si cada pantalla eligiera por su cuenta, el mismo
+/// producto se vería distinto según de dónde se llegó a él.
+///
+/// Se pinta en una sola línea de alto fijo, y OCUPA EL LUGAR de la línea de
+/// descripción en la tarjeta (ver ProductCard) en vez de sumarse a ella. La
+/// celda de la cuadrícula tiene alto fijo por `childAspectRatio` y los
+/// resultados de búsqueda van dentro de un `SizedBox(height: 118)`: ahí no
+/// existe "queda un poco apretado", lo que sobra desborda y raya la pantalla
+/// de amarillo. El alto va acotado (17 px) por la misma razón.
+///
+/// El intercambio con la descripción no es solo por espacio: la descripción
+/// en la tarjeta es una primera línea truncada a mitad de una frase, mientras
+/// que "M · Poco uso" es exactamente el dato con el que se decide si vale la
+/// pena abrir la publicación.
+class AtributosDestacadosRow extends StatelessWidget {
+  const AtributosDestacadosRow({super.key, required this.atributos});
+
+  final List<AtributoDestacado> atributos;
+
+  @override
+  Widget build(BuildContext context) {
+    if (atributos.isEmpty) return const SizedBox.shrink();
+
+    return SizedBox(
+      height: 17,
+      child: Row(
+        children: [
+          for (final (i, atributo) in atributos.indexed) ...[
+            if (i > 0) const SizedBox(width: 5),
+            Flexible(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7),
+                decoration: BoxDecoration(
+                  color: context.colors.surfaceMuted,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  atributo.value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                    color: context.colors.muted,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _Badge extends StatelessWidget {
   const _Badge({
     required this.icon,

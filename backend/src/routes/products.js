@@ -6,6 +6,10 @@ const { requireAuth } = require('../auth');
 const db = require('../database');
 const { sendPush } = require('../push');
 const { validateLocation, validatePaymentMethods } = require('../validation/sellerProfile');
+const {
+  validarAtributosCategoria,
+  atributosDestacados,
+} = require('../validation/atributosCategoria');
 const { validarMetodosPermitidos } = require('../payments/methods');
 
 // Configuración anti-abuso de ofertas
@@ -183,6 +187,51 @@ function computeProductStatus(product, seller) {
   return { computed_status: 'available', computed_status_detail: {} };
 }
 
+/**
+ * Lee el parámetro `?atributos=` de la búsqueda. Devuelve null (= no filtrar)
+ * si viene mal armado; ver la nota en GET /api/products sobre por qué no es
+ * un 400.
+ */
+function parseFiltroAtributos(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return Object.keys(parsed).length > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ¿Las respuestas de un producto satisfacen todos los criterios pedidos?
+ *
+ * Semántica: AND entre keys distintas, OR dentro de una key con varios
+ * valores (?atributos={"estado_libro":["Nuevo","Como nuevo"]}), que es cómo
+ * se comporta una barra de facetas. Si el atributo del producto es una lista
+ * (multiselect), basta con que contenga alguno de los valores pedidos.
+ *
+ * Un producto sin la key pedida NO pasa el filtro. Es deliberado: "muestra
+ * solo lo que acepta mascotas" no debe incluir publicaciones que jamás
+ * respondieron esa pregunta, aunque eso castigue a quien no llenó el
+ * formulario.
+ */
+function cumpleAtributos(atributos, criterios) {
+  const respuestas = atributos && typeof atributos === 'object' ? atributos : {};
+
+  return Object.entries(criterios).every(([key, esperado]) => {
+    const actual = respuestas[key];
+    if (actual === undefined || actual === null || actual === '') return false;
+
+    const esperados = Array.isArray(esperado) ? esperado : [esperado];
+    const actuales = Array.isArray(actual) ? actual : [actual];
+
+    // String(...) para que "true" del query string case con el booleano
+    // guardado, y "95" con un número.
+    const actualesTexto = actuales.map(v => String(v));
+    return esperados.some(v => actualesTexto.includes(String(v)));
+  });
+}
+
 function attachRelations(productsList, userId) {
   let modified = false;
   const todayStr = new Date().toDateString();
@@ -225,8 +274,18 @@ function attachRelations(productsList, userId) {
 
     const { computed_status, computed_status_detail } = computeProductStatus(p, sellerObj);
 
+    // Respuestas a las preguntas dinámicas de la categoría. Van en TODAS las
+    // respuestas de producto (lista, búsqueda, detalle y carruseles) porque
+    // las tres pantallas comparten este helper: el detalle las pinta enteras
+    // y la tarjeta usa solo `atributosDestacados`, que se resuelve aquí para
+    // que ninguna pantalla tenga que opinar sobre cuál es el dato clave de
+    // un producto de ropa.
+    const atributos = p.atributos && typeof p.atributos === 'object' ? p.atributos : {};
+
     return {
       ...p,
+      atributos,
+      atributosDestacados: atributosDestacados(atributos, p.category),
       postType: 'producto',
       is_available,
       computed_status,
@@ -259,6 +318,18 @@ function register(app) {
       filtered = filtered.filter(p =>
         p.title.toLowerCase().includes(q) || p.description.toLowerCase().includes(q));
     }
+
+    // Filtro por respuestas a las preguntas dinámicas: ?atributos={"talla":"M"}.
+    // Un filtro con un JSON inválido se ignora en vez de devolver 400: es un
+    // refinamiento opcional de la búsqueda, y dejar al usuario sin resultados
+    // por un parámetro mal armado es peor que darle la lista sin refinar.
+    if (req.query.atributos) {
+      const criterios = parseFiltroAtributos(req.query.atributos);
+      if (criterios) {
+        filtered = filtered.filter(p => cumpleAtributos(p.atributos, criterios));
+      }
+    }
+
     res.json(attachRelations(filtered, req.query.userId));
   });
 
@@ -381,6 +452,21 @@ function register(app) {
       if (permitidos.error) return res.status(400).json({ error: permitidos.error });
       const productPaymentMethods = paymentMethodsResult.value;
 
+      // Preguntas dinámicas de la categoría. Se validan contra el catálogo
+      // del servidor y NO contra lo que diga el cliente: un valor fuera de
+      // las `options` declaradas se rechaza, porque guardarlo dejaría un
+      // producto con un dato que ninguna pantalla sabe pintar. Se valida
+      // aquí, antes de convertir imágenes, para no dejar archivos escritos
+      // en disco por una petición que va a fallar de todos modos.
+      const atributosResult = validarAtributosCategoria(req.body?.atributos, category);
+      if (atributosResult.error) {
+        return res.status(400).json({
+          error: atributosResult.error,
+          ...(atributosResult.campo ? { campo: atributosResult.campo } : {}),
+        });
+      }
+      const productAtributos = atributosResult.value;
+
       // Convertir cada imagen a WebP usando Promise.all
       const conversionPromises = (req.files || []).map((file) => {
         return convertToWebp(file.path).catch((convErr) => {
@@ -422,6 +508,7 @@ function register(app) {
             locationLat: productLocation ? productLocation.lat : null,
             locationLng: productLocation ? productLocation.lng : null,
             paymentMethods: productPaymentMethods,
+            atributos: productAtributos || {},
           };
 
           products.unshift(newProduct);
@@ -515,6 +602,32 @@ function register(app) {
           paymentMethodsUpdate = paymentMethodsResult.value;
         }
 
+        // Preguntas dinámicas: se validan contra la categoría NUEVA, que es
+        // la que va a quedar guardada. Si el vendedor cambió de categoría,
+        // las respuestas que solo existían en la anterior se caen solas (la
+        // normalización recorre las preguntas de la categoría destino), que
+        // es lo correcto: una talla no significa nada en un producto que
+        // acaba de volverse "Electrónicos".
+        //
+        // Como el objeto se reemplaza entero, mandar el campo omitiendo una
+        // respuesta la borra; no mandarlo deja los atributos intactos.
+        let atributosUpdate;
+        if (req.body.atributos !== undefined) {
+          const atributosResult = validarAtributosCategoria(req.body.atributos, category);
+          if (atributosResult.error) {
+            return res.status(400).json({
+              error: atributosResult.error,
+              ...(atributosResult.campo ? { campo: atributosResult.campo } : {}),
+            });
+          }
+          atributosUpdate = atributosResult.value || {};
+        } else if (category !== product.category) {
+          // Cambió de categoría sin mandar respuestas nuevas: revalidar las
+          // que ya tenía contra el catálogo destino, o quedarían atributos
+          // de la categoría vieja colgando en el producto para siempre.
+          atributosUpdate = validarAtributosCategoria(product.atributos, category).value || {};
+        }
+
         // ─── Imágenes: existingImages son las URLs que el usuario decide
         // conservar; todo lo que estaba en product.images y no aparece ahí
         // se considera eliminado. Los archivos nuevos vienen en req.files.
@@ -557,6 +670,9 @@ function register(app) {
             }
             if (req.body.availableDays !== undefined) {
               product.availableDays = normalizeAvailableDays(req.body.availableDays);
+            }
+            if (atributosUpdate !== undefined) {
+              product.atributos = atributosUpdate;
             }
             if (paymentMethodsUpdate !== undefined) {
               product.paymentMethods = paymentMethodsUpdate;
