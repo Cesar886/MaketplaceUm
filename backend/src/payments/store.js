@@ -351,6 +351,121 @@ function admiteNuevoIntentoDePago(orden) {
   return !orden.payment_status || ESTADOS_MUERTOS.has(orden.payment_status);
 }
 
+/**
+ * Cuánto margen se añade al bloqueo por encima de la caducidad que Mercado
+ * Pago tiene apuntada para la preferencia.
+ *
+ * El bloqueo tiene que sobrevivir a la ventana de pago, nunca al revés:
+ * relojes que no van sincronizados, una petición que tardó, o el propio MP
+ * aceptando un pago justo en el límite. Si el bloqueo cayera antes, se abre
+ * exactamente el hueco de cobro duplicado que existe para cerrar.
+ */
+const MARGEN_PREFERENCIA_MS = 2 * 60 * 1000;
+
+/**
+ * Reserva EN EXCLUSIVA el derecho a crear una preferencia para esta orden.
+ *
+ * Es un candado, y hace falta uno de verdad porque comprobar "¿hay
+ * preferencia viva?" y crearla son dos pasos con un `await` a Mercado Pago
+ * en medio. Node atiende otra petición durante esa espera, así que dos
+ * peticiones de la misma orden pueden pasar las dos la comprobación antes de
+ * que ninguna haya creado nada — y acabar con DOS enlaces vivos capaces de
+ * cobrar lo mismo.
+ *
+ * El UPDATE condicional lo resuelve porque en SQLite es atómico: de dos
+ * peticiones simultáneas, exactamente una ve `changes === 1`.
+ *
+ * Se reserva la ventana ANTES de hablar con Mercado Pago, no después. Al
+ * revés el candado no serviría de nada: la carrera ocurre justo durante esa
+ * llamada. Si la llamada falla, [liberarPreferencia] deshace la reserva.
+ *
+ * @returns {boolean} true si esta petición se quedó con la reserva.
+ */
+function reservarPreferencia(orderId, expiraEn) {
+  return db.getDb().prepare(`
+    UPDATE orders
+    SET mp_preference_expires_at = ?, updated_at = ?
+    WHERE id = ?
+      AND (mp_preference_expires_at IS NULL OR mp_preference_expires_at <= ?)
+  `).run(
+    new Date(expiraEn.getTime() + MARGEN_PREFERENCIA_MS).toISOString(),
+    ahora(),
+    orderId,
+    new Date().toISOString(),
+  ).changes > 0;
+}
+
+/**
+ * Deshace una reserva cuya preferencia nunca llegó a existir.
+ *
+ * Sin esto, un fallo de red al hablar con Mercado Pago dejaría la orden
+ * bloqueada para TODOS los métodos de pago durante la ventana entera, por
+ * un cobro que no ocurrió. Solo borra si no hay preferencia guardada: si la
+ * hay, es pagable y el bloqueo tiene que seguir.
+ */
+function liberarPreferencia(orderId) {
+  return db.getDb().prepare(`
+    UPDATE orders SET mp_preference_expires_at = NULL, updated_at = ?
+    WHERE id = ? AND mp_preference_id IS NULL
+  `).run(ahora(), orderId).changes > 0;
+}
+
+/**
+ * Apunta en la orden la preferencia de Mercado Pago que se acaba de crear.
+ *
+ * Guardar el `init_point` no es un lujo: es lo que permite devolver LA MISMA
+ * preferencia si alguien vuelve a pedir pagar con su cuenta, en vez de crear
+ * una segunda igual de pagable que la primera.
+ */
+function guardarPreferenciaDeOrden(orderId, { preferenceId, initPoint, expiraEn }) {
+  return db.getDb().prepare(`
+    UPDATE orders
+    SET mp_preference_id = ?, mp_preference_init_point = ?,
+        mp_preference_expires_at = ?, updated_at = ?
+    WHERE id = ?
+  `).run(
+    String(preferenceId),
+    String(initPoint),
+    new Date(expiraEn.getTime() + MARGEN_PREFERENCIA_MS).toISOString(),
+    ahora(),
+    orderId,
+  ).changes > 0;
+}
+
+/**
+ * El pago por Mercado Pago que esta orden tiene EN CURSO, o null.
+ *
+ * Mientras devuelva algo, cobrar esa orden por cualquier otro camino es un
+ * cargo duplicado esperando a ocurrir.
+ *
+ * Se mira `mp_preference_expires_at` y NO `mp_preference_id`, y la
+ * diferencia es una rendija por la que se cuela un cobro doble: entre que
+ * [reservarPreferencia] escribe la fecha y la preferencia existe de verdad
+ * hay una llamada a Mercado Pago en vuelo. Exigir el id ahí devolvería null
+ * y dejaría pasar un cobro con tarjeta justo cuando está naciendo un enlace
+ * de pago para la misma orden.
+ *
+ * Por eso `initPoint` puede venir null: significa "reservada, todavía no
+ * hay enlace". Bloquea igual, pero no se puede ofrecer.
+ *
+ * @returns {{id: string|null, initPoint: string|null, expiraEn: Date}|null}
+ */
+function preferenciaVivaDeOrden(orden) {
+  if (!orden?.mp_preference_expires_at) return null;
+
+  const expira = new Date(orden.mp_preference_expires_at).getTime();
+  // Una fecha ilegible se trata como VIVA, no como caducada: ante la duda,
+  // bloquear un cobro es recuperable (se reintenta en unos minutos) y
+  // permitir uno duplicado no lo es.
+  if (Number.isFinite(expira) && expira <= Date.now()) return null;
+
+  return {
+    id: orden.mp_preference_id || null,
+    initPoint: orden.mp_preference_init_point || null,
+    expiraEn: Number.isFinite(expira) ? new Date(expira) : new Date(Date.now() + 60000),
+  };
+}
+
 function actualizarPagoDeOrden(orderId, { mpPaymentId, paymentStatus }) {
   const orden = db.getDb().prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
   if (!orden) return false;
@@ -514,6 +629,11 @@ module.exports = {
   listarOrdenesDeVendedor,
   actualizarPagoDeOrden,
   admiteNuevoIntentoDePago,
+  guardarPreferenciaDeOrden,
+  preferenciaVivaDeOrden,
+  reservarPreferencia,
+  liberarPreferencia,
+  MARGEN_PREFERENCIA_MS,
   marcarRequiereOtroMetodo,
   registrarEventoWebhook,
   eventoFueProcesado,

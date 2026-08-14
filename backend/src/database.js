@@ -1272,6 +1272,39 @@ function runMigrations() {
     }
   }
 
+  // 35. Preferencia de Mercado Pago viva de una orden.
+  //
+  //     Existe para impedir un COBRO DUPLICADO REAL. Con dos carriles de
+  //     pago sobre la misma orden —tarjeta dentro de la app y la cuenta de
+  //     Mercado Pago del comprador— aparece una ventana peligrosa: crear una
+  //     preferencia no cobra nada y deja la orden en 'pending', así que las
+  //     guardas de "esta orden ya fue procesada" no la ven. Mientras tanto
+  //     esa preferencia está viva y es pagable en Mercado Pago.
+  //
+  //     El escenario no necesita mala fe: alguien empieza a pagar con su
+  //     cuenta, se sale sin terminar, paga con tarjeta, y más tarde vuelve a
+  //     la pestaña de Mercado Pago que dejó abierta y la completa. Dos
+  //     cargos reales. El segundo ni siquiera queda registrado — el webhook
+  //     se niega a pisar un pago ya aprobado— así que el dinero desaparece
+  //     de nuestra vista.
+  //
+  //     Guardando la preferencia y hasta cuándo es pagable, el cobro con
+  //     tarjeta puede negarse mientras exista, y una segunda petición de
+  //     wallet devuelve LA MISMA preferencia en vez de crear otra.
+  const orderColsPref = db.prepare("PRAGMA table_info('orders')").all();
+  for (const [columna, tipo] of [
+    ['mp_preference_id', 'TEXT'],
+    ['mp_preference_init_point', 'TEXT'],
+    // ISO 8601. Se guarda con un margen por encima de la caducidad que se le
+    // pide a Mercado Pago: el bloqueo tiene que durar MÁS que la ventana en
+    // la que la preferencia se puede pagar, nunca menos.
+    ['mp_preference_expires_at', 'TEXT'],
+  ]) {
+    if (!orderColsPref.some(c => c.name === columna)) {
+      db.exec(`ALTER TABLE orders ADD COLUMN ${columna} ${tipo}`);
+    }
+  }
+
   console.log('🔄 Migración de schema completada');
 }
 

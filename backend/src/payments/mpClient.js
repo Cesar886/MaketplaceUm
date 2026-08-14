@@ -255,6 +255,54 @@ async function crearPago({ accessTokenVendedor, idempotencyKey, pago }) {
 }
 
 /**
+ * Crea una PREFERENCIA de checkout. Es el otro camino para cobrar la misma
+ * orden: en vez de un card_token generado en la app, se manda al comprador a
+ * Mercado Pago para que pague con su propia cuenta (saldo, sus tarjetas
+ * guardadas allí, o lo que tenga configurado).
+ *
+ * Endpoint: POST /checkout/preferences
+ * Credencial: access_token DEL VENDEDOR — igual que [crearPago], y por la
+ *             misma razón: la preferencia pertenece a la cuenta que cobra.
+ *
+ * Diferencia que importa y es fácil de equivocar: aquí la comisión de la
+ * plataforma NO se llama `application_fee` sino `marketplace_fee`. Es el
+ * mismo split, con otro nombre en otro endpoint; poner `application_fee` en
+ * una preferencia no da error, simplemente se ignora y la plataforma no
+ * cobra nada.
+ *
+ * El `X-Idempotency-Key` va atado a la orden: si la red se cae al pedir la
+ * preferencia y la app reintenta, se recupera la misma en vez de dejar dos
+ * preferencias vivas para una sola orden.
+ */
+async function crearPreferencia({ accessTokenVendedor, idempotencyKey, preferencia }) {
+  return peticion('POST', '/checkout/preferences', {
+    accessToken: accessTokenVendedor,
+    headers: { 'X-Idempotency-Key': idempotencyKey },
+    body: preferencia,
+  });
+}
+
+/**
+ * Lee una preferencia ya creada.
+ *
+ * Endpoint: GET /checkout/preferences/{id}
+ * Credencial: access_token DEL VENDEDOR (es su preferencia).
+ *
+ * No la usa ninguna ruta: existe para poder COMPROBAR desde fuera que MP
+ * guardó lo que le mandamos, y en concreto el `marketplace_fee`. Esa
+ * comprobación no se puede hacer con el eco de la creación —MP devuelve
+ * felizmente una preferencia válida aunque haya ignorado la comisión— y no
+ * tenerla es cómo se despliega un split que no reparte nada.
+ *
+ * Ver `scripts/verificar-marketplace-fee.js`.
+ */
+async function obtenerPreferencia(preferenceId, accessTokenVendedor) {
+  return peticion('GET', `/checkout/preferences/${encodeURIComponent(preferenceId)}`, {
+    accessToken: accessTokenVendedor,
+  });
+}
+
+/**
  * Consulta un pago. Se usa desde el webhook: la notificación de MP solo
  * trae un id, y el estado SIEMPRE se lee de la API — nunca del cuerpo de la
  * notificación, que no es una fuente de verdad confiable.
@@ -280,5 +328,7 @@ module.exports = {
   eliminarTarjetaDeCustomer,
   validarTokenVendedor,
   crearPago,
+  crearPreferencia,
+  obtenerPreferencia,
   obtenerPago,
 };

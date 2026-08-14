@@ -24,11 +24,282 @@ const mp = require('./mpClient');
 const metodos = require('./methods');
 const conexion = require('./connection');
 const { calcularComision, redondear2 } = require('./fees');
+const { comisionCobrable, esRechazoDeComision } = require('./comision');
 const { tokenVigenteDeVendedor } = require('./vendorTokens');
 const { validarFirma, procesarEvento } = require('./webhook');
+const { paginaPuente } = require('./paginaPuente');
 const { estadoDeAtencion, mensajeCerrado } = require('../validation/horarioNegocio');
 
 const MENSAJE_GENERICO = 'No pudimos completar la operación. Intenta de nuevo en unos minutos.';
+
+/**
+ * Cuánto tiempo es pagable una preferencia de Mercado Pago.
+ *
+ * Es a la vez el tiempo que la orden queda bloqueada para los demás métodos
+ * de pago (ver `prepararCobro`), así que el número tiene dos costes
+ * opuestos: de más, quien abandona el pago espera para poder usar la
+ * tarjeta; de menos, no da tiempo a terminar un checkout con la
+ * verificación del banco de por medio.
+ */
+const VENTANA_PREFERENCIA_MS = 15 * 60 * 1000;
+
+/**
+ * Fecha en el formato que Mercado Pago acepta en `expiration_date_to`.
+ *
+ * `Date.prototype.toISOString()` produce '…Z', y aunque es ISO 8601 válido,
+ * MP documenta y espera el desplazamiento explícito ('…+00:00'). La 'Z' ha
+ * dado 400 en sus endpoints, y aquí un 400 no degrada nada: tumba la
+ * creación de la preferencia y con ella todo el método de pago.
+ */
+function fechaMp(fecha) {
+  return fecha.toISOString().replace(/Z$/, '+00:00');
+}
+
+/**
+ * De qué tipo son las credenciales de LA PLATAFORMA, sin revelar su valor.
+ *
+ * Solo vale para las credenciales de la aplicación (`MP_ACCESS_TOKEN`,
+ * `MP_PUBLIC_KEY`), donde el prefijo sí significa lo que parece.
+ *
+ * NO sirve para el token de un VENDEDOR: los usuarios de prueba que
+ * autorizan por OAuth reciben tokens `APP_USR-` igual que las cuentas
+ * reales. Etiquetar uno de esos como "PRODUCCIÓN" es afirmar algo falso, y
+ * eso ya costó un diagnóstico entero — se persiguió una mezcla
+ * test/producción que nunca existió. Para el vendedor está
+ * [describirCuentaVendedor], que pregunta en vez de suponer.
+ */
+function tipoDeCredencialDePlataforma(valor) {
+  if (!valor) return 'ausente';
+  if (valor.startsWith('TEST-')) return 'PRUEBA (TEST-)';
+  if (valor.startsWith('APP_USR-')) return 'PRODUCCIÓN (APP_USR-)';
+  return 'desconocido';
+}
+
+/**
+ * Si la cuenta que va a cobrar es un usuario de prueba de Mercado Pago.
+ *
+ * Se resuelve con lo que responde `GET /users/me` con el token del vendedor,
+ * no con el prefijo del token. MP nombra a sus usuarios de prueba con nick
+ * `TESTUSER…` y correo en `@testuser.com`.
+ */
+function esCuentaDePrueba(usuarioMp) {
+  const nick = String(usuarioMp?.nickname || '');
+  const email = String(usuarioMp?.email || '');
+  return nick.startsWith('TESTUSER') || email.endsWith('@testuser.com');
+}
+
+/** Descripción del vendedor para el log: quién es, no qué prefijo tiene. */
+function describirCuentaVendedor(usuarioMp) {
+  if (!usuarioMp) return 'no identificada (MP no respondió a /users/me)';
+  const quien = `id=${usuarioMp.id ?? '?'} nick=${usuarioMp.nickname || '?'}`;
+  return esCuentaDePrueba(usuarioMp)
+    ? `${quien} — cuenta DE PRUEBA de Mercado Pago`
+    : `${quien} — cuenta real`;
+}
+
+/** ¿La URL apunta al checkout de sandbox de Mercado Pago? */
+function esEnlaceDeSandbox(url) {
+  try {
+    return /(^|\.)sandbox\./i.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Cuál de los dos enlaces de la preferencia se le da al comprador.
+ *
+ * Al crear una preferencia, MP devuelve DOS enlaces: `init_point` (checkout
+ * de producción, www.mercadopago.com.mx) y `sandbox_init_point`. Una
+ * preferencia creada con credenciales de PRUEBA solo es válida en el
+ * checkout de sandbox: abrirla en el de producción pinta la pantalla
+ * genérica "Oh, no, algo anduvo mal" sin importar con qué cuenta —real o de
+ * prueba— entre el comprador.
+ *
+ * Esto se decidía con `MP_USE_SANDBOX_INIT_POINT`, un interruptor manual en
+ * el .env. Ese diseño falló exactamente como fallan los interruptores
+ * manuales: quedó en 'false' en el servidor y estuvo mandando compradores al
+ * checkout de producción con preferencias de prueba, sin que nada avisara.
+ * Ahora la decisión sale del tipo de credencial y no hay nada que recordar.
+ *
+ * Las dos señales, porque ninguna basta sola:
+ *  - El token de la PLATAFORMA (`TEST-` vs `APP_USR-`), que sí se lee del
+ *    .env pero no es con el que se crea la preferencia.
+ *  - Quién es la cuenta del VENDEDOR, que es la que cobra y con cuyo token
+ *    se crea. Su prefijo no dice nada —los usuarios de prueba que autorizan
+ *    por OAuth también reciben tokens `APP_USR-`—, así que se mira quién es
+ *    según `GET /users/me`.
+ *
+ * Cualquiera de las dos en pruebas ⇒ sandbox. Las dos en producción ⇒
+ * `init_point`. Y antes de devolver nada se comprueba que el enlace elegido
+ * sea del checkout que toca (ver `verificarEnlaceCoherente`).
+ */
+function elegirInitPoint({ orden, preferencia, usuarioMpVendedor }) {
+  const normal = preferencia?.init_point || '';
+  const sandbox = preferencia?.sandbox_init_point || '';
+
+  const plataformaEnPruebas = String(cfg.config.accessToken || '').startsWith('TEST-');
+  const vendedorDePrueba = !!usuarioMpVendedor && esCuentaDePrueba(usuarioMpVendedor);
+  const enPruebas = plataformaEnPruebas || vendedorDePrueba;
+  const forzado = cfg.forzarSandboxInitPoint();
+  const tocaSandbox = enPruebas || forzado;
+
+  const porque = forzado && !enPruebas
+    ? 'MP_USE_SANDBOX_INIT_POINT=true lo fuerza (salida de emergencia)'
+    : [
+      `plataforma ${plataformaEnPruebas ? 'TEST-' : 'APP_USR-'}`,
+      usuarioMpVendedor
+        ? `vendedor ${vendedorDePrueba ? 'de PRUEBA' : 'real'}`
+        : 'vendedor sin identificar',
+    ].join(', ');
+
+  console.log(
+    `[pagos] Orden ${orden.id}: usando ${tocaSandbox ? 'SANDBOX' : 'PRODUCCIÓN'} `
+    + `porque las credenciales son de ${tocaSandbox ? 'PRUEBA' : 'PRODUCCIÓN'} (${porque})`,
+  );
+
+  if (tocaSandbox && !sandbox) {
+    // No se puede inventar el enlace: se usa el normal y se deja dicho a
+    // gritos, porque ese checkout va a fallar y el log tiene que decir por
+    // qué antes de que nadie mire la URL a mano.
+    console.error(
+      `[pagos] Orden ${orden.id}: credenciales de PRUEBA pero Mercado Pago no devolvió `
+      + 'sandbox_init_point. Se manda el enlace de producción y su checkout fallará: '
+      + 'revisa que la preferencia se esté creando con credenciales de prueba.',
+    );
+    return normal;
+  }
+
+  return tocaSandbox ? sandbox : normal;
+}
+
+/**
+ * Última red antes de darle la URL al comprador: que el checkout del enlace
+ * sea el del entorno de la credencial.
+ *
+ * Lanza en vez de avisar. Un enlace cruzado NO es pagable —es la pantalla de
+ * error de MP—, así que devolverlo solo cambia un fallo visible aquí por uno
+ * que el comprador descubre en Mercado Pago y nosotros nunca.
+ */
+function verificarEnlaceCoherente({ orden, url, preferencia, usuarioMpVendedor }) {
+  const plataformaEnPruebas = String(cfg.config.accessToken || '').startsWith('TEST-');
+  const enPruebas = plataformaEnPruebas
+    || (!!usuarioMpVendedor && esCuentaDePrueba(usuarioMpVendedor));
+  const esSandbox = esEnlaceDeSandbox(url);
+
+  // Con credenciales de prueba y enlace de producción solo se tolera el caso
+  // de arriba: que MP no haya dado ninguna alternativa (ya registrado).
+  if (enPruebas && !esSandbox && preferencia?.sandbox_init_point) {
+    throw new mp.MpError(
+      `Enlace cruzado: credenciales de PRUEBA con checkout de PRODUCCIÓN (${url})`,
+    );
+  }
+  if (!enPruebas && !cfg.forzarSandboxInitPoint() && esSandbox) {
+    throw new mp.MpError(
+      `Enlace cruzado: credenciales de PRODUCCIÓN con checkout de SANDBOX (${url})`,
+    );
+  }
+}
+
+/**
+ * Deja en el log todo lo necesario para diagnosticar un checkout que falla
+ * DESPUÉS de crearse bien.
+ *
+ * Existe por un caso concreto: MP responde 200, devolvemos su enlace, y al
+ * abrirlo su checkout pinta "algo salió mal". Con un log que solo decía
+ * "preferencia creada" era imposible distinguir un payload mal formado de
+ * una credencial cruzada o de una cuenta mal configurada.
+ *
+ * Todo pasa por `mp.redactar()`. No es ceremonia: las respuestas de MP hacen
+ * eco de parte de lo enviado, y este archivo imprime el payload entero.
+ */
+function registrarDiagnosticoPreferencia({ orden, payload, respuesta, usuarioMpVendedor }) {
+  console.log(
+    `[pagos][diag] Orden ${orden.id}: cuenta del vendedor = `
+    + `${describirCuentaVendedor(usuarioMpVendedor)}; credenciales de la `
+    + `plataforma = ${tipoDeCredencialDePlataforma(cfg.config.accessToken)}`,
+  );
+
+  // La mezcla que sí importa, comprobada contra quién es la cuenta y no
+  // contra el prefijo de su token.
+  const plataformaEnPruebas = String(cfg.config.accessToken || '').startsWith('TEST-');
+  if (usuarioMpVendedor && plataformaEnPruebas !== esCuentaDePrueba(usuarioMpVendedor)) {
+    console.warn(
+      `[pagos][diag] Orden ${orden.id}: INCONSISTENCIA de entorno. La plataforma está en `
+      + `${plataformaEnPruebas ? 'PRUEBAS' : 'PRODUCCIÓN'} y la cuenta del vendedor es `
+      + `${esCuentaDePrueba(usuarioMpVendedor) ? 'de PRUEBA' : 'real'}. `
+      + 'Mercado Pago no admite esta combinación y su checkout fallará al abrirse.',
+    );
+  }
+  if (cfg.depuracionPreferencia()) {
+    console.log(
+      `[pagos][diag] Orden ${orden.id}: payload -> POST /checkout/preferences: `
+      + JSON.stringify(mp.redactar(payload)),
+    );
+    console.log(
+      `[pagos][diag] Orden ${orden.id}: respuesta de Mercado Pago: `
+      + JSON.stringify(mp.redactar(respuesta)),
+    );
+  } else {
+    // Lo mismo en una línea legible. Estos cuatro datos son los que han
+    // hecho falta en cada vuelta del diagnóstico; el resto del volcado no
+    // se usó nunca sin saber ya qué se buscaba.
+    console.log(
+      `[pagos][diag] Orden ${orden.id}: preferencia ${respuesta?.id || '?'} `
+      + `collector_id=${respuesta?.collector_id ?? '?'} `
+      + `marketplace_fee=${respuesta?.marketplace_fee ?? '(sin comisión)'} `
+      + `sandbox_init_point=${respuesta?.sandbox_init_point ? 'sí' : 'no'}`,
+    );
+  }
+
+  if (respuesta?.sandbox_init_point) {
+    console.log(
+      `[pagos][diag] Orden ${orden.id}: MP devolvió también un sandbox_init_point. `
+      + 'Cuál se entrega lo decide el tipo de credencial (ver la línea "usando …" '
+      + 'que sigue), no una variable de entorno.',
+    );
+  }
+}
+
+/**
+ * Relee en Mercado Pago la preferencia recién creada y avisa si no guardó lo
+ * que se le mandó.
+ *
+ * Hace falta porque el eco de la creación NO sirve como comprobación: MP
+ * devuelve felizmente una preferencia válida aunque haya ignorado el
+ * `marketplace_fee`. Ese fallo no da ningún error —el comprador paga, la
+ * plataforma no cobra— y no se descubre hasta cuadrar cuentas.
+ *
+ * Es diagnóstico puro: nunca lanza. El enlace de pago ya existe y es válido,
+ * y dejar a alguien sin poder pagar porque una comprobación opcional falló
+ * sería cambiar un problema de contabilidad por uno de ventas.
+ */
+async function comprobarPreferenciaGuardada({ orden, preferenciaId, comisionEnviada, accessTokenVendedor }) {
+  try {
+    const guardada = await mp.obtenerPreferencia(preferenciaId, accessTokenVendedor);
+    if (cfg.depuracionPreferencia()) {
+      console.log(
+        `[pagos][diag] Orden ${orden.id}: preferencia releída de MP: `
+        + JSON.stringify(mp.redactar(guardada)),
+      );
+    }
+
+    const guardadaFee = Number(guardada?.marketplace_fee) || 0;
+    if (comisionEnviada > 0 && guardadaFee !== comisionEnviada) {
+      console.warn(
+        `[pagos][diag] Orden ${orden.id}: Mercado Pago NO guardó el marketplace_fee `
+        + `(enviado ${comisionEnviada}, guardado ${guardadaFee}). El cobro funcionará `
+        + 'igual, pero la plataforma no cobrará comisión en esta orden.',
+      );
+    }
+  } catch (err) {
+    console.warn(
+      `[pagos][diag] Orden ${orden.id}: falló la relectura de la preferencia `
+      + `${preferenciaId} (solo diagnóstico, el pago sigue su curso): `
+      + `${err?.message || err}`,
+    );
+  }
+}
 
 /**
  * Registra el fallo con todo el detalle en el servidor y responde algo
@@ -122,13 +393,36 @@ function tarjetaPublica(fila) {
  *
  * Debe montarse SIEMPRE después de requireAuth: sin `req.user` no hay clave.
  */
-function limitePorComprador({ minutos, max }) {
+function limitePorComprador({ minutos, max, soloSiSalioAMp = false }) {
   return rateLimit({
     windowMs: minutos * 60 * 1000,
     limit: max,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     keyGenerator: req => req.user.id,
+
+    // `soloSiSalioAMp` descuenta únicamente las peticiones que llegaron a
+    // tocar Mercado Pago. Lo usa el pago con cuenta de MP, donde el candado
+    // de la preferencia ya impide crear más de una por orden: sin esto,
+    // quien toca el botón varias veces gasta su cupo en respuestas 409 que
+    // no llegaron a MP, y acaba sin poder pagar durante un cuarto de hora
+    // por haber tenido prisa.
+    //
+    // El cobro con tarjeta NO lo usa: allí el límite existe contra el
+    // "card testing" (probar tarjetas robadas en lote), y ahí los intentos
+    // fallidos son justo los que hay que contar.
+    //
+    // Va por `skipFailedRequests` y no por `skip`: `skip` se evalúa ANTES
+    // del handler, cuando todavía no se sabe nada de lo que va a pasar.
+    // `skipFailedRequests` se resuelve al terminar la respuesta.
+    //
+    // Y el criterio es una marca explícita, no el código de estado: la
+    // respuesta que devuelve una preferencia ya creada es un 200 perfecto
+    // que NO tocó Mercado Pago, y contarla agota el cupo igual.
+    skipFailedRequests: soloSiSalioAMp,
+    requestWasSuccessful: soloSiSalioAMp
+      ? (req, res) => res.locals.salioAMercadoPago === true
+      : undefined,
     message: {
       error: 'Demasiados intentos de pago. Espera unos minutos antes de volver a intentarlo.',
     },
@@ -190,6 +484,173 @@ function ordenPublica(orden) {
   };
 }
 
+/**
+ * Todo lo que hay que comprobar ANTES de mover dinero por una orden, sea
+ * cual sea el carril de cobro.
+ *
+ * Existe porque hay dos formas de pagar la misma orden —tarjeta tokenizada
+ * en la app, o la cuenta de Mercado Pago del comprador— y las dos tienen que
+ * pasar exactamente por las mismas guardas. Duplicarlas en dos endpoints es
+ * cómo una de las dos se queda sin la comprobación de stock, o sin la de
+ * horario, la próxima vez que alguien toque una sola de ellas.
+ *
+ * Contrato: si algo falla, YA respondió a `res` y devuelve null. Quien llama
+ * solo tiene que hacer `if (!preparado) return;`.
+ *
+ * `metodo` no cambia ninguna decisión: solo la redacción de los mensajes,
+ * porque "ya no puede cobrar con tarjeta" es desconcertante para quien
+ * eligió pagar con su cuenta de Mercado Pago.
+ *
+ * @returns {Promise<{orden, comprador, vendedor, total: number, comision: number}|null>}
+ */
+async function prepararCobro(req, res, orderId, { metodo = 'tarjeta' } = {}) {
+  const comoTarjeta = metodo === 'tarjeta';
+
+  // La orden se busca filtrando por comprador: si es de otra persona,
+  // simplemente no aparece.
+  const orden = store.getOrden(req.user.id, String(orderId));
+  if (!orden) {
+    res.status(404).json({ error: 'Orden no encontrada.' });
+    return null;
+  }
+  // Un intento anterior solo deja reintentar si murió sin cobrar (una
+  // tarjeta rechazada). No basta con mirar `orden.status`: un pago que MP
+  // dejó 'in_process' deja la orden en 'pending', y cobrar otra vez ahí
+  // sería un cargo duplicado real. El criterio vive en el store, junto a
+  // los conjuntos de estados.
+  if (!store.admiteNuevoIntentoDePago(orden)) {
+    res.status(409).json({ error: 'Esta orden ya fue procesada.' });
+    return null;
+  }
+
+  // Una preferencia de Mercado Pago viva es un cobro que puede entrar en
+  // cualquier momento, aunque la orden siga en 'pending' y `admiteNuevoIntento`
+  // la deje pasar. Cobrar por otro camino mientras tanto es un cargo
+  // duplicado REAL, y encima invisible: el webhook del segundo pago se
+  // niega a pisar al primero, así que el dinero se cobra y no queda
+  // registrado en ninguna orden.
+  //
+  // No hay forma de cancelarla desde aquí, y por eso no se ofrece: mientras
+  // Mercado Pago la acepte, lo único seguro es esperar a que caduque.
+  const viva = store.preferenciaVivaDeOrden(orden);
+  if (viva && metodo !== 'cuenta_mp') {
+    const minutos = Math.max(1, Math.ceil((viva.expiraEn.getTime() - Date.now()) / 60000));
+    res.status(409).json({
+      error: 'Tienes un pago con Mercado Pago en curso para este pedido. '
+           + 'Termínalo ahí, o espera '
+           + `${minutos} minuto${minutos === 1 ? '' : 's'} para pagar de otra forma. `
+           + 'No pagues dos veces.',
+      motivo: 'preferencia_en_curso',
+      minutosRestantes: minutos,
+    });
+    return null;
+  }
+
+  const comprador = getSeller(req.user.id);
+  if (!comprador?.email) {
+    res.status(400).json({
+      error: 'Necesitas un correo en tu perfil para pagar en la app.',
+    });
+    return null;
+  }
+
+  // El vendedor tiene que poder recibir dinero ANTES de intentar cobrar:
+  // si no, MP devuelve un error opaco y el comprador no entiende nada.
+  const vendedor = getSeller(orden.vendor_id);
+  const cuenta = store.getCuentaVendedor(orden.vendor_id);
+  if (!cuenta) {
+    res.status(409).json({
+      error: `${vendedor?.name || 'Este vendedor'} todavía no puede recibir pagos en la app. `
+           + 'Contáctalo por chat para acordar otra forma de pago.',
+    });
+    return null;
+  }
+
+  // El total se RECALCULA desde order_items. Nunca se usa un monto que
+  // venga en el body: sería trivial pagar $1 por una orden de $1000. Esto
+  // es también lo que garantiza que los dos métodos cobren lo mismo: ambos
+  // salen de aquí con el total del servidor, no con uno que traiga la app.
+  const total = redondear2(
+    orden.items.reduce((s, i) => s + i.unit_price * i.quantity, 0),
+  );
+  if (total !== redondear2(orden.amount)) {
+    console.error(`[pagos] Orden ${orden.id}: total de items (${total}) `
+      + `!= amount guardado (${orden.amount})`);
+    res.status(409).json({ error: MENSAJE_GENERICO });
+    return null;
+  }
+
+  let comision;
+  try {
+    comision = calcularComision(total);
+  } catch (err) {
+    console.error(`[pagos] Comisión inválida en ${orden.id}: ${err.message}`);
+    res.status(503).json({ error: MENSAJE_GENERICO });
+    return null;
+  }
+
+  // ¿El vendedor está abierto? Se comprueba EN EL SERVIDOR: la app también
+  // lo pinta, pero la hora de un teléfono la cambia quien lo usa, y de esto
+  // depende que un cobro entre o no.
+  //
+  // Quien no tiene horario configurado no queda bloqueado: `abierto` es
+  // true en ese caso. Esa exigencia vive en la verificación, no aquí —
+  // cortarle las ventas a un vendedor por un requisito de perfil sería
+  // castigar al comprador por algo que no puede resolver.
+  const atencion = estadoDeAtencion(orden.vendor_id);
+  if (!atencion.abierto) {
+    res.status(409).json({
+      error: mensajeCerrado(vendedor?.name, atencion)
+        + ' Escríbele por chat para acordar la entrega.',
+      motivo: 'fuera_de_horario',
+      abreA: atencion.abreA,
+      diaAbre: atencion.diaAbre,
+    });
+    return null;
+  }
+
+  // ¿Sigue habiendo existencias? Entre que el comprador abrió la pantalla y
+  // toca pagar, otra persona pudo llevarse la última unidad. Comprobarlo
+  // aquí no elimina la carrera (dos cobros simultáneos pueden pasar los dos),
+  // pero sí el caso común, y el descuento usa MAX(0, ...) para que ni
+  // siquiera esa carrera deje el inventario en negativo.
+  const sinExistencias = existenciasInsuficientes(orden);
+  if (sinExistencias) {
+    res.status(409).json({
+      error: `${sinExistencias.title} ya no está disponible: `
+        + `quedan ${sinExistencias.disponible} y pediste ${sinExistencias.pedido}.`,
+      motivo: 'sin_stock',
+      productId: sinExistencias.id,
+    });
+    return null;
+  }
+
+  // Última comprobación antes de mover dinero: que la autorización del
+  // vendedor siga viva AHORA. Entre que se creó la orden y este momento
+  // pudo revocarla desde su panel de MP, y el webhook pudo no haber
+  // llegado. Sin esto la llamada de cobro falla con un error opaco y la
+  // orden se queda en 'pending' sin que nadie sepa qué hacer con ella.
+  const conectado = await conexion.validarConexion(orden.vendor_id);
+  if (!conectado.conectado) {
+    store.marcarRequiereOtroMetodo(orden.id);
+    avisarPagoNoDisponible(orden, vendedor);
+    res.status(409).json({
+      error: `${vendedor?.name || 'Este vendedor'} ya no puede cobrar `
+           + `${comoTarjeta ? 'con tarjeta' : 'por Mercado Pago'}. `
+           + 'Contáctalo por chat para acordar otra forma de pago.',
+      orderStatus: 'requires_other_method',
+    });
+    return null;
+  }
+
+  // `preferenciaViva` solo llega con valor por el carril de Mercado Pago:
+  // el de tarjeta ya se cortó arriba si existía.
+  return {
+    orden, comprador, vendedor, total, comision, preferenciaViva: viva,
+    usuarioMpVendedor: conectado.usuarioMp || null,
+  };
+}
+
 function register(app) {
   // ─── Configuración pública ────────────────────────────────
   //
@@ -228,39 +689,12 @@ function register(app) {
   // Lo abre el navegador del vendedor, no la app: por eso responde HTML y
   // no JSON, y termina mandando de vuelta al deep link.
   app.get('/api/payments/oauth/callback', async (req, res) => {
-    // Paleta y tipografía espejo de `website/app/globals.css` (que a su vez
-    // espeja `lib/app_theme.dart`), para que esta pantalla combine con la
-    // landing aunque no comparta build system con ella.
-    const iconoExito = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#a84b37" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>`;
-    const iconoError = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3d5c70" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
-
-    const paginaFinal = (titulo, texto, ok) => `<!doctype html>
-<html lang="es"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${titulo}</title>
-<style>
- *{box-sizing:border-box}
- body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
-      background:#fafaf8;color:#1b1a16;
-      display:flex;min-height:100vh;align-items:center;justify-content:center;
-      margin:0;padding:24px;line-height:1.55}
- .tarjeta{width:100%;max-width:380px;background:#fff;border-radius:20px;
-      box-shadow:0 4px 24px rgba(27,26,22,.08);padding:40px 28px;text-align:center}
- .icono{width:56px;height:56px;border-radius:999px;display:flex;
-      align-items:center;justify-content:center;margin:0 auto 20px;
-      background:${ok ? 'rgba(168,75,55,.12)' : 'rgba(61,92,112,.1)'}}
- h1{font-size:21px;font-weight:700;letter-spacing:-.01em;color:#2b4150;margin:0 0 10px}
- p{font-size:14px;color:#6e6b64;margin:0 0 28px}
- a{display:inline-block;width:100%;background:#a84b37;color:#fff;text-decoration:none;
-   padding:14px 24px;border-radius:12px;font-weight:600;font-size:15px}
- a:active{background:#8f3f2e}
-</style></head><body>
-<div class="tarjeta">
-<div class="icono">${ok ? iconoExito : iconoError}</div>
-<h1>${titulo}</h1><p>${texto}</p>
-<a href="${cfg.config.appDeepLinkScheme}://payments/connected?ok=${ok ? '1' : '0'}">Volver a Mercadito UM</a>
-</div>
-</body></html>`;
+    const paginaFinal = (titulo, texto, ok) => paginaPuente({
+      titulo,
+      texto,
+      ok,
+      deepLink: `${cfg.config.appDeepLinkScheme}://payments/connected?ok=${ok ? '1' : '0'}`,
+    });
 
     try {
       if (!cfg.estaConfigurado()) {
@@ -637,105 +1071,12 @@ function register(app) {
       return res.status(400).json({ error: 'Faltan datos para procesar el pago.' });
     }
 
-    // La orden se busca filtrando por comprador: si es de otra persona,
-    // simplemente no aparece.
-    const orden = store.getOrden(req.user.id, String(orderId));
-    if (!orden) return res.status(404).json({ error: 'Orden no encontrada.' });
-    // Un intento anterior solo deja reintentar si murió sin cobrar (una
-    // tarjeta rechazada). No basta con mirar `orden.status`: un pago que MP
-    // dejó 'in_process' deja la orden en 'pending', y cobrar otra vez ahí
-    // sería un cargo duplicado real. El criterio vive en el store, junto a
-    // los conjuntos de estados.
-    if (!store.admiteNuevoIntentoDePago(orden)) {
-      return res.status(409).json({ error: 'Esta orden ya fue procesada.' });
-    }
-
-    const comprador = getSeller(req.user.id);
-    if (!comprador?.email) {
-      return res.status(400).json({
-        error: 'Necesitas un correo en tu perfil para pagar en la app.',
-      });
-    }
-
-    // El vendedor tiene que poder recibir dinero ANTES de intentar cobrar:
-    // si no, MP devuelve un error opaco y el comprador no entiende nada.
-    const vendedor = getSeller(orden.vendor_id);
-    const cuenta = store.getCuentaVendedor(orden.vendor_id);
-    if (!cuenta) {
-      return res.status(409).json({
-        error: `${vendedor?.name || 'Este vendedor'} todavía no puede recibir pagos en la app. `
-             + 'Contáctalo por chat para acordar otra forma de pago.',
-      });
-    }
-
-    // El total se RECALCULA desde order_items. Nunca se usa un monto que
-    // venga en el body: sería trivial pagar $1 por una orden de $1000.
-    const total = redondear2(
-      orden.items.reduce((s, i) => s + i.unit_price * i.quantity, 0),
-    );
-    if (total !== redondear2(orden.amount)) {
-      console.error(`[pagos] Orden ${orden.id}: total de items (${total}) `
-        + `!= amount guardado (${orden.amount})`);
-      return res.status(409).json({ error: MENSAJE_GENERICO });
-    }
-
-    let comision;
-    try {
-      comision = calcularComision(total);
-    } catch (err) {
-      console.error(`[pagos] Comisión inválida en ${orden.id}: ${err.message}`);
-      return res.status(503).json({ error: MENSAJE_GENERICO });
-    }
-
-    // ¿El vendedor está abierto? Se comprueba EN EL SERVIDOR: la app también
-    // lo pinta, pero la hora de un teléfono la cambia quien lo usa, y de esto
-    // depende que un cobro entre o no.
-    //
-    // Quien no tiene horario configurado no queda bloqueado: `abierto` es
-    // true en ese caso. Esa exigencia vive en la verificación, no aquí —
-    // cortarle las ventas a un vendedor por un requisito de perfil sería
-    // castigar al comprador por algo que no puede resolver.
-    const atencion = estadoDeAtencion(orden.vendor_id);
-    if (!atencion.abierto) {
-      return res.status(409).json({
-        error: mensajeCerrado(vendedor?.name, atencion)
-          + ' Escríbele por chat para acordar la entrega.',
-        motivo: 'fuera_de_horario',
-        abreA: atencion.abreA,
-        diaAbre: atencion.diaAbre,
-      });
-    }
-
-    // ¿Sigue habiendo existencias? Entre que el comprador abrió la pantalla y
-    // toca pagar, otra persona pudo llevarse la última unidad. Comprobarlo
-    // aquí no elimina la carrera (dos cobros simultáneos pueden pasar los dos),
-    // pero sí el caso común, y el descuento usa MAX(0, ...) para que ni
-    // siquiera esa carrera deje el inventario en negativo.
-    const sinExistencias = existenciasInsuficientes(orden);
-    if (sinExistencias) {
-      return res.status(409).json({
-        error: `${sinExistencias.title} ya no está disponible: `
-          + `quedan ${sinExistencias.disponible} y pediste ${sinExistencias.pedido}.`,
-        motivo: 'sin_stock',
-        productId: sinExistencias.id,
-      });
-    }
-
-    // Última comprobación antes de mover dinero: que la autorización del
-    // vendedor siga viva AHORA. Entre que se creó la orden y este momento
-    // pudo revocarla desde su panel de MP, y el webhook pudo no haber
-    // llegado. Sin esto la llamada de cobro falla con un error opaco y la
-    // orden se queda en 'pending' sin que nadie sepa qué hacer con ella.
-    const conectado = await conexion.validarConexion(orden.vendor_id);
-    if (!conectado.conectado) {
-      store.marcarRequiereOtroMetodo(orden.id);
-      avisarPagoNoDisponible(orden, vendedor);
-      return res.status(409).json({
-        error: `${vendedor?.name || 'Este vendedor'} ya no puede cobrar con tarjeta. `
-             + 'Contáctalo por chat para acordar otra forma de pago.',
-        orderStatus: 'requires_other_method',
-      });
-    }
+    // Las mismas guardas que usa el pago con cuenta de Mercado Pago: orden
+    // del comprador, no cobrada ya, vendedor abierto, con stock y con la
+    // autorización viva, y el total recalculado en el servidor.
+    const preparado = await prepararCobro(req, res, orderId, { metodo: 'tarjeta' });
+    if (!preparado) return;
+    const { orden, comprador, vendedor, total, comision } = preparado;
 
     try {
       const tokenVendedor = await tokenVigenteDeVendedor(orden.vendor_id);
@@ -748,6 +1089,15 @@ function register(app) {
       const descripcion = orden.items.length === 1
         ? String(orden.items[0].title_snapshot || 'Compra en Mercadito UM').slice(0, 60)
         : `Compra en Mercadito UM (${orden.items.length} productos)`;
+
+      // La comisión que de verdad se puede cobrar en ESTE cobro. Puede
+      // salir 0 —vendedor que es la propia cuenta de la aplicación, o
+      // PLATFORM_FEE_ENABLED=false— y entonces no se manda el campo: MP
+      // rechaza el pago ENTERO con el error 2059 si se le manda un
+      // application_fee que no aplica. Ver payments/comision.js.
+      const comisionAEnviar = await comisionCobrable(
+        comision, tokenVendedor.mpUserId, `Orden ${orden.id}`,
+      );
 
       // Endpoint: POST /v1/payments con el ACCESS TOKEN DEL VENDEDOR.
       // `application_fee` es la comisión que retiene la plataforma; el resto
@@ -777,7 +1127,9 @@ function register(app) {
           // Nuestro id de orden viaja a MP para poder reconciliar desde el
           // webhook aunque se pierda la respuesta de esta llamada.
           external_reference: orden.id,
-          application_fee: comision,
+          // `undefined` y no 0: un application_fee de 0 explícito también lo
+          // rechaza MP. El campo tiene que desaparecer del cuerpo.
+          application_fee: comisionAEnviar > 0 ? comisionAEnviar : undefined,
           notification_url: `${cfg.config.appPublicUrl}/api/payments/webhook`,
           statement_descriptor: 'MERCADITOUM',
         },
@@ -823,6 +1175,23 @@ function register(app) {
                  + 'Contáctalo por chat para acordar otra forma de pago.',
         });
       }
+      // El 2059 llega como 400, pero NO es un problema de la tarjeta: es la
+      // configuración del split. Sin esta rama se traduciría a "intenta con
+      // otra tarjeta" y quien compra quemaría intentos del límite
+      // antifraude probando tarjetas que están perfectas.
+      if (err instanceof mp.MpError && esRechazoDeComision(err)) {
+        return fallo(res, `Checkout de la orden ${orden.id} (error 2059: `
+          + 'Mercado Pago no admite application_fee en este cobro. Revisa que la '
+          + 'aplicación de MP esté creada con el modelo de integración '
+          + '"Marketplace" y que el vendedor no sea la cuenta dueña de la '
+          + 'aplicación)', err, {
+          status: 409,
+          mensaje: 'No pudimos cobrar este pedido por una configuración de la '
+                 + 'plataforma. No es tu tarjeta: no vuelvas a intentarlo, ya '
+                 + 'estamos avisados.',
+        });
+      }
+
       if (err instanceof mp.MpError && err.status >= 400 && err.status < 500) {
         return fallo(res, `Checkout de la orden ${orden.id} (rechazo de MP)`, err, {
           status: 400,
@@ -831,6 +1200,302 @@ function register(app) {
       }
       fallo(res, `Checkout de la orden ${orden.id}`, err);
     }
+  });
+
+  // ─── 6b. Checkout con la cuenta de Mercado Pago del comprador ──
+  //
+  // El otro carril de cobro de la MISMA orden. En vez de tokenizar una
+  // tarjeta en la app, se crea una preferencia en la cuenta del vendedor y
+  // se manda al comprador a Mercado Pago, donde entra con sus credenciales
+  // y paga con lo que tenga (saldo, sus tarjetas guardadas allí, meses sin
+  // intereses…). Nosotros no vemos nada de eso.
+  //
+  // Esto NO es migrar a Checkout Pro: el pago con tarjeta dentro de la app
+  // sigue existiendo igual, y las dos rutas cobran la misma orden, con el
+  // mismo total recalculado en el servidor y la misma comisión.
+  //
+  // El límite es más holgado que el de /checkout porque aquí no hay nada
+  // que probar en lote: crear una preferencia no dice si una tarjeta sirve.
+  // Existe solo para que nadie llene la cuenta del vendedor de preferencias.
+  app.post('/api/payments/checkout/wallet', requireAuth,
+    limitePorComprador({ minutos: 15, max: 20, soloSiSalioAMp: true }), async (req, res) => {
+    if (!cfg.assertConfigurado(res)) return;
+
+    const { order_id: orderId } = req.body || {};
+    if (!orderId) {
+      return res.status(400).json({ error: 'Faltan datos para procesar el pago.' });
+    }
+
+    const preparado = await prepararCobro(req, res, orderId, { metodo: 'cuenta_mp' });
+    if (!preparado) return;
+    const {
+      orden, comprador, vendedor, total, comision, preferenciaViva, usuarioMpVendedor,
+    } = preparado;
+
+    // Ya hay una preferencia pagable para esta orden: se devuelve ESA. Crear
+    // una segunda dejaría dos enlaces vivos capaces de cobrar lo mismo, y
+    // basta con que alguien tenga las dos pestañas abiertas para pagar dos
+    // veces. Es también lo que hace que volver a tocar "Pagar" tras salir al
+    // navegador sea inofensivo.
+    if (preferenciaViva?.initPoint) {
+      return res.json({
+        orderId: orden.id,
+        preferenceId: preferenciaViva.id,
+        initPoint: preferenciaViva.initPoint,
+        amount: total,
+      });
+    }
+
+    // Reservada pero sin enlace todavía: otra petición de esta misma orden
+    // está hablando con Mercado Pago ahora mismo. No se crea una segunda
+    // —serían dos enlaces vivos— y tampoco se puede devolver la suya, que
+    // aún no existe.
+    if (preferenciaViva) {
+      return res.status(409).json({
+        error: 'Ya estamos preparando tu pago. Espera unos segundos e intenta de nuevo.',
+        motivo: 'preferencia_en_curso',
+      });
+    }
+
+    try {
+      const tokenVendedor = await tokenVigenteDeVendedor(orden.vendor_id);
+      if (!tokenVendedor?.accessToken) {
+        return res.status(409).json({
+          error: `${vendedor?.name || 'Este vendedor'} necesita reconectar su cuenta de pagos.`,
+        });
+      }
+
+      const vuelta = `${cfg.config.appPublicUrl}/api/payments/wallet/return`;
+
+      // Mismo criterio que el cobro con tarjeta: si la comisión no se puede
+      // cobrar, el campo no se manda. Aquí MP es más traicionero — una
+      // preferencia con un marketplace_fee que no aplica se crea SIN error
+      // y el comprador paga: lo que falla en silencio es el reparto.
+      const comisionAEnviar = await comisionCobrable(
+        comision, tokenVendedor.mpUserId, `Orden ${orden.id} (wallet)`,
+      );
+
+      // La preferencia se arma desde `orden.items`, no desde el body: es lo
+      // que hace que el desglose que ve el comprador en Mercado Pago sea el
+      // mismo que vio en la app. `unit_price` sale de order_items, donde
+      // quedó CONGELADO al crear la orden — así que si el vendedor cambió el
+      // precio (o el descuento) desde entonces, se cobra el acordado.
+      // Ventana en la que Mercado Pago aceptará este pago. Es también el
+      // tiempo que la orden queda bloqueada para los demás métodos, así que
+      // es un equilibrio: de más, quien abandona el pago se queda esperando
+      // para poder pagar con tarjeta; de menos, no da tiempo a completar un
+      // checkout con 3-D Secure de por medio.
+      const caduca = new Date(Date.now() + VENTANA_PREFERENCIA_MS);
+
+      // El candado se echa ANTES de hablar con Mercado Pago, porque la
+      // carrera ocurre justo durante esa espera: Node atiende otra petición
+      // mientras tanto, y sin esto las dos llegarían a crear su propia
+      // preferencia. De dos simultáneas, exactamente una entra aquí.
+      if (!store.reservarPreferencia(orden.id, caduca)) {
+        return res.status(409).json({
+          error: 'Ya estamos preparando tu pago. Espera unos segundos e intenta de nuevo.',
+          motivo: 'preferencia_en_curso',
+        });
+      }
+
+      // Marca para el límite de intentos: a partir de aquí la petición sí
+      // consume cuota, porque sí crea una preferencia en la cuenta del
+      // vendedor. Se pone ANTES de la llamada para que un fallo de MP
+      // también cuente: si no, un error repetible daría intentos infinitos.
+      res.locals.salioAMercadoPago = true;
+
+      // El payload se arma aparte para poder registrarlo tal cual salió.
+      // Reconstruirlo en el log sería peor que no tenerlo: acabaría
+      // divergiendo de lo que de verdad se envió, que es justo el dato que
+      // hace falta cuando MP acepta la preferencia y su checkout falla.
+      const payloadPreferencia = {
+        // La clave lleva la ventana, no solo la orden. Atada solo a la
+        // orden, Mercado Pago devolvería para siempre la PRIMERA
+        // preferencia: en cuanto caducara, esa orden quedaría imposible de
+        // pagar por este camino y sin ningún error que lo explicara.
+        //
+        // Y no puede ser un valor aleatorio: dos toques seguidos al botón
+        // crearían dos preferencias vivas, que es el cobro duplicado que
+        // todo este bloque existe para evitar. El reintento dentro de la
+        // misma ventana tiene que colapsar en la misma preferencia.
+        idempotencyKey: `pref-${orden.id}-${Math.floor(Date.now() / VENTANA_PREFERENCIA_MS)}`,
+        preferencia: {
+          items: orden.items.map(item => ({
+            id: item.product_id,
+            title: String(item.title_snapshot || 'Producto').slice(0, 250),
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            currency_id: orden.currency,
+          })),
+          // Con un vendedor de PRUEBA el correo del comprador se omite a
+          // propósito. Mercado Pago rechaza los pagos de prueba cuyo
+          // `payer.email` no corresponde a la cuenta con la que se entra al
+          // checkout, y el correo de Mercadito nunca es el del usuario de
+          // prueba comprador (`test_user_…@testuser.com`). Sin el campo, MP
+          // usa el de la sesión. En producción sí va: ahí el correo es el
+          // bueno y quitarlo obligaría a escribirlo a mano.
+          payer: esCuentaDePrueba(usuarioMpVendedor)
+            ? undefined
+            : { email: comprador.email },
+
+          // El split, con el nombre que tiene en ESTE endpoint. En
+          // /v1/payments se llama `application_fee`; aquí `marketplace_fee`.
+          // Escribir el otro no da error: simplemente no se cobra comisión.
+          marketplace_fee: comisionAEnviar > 0 ? comisionAEnviar : undefined,
+
+          // Mismo external_reference que el cobro con tarjeta. Es lo que
+          // permite que el webhook —que ya resuelve la orden por este
+          // campo— concilie este pago sin una sola línea nueva.
+          external_reference: orden.id,
+          notification_url: `${cfg.config.appPublicUrl}/api/payments/webhook`,
+          statement_descriptor: 'MERCADITOUM',
+
+          back_urls: {
+            success: `${vuelta}?orden=${encodeURIComponent(orden.id)}&r=ok`,
+            pending: `${vuelta}?orden=${encodeURIComponent(orden.id)}&r=pendiente`,
+            failure: `${vuelta}?orden=${encodeURIComponent(orden.id)}&r=error`,
+          },
+          auto_return: 'approved',
+
+          // Sin caducidad, una preferencia abandonada sigue siendo pagable
+          // días después, cuando el producto ya se vendió a otra persona y
+          // el stock que se comprobó arriba no significa nada.
+          expires: true,
+          expiration_date_to: fechaMp(caduca),
+        },
+      };
+
+      const preferencia = await mp.crearPreferencia({
+        accessTokenVendedor: tokenVendedor.accessToken,
+        ...payloadPreferencia,
+      });
+
+      registrarDiagnosticoPreferencia({
+        orden,
+        payload: payloadPreferencia.preferencia,
+        respuesta: preferencia,
+        usuarioMpVendedor,
+      });
+
+      const initPoint = elegirInitPoint({ orden, preferencia, usuarioMpVendedor });
+
+      // Qué enlace se entregó de verdad. La línea de arriba dice qué se
+      // DECIDIÓ; esta dice qué salió. "Lo probamos" y "creemos que lo
+      // probamos" son cosas distintas cuando se descartan hipótesis.
+      console.log(
+        `[pagos][diag] Orden ${orden.id}: enlace devuelto al comprador: ${initPoint || '(ninguno)'}`,
+      );
+
+      if (!initPoint) {
+        // Sin enlace no se puede mandar a nadie a pagar, pero si Mercado
+        // Pago devolvió un id, esa preferencia EXISTE y puede ser pagable.
+        // Se apunta para que el bloqueo la tenga en cuenta: soltar aquí el
+        // candado dejaría cobrar con tarjeta una orden con un enlace de
+        // pago vivo del que no sabríamos nada.
+        if (preferencia?.id) {
+          store.guardarPreferenciaDeOrden(orden.id, {
+            preferenceId: preferencia.id, initPoint: '', expiraEn: caduca,
+          });
+        }
+        throw new mp.MpError('Preferencia creada sin init_point');
+      }
+
+      // Se apunta ANTES de responder. Si se guardara después —o no se
+      // guardara— existiría una preferencia pagable en Mercado Pago de la
+      // que este servidor no sabe nada, y el bloqueo del cobro con tarjeta
+      // no la vería: justo el agujero de cobro duplicado.
+      store.guardarPreferenciaDeOrden(orden.id, {
+        preferenceId: preferencia.id,
+        initPoint,
+        expiraEn: caduca,
+      });
+
+      // Última red antes de que la URL salga de este proceso. Va DESPUÉS de
+      // apuntarla por lo mismo que el caso de arriba: la preferencia ya
+      // existe en MP y tiene que quedar registrada aunque esto lance.
+      verificarEnlaceCoherente({ orden, url: initPoint, preferencia, usuarioMpVendedor });
+
+      console.log(`[pagos] Orden ${orden.id}: preferencia ${preferencia.id} creada`);
+
+      // Se comprueba contra MP qué quedó guardado de verdad. Va antes de
+      // responder —y no en segundo plano— para que el log del fallo salga
+      // junto al de la creación: perseguir un problema de pagos con las dos
+      // mitades separadas en el tiempo es la diferencia entre diagnosticarlo
+      // y adivinarlo. Cuesta una llamada más a MP en un flujo que ya está
+      // esperando a MP, y no puede fallar (ver la función).
+      await comprobarPreferenciaGuardada({
+        orden,
+        preferenciaId: preferencia.id,
+        comisionEnviada: comisionAEnviar > 0 ? comisionAEnviar : 0,
+        accessTokenVendedor: tokenVendedor.accessToken,
+      });
+
+      // NO se toca el estado de la orden: crear una preferencia no es haber
+      // pagado. Quien la mueve es el webhook, igual que con la tarjeta.
+      res.json({
+        orderId: orden.id,
+        preferenceId: preferencia.id,
+        initPoint,
+        amount: total,
+      });
+    } catch (err) {
+      // El candado solo se suelta cuando Mercado Pago RECHAZÓ la petición
+      // (4xx): ahí es seguro que no creó nada. Ante un timeout o un 5xx no
+      // se sabe si la preferencia llegó a existir, y soltarlo permitiría
+      // cobrar con tarjeta una orden que quizá tiene un enlace de pago
+      // vivo. Quedarse bloqueado unos minutos es recuperable; un cobro
+      // duplicado no. `liberarPreferencia` no hace nada si ya se guardó una
+      // preferencia, así que no puede desbloquear un enlace real.
+      if (err instanceof mp.MpError && err.status >= 400 && err.status < 500) {
+        store.liberarPreferencia(orden.id);
+      }
+
+      if (err instanceof mp.MpError && (err.status === 401 || err.status === 403)) {
+        conexion.desconectar(orden.vendor_id, {
+          motivo: 'Mercado Pago rechazó el token del vendedor al crear la preferencia',
+          por: 'token_check',
+        });
+        store.marcarRequiereOtroMetodo(orden.id);
+        avisarPagoNoDisponible(orden, vendedor);
+        return fallo(res, `Preferencia de la orden ${orden.id} (token revocado)`, err, {
+          status: 409,
+          mensaje: `${vendedor?.name || 'Este vendedor'} ya no puede cobrar por Mercado Pago. `
+                 + 'Contáctalo por chat para acordar otra forma de pago.',
+        });
+      }
+      fallo(res, `Preferencia de la orden ${orden.id}`, err);
+    }
+  });
+
+  // Puente de vuelta desde Mercado Pago hacia la app.
+  //
+  // Sin `requireAuth`: quien llega aquí es un navegador que viene de un
+  // redirect de MP, sin la sesión de la app. Y da igual, porque esta ruta no
+  // consulta ni modifica nada — solo pinta un botón hacia el deep link. El
+  // estado real del pago lo resuelve la app preguntando por su orden con su
+  // propio token, y la verdad la escribe el webhook.
+  //
+  // Deliberadamente NO se cree lo que dice el parámetro `r`: es el resultado
+  // que afirma un redirect, y un redirect lo puede fabricar cualquiera
+  // escribiendo la URL a mano. Solo cambia el texto que se lee mientras la
+  // app termina de comprobarlo.
+  app.get('/api/payments/wallet/return', (req, res) => {
+    const orden = String(req.query.orden || '');
+    const resultado = String(req.query.r || '');
+
+    const { titulo, texto, ok } = resultado === 'ok'
+      ? { titulo: 'Pago enviado', texto: 'Vuelve a Mercadito UM para ver la confirmación.', ok: true }
+      : resultado === 'pendiente'
+        ? { titulo: 'Pago en revisión', texto: 'Mercado Pago está revisando tu pago. Vuelve a la app para seguirlo.', ok: true }
+        : { titulo: 'Pago no completado', texto: 'No se completó el pago. Puedes intentarlo de nuevo desde la app.', ok: false };
+
+    res.send(paginaPuente({
+      titulo,
+      texto,
+      ok,
+      deepLink: `${cfg.config.appDeepLinkScheme}://payments/wallet-return`
+        + `?orden=${encodeURIComponent(orden)}`,
+    }));
   });
 
   // ─── 7. Webhook ───────────────────────────────────────────

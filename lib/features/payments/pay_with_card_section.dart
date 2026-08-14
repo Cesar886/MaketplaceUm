@@ -92,11 +92,23 @@ class _PayWithCardSectionState extends State<PayWithCardSection> {
 
   @override
   Widget build(BuildContext context) {
-    // `puedeCobrarConTarjeta` y no `aceptaTarjeta`: la condición es que su
-    // cuenta COBRE, no que haya marcado el checkbox de 'tarjeta' en su
-    // perfil. Es literalmente lo que exige /payments/checkout, y ser más
-    // estricto aquí le esconde ventas a un vendedor que sí puede cobrarlas.
-    if (_metodos?.puedeCobrarConTarjeta != true) return const SizedBox.shrink();
+    // `puedeCobrarEnLaApp` y no `aceptaTarjeta`: la condición es que su
+    // cuenta COBRE por algún carril, no que haya marcado el checkbox de
+    // 'tarjeta' en su perfil. Es literalmente lo que exige
+    // /payments/checkout, y ser más estricto aquí le esconde ventas a un
+    // vendedor que sí puede cobrarlas.
+    //
+    // Incluye el pago con la cuenta de Mercado Pago del comprador porque hay
+    // un caso —cuenta conectada cuyo OAuth no devolvió public key— en el que
+    // ese es el ÚNICO carril que funciona. Mirar solo la tarjeta dejaría a
+    // ese vendedor sin ninguna puerta al checkout: la opción existiría en la
+    // pantalla de pago y no habría forma de llegar a ella.
+    final metodos = _metodos;
+    if (metodos?.puedeCobrarEnLaApp != true) return const SizedBox.shrink();
+
+    // Prometer "tarjeta" a quien solo puede pagar con su cuenta de Mercado
+    // Pago es mandarlo al checkout a encontrarse esa opción apagada.
+    final soloCuentaMp = !metodos!.puedeCobrarConTarjeta;
 
     final colors = context.colors;
     // Cerrado o agotado NO ocultan la sección, la deshabilitan con el motivo.
@@ -186,13 +198,22 @@ class _PayWithCardSectionState extends State<PayWithCardSection> {
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.credit_card_rounded, size: 19),
+                  : Icon(
+                      soloCuentaMp
+                          ? Icons.account_balance_wallet_rounded
+                          : Icons.credit_card_rounded,
+                      size: 19,
+                    ),
               label: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 // Sin estilo propio: el foreground lo pone el tema del botón,
                 // y fijarlo aquí lo dejaría ilegible al cambiar de swatch.
                 child: Text(
-                  widget.pagando ? 'Preparando tu pago…' : 'Pagar con tarjeta',
+                  widget.pagando
+                      ? 'Preparando tu pago…'
+                      : (soloCuentaMp
+                            ? 'Pagar con Mercado Pago'
+                            : 'Pagar con tarjeta'),
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,

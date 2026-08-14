@@ -1,18 +1,51 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app_theme.dart';
 import '../../services/api_error.dart';
 import 'add_card_screen.dart';
+import 'checkout_methods.dart';
 import 'mp_tokenizer.dart';
 import 'payment_models.dart';
 import 'payments_api.dart';
+
+/// En qué punto va el pago con la cuenta de Mercado Pago.
+///
+/// Ese pago ocurre FUERA de la app, así que no basta con un bool de
+/// "cargando": entre tocar el botón y saber el resultado hay tres esperas
+/// distintas —preparar la preferencia, la persona pagando en el navegador, y
+/// nosotros preguntando si ya llegó— y cada una necesita decir algo
+/// diferente. Un solo bool las colapsaría en un spinner eterno.
+enum _FaseCuentaMp {
+  inicial,
+
+  /// Pidiendo la preferencia al backend. Dura poco.
+  preparando,
+
+  /// La persona está en Mercado Pago. La app no puede hacer nada más que
+  /// esperar a que vuelva.
+  enMercadoPago,
+
+  /// Volvió: se pregunta por la orden hasta que el webhook la mueva.
+  verificando,
+}
 
 /// Pantalla de pago de UNA orden.
 ///
 /// Una orden es siempre de un vendedor. Si la compra salió de un carrito con
 /// varios vendedores, quien navega hasta aquí lo hace una vez por orden (ver
 /// [PaymentsApi.crearOrdenesDesdeCarrito]).
+///
+/// Hay DOS carriles para cobrar la misma orden y conviven en esta pantalla:
+///
+///  - **Tarjeta**: el formulario propio de la app. El número y el CVV van
+///    del dispositivo a Mercado Pago sin pasar por nuestro servidor.
+///  - **Cuenta de Mercado Pago**: se manda a la persona a Mercado Pago, que
+///    cobra con lo que tenga allí. Nosotros no vemos nada de eso.
+///
+/// Los dos cobran EL MISMO importe: ninguno manda el monto: los dos llaman a
+/// un endpoint que lo recalcula desde `order_items` en el servidor.
 ///
 /// Detalle que parece redundante y no lo es: aunque la tarjeta esté
 /// guardada, se pide el CVV y se genera un token NUEVO en cada pago. Es lo
@@ -28,7 +61,8 @@ class CheckoutScreen extends StatefulWidget {
   State<CheckoutScreen> createState() => _CheckoutScreenState();
 }
 
-class _CheckoutScreenState extends State<CheckoutScreen> {
+class _CheckoutScreenState extends State<CheckoutScreen>
+    with WidgetsBindingObserver {
   final _cvv = TextEditingController();
 
   /// Métodos y clave pública DEL VENDEDOR de esta orden. Sustituye a la
@@ -40,17 +74,52 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String? _error;
   bool _pagando = false;
 
+  /// Carril elegido. Se fija al cargar según lo que el vendedor pueda
+  /// cobrar, no con un valor por defecto fijo: preseleccionar tarjeta a un
+  /// vendedor que solo puede cobrar por Mercado Pago arranca la pantalla en
+  /// la única opción que no funciona.
+  MetodoDePagoId _metodoActivo = MetodoDePagoId.tarjeta;
+
+  _FaseCuentaMp _faseMp = _FaseCuentaMp.inicial;
+
+  /// Se salió al navegador y falta volver. Lo lee el ciclo de vida para
+  /// distinguir "la app se reanudó porque volvimos de Mercado Pago" de "se
+  /// reanudó porque alguien atendió una llamada".
+  bool _volviendoDeMercadoPago = false;
+
+  /// Corta un sondeo en curso. Se incrementa al salir de la pantalla o al
+  /// cambiar de método: sin esto, un sondeo lanzado hace un minuto sigue
+  /// vivo y puede empujar una pantalla de resultado encima de lo que la
+  /// persona esté haciendo ahora.
+  int _generacionDeSondeo = 0;
+
+  /// Hay algo en vuelo: ningún método puede empezar otra operación.
+  bool get _ocupado => _pagando || _faseMp != _FaseCuentaMp.inicial;
+
   @override
   void initState() {
     super.initState();
+    // Volver del navegador reanuda la app: es la señal para preguntar si el
+    // pago llegó, sin obligar a nadie a pulsar nada.
+    WidgetsBinding.instance.addObserver(this);
     _cargar();
   }
 
   @override
   void dispose() {
+    _generacionDeSondeo++;
+    WidgetsBinding.instance.removeObserver(this);
     _cvv.clear();
     _cvv.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _volviendoDeMercadoPago) {
+      _volviendoDeMercadoPago = false;
+      _verificarPagoConCuentaMp();
+    }
   }
 
   Future<void> _cargar() async {
@@ -68,11 +137,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _metodos = metodos;
         _tarjetas = tarjetas;
         _seleccionada = tarjetas.where((t) => !t.estaVencida).firstOrNull;
-        _error = metodos.aceptaTarjeta
+        _metodoActivo = metodos.aceptaTarjeta
+            ? MetodoDePagoId.tarjeta
+            : MetodoDePagoId.cuentaMp;
+        // El error de "no se puede pagar" solo se levanta cuando NINGÚN
+        // carril sirve. Con uno de los dos vivo no hay nada que anunciar
+        // arriba: el que no sirve ya lo explica en su propia tarjeta.
+        _error = metodos.puedeCobrarEnLaApp
             ? null
             : (metodos.porId('tarjeta')?.unavailableReason ??
-                  '${widget.nombreVendedor ?? 'Este vendedor'} no acepta pagos con '
-                      'tarjeta en la app. Contáctalo por chat para acordar otra forma de pago.');
+                  metodos.walletUnavailableReason ??
+                  '${widget.nombreVendedor ?? 'Este vendedor'} no acepta pagos '
+                      'en la app. Contáctalo por chat para acordar otra forma de pago.');
       });
     } catch (e, s) {
       if (!mounted) return;
@@ -84,6 +160,55 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         ),
       );
     }
+  }
+
+  /// Los métodos tal como se le ofrecen a esta persona para esta orden.
+  ///
+  /// Los que no se pueden usar se listan igual, apagados y con el motivo:
+  /// esconderlos deja a alguien buscando una opción que le dijeron que
+  /// existía. Es el mismo criterio que ya sigue `unavailableReason`.
+  List<MetodoDePago> _metodosOfrecidos() {
+    final metodos = _metodos;
+    if (metodos == null) return const [];
+
+    return [
+      MetodoDePago(
+        id: MetodoDePagoId.tarjeta,
+        titulo: 'Tarjeta',
+        subtitulo: 'Débito o crédito. Se paga sin salir de la app.',
+        icono: (context, color) =>
+            Icon(Icons.credit_card_rounded, size: 26, color: color),
+        motivoNoDisponible: metodos.aceptaTarjeta
+            ? null
+            : (metodos.porId('tarjeta')?.unavailableReason ??
+                  'Este vendedor no acepta tarjeta en la app.'),
+      ),
+      MetodoDePago(
+        id: MetodoDePagoId.cuentaMp,
+        titulo: 'Mi cuenta de Mercado Pago',
+        subtitulo:
+            'Entra con tu cuenta y paga con tu saldo o tus tarjetas '
+            'guardadas allí. Se abre Mercado Pago y vuelves a la app.',
+        icono: (context, color) =>
+            MarcaMercadoPago(apagado: !metodos.puedeCobrarConCuentaMp),
+        motivoNoDisponible: metodos.puedeCobrarConCuentaMp
+            ? null
+            : (metodos.walletUnavailableReason ??
+                  'Este vendedor no puede cobrar por Mercado Pago.'),
+      ),
+    ];
+  }
+
+  void _cambiarMetodo(MetodoDePagoId id) {
+    if (id == _metodoActivo) return;
+    setState(() {
+      _metodoActivo = id;
+      // El error de un método no puede seguir en pantalla cuando ya se está
+      // mirando otro: "el CVV no es correcto" sobre el botón de Mercado
+      // Pago es desconcertante.
+      _error = null;
+      _cvv.clear();
+    });
   }
 
   Future<void> _agregarTarjeta() async {
@@ -141,21 +266,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       // El CVV no sobrevive al intento de pago, salga como salga.
       _cvv.clear();
 
-      if (!mounted) return;
-      final reintentar = await Navigator.push<bool>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PaymentResultScreen(resultado: resultado),
-        ),
-      );
-
-      if (!mounted) return;
-      if (resultado.estado == EstadoPago.aprobado) {
-        Navigator.pop(context, resultado);
-      } else {
-        setState(() => _pagando = false);
-        if (reintentar != true) Navigator.pop(context, resultado);
-      }
+      await _mostrarResultado(resultado);
     } catch (e, s) {
       _cvv.clear();
       if (!mounted) return;
@@ -170,6 +281,165 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
+  // ─── Pago con la cuenta de Mercado Pago del comprador ─────
+
+  /// Prepara la preferencia y saca a la persona al navegador.
+  ///
+  /// Al NAVEGADOR del sistema y no a un WebView, por lo mismo que el OAuth
+  /// del vendedor (ver [ConnectMpScreen]): ahí se escriben las credenciales
+  /// de una cuenta de Mercado Pago, y en un WebView propio no hay barra de
+  /// direcciones que permita comprobar que la página es la real. Mercado
+  /// Pago además bloquea los WebView embebidos en su login.
+  Future<void> _pagarConCuentaMp() async {
+    if (_metodos?.puedeCobrarConCuentaMp != true) return;
+
+    setState(() {
+      _faseMp = _FaseCuentaMp.preparando;
+      _error = null;
+    });
+
+    try {
+      final checkout = await PaymentsApi.iniciarPagoConCuentaMp(
+        widget.orden.id,
+      );
+
+      // El importe que va a cobrar Mercado Pago es el que el servidor
+      // recalculó. Si no coincide con el que esta pantalla lleva enseñando,
+      // se para: cobrar algo distinto de lo que la persona vio en pantalla
+      // es lo único que no se puede dejar pasar aquí.
+      if ((checkout.amount - widget.orden.amount).abs() > 0.009) {
+        if (!mounted) return;
+        setState(() {
+          _faseMp = _FaseCuentaMp.inicial;
+          _error =
+              'El total de tu compra cambió. Vuelve atrás y ábrela de nuevo '
+              'para revisarlo.';
+        });
+        return;
+      }
+
+      _volviendoDeMercadoPago = true;
+      final abierto = await launchUrl(
+        Uri.parse(checkout.initPoint),
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (!mounted) return;
+      if (!abierto) {
+        _volviendoDeMercadoPago = false;
+        setState(() {
+          _faseMp = _FaseCuentaMp.inicial;
+          _error = 'No se pudo abrir Mercado Pago en tu navegador.';
+        });
+        return;
+      }
+      setState(() => _faseMp = _FaseCuentaMp.enMercadoPago);
+    } catch (e, s) {
+      _volviendoDeMercadoPago = false;
+      if (!mounted) return;
+      setState(() {
+        _faseMp = _FaseCuentaMp.inicial;
+        _error = mensajeDeError(
+          e,
+          fallback: 'No se pudo iniciar el pago con Mercado Pago.',
+          stack: s,
+        );
+      });
+    }
+  }
+
+  /// Pregunta por la orden hasta que tenga veredicto.
+  ///
+  /// Hay que sondear porque quien decide si esta orden se pagó es el webhook
+  /// de Mercado Pago contra nuestro backend, y eso llega cuando llega: la
+  /// vuelta del navegador NO prueba nada — se llega a ella igual cancelando
+  /// el pago, y se puede escribir a mano.
+  ///
+  /// Si se agotan los intentos no se declara nada. Un pago aprobado que
+  /// tardó de más se pintaría como rechazado, y esa es la peor mentira
+  /// posible en esta pantalla: la persona pagaría dos veces.
+  Future<void> _verificarPagoConCuentaMp() async {
+    final generacion = ++_generacionDeSondeo;
+    if (!mounted) return;
+    setState(() {
+      _faseMp = _FaseCuentaMp.verificando;
+      _error = null;
+    });
+
+    // Un minuto largo, denso al principio: el webhook normalmente llega en
+    // segundos, y espaciar desde el arranque haría esperar de más al caso
+    // común por culpa del raro.
+    const esperas = [
+      Duration(seconds: 1),
+      Duration(seconds: 2),
+      Duration(seconds: 2),
+      Duration(seconds: 3),
+      Duration(seconds: 3),
+      Duration(seconds: 5),
+      Duration(seconds: 5),
+      Duration(seconds: 8),
+      Duration(seconds: 8),
+      Duration(seconds: 10),
+      Duration(seconds: 15),
+    ];
+
+    for (final espera in esperas) {
+      await Future<void>.delayed(espera);
+      if (!mounted || generacion != _generacionDeSondeo) return;
+
+      try {
+        final orden = await PaymentsApi.getOrden(widget.orden.id);
+        if (!mounted || generacion != _generacionDeSondeo) return;
+
+        final resultado = CheckoutResult.deOrden(orden);
+        if (resultado != null) {
+          await _mostrarResultado(resultado);
+          return;
+        }
+      } catch (_) {
+        // Un fallo de red en mitad del sondeo no significa que el pago
+        // fallara: se sigue preguntando. Solo si se agotan los intentos se
+        // dice algo, y lo que se dice es "no lo sabemos todavía".
+      }
+    }
+
+    if (!mounted || generacion != _generacionDeSondeo) return;
+    setState(() {
+      _faseMp = _FaseCuentaMp.inicial;
+      _error =
+          'Todavía no recibimos la confirmación de Mercado Pago. Si ya '
+          'pagaste, no vuelvas a pagar: revísalo en "Mis compras" en un '
+          'par de minutos.';
+    });
+  }
+
+  /// Lleva a la pantalla de resultado y decide qué hacer al volver de ella.
+  ///
+  /// La comparten los dos métodos: el final de un pago se ve igual da lo
+  /// mismo por dónde entró el dinero, y duplicarlo es cómo uno de los dos se
+  /// queda sin vaciar el carrito o sin devolver el resultado a quien abrió
+  /// el checkout.
+  Future<void> _mostrarResultado(CheckoutResult resultado) async {
+    if (!mounted) return;
+    final reintentar = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PaymentResultScreen(resultado: resultado),
+      ),
+    );
+
+    if (!mounted) return;
+    if (resultado.estado == EstadoPago.aprobado) {
+      Navigator.pop(context, resultado);
+    } else {
+      setState(() {
+        _pagando = false;
+        _faseMp = _FaseCuentaMp.inicial;
+      });
+      if (reintentar != true) Navigator.pop(context, resultado);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -180,8 +450,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Widget _cuerpo() {
     final colors = context.colors;
+    final metodos = _metodos;
 
-    if (_tarjetas == null) {
+    // Se espera a `_metodos` y no a `_tarjetas`: con un vendedor que solo
+    // cobra por Mercado Pago no hay tarjetas que cargar, y esperar por ellas
+    // dejaría la pantalla en un spinner que no termina nunca.
+    if (metodos == null) {
       return _error != null
           ? Center(
               child: Padding(
@@ -205,7 +479,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         ),
         const SizedBox(height: 24),
         Text(
-          'Método de pago',
+          'Cómo quieres pagar',
           style: TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w700,
@@ -213,84 +487,247 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        if (_tarjetas!.isEmpty)
-          _SinTarjetas(onAgregar: _agregarTarjeta)
-        else ...[
-          for (final tarjeta in _tarjetas!)
-            _FilaTarjeta(
-              tarjeta: tarjeta,
-              seleccionada: _seleccionada?.id == tarjeta.id,
-              onSeleccionar: tarjeta.estaVencida
-                  ? null
-                  : () => setState(() {
-                      _seleccionada = tarjeta;
-                      _cvv.clear();
-                    }),
-            ),
-          const SizedBox(height: 8),
-          TextButton.icon(
-            onPressed: _agregarTarjeta,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Agregar otra tarjeta'),
-          ),
-        ],
-        if (_seleccionada != null) ...[
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: _cvv,
-            keyboardType: TextInputType.number,
-            obscureText: true,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(4),
-            ],
-            style: TextStyle(color: colors.ink),
-            decoration: InputDecoration(
-              labelText:
-                  'CVV de la tarjeta terminada en '
-                  '${_seleccionada!.lastFourDigits}',
-              helperText: 'Se pide en cada compra por seguridad.',
-              helperStyle: TextStyle(fontSize: 11, color: colors.muted),
-              filled: true,
-              fillColor: colors.surfaceMuted,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: colors.border),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: colors.border),
-              ),
-            ),
-          ),
-        ],
+        SelectorDeMetodoDePago(
+          metodos: _metodosOfrecidos(),
+          seleccionado: _metodoActivo,
+          onSeleccionar: _ocupado ? (_) {} : _cambiarMetodo,
+        ),
+        const SizedBox(height: 6),
+        ...switch (_metodoActivo) {
+          MetodoDePagoId.tarjeta => _cuerpoTarjeta(),
+          MetodoDePagoId.cuentaMp => _cuerpoCuentaMp(),
+        },
         if (_error != null) ...[
           const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: colors.danger.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: colors.danger.withValues(alpha: 0.3)),
-            ),
-            child: Text(
-              _error!,
-              style: TextStyle(fontSize: 13, height: 1.4, color: colors.ink),
-            ),
-          ),
+          CajaDeError(mensaje: _error!),
         ],
         const SizedBox(height: 24),
-        FilledButton(
-          onPressed: (_seleccionada == null || _pagando) ? null : _pagar,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: _pagando
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text('Pagar ${_formatoPrecio(widget.orden.amount)}'),
+        _accion(),
+      ],
+    );
+  }
+
+  /// Lo propio del pago con tarjeta: elegir cuál y escribir el CVV.
+  List<Widget> _cuerpoTarjeta() {
+    final colors = context.colors;
+    final tarjetas = _tarjetas;
+
+    if (_metodos?.aceptaTarjeta != true) return const [];
+    if (tarjetas == null) {
+      return const [
+        SizedBox(height: 24),
+        Center(child: CircularProgressIndicator()),
+      ];
+    }
+
+    return [
+      if (tarjetas.isEmpty)
+        _SinTarjetas(onAgregar: _agregarTarjeta)
+      else ...[
+        for (final tarjeta in tarjetas)
+          _FilaTarjeta(
+            tarjeta: tarjeta,
+            seleccionada: _seleccionada?.id == tarjeta.id,
+            onSeleccionar: tarjeta.estaVencida
+                ? null
+                : () => setState(() {
+                    _seleccionada = tarjeta;
+                    _cvv.clear();
+                  }),
+          ),
+        const SizedBox(height: 8),
+        TextButton.icon(
+          onPressed: _ocupado ? null : _agregarTarjeta,
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('Agregar otra tarjeta'),
+        ),
+      ],
+      if (_seleccionada != null) ...[
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _cvv,
+          keyboardType: TextInputType.number,
+          obscureText: true,
+          enabled: !_ocupado,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(4),
+          ],
+          style: TextStyle(color: colors.ink),
+          decoration: InputDecoration(
+            labelText:
+                'CVV de la tarjeta terminada en '
+                '${_seleccionada!.lastFourDigits}',
+            helperText: 'Se pide en cada compra por seguridad.',
+            helperStyle: TextStyle(fontSize: 11, color: colors.muted),
+            filled: true,
+            fillColor: colors.surfaceMuted,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: colors.border),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: colors.border),
+            ),
+          ),
+        ),
+      ],
+    ];
+  }
+
+  /// Lo propio del pago con cuenta de Mercado Pago: contar qué va a pasar.
+  ///
+  /// No hay formulario que rellenar, así que todo lo que este bloque puede
+  /// aportar es que nadie se sorprenda al salir de la app — que es
+  /// exactamente el momento en que la gente abandona un pago.
+  List<Widget> _cuerpoCuentaMp() {
+    final colors = context.colors;
+
+    if (_metodos?.puedeCobrarConCuentaMp != true) return const [];
+
+    if (_faseMp == _FaseCuentaMp.enMercadoPago ||
+        _faseMp == _FaseCuentaMp.verificando) {
+      final verificando = _faseMp == _FaseCuentaMp.verificando;
+      return [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: colors.accentTint,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colors.accentTintBorder),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: colors.accent,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  verificando
+                      ? 'Confirmando tu pago con Mercado Pago. Puede tardar '
+                            'unos segundos; no cierres esta pantalla.'
+                      : 'Termina el pago en Mercado Pago y vuelve a la app. '
+                            'En cuanto vuelvas lo confirmamos aquí.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.4,
+                    color: colors.ink,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ];
+    }
+
+    return [
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: colors.surfaceMuted,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: colors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _Punto(
+              icono: Icons.open_in_new_rounded,
+              texto:
+                  'Se abre Mercado Pago fuera de la app para que entres con '
+                  'tu cuenta.',
+            ),
+            const SizedBox(height: 10),
+            _Punto(
+              icono: Icons.account_balance_wallet_outlined,
+              texto:
+                  'Pagas con tu saldo, tus tarjetas guardadas allí o meses '
+                  'sin intereses, según lo que tengas.',
+            ),
+            const SizedBox(height: 10),
+            _Punto(
+              icono: Icons.lock_outline_rounded,
+              texto:
+                  'Escribes tus datos en Mercado Pago, no en Mercadito UM.',
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  /// El botón principal, distinto por método pero con el mismo componente.
+  Widget _accion() {
+    final metodos = _metodos;
+    if (metodos == null || !metodos.puedeCobrarEnLaApp) {
+      return const SizedBox.shrink();
+    }
+
+    final total = _formatoPrecio(widget.orden.amount);
+
+    switch (_metodoActivo) {
+      case MetodoDePagoId.tarjeta:
+        return BotonDePago(
+          etiqueta: 'Pagar $total',
+          cargando: _pagando,
+          onPressed: (_seleccionada == null || _ocupado) ? null : _pagar,
+        );
+
+      case MetodoDePagoId.cuentaMp:
+        // Ya salió al navegador: el botón deja de ser "pagar" —volver a
+        // pulsarlo abriría un segundo pago de la misma orden— y pasa a ser
+        // la salida manual para quien volvió sin que la app se enterara.
+        if (_faseMp == _FaseCuentaMp.enMercadoPago) {
+          return OutlinedButton.icon(
+            onPressed: _verificarPagoConCuentaMp,
+            icon: const Icon(Icons.refresh_rounded, size: 19),
+            label: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                'Ya pagué, verificar',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
+            ),
+          );
+        }
+        return BotonDePago(
+          etiqueta: 'Pagar $total con Mercado Pago',
+          icono: Icons.open_in_new_rounded,
+          cargando: _faseMp != _FaseCuentaMp.inicial,
+          onPressed: _ocupado ? null : _pagarConCuentaMp,
+        );
+    }
+  }
+}
+
+/// Una línea de "esto es lo que va a pasar" en el panel de Mercado Pago.
+class _Punto extends StatelessWidget {
+  const _Punto({required this.icono, required this.texto});
+
+  final IconData icono;
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icono, size: 16, color: colors.accent),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            texto,
+            style: TextStyle(fontSize: 12.5, height: 1.4, color: colors.muted),
           ),
         ),
       ],
@@ -568,9 +1005,18 @@ class PaymentResultScreen extends StatelessWidget {
                 if (resultado.estado == EstadoPago.rechazado)
                   FilledButton(
                     onPressed: () => Navigator.pop(context, true),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 4),
-                      child: Text('Intentar con otra tarjeta'),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      // Volver al checkout deja elegir CUALQUIER método, no
+                      // solo otra tarjeta. Prometer "otra tarjeta" a quien
+                      // acaba de fallar pagando con su cuenta de Mercado
+                      // Pago le esconde justo la salida que sí tiene.
+                      child: Text(
+                        switch (resultado.metodo) {
+                          MetodoDePagoId.tarjeta => 'Intentar con otra tarjeta',
+                          MetodoDePagoId.cuentaMp => 'Intentar de otra forma',
+                        },
+                      ),
                     ),
                   ),
                 const SizedBox(height: 10),

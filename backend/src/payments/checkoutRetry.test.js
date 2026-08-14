@@ -136,6 +136,114 @@ async function checkout({ token, orderId, cardToken }) {
 
 test.beforeEach(() => { llamadasCrearPago = []; });
 
+// ─── application_fee: el error 2059 de Mercado Pago ─────────────
+//
+// "You cannot use application_fee with this payment" tumba el cobro ENTERO,
+// y llega como un 400 que sin tratamiento se traduce a "intenta con otra
+// tarjeta" — mandando a quien compra a quemar intentos del límite
+// antifraude con tarjetas que están perfectas.
+
+test('en un cobro normal la comisión viaja como application_fee', async () => {
+  const { comprador, orden } = escenario(200);
+  respuestaCrearPago = async () => ({ id: 'pay_fee_normal', status: 'approved' });
+
+  await checkout({ token: comprador.token, orderId: orden.id, cardToken: 'tok_A' });
+
+  assert.strictEqual(llamadasCrearPago[0].pago.application_fee, 10); // 5% de 200
+});
+
+test('si el vendedor ES la cuenta de la aplicación, se cobra SIN application_fee', async () => {
+  // El escenario que produce el 2059 en la vida real: quien crea la
+  // aplicación en el panel de MP conecta su propia cuenta como vendedor.
+  const { comprador, vendedor, orden } = escenario(200);
+  const { _resetCache } = require('./comision');
+  const cuenta = store.getCuentaVendedor(vendedor.id);
+
+  mpClient.validarTokenVendedor = async () => ({ id: cuenta.mp_user_id });
+  _resetCache();
+  // Un id distinto por prueba: `orders.mp_payment_id` es UNIQUE, y repetirlo
+  // hace fallar el INSERT con un 502 que no tiene nada que ver con lo que
+  // se está probando.
+  respuestaCrearPago = async () => ({ id: 'pay_fee_propio', status: 'approved' });
+
+  try {
+    const res = await checkout({
+      token: comprador.token, orderId: orden.id, cardToken: 'tok_B',
+    });
+    assert.strictEqual(res.status, 200, 'el cobro tiene que salir adelante');
+
+    // `undefined`, no 0: MP también rechaza un application_fee de 0
+    // explícito. El campo tiene que desaparecer del cuerpo.
+    assert.strictEqual(llamadasCrearPago[0].pago.application_fee, undefined);
+  } finally {
+    mpClient.validarTokenVendedor = async () => ({ id: 123 });
+    _resetCache();
+  }
+});
+
+test('PLATFORM_FEE_ENABLED=false cobra sin comisión y sin cambiar el importe', async () => {
+  const { comprador, orden } = escenario(200);
+  const { _resetCache } = require('./comision');
+  process.env.PLATFORM_FEE_ENABLED = 'false';
+  _resetCache();
+  respuestaCrearPago = async () => ({ id: 'pay_fee_apagada', status: 'approved' });
+
+  try {
+    await checkout({ token: comprador.token, orderId: orden.id, cardToken: 'tok_C' });
+    const { pago } = llamadasCrearPago[0];
+    assert.strictEqual(pago.application_fee, undefined);
+    // Lo que paga quien compra no cambia: la comisión sale de lo que recibe
+    // el vendedor, no de lo que paga el comprador.
+    assert.strictEqual(pago.transaction_amount, 200);
+  } finally {
+    delete process.env.PLATFORM_FEE_ENABLED;
+    _resetCache();
+  }
+});
+
+test('un 2059 no se le presenta al comprador como un problema de su tarjeta', async () => {
+  const { comprador, orden } = escenario(200);
+  respuestaCrearPago = async () => {
+    throw new mpClient.MpError('Mercado Pago respondió 400 en POST /v1/payments', {
+      status: 400,
+      detalle: {
+        message: 'You cannot use application_fee with this payment.',
+        error: 'bad_request',
+        cause: [{ code: 2059, description: 'You cannot use application_fee with this payment.' }],
+      },
+    });
+  };
+
+  const res = await checkout({
+    token: comprador.token, orderId: orden.id, cardToken: 'tok_D',
+  });
+
+  assert.strictEqual(res.status, 409, 'no es un 400 de tarjeta rechazada');
+  assert.ok(!/intenta con otra/i.test(res.datos.error),
+    'no puede mandar a probar otra tarjeta: la tarjeta no tiene nada malo');
+  // Y el detalle de MP sigue sin salir del servidor.
+  assert.ok(!JSON.stringify(res.datos).includes('application_fee'));
+});
+
+test('un rechazo de tarjeta de verdad SÍ manda a probar otra', async () => {
+  // La contraparte del test anterior: la rama nueva del 2059 no puede
+  // haberse tragado los rechazos normales.
+  const { comprador, orden } = escenario(200);
+  respuestaCrearPago = async () => {
+    throw new mpClient.MpError('Mercado Pago respondió 400', {
+      status: 400,
+      detalle: { cause: [{ code: 3034, description: 'Invalid card number' }] },
+    });
+  };
+
+  const res = await checkout({
+    token: comprador.token, orderId: orden.id, cardToken: 'tok_E',
+  });
+
+  assert.strictEqual(res.status, 400);
+  assert.ok(/intenta con otra/i.test(res.datos.error));
+});
+
 // ─── El bug: un rechazo deja la orden inservible ────────────────
 
 test('tras un rechazo, el comprador puede reintentar con otra tarjeta', async () => {

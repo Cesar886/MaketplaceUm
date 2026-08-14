@@ -50,6 +50,57 @@ const config = {
   moneda: process.env.MP_CURRENCY || 'MXN',
 };
 
+/**
+ * Interruptor para cobrar SIN comisión de plataforma.
+ *
+ * Existe para las pruebas: mientras se prueba la integración contra Mercado
+ * Pago, el split es justo la parte que más falla (ver el error 2059) y
+ * poder apagarlo aísla "¿el cobro funciona?" de "¿el reparto funciona?".
+ *
+ * Por defecto está ENCENDIDO, y hace falta escribir exactamente 'false' para
+ * apagarlo: cualquier otro valor —vacío, 'no', un typo— deja la comisión
+ * puesta. Un interruptor de dinero tiene que fallar hacia cobrar, porque
+ * apagarlo por accidente no da ningún error y no se descubre hasta que
+ * alguien cuadra las cuentas semanas después.
+ */
+function comisionHabilitada() {
+  return String(process.env.PLATFORM_FEE_ENABLED ?? 'true').toLowerCase() !== 'false';
+}
+
+/**
+ * FORZAR el `sandbox_init_point` aunque el entorno no sea de pruebas.
+ *
+ * Ya NO hace falta en el flujo normal: `elegirInitPoint` (routes.js) decide
+ * solo, a partir del tipo de credencial con la que se creó la preferencia.
+ * Este interruptor queda como salida de emergencia, para forzar el enlace de
+ * sandbox en un despliegue sin tocar código si alguna vez la detección no
+ * acierta.
+ *
+ * Importante: SOLO el valor exacto 'true' fuerza algo. Cualquier otro valor
+ * —incluido 'false', que es lo que hay escrito en los .env de siempre— deja
+ * la decisión automática. Un `MP_USE_SANDBOX_INIT_POINT=false` olvidado en
+ * un .env fue precisamente lo que mandó al comprador al checkout de
+ * producción con una preferencia de prueba; no puede volver a mandar nada.
+ */
+function forzarSandboxInitPoint() {
+  return String(process.env.MP_USE_SANDBOX_INIT_POINT || '').toLowerCase() === 'true';
+}
+
+/**
+ * Volcar en el log el payload y la respuesta enteros de cada preferencia.
+ *
+ * La respuesta de Mercado Pago son ~2 KB por pago, y se registra dos veces
+ * (creación y relectura). Es exactamente lo que hace falta mientras se
+ * persigue un fallo, y puro ruido el resto del tiempo — un log que nadie
+ * puede leer tampoco se lee el día que importa.
+ *
+ * Apagado por defecto. Lo imprescindible (qué cuenta cobra, qué enlace se
+ * entregó, y todos los avisos) se registra siempre, con o sin esto.
+ */
+function depuracionPreferencia() {
+  return String(process.env.MP_DEBUG_PREFERENCIA || '').toLowerCase() === 'true';
+}
+
 /** Porcentaje de comisión de la plataforma. Configurable, nunca hardcodeado. */
 function porcentajeComision() {
   const crudo = process.env.PLATFORM_FEE_PERCENT;
@@ -117,6 +168,9 @@ module.exports = {
   MP_API_BASE,
   MP_AUTH_BASE,
   porcentajeComision,
+  comisionHabilitada,
+  forzarSandboxInitPoint,
+  depuracionPreferencia,
   estaConfigurado,
   assertConfigurado,
   faltantes,

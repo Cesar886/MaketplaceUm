@@ -117,7 +117,6 @@ class _AddCardScreenState extends State<AddCardScreen> {
               _CampoTarjeta(
                 controller: _numero,
                 etiqueta: 'Número de tarjeta',
-                hint: '4111 1111 1111 1111',
                 teclado: TextInputType.number,
                 formatters: [
                   FilteringTextInputFormatter.digitsOnly,
@@ -272,16 +271,24 @@ class _CampoTarjeta extends StatelessWidget {
   const _CampoTarjeta({
     required this.controller,
     required this.etiqueta,
-    required this.hint,
     required this.teclado,
     required this.validador,
+    this.hint,
     this.formatters,
     this.ocultar = false,
   });
 
   final TextEditingController controller;
   final String etiqueta;
-  final String hint;
+
+  /// Placeholder del campo. Opcional a propósito: el número de tarjeta se
+  /// queda SIN hint porque el único ejemplo que cabe ahí es un número con
+  /// forma de tarjeta real, y un '4111 1111 1111 1111' en gris dentro del
+  /// campo se lee como si el formulario ya viniera relleno.
+  ///
+  /// En los demás campos sí ayuda: 'MM/AA' y '123' comunican un formato, no
+  /// un valor.
+  final String? hint;
   final TextInputType teclado;
   final String? Function(String?) validador;
   final List<TextInputFormatter>? formatters;

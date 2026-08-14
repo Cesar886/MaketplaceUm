@@ -102,8 +102,13 @@ async function validarConexion(vendorId) {
   if (!cuenta?.accessToken) return { conectado: false, motivo: 'sin_cuenta' };
 
   try {
-    await validarTokenVendedor(cuenta.accessToken);
-    return { conectado: true };
+    // La respuesta se devuelve, no se tira: `GET /users/me` con el token del
+    // vendedor es lo ÚNICO que identifica de verdad la cuenta que va a
+    // cobrar. El prefijo del token no sirve —los usuarios de prueba de MP
+    // también reciben tokens `APP_USR-`— y sin esto el diagnóstico solo
+    // puede adivinar si se está cobrando contra una cuenta de prueba.
+    const usuarioMp = await validarTokenVendedor(cuenta.accessToken);
+    return { conectado: true, usuarioMp };
   } catch (err) {
     const revocado = err instanceof MpError && (err.status === 401 || err.status === 403);
     if (!revocado) {

@@ -21,6 +21,13 @@ const MOTIVO_DESCONECTADO = 'La cuenta de pagos de este vendedor se desconectó.
 const MOTIVO_SIN_CLAVE = 'La cuenta de pagos de este vendedor está incompleta. '
   + 'Necesita reconectarla para poder aceptar tarjeta.';
 
+// Los motivos del pago con cuenta de MP se redactan aparte y no reusan los
+// de arriba porque aquéllos terminan en "para volver a aceptar tarjeta": es
+// el método equivocado, y un mensaje que nombra algo que la persona no
+// eligió se lee como un error de la app.
+const MOTIVO_MP_DESCONECTADO = 'La cuenta de pagos de este vendedor se desconectó. '
+  + 'Necesita reconectarla para volver a cobrar en la app.';
+
 /** Lista declarada por el vendedor (JSON en sellers.paymentMethods). */
 function metodosAceptados(vendorId) {
   const fila = db.getDb()
@@ -57,6 +64,34 @@ function cuentaDePagosConectada(vendorId) {
 function tarjetaDisponible(vendorId) {
   const cuenta = store.getCuentaVendedor(vendorId);
   return Boolean(cuenta && cuenta.mp_public_key);
+}
+
+/**
+ * Cobrar por la cuenta de Mercado Pago del COMPRADOR necesita una cosa
+ * menos que la tarjeta: la cuenta del vendedor conectada, y nada más.
+ *
+ * No hace falta su public key porque en este flujo no se tokeniza nada en el
+ * dispositivo — el comprador escribe sus credenciales en Mercado Pago, no en
+ * la app, y lo único que creamos aquí es una preferencia con el token del
+ * vendedor. Por eso un vendedor cuyo OAuth no devolvió public key puede
+ * cobrar por este camino aunque no pueda por el de tarjeta.
+ *
+ * Está aparte de [cuentaDePagosConectada] por lo mismo que aquélla está
+ * aparte de [tarjetaDisponible]: hoy coinciden en implementación, pero
+ * responden a preguntas distintas y no tienen por qué moverse juntas.
+ */
+function cuentaMpDisponible(vendorId) {
+  return Boolean(store.getCuentaVendedor(vendorId));
+}
+
+/**
+ * @returns {string|null} por qué no se puede pagar con cuenta de Mercado
+ *   Pago a este vendedor, o null si sí se puede.
+ */
+function motivoCuentaMpNoDisponible(vendorId) {
+  if (cuentaMpDisponible(vendorId)) return null;
+  const cuenta = store.getCuentaVendedorIncluyendoRevocada(vendorId);
+  return cuenta ? MOTIVO_MP_DESCONECTADO : MOTIVO_SIN_CUENTA;
 }
 
 /**
@@ -127,12 +162,22 @@ function metodosDeVendedor(vendorId) {
   });
 
   const cardEnabled = tarjetaDisponible(vendorId);
+  const walletEnabled = cuentaMpDisponible(vendorId);
 
   return {
     vendorId,
     methods,
     cardEnabled,
     cardPublicKey: cardEnabled ? (cuenta?.mp_public_key || null) : null,
+
+    // Segundo carril de cobro sobre la MISMA orden: el comprador paga desde
+    // su propia cuenta de Mercado Pago en vez de escribir una tarjeta.
+    // Va como campo propio y no como un elemento más de `methods` porque
+    // `methods` es lo que el vendedor DECLARA en su perfil, y esto no se
+    // declara: se deriva de tener la cuenta conectada, igual que
+    // `cardEnabled`.
+    walletEnabled,
+    walletUnavailableReason: walletEnabled ? null : motivoCuentaMpNoDisponible(vendorId),
   };
 }
 
@@ -141,6 +186,8 @@ module.exports = {
   metodosAceptados,
   cuentaDePagosConectada,
   tarjetaDisponible,
+  cuentaMpDisponible,
+  motivoCuentaMpNoDisponible,
   motivoTarjetaNoDisponible,
   validarMetodosPermitidos,
   metodosDeVendedor,

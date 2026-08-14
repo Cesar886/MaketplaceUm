@@ -255,6 +255,21 @@ class PaymentsApi {
         .toList();
   }
 
+  /// GET /api/orders/:id — el estado ACTUAL de una orden.
+  ///
+  /// Es la única forma de saber cómo acabó un pago hecho con la cuenta de
+  /// Mercado Pago: ese cobro ocurre fuera de la app y a nadie se le devuelve
+  /// un resultado. Quien escribe la verdad es el webhook, y esto la lee.
+  static Future<PaymentOrder> getOrden(String orderId) async {
+    final res = await ApiService.client.get(
+      ApiService.apiUri('/orders/$orderId'),
+      headers: ApiService.authHeaders,
+    );
+    return PaymentOrder.fromJson(
+      await _decodificar(res, fallback: 'No se pudo consultar tu compra.'),
+    );
+  }
+
   /// GET /api/orders?role=buyer|vendor
   static Future<List<PaymentOrder>> getOrdenes({
     bool comoVendedor = false,
@@ -305,6 +320,28 @@ class PaymentsApi {
     );
     return CheckoutResult.fromJson(
       await _decodificar(res, fallback: 'No se pudo procesar el pago.'),
+    );
+  }
+
+  /// POST /api/payments/checkout/wallet — prepara el pago con la cuenta de
+  /// Mercado Pago del comprador.
+  ///
+  /// Cobra la MISMA orden que [pagar] y pasa por las mismas comprobaciones
+  /// del servidor (vendedor abierto, con stock, con la cuenta viva) y por el
+  /// mismo total recalculado allí: el monto no viaja desde el dispositivo en
+  /// ninguno de los dos caminos.
+  ///
+  /// Devolver esto NO es haber pagado. Lo único que llega es la URL a la que
+  /// mandar a la persona; el resultado se descubre después consultando la
+  /// orden con [getOrden].
+  static Future<WalletCheckout> iniciarPagoConCuentaMp(String orderId) async {
+    final res = await ApiService.client.post(
+      ApiService.apiUri('/payments/checkout/wallet'),
+      headers: ApiService.authHeaders,
+      body: jsonEncode({'order_id': orderId}),
+    );
+    return WalletCheckout.fromJson(
+      await _decodificar(res, fallback: 'No se pudo iniciar el pago.'),
     );
   }
 }
