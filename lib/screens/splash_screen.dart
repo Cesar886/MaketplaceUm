@@ -7,8 +7,10 @@ import '../providers/accent_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/anonymous_id.dart';
 import '../services/deep_link_service.dart';
+import '../services/onboarding_service.dart';
 import '../widgets/app_logo.dart';
 import 'main_shell.dart';
+import 'onboarding_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -52,14 +54,40 @@ class _SplashScreenState extends State<SplashScreen> {
       context.read<AccentProvider>().sincronizarDesdeBackend(sellerId);
     }
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const MainShell()),
-    );
+    final vioOnboarding = await OnboardingService.hasSeenOnboarding();
 
-    // Recién ahora hay una pantalla sobre la cual apilar. Si la app se abrió
-    // desde un link compartido, el deep link quedó esperando aquí: apilarlo
-    // antes lo habría borrado el pushReplacement de la línea anterior.
-    DeepLinkService.instance.marcarAppLista();
+    if (!mounted) return;
+
+    // Se captura ANTES de salir del árbol: el pushReplacement desmonta el
+    // splash, así que `context` ya no sirve dentro del callback que le
+    // pasamos al onboarding.
+    final navigator = Navigator.of(context);
+
+    void entrarAlaApp() {
+      navigator.pushReplacement(
+        MaterialPageRoute<void>(builder: (_) => const MainShell()),
+      );
+
+      // Recién ahora hay una pantalla sobre la cual apilar. Si la app se
+      // abrió desde un link compartido, el deep link quedó esperando aquí:
+      // apilarlo antes lo habría borrado el pushReplacement de arriba.
+      //
+      // Va aquí dentro y no antes del onboarding a propósito: en una
+      // instalación nueva abierta desde un link, el producto compartido debe
+      // aparecer AL TERMINAR el onboarding, no debajo de él.
+      DeepLinkService.instance.marcarAppLista();
+    }
+
+    if (!vioOnboarding) {
+      navigator.pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => OnboardingScreen(onFinish: entrarAlaApp),
+        ),
+      );
+      return;
+    }
+
+    entrarAlaApp();
   }
 
   @override

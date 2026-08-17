@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
 import '../models.dart';
+import '../utils/number_format.dart';
 import 'badges.dart';
 import 'mock_product_image.dart';
 import 'price_tag.dart';
-import 'views_counter.dart';
 
 class ProductCard extends StatelessWidget {
   const ProductCard({
@@ -31,7 +31,7 @@ class ProductCard extends StatelessWidget {
   /// precio no aporta al propósito de esa sección.
   final bool showPrice;
 
-  /// Versión aligerada: sin descripción y sin contador de vistas.
+  /// Versión aligerada: sin descripción ni fila de atributos.
   ///
   /// Para los carruseles del detalle de producto, donde la tarjeta es un
   /// apoyo y no el contenido principal: ahí lo que se decide de un vistazo
@@ -149,25 +149,23 @@ class _GridProductCard extends StatelessWidget {
             color: context.colors.ink,
           ),
         ),
-        // Los atributos clave de la categoría (talla, estado, "Acepta
-        // mascotas") TOMAN EL LUGAR de la descripción, no se suman a ella: la
-        // celda tiene alto fijo y no hay renglón de sobra. Ver
-        // [AtributosDestacadosRow] para por qué el cambio también conviene
-        // aunque hubiera espacio.
-        //
-        // En `dense` no va ninguno de los dos: esa variante ya renunció a
-        // esta línea por falta de alto.
+        // En `dense` no va descripción: esa variante ya renunció a esta línea
+        // por falta de alto.
         if (!dense) ...[
-          const SizedBox(height: 2),
-          if (product.atributosDestacados.isNotEmpty)
-            AtributosDestacadosRow(atributos: product.atributosDestacados)
-          else
-            Text(
+          const SizedBox(height: 3),
+          SizedBox(
+            width: double.infinity,
+            child: Text(
               product.description,
-              maxLines: 1,
+              textAlign: TextAlign.justify,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: AppTypography.body(11.5, color: context.colors.muted),
+              style: AppTypography.body(
+                11,
+                color: context.colors.muted,
+              ).copyWith(height: 1.25),
             ),
+          ),
         ],
         const Spacer(),
         const SizedBox(height: 6),
@@ -181,10 +179,7 @@ class _GridProductCard extends StatelessWidget {
                 style: AppTypography.body(11, color: context.colors.muted),
               ),
             ),
-            if (!dense) ...[
-              ViewsCounter(views: product.views),
-              const SizedBox(width: 6),
-            ],
+            const SizedBox(width: 6),
             productStatusBadge(product),
           ],
         ),
@@ -225,7 +220,7 @@ class _HorizontalProductCard extends StatelessWidget {
             children: [
               if (showPrice) ...[
                 PriceTag(product: product),
-                const SizedBox(height: 5),
+                const SizedBox(height: 4),
               ],
               Text(
                 product.title,
@@ -237,7 +232,7 @@ class _HorizontalProductCard extends StatelessWidget {
                   color: context.colors.ink,
                 ),
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: 2),
               // Mismo intercambio que en la tarjeta de cuadrícula: los
               // atributos sustituyen a la descripción.
               if (product.atributosDestacados.isNotEmpty)
@@ -254,7 +249,7 @@ class _HorizontalProductCard extends StatelessWidget {
                 children: [
                   Icon(
                     product.category.icon,
-                    size: 14,
+                    size: 13,
                     color: normalizeCategoryColor(
                       product.category.color,
                       Theme.of(context).brightness,
@@ -262,11 +257,12 @@ class _HorizontalProductCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 4),
                   // Los dos textos ceden espacio y se recortan; el ícono de
-                  // categoría, las vistas y el badge de estado no. En esta
-                  // tarjeta la fila mide 226 px y lleva cuatro cosas: con un
-                  // solo Expanded, "hace 2 días" empujaba al badge fuera del
-                  // borde (45 px de overflow en resultados de búsqueda). Con
-                  // ambos flexibles la fila se aprieta en vez de desbordarse.
+                  // categoría y el badge de estado no. Las vistas ya se
+                  // muestran sobre la foto (ver [_ViewsPill]), así que esta
+                  // fila solo reparte tres cosas y no cuatro: con un solo
+                  // Expanded, "hace 2 días" empujaba al badge fuera del
+                  // borde. Con ambos flexibles la fila se aprieta en vez de
+                  // desbordarse.
                   Flexible(
                     child: Text(
                       product.category.name,
@@ -291,8 +287,6 @@ class _HorizontalProductCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  ViewsCounter(views: product.views),
                   const SizedBox(width: 6),
                   productStatusBadge(product),
                 ],
@@ -320,7 +314,24 @@ class _HeroProductImage extends StatelessWidget {
   Widget build(BuildContext context) {
     Widget content = ClipRRect(
       borderRadius: BorderRadius.circular(10),
-      child: child,
+      // Las vistas van SOBRE la foto y no en la fila de texto de abajo: esa
+      // fila ya reparte fecha de publicación y badge de estado, y en la
+      // tarjeta horizontal (226 px, cuatro elementos) no sobraba margen —
+      // cualquier variación de fuente la desbordaba. Sacar las vistas de ahí
+      // libera la fila Y le da a la tarjeta un acabado más "marketplace
+      // premium" (Depop/Vinted) en vez de una hilera de texto plano.
+      child: Stack(
+        fit: StackFit.passthrough,
+        children: [
+          child,
+          if (product.isAvailable)
+            Positioned(
+              right: 6,
+              bottom: 6,
+              child: _ViewsPill(views: product.views),
+            ),
+        ],
+      ),
     );
 
     if (!product.isAvailable) {
@@ -367,5 +378,50 @@ class _HeroProductImage extends StatelessWidget {
 
     if (!enabled) return content;
     return Hero(tag: 'product-${product.id}', child: content);
+  }
+}
+
+/// Contador de vistas en cápsula oscura, anclado a la esquina de la foto.
+///
+/// Fondo negro translúcido (no [context.colors.surface] como
+/// [AvailabilityBadge.onPhoto]) a propósito: esta no es una señal de estado
+/// que tenga que competir por atención, es un dato ambiental de fondo — el
+/// tratamiento "chapa oscura sobre la foto" la mantiene discreta sin
+/// importar qué tan clara u oscura sea la imagen de abajo.
+class _ViewsPill extends StatelessWidget {
+  const _ViewsPill({required this.views});
+
+  final int views;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.visibility_rounded,
+              size: 11,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 3),
+            Text(
+              formatCompactNumber(views),
+              style: AppTypography.label(
+                10,
+                weight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

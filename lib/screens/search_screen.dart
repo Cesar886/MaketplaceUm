@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -6,6 +8,9 @@ import '../services/api_service.dart';
 import '../widgets/auto_refresh.dart';
 import '../widgets/product_card.dart';
 import 'product_detail_screen.dart';
+
+String _capitalize(String text) =>
+    text.isEmpty ? text : text[0].toUpperCase() + text.substring(1);
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key, this.initialCategoryId, this.initialQuery});
@@ -29,6 +34,21 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
   bool _showFilters = false;
   double _sortValue = 0; // 0 = recientes, 1 = menor precio, 2 = mayor precio
 
+  // ─── Placeholder rotativo del buscador ────────────────────
+  static const _typingSpeed = Duration(milliseconds: 90);
+  static const _deletingSpeed = Duration(milliseconds: 45);
+  static const _pauseAtFull = Duration(milliseconds: 2200);
+  static const _pauseAtEmpty = Duration(milliseconds: 500);
+  static const _cursorBlink = Duration(milliseconds: 500);
+
+  List<String> _trendingSearches = [];
+  Timer? _typeTimer;
+  Timer? _cursorTimer;
+  int _termIndex = 0;
+  int _charCount = 0;
+  bool _deleting = false;
+  bool _cursorVisible = true;
+
   @override
   void initState() {
     super.initState();
@@ -38,6 +58,51 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
       ApiService.recordSearchQuery(widget.initialQuery!);
     }
     _loadData();
+    _cursorTimer = Timer.periodic(_cursorBlink, (_) {
+      if (!mounted) return;
+      setState(() => _cursorVisible = !_cursorVisible);
+    });
+  }
+
+  void _restartTyping() {
+    _typeTimer?.cancel();
+    if (_trendingSearches.isEmpty) return;
+    _scheduleNextTick();
+  }
+
+  void _scheduleNextTick() {
+    final term = _trendingSearches[_termIndex % _trendingSearches.length];
+    final Duration delay;
+    if (!_deleting && _charCount >= term.length) {
+      delay = _pauseAtFull;
+    } else if (_deleting && _charCount <= 0) {
+      delay = _pauseAtEmpty;
+    } else {
+      delay = _deleting ? _deletingSpeed : _typingSpeed;
+    }
+    _typeTimer = Timer(delay, _tick);
+  }
+
+  void _tick() {
+    if (!mounted) return;
+    final term = _trendingSearches[_termIndex % _trendingSearches.length];
+    setState(() {
+      if (!_deleting) {
+        if (_charCount < term.length) {
+          _charCount++;
+        } else {
+          _deleting = true;
+        }
+      } else {
+        if (_charCount > 0) {
+          _charCount--;
+        } else {
+          _deleting = false;
+          _termIndex = (_termIndex + 1) % _trendingSearches.length;
+        }
+      }
+    });
+    _scheduleNextTick();
   }
 
   @override
@@ -55,6 +120,16 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
         _categories = results[1] as List<MarketplaceCategory>;
         _loading = false;
       });
+
+      // No bloqueante: sin ellos, el buscador cae al hint estático.
+      try {
+        final trending = await ApiService.getTrendingSearches();
+        if (!mounted) return;
+        setState(() => _trendingSearches = trending);
+        _restartTyping();
+      } catch (_) {
+        // Si falla, seguimos con el hint estático.
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -63,6 +138,8 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
 
   @override
   void dispose() {
+    _typeTimer?.cancel();
+    _cursorTimer?.cancel();
     _queryController.dispose();
     _minPriceController.dispose();
     _maxPriceController.dispose();
@@ -126,6 +203,12 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
   @override
   Widget build(BuildContext context) {
     final results = _filteredResults;
+    final hasTrending = _trendingSearches.isNotEmpty;
+    final hintText = hasTrending
+        ? _capitalize(_trendingSearches[_termIndex % _trendingSearches.length])
+                  .substring(0, _charCount) +
+              (_cursorVisible ? '▏' : '')
+        : 'Libro, electronico, servicio...';
 
     return Scaffold(
       backgroundColor: context.colors.background,
@@ -142,7 +225,7 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
             textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.search_rounded),
-              hintText: 'Libro, electronico, servicio...',
+              hintText: hintText,
               suffixIcon: IconButton(
                 icon: Icon(
                   _showFilters ? Icons.filter_list_off : Icons.tune_rounded,
@@ -289,23 +372,12 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
             child: ListView(
               scrollDirection: Axis.horizontal,
               children: [
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    selected: _selectedCategoryId == null,
-                    label: const Text('Todos'),
-                    avatar: const Icon(Icons.apps_rounded, size: 18),
-                    onSelected: (_) =>
-                        setState(() => _selectedCategoryId = null),
-                  ),
-                ),
                 for (final category in _categories)
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: ChoiceChip(
                       selected: _selectedCategoryId == category.id,
-                      label: Text(category.name),
-                      avatar: Icon(
+                      label: Icon(
                         category.icon,
                         size: 18,
                         color: normalizeCategoryColor(
@@ -372,11 +444,12 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
           else
             for (final product in results) ...[
               SizedBox(
-                // 122 y no 118, igual que en ofertas: con un título de dos
+                // 130 y no 122, igual que en ofertas: con un título de dos
                 // renglones MÁS la fila de atributos destacados (que sustituyó
-                // a la descripción y es más alta que ella), el contenido pide
-                // exactamente esos 4 px de más.
-                height: 122,
+                // a la descripción y es más alta que ella), 122 dejaba el
+                // contenido a ~2 px de desbordar — cualquier variación de
+                // métrica de fuente lo tiraba a overflow (barras amarillas).
+                height: 130,
                 child: ProductCard(
                   product: product,
                   horizontal: true,

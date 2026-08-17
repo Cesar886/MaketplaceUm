@@ -17,60 +17,67 @@ export default function VistaProducto({ producto }: { producto: ProductoPublico 
     <>
       <Galeria fotos={producto.fotos} titulo={producto.titulo} />
 
-      <div style={{ marginTop: 16 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: 10,
+          marginTop: 16,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'baseline',
+            flexWrap: 'wrap',
+            gap: 10,
+          }}
+        >
+          <span
+            style={{
+              fontFamily: 'var(--fuente-titulo)',
+              fontSize: 32,
+              fontWeight: 700,
+              color: yaNoDisponible ? 'var(--muted)' : 'var(--primary)',
+            }}
+          >
+            {formatearPrecio(producto.precio)}
+          </span>
+
+          {producto.precioAnterior != null &&
+            producto.precioAnterior > producto.precio && (
+              <>
+                <span
+                  style={{
+                    color: 'var(--muted)',
+                    textDecoration: 'line-through',
+                    fontSize: 16,
+                  }}
+                >
+                  {formatearPrecio(producto.precioAnterior)}
+                </span>
+                {producto.etiquetaDescuento && (
+                  <span
+                    className="pill"
+                    style={{
+                      color: 'var(--amber-dark)',
+                      background: 'var(--champagne)',
+                    }}
+                  >
+                    {producto.etiquetaDescuento}
+                  </span>
+                )}
+              </>
+            )}
+        </div>
+
         <span className={`pill pill--${estado.tono}`}>{estado.texto}</span>
       </div>
 
       <h1 style={{ margin: '10px 0 0', fontSize: 26, lineHeight: 1.25 }}>
         {producto.titulo}
       </h1>
-
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'baseline',
-          flexWrap: 'wrap',
-          gap: 10,
-          marginTop: 8,
-        }}
-      >
-        <span
-          style={{
-            fontFamily: 'var(--fuente-titulo)',
-            fontSize: 32,
-            fontWeight: 700,
-            color: yaNoDisponible ? 'var(--muted)' : 'var(--primary)',
-          }}
-        >
-          {formatearPrecio(producto.precio)}
-        </span>
-
-        {producto.precioAnterior != null &&
-          producto.precioAnterior > producto.precio && (
-            <>
-              <span
-                style={{
-                  color: 'var(--muted)',
-                  textDecoration: 'line-through',
-                  fontSize: 16,
-                }}
-              >
-                {formatearPrecio(producto.precioAnterior)}
-              </span>
-              {producto.etiquetaDescuento && (
-                <span
-                  className="pill"
-                  style={{
-                    color: 'var(--amber-dark)',
-                    background: 'var(--champagne)',
-                  }}
-                >
-                  {producto.etiquetaDescuento}
-                </span>
-              )}
-            </>
-          )}
-      </div>
 
       {producto.descripcion && (
         <>

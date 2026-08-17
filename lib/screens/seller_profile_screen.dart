@@ -426,7 +426,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                           crossAxisCount: columns,
                           mainAxisSpacing: 12,
                           crossAxisSpacing: 12,
-                          childAspectRatio: columns == 3 ? 0.72 : 0.64,
+                          childAspectRatio: columns == 3 ? 0.72 : 0.62,
                         ),
                         itemBuilder: (context, index) {
                           final product = _products[index];

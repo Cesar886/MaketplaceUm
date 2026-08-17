@@ -4,7 +4,7 @@ import 'product_card_skeleton.dart';
 
 /// Skeleton del grid de productos del home. Usa el mismo
 /// [SliverGridDelegateWithFixedCrossAxisCount] que el grid real en
-/// `home_screen.dart` (crossAxisCount:2, spacing:12/12, aspectRatio:0.64).
+/// `home_screen.dart` (crossAxisCount:2, spacing:12/12, aspectRatio:0.58).
 class HomeGridSkeleton extends StatelessWidget {
   const HomeGridSkeleton({super.key});
 
@@ -20,7 +20,7 @@ class HomeGridSkeleton extends StatelessWidget {
           crossAxisCount: 2,
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
-          childAspectRatio: 0.64,
+          childAspectRatio: 0.62,
         ),
         itemBuilder: (context, index) => const ProductCardSkeleton(),
       ),

@@ -83,6 +83,10 @@ function aVendedorPublico(vendedor) {
   return {
     nombre: vendedor.name,
     iniciales: vendedor.avatarInitials || '',
+    // Ruta relativa igual que `fotos` en `aVistaPublica` ('/uploads/x.webp'):
+    // el sitio la vuelve absoluta con `urlFoto`, no con la URL interna de la
+    // API. Mismo campo que `logoUrl` usa la app para el avatar circular.
+    avatarUrl: vendedor.logoUrl || null,
     esNegocio: !!vendedor.isBusiness,
     verificado: !!vendedor.verified,
     tipoCuenta: vendedor.tipoCuenta || null,

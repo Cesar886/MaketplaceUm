@@ -1,10 +1,14 @@
-// La sección "Pagar con tarjeta" del detalle de producto.
+// La sección de pago del detalle de producto.
 //
-// Lo que se prueba es su regla más importante: cuándo NO existe. Un botón de
-// pagar que lleva a un cobro imposible —porque el vendedor desconectó su
-// cuenta de Mercado Pago— es peor que no ofrecer el pago, y por eso la
-// condición se consulta en vivo al backend en vez de leerse de los métodos
-// que el vendedor anuncia en su perfil.
+// Lo que se prueba es su regla más importante: cuándo NO ofrece pagar. Un
+// botón de pagar que lleva a un cobro imposible —porque el vendedor
+// desconectó su cuenta de Mercado Pago— es peor que no ofrecer el pago, y por
+// eso la condición se consulta en vivo al backend en vez de leerse de los
+// métodos que el vendedor anuncia en su perfil.
+//
+// La sección SÍ existe siempre: sin cobro en línea se convierte en la
+// explicación de cómo se le paga a ese vendedor. Desaparecer entera dejaba al
+// comprador viendo pago en unos productos y en otros no, sin una palabra.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -79,6 +83,7 @@ Future<void> _montar(
   required Product producto,
   required Future<VendorPaymentMethods> Function(String) cargar,
   ValueChanged<int>? onPagar,
+  VoidCallback? onContactar,
   bool pagando = false,
 }) async {
   await tester.pumpWidget(
@@ -89,6 +94,7 @@ Future<void> _montar(
           product: producto,
           pagando: pagando,
           onPagar: onPagar ?? (_) {},
+          onContactar: onContactar,
           cargarMetodos: cargar,
         ),
       ),
@@ -113,7 +119,7 @@ void main() {
     expect(find.text('Pagar ahora'), findsOneWidget);
   });
 
-  testWidgets('no dibuja NADA si la cuenta del vendedor está caída', (
+  testWidgets('sin cobro en la app no ofrece pagar, pero explica cómo', (
     tester,
   ) async {
     await _montar(
@@ -122,12 +128,46 @@ void main() {
       cargar: (_) async => _metodos(tarjetaDisponible: false),
     );
 
-    // Ni el botón ni un aviso ni un hueco: el detalle de producto no es el
-    // sitio donde explicarle al comprador la situación del vendedor.
+    // Nada que prometa un cobro que no puede ocurrir…
     expect(find.text('Pagar ahora'), findsNothing);
     expect(find.byType(FilledButton), findsNothing);
-    final tamano = tester.getSize(find.byType(PayWithCardSection));
-    expect(tamano.height, 0);
+    // …pero la sección sigue ahí, contando lo que sí puede hacer el comprador.
+    expect(find.text('Se acuerda con el vendedor'), findsOneWidget);
+    expect(find.text('Efectivo'), findsOneWidget);
+    expect(
+      tester.getSize(find.byType(PayWithCardSection)).height,
+      greaterThan(0),
+    );
+  });
+
+  testWidgets('sin cobro en la app no anuncia "Tarjeta" aunque la declare', (
+    tester,
+  ) async {
+    // El vendedor marcó 'tarjeta' en su perfil y su cuenta no cobra: anunciarla
+    // manda al comprador a buscar un botón de pagar que no existe.
+    await _montar(
+      tester,
+      producto: _producto(),
+      cargar: (_) async => _metodos(tarjetaDisponible: false),
+    );
+
+    expect(find.text('Tarjeta'), findsNothing);
+  });
+
+  testWidgets('sin cobro en la app el CTA lleva al chat, no al pago', (
+    tester,
+  ) async {
+    var contactos = 0;
+    await _montar(
+      tester,
+      producto: _producto(),
+      cargar: (_) async => _metodos(tarjetaDisponible: false),
+      onContactar: () => contactos++,
+    );
+
+    await tester.tap(find.text('Acordar pago por chat'));
+    await tester.pump();
+    expect(contactos, 1);
   });
 
   testWidgets(
@@ -149,7 +189,7 @@ void main() {
     },
   );
 
-  testWidgets('no dibuja nada si el vendedor no tiene clave pública', (
+  testWidgets('no ofrece pagar si el vendedor no tiene clave pública', (
     tester,
   ) async {
     // Una cuenta conectada pero sin public key deja al comprador en un
@@ -164,15 +204,64 @@ void main() {
     expect(find.text('Pagar ahora'), findsNothing);
   });
 
-  testWidgets('no dibuja nada si la consulta al backend falla', (tester) async {
+  testWidgets('si la consulta falla lo dice y deja reintentar', (tester) async {
+    var intentos = 0;
     await _montar(
       tester,
       producto: _producto(),
-      cargar: (_) async => throw Exception('sin red'),
+      cargar: (_) async {
+        intentos++;
+        if (intentos == 1) throw Exception('sin red');
+        return _metodos(tarjetaDisponible: true);
+      },
     );
 
+    // "No pude comprobarlo" no es "este vendedor no cobra en la app": son
+    // situaciones distintas y llevan a acciones distintas.
     expect(find.text('Pagar ahora'), findsNothing);
-    expect(tester.getSize(find.byType(PayWithCardSection)).height, 0);
+    expect(find.text('No pudimos comprobarlo'), findsOneWidget);
+    expect(find.text('Se acuerda con el vendedor'), findsNothing);
+
+    await tester.tap(find.text('Reintentar'));
+    await tester.pump();
+    await tester.pump();
+
+    // Y el reintento resuelve de verdad, sin salir de la pantalla.
+    expect(find.text('Pagar ahora'), findsOneWidget);
+  });
+
+  testWidgets('mientras consulta no deja un hueco ni ofrece pagar', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: PayWithCardSection(
+            product: _producto(),
+            pagando: false,
+            onPagar: (_) {},
+            cargarMetodos: (_) => Future<VendorPaymentMethods>.delayed(
+              const Duration(seconds: 1),
+              () => _metodos(tarjetaDisponible: true),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // Reservar el sitio evita que el contenido de abajo salte cuando el
+    // backend responde, justo mientras el comprador lo está leyendo.
+    expect(find.text('Pagar ahora'), findsNothing);
+    expect(
+      tester.getSize(find.byType(PayWithCardSection)).height,
+      greaterThan(0),
+    );
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+    expect(find.text('Pagar ahora'), findsOneWidget);
   });
 
   testWidgets('la sección no repite el precio, que ya está arriba', (

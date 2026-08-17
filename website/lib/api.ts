@@ -12,12 +12,24 @@ export const SITE_URL =
 
 /**
  * Vuelve absoluta una ruta de imagen del backend. Las fotos se guardan como
- * '/uploads/x.webp' — relativas al backend, no al sitio, así que concatenar
- * sin más las serviría desde el dominio equivocado.
+ * '/uploads/x.webp', relativas al backend.
+ *
+ * Se arma sobre SITE_URL y NO sobre API_URL, aunque el archivo lo sirva el
+ * backend. API_URL es una dirección INTERNA ('http://127.0.0.1:3000' en
+ * producción): sirve para que este servidor le pida datos al backend, pero
+ * como URL pública no existe. Puesta en `og:image`, el crawler de WhatsApp
+ * intenta resolver 127.0.0.1 contra sí mismo y la vista previa sale sin foto
+ * — que es justo lo que este endpoint entero existe para lograr. En los <img>
+ * de la página pasa lo mismo, y además serían contenido inseguro dentro de
+ * una página https.
+ *
+ * El dominio público funciona porque Apache proxea /uploads/ al backend (ver
+ * /etc/apache2/sites-enabled/mercaditoum.site-le-ssl.conf), así que la foto
+ * sale por HTTPS y del mismo origen que la página.
  */
 export function urlFoto(ruta: string): string {
   if (/^https?:\/\//.test(ruta)) return ruta;
-  return `${API_URL}${ruta.startsWith('/') ? '' : '/'}${ruta}`;
+  return `${SITE_URL}${ruta.startsWith('/') ? '' : '/'}${ruta}`;
 }
 
 /**

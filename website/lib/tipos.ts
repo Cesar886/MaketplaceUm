@@ -20,6 +20,8 @@ export type EstadoProducto =
 export interface VendedorPublico {
   nombre: string;
   iniciales: string;
+  /** Ruta relativa del backend ('/uploads/x.webp') o null. Ver `urlFoto`. */
+  avatarUrl: string | null;
   esNegocio: boolean;
   verificado: boolean;
   tipoCuenta: string | null;

@@ -148,23 +148,38 @@ class _ZoomableProductImageState extends State<_ZoomableProductImage> {
         minScale: 1,
         maxScale: 4,
         onInteractionEnd: _handleInteractionEnd,
-        child: Image.network(
-          widget.url,
-          fit: BoxFit.cover,
-          width: double.infinity,
-          height: double.infinity,
-          gaplessPlayback: true,
-          errorBuilder: (_, _, _) => CategoryImagePlaceholder(
-            product: widget.product,
-            borderRadius: BorderRadius.zero,
-          ),
-          loadingBuilder: (_, child, progress) {
-            if (progress == null) return child;
-            return Container(
-              color: context.colors.surfaceMuted,
-              child: const Center(
-                child: CircularProgressIndicator(strokeWidth: 2),
+        // `cacheWidth` acotado al ancho real de pantalla: sin él, Flutter
+        // decodifica el bitmap a la resolución nativa del archivo aunque acá
+        // se vaya a dibujar a lo mucho el ancho del teléfono — con fotos de
+        // varios megapixeles eso es el grueso del tiempo de "carga". Mismo
+        // criterio que [_RemoteProductImage] en mock_product_image.dart.
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final ratio = MediaQuery.devicePixelRatioOf(context);
+            final cacheWidth = constraints.maxWidth.isFinite
+                ? (constraints.maxWidth * ratio).round()
+                : null;
+
+            return Image.network(
+              widget.url,
+              fit: BoxFit.cover,
+              width: double.infinity,
+              height: double.infinity,
+              gaplessPlayback: true,
+              cacheWidth: cacheWidth,
+              errorBuilder: (_, _, _) => CategoryImagePlaceholder(
+                product: widget.product,
+                borderRadius: BorderRadius.zero,
               ),
+              loadingBuilder: (_, child, progress) {
+                if (progress == null) return child;
+                return Container(
+                  color: context.colors.surfaceMuted,
+                  child: const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                );
+              },
             );
           },
         ),

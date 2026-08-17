@@ -89,7 +89,9 @@ class _OffersScreenState extends State<OffersScreen> with AutoRefreshMixin {
                     itemBuilder: (context, index) {
                       final product = filtered[index];
                       return SizedBox(
-                        height: 122,
+                        // Ver el comentario en search_screen.dart: 122 dejaba
+                        // el contenido a ~2 px de desbordar.
+                        height: 130,
                         child: ProductCard(
                           product: product,
                           horizontal: true,

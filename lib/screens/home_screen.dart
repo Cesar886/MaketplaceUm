@@ -15,6 +15,7 @@ import '../services/favorite_products_service.dart';
 import '../services/feed_mixer.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/badges.dart';
+import '../widgets/bounce_on_increase.dart';
 import '../widgets/home_grid_skeleton.dart';
 import '../widgets/product_card.dart';
 import '../widgets/wanted_post_card.dart';
@@ -505,7 +506,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       crossAxisCount: columns,
                       crossAxisSpacing: 12,
                       mainAxisSpacing: 12,
-                      childAspectRatio: columns == 3 ? 0.72 : 0.64,
+                      childAspectRatio: columns == 3 ? 0.72 : 0.62,
                     ),
                     itemCount: run.length,
                     itemBuilder: (context, index) {
@@ -766,6 +767,14 @@ class _HeaderIconButton extends StatelessWidget {
       );
     }
 
+    // El rebote va por fuera del badge para que la burbuja del contador
+    // crezca junto con el ícono: animar solo el ícono deja el número quieto
+    // a un lado y el conjunto se ve descoyuntado.
+    //
+    // Sin háptico: aquí el contador sube al VOLVER del detalle, no bajo el
+    // dedo del usuario. Ver BounceOnIncrease.haptic.
+    content = BounceOnIncrease(value: badgeCount, child: content);
+
     return Tooltip(
       message: tooltip ?? '',
       child: Material(
@@ -903,6 +912,9 @@ class _CategoryFilterChipState extends State<_CategoryFilterChip> {
   }
 }
 
+String _capitalize(String text) =>
+    text.isEmpty ? text : text[0].toUpperCase() + text.substring(1);
+
 class _SearchBox extends StatefulWidget {
   const _SearchBox({required this.onTap, this.trendingTerms = const []});
 
@@ -914,47 +926,102 @@ class _SearchBox extends StatefulWidget {
 }
 
 class _SearchBoxState extends State<_SearchBox> {
-  static const _rotationInterval = Duration(seconds: 3);
+  static const _typingSpeed = Duration(milliseconds: 90);
+  static const _deletingSpeed = Duration(milliseconds: 45);
+  static const _pauseAtFull = Duration(milliseconds: 2200);
+  static const _pauseAtEmpty = Duration(milliseconds: 500);
+  static const _cursorBlink = Duration(milliseconds: 500);
 
-  Timer? _timer;
-  int _index = 0;
+  Timer? _typeTimer;
+  Timer? _cursorTimer;
+  int _termIndex = 0;
+  int _charCount = 0;
+  bool _deleting = false;
+  bool _cursorVisible = true;
 
   @override
   void didUpdateWidget(covariant _SearchBox oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!listEquals(oldWidget.trendingTerms, widget.trendingTerms)) {
-      _index = 0;
-      _restartTimer();
+      _termIndex = 0;
+      _charCount = 0;
+      _deleting = false;
+      _restartTyping();
     }
   }
 
   @override
   void initState() {
     super.initState();
-    _restartTimer();
+    _restartTyping();
+    _cursorTimer = Timer.periodic(_cursorBlink, (_) {
+      if (!mounted) return;
+      setState(() => _cursorVisible = !_cursorVisible);
+    });
   }
 
-  void _restartTimer() {
-    _timer?.cancel();
-    if (widget.trendingTerms.length < 2) return;
-    _timer = Timer.periodic(_rotationInterval, (_) {
-      setState(() => _index = (_index + 1) % widget.trendingTerms.length);
+  void _restartTyping() {
+    _typeTimer?.cancel();
+    if (widget.trendingTerms.isEmpty) return;
+    _scheduleNextTick();
+  }
+
+  void _scheduleNextTick() {
+    final term =
+        widget.trendingTerms[_termIndex % widget.trendingTerms.length];
+    final Duration delay;
+    if (!_deleting && _charCount >= term.length) {
+      delay = _pauseAtFull;
+    } else if (_deleting && _charCount <= 0) {
+      delay = _pauseAtEmpty;
+    } else {
+      delay = _deleting ? _deletingSpeed : _typingSpeed;
+    }
+    _typeTimer = Timer(delay, _tick);
+  }
+
+  void _tick() {
+    if (!mounted) return;
+    final terms = widget.trendingTerms;
+    final term = terms[_termIndex % terms.length];
+    setState(() {
+      if (!_deleting) {
+        if (_charCount < term.length) {
+          _charCount++;
+        } else {
+          _deleting = true;
+        }
+      } else {
+        if (_charCount > 0) {
+          _charCount--;
+        } else {
+          _deleting = false;
+          _termIndex = (_termIndex + 1) % terms.length;
+        }
+      }
     });
+    _scheduleNextTick();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _typeTimer?.cancel();
+    _cursorTimer?.cancel();
     super.dispose();
   }
 
-  String? get _currentTerm => widget.trendingTerms.isEmpty
-      ? null
-      : widget.trendingTerms[_index % widget.trendingTerms.length];
-
   @override
   Widget build(BuildContext context) {
-    final term = _currentTerm;
+    final terms = widget.trendingTerms;
+    // El backend ya garantiza contenido dinámico: si nadie ha buscado
+    // todavía, devuelve las categorías con producto activo. Este texto fijo
+    // solo se ve sin red o con el catálogo vacío — nunca en operación normal.
+    final hasTerms = terms.isNotEmpty;
+    final displayText = hasTerms
+        ? _capitalize(
+            terms[_termIndex % terms.length],
+          ).substring(0, _charCount)
+        : 'Buscar en Mercadito UM...';
 
     return Material(
       color: context.colors.surface,
@@ -972,20 +1039,29 @@ class _SearchBoxState extends State<_SearchBox> {
               Icon(Icons.search_rounded, color: context.colors.muted),
               SizedBox(width: 10),
               Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 250),
-                  // El backend ya garantiza contenido dinámico: si nadie ha
-                  // buscado todavía, devuelve las categorías con producto
-                  // activo. Este texto fijo solo se ve sin red o con el
-                  // catálogo vacío — nunca en operación normal.
-                  child: Text(
-                    term != null ? "$term" : 'Buscar en Mercadito UM...',
-                    key: ValueKey(term),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: RichText(
+                    textAlign: TextAlign.left,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: context.colors.muted,
-                      fontWeight: FontWeight.w500,
+                    text: TextSpan(
+                      style: TextStyle(
+                        color: context.colors.muted,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      children: [
+                        TextSpan(text: displayText),
+                        if (hasTerms)
+                          TextSpan(
+                            text: '▏',
+                            style: TextStyle(
+                              color: _cursorVisible
+                                  ? context.colors.primary
+                                  : Colors.transparent,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),
@@ -1021,7 +1097,7 @@ class _CategoryScrollerState extends State<_CategoryScroller> {
   @override
   void initState() {
     super.initState();
-    // Arranque leve y automático hacia la izquierda para insinuar que la
+    // Arranque leve y automático hacia la derecha para insinuar que la
     // fila es desplazable: muchas categorías quedan fuera de pantalla y sin
     // esta pista una fila de íconos se lee como estática.
     WidgetsBinding.instance.addPostFrameCallback((_) => _startAutoScroll());
@@ -1029,15 +1105,14 @@ class _CategoryScrollerState extends State<_CategoryScroller> {
 
   void _startAutoScroll() {
     if (!mounted || !_controller.hasClients) return;
-    if (_controller.position.maxScrollExtent <= 0) return;
+    final maxExtent = _controller.position.maxScrollExtent;
+    if (maxExtent <= 0) return;
+    final startOffset = 40.0.clamp(0.0, maxExtent);
+    _controller.jumpTo(startOffset);
     _timer = Timer(const Duration(milliseconds: 500), () {
       if (!mounted || !_controller.hasClients) return;
-      final target = (_controller.offset + 40).clamp(
-        0.0,
-        _controller.position.maxScrollExtent,
-      );
       _controller.animateTo(
-        target,
+        0,
         duration: const Duration(milliseconds: 900),
         curve: Curves.easeOutCubic,
       );

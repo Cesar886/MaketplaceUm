@@ -215,7 +215,7 @@ class _AcordeonDetallesState extends State<_AcordeonDetalles> {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: context.colors.primary,
+                    color: context.colors.accent,
                   ),
                 ),
                 const SizedBox(width: 4),
@@ -225,7 +225,7 @@ class _AcordeonDetallesState extends State<_AcordeonDetalles> {
                   child: Icon(
                     Icons.keyboard_arrow_down_rounded,
                     size: 18,
-                    color: context.colors.primary,
+                    color: context.colors.accent,
                   ),
                 ),
               ],

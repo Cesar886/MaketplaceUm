@@ -192,11 +192,23 @@ class AvailabilityBadge extends StatelessWidget {
     required this.status,
     this.nextAvailableDay,
     this.opensAt,
+    this.onPhoto = false,
   });
 
   final ComputedStatus status;
   final String? nextAvailableDay;
   final String? opensAt;
+
+  /// Variante para cuando el badge va ENCIMA de la foto del producto y no
+  /// sobre la superficie de la tarjeta.
+  ///
+  /// Los tintes suaves (`successBg`, `accentTint`) están calculados para
+  /// leerse sobre `surface`; sobre una foto cualquiera pueden caer sobre un
+  /// fondo del mismo tono y desaparecer. Aquí el relleno pasa a ser la
+  /// superficie opaca de la tarjeta con una sombra corta, así el badge se
+  /// separa de la foto sin cambiar el color del texto, que es lo que
+  /// codifica el estado.
+  final bool onPhoto;
 
   @override
   Widget build(BuildContext context) {
@@ -232,15 +244,26 @@ class AvailabilityBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
       decoration: BoxDecoration(
-        color: background,
+        color: onPhoto ? c.surface : background,
         borderRadius: BorderRadius.circular(999),
+        boxShadow: onPhoto
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
       ),
       child: Text(
         label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           color: foreground,
           fontSize: 10.5,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
@@ -365,27 +388,37 @@ class AtributosDestacadosRow extends StatelessWidget {
     if (atributos.isEmpty) return const SizedBox.shrink();
 
     return SizedBox(
-      height: 17,
+      height: 20,
       child: Row(
         children: [
           for (final (i, atributo) in atributos.indexed) ...[
             if (i > 0) const SizedBox(width: 5),
+            // Loose, no `alignment`: un Container CON alignment se estira a
+            // las constraints máximas que le den, y dentro de un Flexible
+            // eso es todo el ancho libre de la tarjeta. Por eso "Nuevo"
+            // salía como una barra de borde a borde y dos atributos se
+            // repartían la fila entera truncándose ("Con garant…") aunque
+            // los dos textos juntos midieran la mitad. Sin alignment el chip
+            // mide lo que mide su texto, y el Flexible solo entra en acción
+            // cuando de verdad no cabe.
             Flexible(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
                   color: context.colors.surfaceMuted,
                   borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: context.colors.border),
                 ),
-                alignment: Alignment.center,
                 child: Text(
                   atributo.value,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 9.5,
+                    fontSize: 10,
+                    height: 1.1,
                     fontWeight: FontWeight.w600,
-                    color: context.colors.muted,
+                    letterSpacing: 0.1,
+                    color: context.colors.mutedStrong,
                   ),
                 ),
               ),

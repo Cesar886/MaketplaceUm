@@ -18,6 +18,7 @@ import '../features/payments/pay_with_card_section.dart';
 import '../features/payments/payment_models.dart';
 import '../features/payments/payments_api.dart';
 import '../widgets/badges.dart';
+import '../widgets/bounce_on_increase.dart';
 import '../widgets/payment_methods.dart';
 import '../widgets/product_attributes_section.dart';
 import '../widgets/product_carousel_section.dart';
@@ -266,11 +267,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   if (!mounted) return;
                   setState(() => _favorite = nowFav);
                 }),
-                icon: Icon(
-                  _favorite
-                      ? Icons.favorite_rounded
-                      : Icons.favorite_border_rounded,
-                  color: _favorite ? AppColors.danger : Colors.white,
+                // `_favorite ? 1 : 0` convierte el booleano en algo que sube
+                // solo al MARCAR: desmarcar baja, y el rebote se queda
+                // callado. Con háptico porque aquí el cambio es respuesta
+                // directa al dedo del usuario.
+                icon: BounceOnIncrease(
+                  value: _favorite ? 1 : 0,
+                  haptic: true,
+                  child: Icon(
+                    _favorite
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
+                    color: _favorite ? AppColors.danger : Colors.white,
+                  ),
                 ),
               ),
               // Botones editar/eliminar: solo visibles si la publicación es del usuario
@@ -605,11 +614,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         });
                       },
                     ),
-                    // ─── Pagar con tarjeta ──────────────────────────
+                    // ─── Cómo pagar ────────────────────────────────
                     //
-                    // La condición de verdad la resuelve el propio widget
-                    // contra el backend: si este vendedor no puede cobrar
-                    // AHORA, no dibuja nada (ver [PayWithCardSection]).
+                    // La sección se dibuja SIEMPRE que la compra tenga
+                    // sentido, y es el propio widget quien decide qué promete
+                    // según lo que el backend diga de la cuenta de cobros del
+                    // vendedor (ver [PayWithCardSection]). Antes desaparecía
+                    // entera cuando el vendedor no cobraba en línea, y el
+                    // hueco confundía: pago en unos productos y en otros no,
+                    // sin explicación.
                     //
                     // Aquí solo se descartan los casos en los que la compra
                     // no existe como concepto: tu propio producto (el backend
@@ -624,6 +637,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         product: product,
                         pagando: _creandoOrden,
                         onPagar: (cantidad) => _comprar(context, cantidad),
+                        onContactar: () => _openChat(context),
                       ),
                     ],
                     // ─── También te puede interesar ─────────────────
@@ -761,10 +775,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   if (!mounted) return;
                   setState(() => _favorite = nowFav);
                 },
-                icon: Icon(
-                  _favorite
-                      ? Icons.favorite_rounded
-                      : Icons.bookmark_border_rounded,
+                icon: BounceOnIncrease(
+                  value: _favorite ? 1 : 0,
+                  haptic: true,
+                  child: Icon(
+                    _favorite
+                        ? Icons.favorite_rounded
+                        : Icons.bookmark_border_rounded,
+                  ),
                 ),
                 color: _favorite ? AppColors.danger : context.colors.primary,
               ),
@@ -937,10 +955,27 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     // (y la app al recibirlo) resuelven cuál de los dos es.
     final url = AppConfig.urlPublicacion(product.id);
 
-    final text = product.isWantedPost
-        ? 'Mira esta búsqueda en Mercadito UM:\n\n$title\nPublicado por: $seller\n\n$url'
-        : 'Mira este producto en Mercadito UM:\n\n$title - ${Product.formatPrice(product.price)}\nVendedor: $seller\n\n$url';
-    Share.share(text);
+    if (product.isWantedPost) {
+      Share.share(
+        'Mira esta búsqueda en Mercadito UM:\n\n$title\nPublicado por: $seller\n\n$url',
+      );
+      return;
+    }
+
+    final priceText = product.price == 0
+        ? 'Gratis'
+        : Product.formatPrice(product.price);
+    final sellerName = seller.trim();
+
+    final lines = <String>[
+      '$title — $priceText',
+      if (sellerName.isNotEmpty) 'Vendedor: $sellerName',
+      '',
+      url,
+      '',
+      'Mercadito UM',
+    ];
+    Share.share(lines.join('\n'));
   }
 
   /// Contactar por WhatsApp no requiere sesión — solo necesita que el
