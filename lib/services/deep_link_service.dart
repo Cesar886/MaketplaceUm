@@ -85,9 +85,7 @@ class DeepLinkService {
       // app se abrió sin llevarlo a ningún lado. El silencio se leería como
       // que la app está rota.
       scaffoldMessengerKey.currentState?.showSnackBar(
-        const SnackBar(
-          content: Text('Esta publicación ya no está disponible'),
-        ),
+        const SnackBar(content: Text('Esta publicación ya no está disponible')),
       );
       return;
     }

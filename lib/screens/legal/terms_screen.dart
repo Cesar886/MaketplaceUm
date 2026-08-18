@@ -26,16 +26,16 @@ class TermsScreen extends StatelessWidget {
             const _Section(
               title: '1. Aceptación de los términos',
               body:
-                  'Al registrarte y utilizar Mercadito UM ("la Plataforma"), '
+                  'Al registrarte y utilizar Marketplace UM ("la Plataforma"), '
                   'aceptas los presentes Términos y Condiciones. Si no estás de acuerdo, '
                   'no debes usar la Plataforma. Estos términos constituyen un acuerdo '
                   'legal vinculante entre tú ("el Usuario") y los administradores de '
-                  'Mercadito UM ("la Administración").',
+                  'Marketplace UM ("la Administración").',
             ),
             const _Section(
               title: '2. Descripción del servicio',
               body:
-                  'Mercadito UM es una plataforma universitaria que conecta '
+                  'Marketplace UM es una plataforma universitaria que conecta '
                   'miembros de la comunidad de la Universidad de Montemorelos '
                   'para la compra, venta e intercambio de productos y servicios '
                   'entre estudiantes, personal académico y negocios locales cercanos '
@@ -45,7 +45,7 @@ class TermsScreen extends StatelessWidget {
             const _Section(
               title: '3. Elegibilidad',
               body:
-                  'Para usar Mercadito UM debes:\n\n'
+                  'Para usar Marketplace UM debes:\n\n'
                   '• Ser mayor de 18 años o tener autorización de un tutor legal.\n'
                   '• Ser miembro de la comunidad UM (estudiante, docente, '
                   'administrativo) o un negocio local afiliado.\n'
@@ -79,7 +79,7 @@ class TermsScreen extends StatelessWidget {
             const _Section(
               title: '6. Publicaciones y contenido',
               body:
-                  'Al publicar contenido en Mercadito UM, declaras que:\n\n'
+                  'Al publicar contenido en Marketplace UM, declaras que:\n\n'
                   '• Tienes derecho a vender el producto u ofrecer el servicio.\n'
                   '• Toda la información proporcionada es veraz y no engañosa.\n'
                   '• El contenido no infringe derechos de propiedad intelectual de terceros.\n\n'
@@ -90,7 +90,7 @@ class TermsScreen extends StatelessWidget {
             const _Section(
               title: '7. Transacciones y pagos',
               body:
-                  'Mercadito UM facilita el contacto entre compradores y vendedores, '
+                  'Marketplace UM facilita el contacto entre compradores y vendedores, '
                   'pero no procesa pagos ni garantiza transacciones. Los acuerdos '
                   'de precio, forma de pago, entrega y cualquier另一 condición '
                   'son responsabilidad exclusiva de las partes involucradas. '
@@ -125,13 +125,13 @@ class TermsScreen extends StatelessWidget {
               body:
                   'El tratamiento de tus datos personales se rige por nuestra '
                   'Política de Privacidad, disponible en la sección correspondiente '
-                  'de la Plataforma. Al usar Mercadito UM, aceptas las prácticas '
+                  'de la Plataforma. Al usar Marketplace UM, aceptas las prácticas '
                   'descritas en dicha política.',
             ),
             const _Section(
               title: '11. Limitación de responsabilidad',
               body:
-                  'Mercadito UM se proporciona "tal cual" y "según disponibilidad". '
+                  'Marketplace UM se proporciona "tal cual" y "según disponibilidad". '
                   'La Administración no garantiza que la Plataforma sea ininterrumpida, '
                   'segura o libre de errores. En la máxima medida permitida por la ley, '
                   'la Administración no será responsable por:\n\n'
@@ -179,7 +179,7 @@ class TermsScreen extends StatelessWidget {
             Divider(color: context.colors.border),
             const SizedBox(height: 12),
             Text(
-              'Al usar Mercadito UM, confirmas que has leído, entendido y '
+              'Al usar Marketplace UM, confirmas que has leído, entendido y '
               'aceptado estos Términos y Condiciones.',
               textAlign: TextAlign.center,
               style: TextStyle(

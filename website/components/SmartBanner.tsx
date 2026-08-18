@@ -66,7 +66,7 @@ export default function SmartBanner() {
     >
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>
-          Descarga Mercadito UM
+          Descarga Marketplace UM
         </p>
         <p style={{ margin: 0, fontSize: 12.5, color: 'var(--muted)' }}>
           Compra y vende dentro de la Universidad de Montemorelos.

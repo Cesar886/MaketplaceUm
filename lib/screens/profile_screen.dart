@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -5,25 +6,22 @@ import '../app_theme.dart';
 import '../models.dart';
 import '../providers/accent_provider.dart';
 import '../providers/auth_provider.dart';
-import '../providers/theme_provider.dart';
 import '../services/api_service.dart';
 import '../services/recent_products_service.dart';
 import '../widgets/badges.dart';
+import '../widgets/option_tile.dart';
 import '../widgets/product_card.dart';
 import '../widgets/profile_banner.dart';
 import '../widgets/user_role.dart';
 import 'auth/login_screen.dart';
 import 'auth/verification_screen.dart';
-import 'legal/cookies_screen.dart';
-import 'legal/privacy_screen.dart';
-import 'legal/terms_screen.dart';
 import 'my_listings_screen.dart';
 import 'product_detail_screen.dart';
 import 'profile/edit_profile_screen.dart';
-import 'profile/help_screen.dart';
 import 'profile/highlight_plans_screen.dart';
 import 'profile/my_comments_screen.dart';
 import 'profile/safety_tips_screen.dart';
+import 'profile/settings_screen.dart';
 import 'recent_products_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -85,11 +83,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
       setState(() => _loadingSellerForEdit = false);
       if (seller == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No se pudo cargar tu perfil. Intenta de nuevo.'),
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('profile.load_error'.tr())));
         return;
       }
     }
@@ -143,7 +139,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Inicia sesión para ver tu perfil',
+                'profile.login_prompt'.tr(),
                 style: TextStyle(color: context.colors.muted),
               ),
               const SizedBox(height: 20),
@@ -151,7 +147,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
                 ),
-                child: const Text('Iniciar sesión'),
+                child: Text('auth.login_button'.tr()),
               ),
             ],
           ),
@@ -180,7 +176,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
           children: [
-            Text('Perfil', style: Theme.of(context).textTheme.headlineSmall),
+            Text(
+              'nav.profile'.tr(),
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
             const SizedBox(height: 18),
 
             // ─── Card de usuario ────────────────────────────
@@ -347,7 +346,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Expanded(
                         child: _ProfileMetric(
                           value: _sellerRating.toStringAsFixed(1),
-                          label: 'Calificación',
+                          label: 'profile.rating'.tr(),
                           icon: Icons.star_rounded,
                         ),
                       ),
@@ -377,10 +376,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 16),
 
             // ─── Opciones del perfil ────────────────────────
-            _ProfileOption(
+            OptionTile(
               icon: Icons.inventory_2_rounded,
-              title: 'Mis publicaciones',
-              subtitle: 'Activas, destacadas y expiradas',
+              title: 'profile.my_listings'.tr(),
+              subtitle: 'profile.my_listings_subtitle'.tr(),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => const MyListingsScreen(),
@@ -392,10 +391,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             // aparece con el id del backend ya resuelto — sin él no hay a
             // quién consultarle los comentarios.
             if (auth.backendSellerId != null)
-              _ProfileOption(
+              OptionTile(
                 icon: Icons.mode_comment_rounded,
-                title: 'Comentarios',
-                subtitle: 'Lo que otros comentaron en tus publicaciones',
+                title: 'profile.comments'.tr(),
+                subtitle: 'profile.comments_subtitle'.tr(),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) =>
@@ -403,32 +402,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
-            _ProfileOption(
+            OptionTile(
               icon: Icons.shield_rounded,
-              title: 'Confianza y seguridad',
-              subtitle: 'Recomendaciones para comprar en campus',
+              title: 'profile.safety'.tr(),
+              subtitle: 'profile.safety_subtitle'.tr(),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => const SafetyTipsScreen(),
                 ),
               ),
             ),
-            _ProfileOption(
+            OptionTile(
               icon: Icons.payments_rounded,
-              title: 'Planes para destacar',
-              subtitle: 'Consulta opciones de visibilidad pagada',
+              title: 'profile.highlight_plans'.tr(),
+              subtitle: 'profile.highlight_plans_subtitle'.tr(),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => const HighlightPlansScreen(),
                 ),
               ),
             ),
-            _ProfileOption(
-              icon: Icons.help_rounded,
-              title: 'Ayuda',
-              subtitle: 'Preguntas frecuentes',
+            OptionTile(
+              icon: Icons.settings_rounded,
+              title: 'settings.title'.tr(),
+              subtitle: 'profile.settings_subtitle'.tr(),
               onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const HelpScreen()),
+                MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
               ),
             ),
 
@@ -438,7 +437,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Text(
-                  'Vistos recientemente',
+                  'profile.recently_viewed'.tr(),
                   style: TextStyle(
                     color: context.colors.muted,
                     fontWeight: FontWeight.w700,
@@ -462,60 +461,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ],
 
-            // ─── Modo oscuro ────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 10),
-              child: Text(
-                'Apariencia',
-                style: TextStyle(
-                  color: context.colors.muted,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  letterSpacing: 0.4,
-                ),
-              ),
-            ),
-            _DarkModeToggle(),
-            const _AccentPicker(),
-
-            // ─── Sección legal ──────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 10),
-              child: Text(
-                'Legal',
-                style: TextStyle(
-                  color: context.colors.muted,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  letterSpacing: 0.4,
-                ),
-              ),
-            ),
-            _ProfileOption(
-              icon: Icons.description_rounded,
-              title: 'Términos y Condiciones',
-              subtitle: 'Reglas de uso de la plataforma',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const TermsScreen()),
-              ),
-            ),
-            _ProfileOption(
-              icon: Icons.shield_rounded,
-              title: 'Política de Privacidad',
-              subtitle: 'Protección de tus datos personales',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const PrivacyScreen()),
-              ),
-            ),
-            _ProfileOption(
-              icon: Icons.cookie_rounded,
-              title: 'Aviso de Cookies',
-              subtitle: 'Uso de cookies en la app',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const CookiesScreen()),
-              ),
-            ),
-
             const SizedBox(height: 20),
 
             // ─── Cerrar sesión ─────────────────────────────
@@ -533,7 +478,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   );
                 },
                 icon: const Icon(Icons.logout_rounded),
-                label: const Text('Cerrar sesión'),
+                label: Text('profile.logout'.tr()),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.danger,
                   side: BorderSide(
@@ -630,7 +575,7 @@ class _VerificationCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    'Tu insignia es visible para los compradores.',
+                    'profile.badge_visible'.tr(),
                     style: TextStyle(
                       color: context.colors.muted,
                       fontWeight: FontWeight.w600,
@@ -683,14 +628,13 @@ class _VerificationCard extends StatelessWidget {
                 children: [
                   Text(
                     rechazada
-                        ? 'Corrige tu verificación'
-                        : 'Verifica tu cuenta',
+                        ? 'profile.fix_verification'.tr()
+                        : 'profile.verify_account'.tr(),
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    auth.motivoRechazo ??
-                        'Es automático y toma menos de un minuto.',
+                    auth.motivoRechazo ?? 'profile.verify_hint'.tr(),
                     style: TextStyle(
                       color: context.colors.muted,
                       fontWeight: FontWeight.w600,
@@ -710,11 +654,11 @@ class _VerificationCard extends StatelessWidget {
   String _tituloVerificado(AuthProvider auth) {
     switch (auth.accountType) {
       case AccountType.estudiante:
-        return 'Estudiante verificado';
+        return 'badge.verified_student'.tr();
       case AccountType.particular:
-        return 'Cuenta verificada';
+        return 'badge.verified_account'.tr();
       case AccountType.negocio:
-        return 'Negocio verificado';
+        return 'badge.verified_business'.tr();
     }
   }
 }
@@ -758,7 +702,7 @@ class _RecentlyViewedSection extends StatelessWidget {
           alignment: Alignment.centerRight,
           child: TextButton(
             onPressed: onViewAll,
-            child: const Text('Ver todos'),
+            child: Text('profile.see_all'.tr()),
           ),
         ),
       ],
@@ -802,234 +746,6 @@ class _ProfileMetric extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _DarkModeToggle extends StatelessWidget {
-  const _DarkModeToggle();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = context.watch<ThemeProvider>();
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: context.colors.surfaceElevated,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: context.colors.border),
-      ),
-      child: SwitchListTile(
-        secondary: Container(
-          width: 36,
-          height: 36,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: context.colors.primary.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(9),
-          ),
-          child: Icon(
-            theme.darkMode ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-            color: context.colors.accent,
-            size: 19,
-          ),
-        ),
-        title: Text(
-          'Modo oscuro',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: context.colors.ink,
-          ),
-        ),
-        subtitle: Text(
-          'Cambia el tema de la interfaz',
-          style: TextStyle(color: context.colors.muted),
-        ),
-        value: theme.darkMode,
-        onChanged: (_) => theme.toggleDarkMode(),
-        activeTrackColor: context.colors.primary,
-        activeThumbColor: Colors.white,
-        inactiveTrackColor: context.colors.surfaceMuted,
-        inactiveThumbColor: context.colors.muted,
-      ),
-    );
-  }
-}
-
-/// Selector del color de acento personal.
-///
-/// Cada muestra previsualiza el relleno del tema ACTIVO, no siempre el
-/// pastel: en modo oscuro la app usa la versión oscurecida del color, así
-/// que mostrar el pastel aquí prometería algo que no se va a ver. Por eso la
-/// muestra se construye con la misma [AppColorSet.of] que usa el tema.
-///
-/// El aro exterior usa la variante de LÍNEA, porque un aro del propio
-/// relleno sobre la tarjeta daría ~1.5:1 y no marcaría nada.
-class _AccentPicker extends StatelessWidget {
-  const _AccentPicker();
-
-  @override
-  Widget build(BuildContext context) {
-    final seleccionado = context.accent;
-    final guardando = context.watch<AccentProvider>().guardando;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-      decoration: BoxDecoration(
-        color: context.colors.surfaceElevated,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: context.colors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Color de acento',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: context.colors.ink,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            'Personaliza el color principal de tu app',
-            style: TextStyle(color: context.colors.muted, fontSize: 13),
-          ),
-          const SizedBox(height: 14),
-          // Mientras hay un PATCH en vuelo, la fila queda bloqueada: sin
-          // esto, tocar dos muestras rápido mandaba el segundo tap al
-          // guard interno de `AccentProvider.seleccionar` (que lo ignora
-          // para no encimar dos PATCH) sin ningún aviso — el color no
-          // cambiaba y no había manera de saber por qué.
-          IgnorePointer(
-            ignoring: guardando,
-            child: AnimatedOpacity(
-              opacity: guardando ? 0.5 : 1,
-              duration: AppAnimations.fast,
-              child: Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  for (final swatch in AccentSwatch.opciones)
-                    _SwatchDot(
-                      swatch: swatch,
-                      seleccionado: swatch.id == seleccionado.id,
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SwatchDot extends StatelessWidget {
-  const _SwatchDot({required this.swatch, required this.seleccionado});
-
-  final AccentSwatch swatch;
-  final bool seleccionado;
-
-  /// El color se guarda en el perfil del backend, así que sin sesión no hay
-  /// dónde guardarlo. Solo se llega aquí desde el perfil propio (que ya
-  /// exige sesión), pero el guard evita mandar un PATCH sin sellerId si esta
-  /// tarjeta se reusara en otra pantalla.
-  Future<void> _seleccionar(BuildContext context) async {
-    final sellerId = context.read<AuthProvider>().backendSellerId;
-    if (sellerId == null) return;
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await context.read<AccentProvider>().seleccionar(
-        swatch,
-        sellerId: sellerId,
-      );
-    } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('No se pudo guardar el color. Intenta de nuevo.'),
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final brillo = Theme.of(context).brightness;
-    final muestra = AppColorSet.of(swatch, brillo);
-    return Semantics(
-      button: true,
-      selected: seleccionado,
-      label: swatch.label,
-      child: InkWell(
-        onTap: () => _seleccionar(context),
-        customBorder: const CircleBorder(),
-        child: Container(
-          width: 44,
-          height: 44,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: muestra.primary,
-            border: Border.all(
-              // Sin seleccionar el borde solo separa la muestra de la
-              // tarjeta; seleccionado es el aro grueso que marca el estado,
-              // y por eso ese sí necesita el tono de línea del tema.
-              color: seleccionado ? swatch.line(brillo) : context.colors.border,
-              width: seleccionado ? 3 : 1,
-            ),
-          ),
-          child: seleccionado
-              ? Icon(Icons.check_rounded, size: 20, color: muestra.onPrimary)
-              : null,
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileOption extends StatelessWidget {
-  const _ProfileOption({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: context.colors.surfaceElevated,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: context.colors.border),
-      ),
-      child: ListTile(
-        leading: Icon(icon, color: context.colors.primary),
-        title: Text(
-          title,
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: context.colors.ink,
-          ),
-        ),
-        subtitle: Text(subtitle, style: TextStyle(color: context.colors.muted)),
-        trailing: Icon(
-          Icons.chevron_right_rounded,
-          color: context.colors.muted,
-        ),
-        onTap:
-            onTap ??
-            () => ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text('$title mock'))),
-      ),
     );
   }
 }

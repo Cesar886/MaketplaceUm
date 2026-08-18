@@ -63,7 +63,7 @@ export default function CtaContacto({
           color: 'var(--muted)',
         }}
       >
-        Para escribirle {aQuien} necesitas la app de Mercadito UM.
+        Para escribirle {aQuien} necesitas la app de Marketplace UM.
       </p>
     </div>
   );

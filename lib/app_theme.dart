@@ -55,6 +55,17 @@ class AppColors {
   static const danger = Color(0xFFA6483C); // Ladrillo apagado, no rojo puro
   static const neutralBg = Color(0xFFEDEDEB); // No disponible / inactivo
 
+  // Punto de "en línea". Es más saturado que [success] a propósito: success
+  // es un fondo de badge con texto encima, mientras que esto es una mancha
+  // de 12px que tiene que leerse como señal por sí sola — el sage #4A6B5C a
+  // ese tamaño se confunde con un gris. Aun así se queda lejos del verde
+  // semáforo (#22C55E), que junto a los rellenos apagados de la paleta
+  // canta como si fuera de otra app.
+  static const online = Color(0xFF3FA36B);
+  // Sobre superficies oscuras el mismo tono se apaga; se aclara para
+  // conservar la misma presencia visual.
+  static const onlineOnDark = Color(0xFF5FBF8A);
+
   // ─── Oscuro ──────────────────────────────────────────────
   // Jerarquía por elevación (fondo < surface < surfaceElevated) en vez de
   // un solo gris plano — así las tarjetas se separan del fondo sin
@@ -111,6 +122,7 @@ class AppColorSet extends ThemeExtension<AppColorSet> {
     required this.accentTintBorder,
     required this.success,
     required this.successBg,
+    required this.online,
     required this.neutralBg,
     required this.danger,
   });
@@ -158,6 +170,7 @@ class AppColorSet extends ThemeExtension<AppColorSet> {
       )!,
       success: oscuro ? AppColors.successOnDark : AppColors.success,
       successBg: oscuro ? AppColors.darkSuccessBg : AppColors.successBg,
+      online: oscuro ? AppColors.onlineOnDark : AppColors.online,
       neutralBg: oscuro ? AppColors.darkSurfaceMuted : AppColors.neutralBg,
       danger: oscuro ? AppColors.dangerOnDark : AppColors.danger,
     );
@@ -246,6 +259,11 @@ class AppColorSet extends ThemeExtension<AppColorSet> {
   final Color successBg;
   final Color neutralBg;
 
+  /// Verde del punto de "en línea". Como [success], NO se tiñe con el
+  /// swatch: es un estado, no marca, y tiene que significar lo mismo con
+  /// los ocho colores.
+  final Color online;
+
   /// Ladrillo apagado legible sobre la superficie del tema actual. Para
   /// rellenos sólidos de error usar [AppColors.danger].
   final Color danger;
@@ -271,6 +289,7 @@ class AppColorSet extends ThemeExtension<AppColorSet> {
     Color? successBg,
     Color? neutralBg,
     Color? danger,
+    Color? online,
   }) {
     return AppColorSet(
       swatch: swatch ?? this.swatch,
@@ -292,6 +311,7 @@ class AppColorSet extends ThemeExtension<AppColorSet> {
       successBg: successBg ?? this.successBg,
       neutralBg: neutralBg ?? this.neutralBg,
       danger: danger ?? this.danger,
+      online: online ?? this.online,
     );
   }
 
@@ -327,6 +347,7 @@ class AppColorSet extends ThemeExtension<AppColorSet> {
       successBg: Color.lerp(successBg, other.successBg, t)!,
       neutralBg: Color.lerp(neutralBg, other.neutralBg, t)!,
       danger: Color.lerp(danger, other.danger, t)!,
+      online: Color.lerp(online, other.online, t)!,
     );
   }
 }

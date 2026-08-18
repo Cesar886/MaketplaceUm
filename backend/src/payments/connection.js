@@ -57,7 +57,7 @@ function avisarAlVendedor(vendorId, motivo) {
     vendorId,
     TIPO_NOTIFICACION,
     'Tu cuenta de pagos se desconectó',
-    'Dejaste de poder cobrar con tarjeta en Mercadito UM. '
+    'Dejaste de poder cobrar con tarjeta en Marketplace UM. '
       + 'Vuelve a conectar tu cuenta de Mercado Pago desde tu perfil para reactivarla.',
     { motivo: motivo || null },
   );

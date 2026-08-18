@@ -61,7 +61,8 @@ class ProductCarouselSection extends StatelessWidget {
   /// útil, y ahí se muestran menos tarjetas en vez de tarjetas más chicas.
   double get _tarjetasVisibles => compact ? 2 : 2.3;
 
-  /// Más alta que ancha, pero menos que en el grid del home (0.64): sin
+  /// Más alta que ancha, pero menos que en el grid del home (ver
+  /// `ProductGridMetrics.aspectRatioFor`, que es de donde sale aquella): sin
   /// descripción y sin vistas hay dos bloques menos de texto que acomodar
   /// debajo de la foto.
   static const double _aspectRatioTarjeta = 0.66;

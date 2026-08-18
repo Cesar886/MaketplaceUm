@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -137,7 +138,7 @@ class _ProductCommentsSectionState extends State<ProductCommentsSection> {
       if (!mounted) return;
       setState(() {
         _cargandoInicial = false;
-        _error = 'No se pudieron cargar los comentarios.';
+        _error = 'comments.load_error'.tr();
       });
     }
   }
@@ -167,7 +168,7 @@ class _ProductCommentsSectionState extends State<ProductCommentsSection> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _cargandoMas = false);
-      _avisar('No se pudieron cargar más comentarios.');
+      _avisar('comments.load_more_error'.tr());
     }
   }
 
@@ -233,9 +234,7 @@ class _ProductCommentsSectionState extends State<ProductCommentsSection> {
 
   String _mensajeDeError(Object error) {
     final texto = error.toString().replaceFirst('Exception: ', '');
-    return texto.isEmpty || texto.length > 140
-        ? 'Ocurrió un error. Intenta de nuevo.'
-        : texto;
+    return texto.isEmpty || texto.length > 140 ? 'errors.generic'.tr() : texto;
   }
 
   void _avisar(String mensaje) {
@@ -293,8 +292,13 @@ class _ProductCommentsSectionState extends State<ProductCommentsSection> {
                   // también por socket, así que un total momentáneamente
                   // desfasado no debe pintar "Ver más comentarios (-2)".
                   : Text(
-                      'Ver más comentarios'
-                      '${_total > _comentarios.length ? ' (${_total - _comentarios.length})' : ''}',
+                      _total > _comentarios.length
+                          ? 'comments.see_more_count'.tr(
+                              namedArgs: {
+                                'n': '${_total - _comentarios.length}',
+                              },
+                            )
+                          : 'comments.see_more'.tr(),
                     ),
             ),
           ),
@@ -336,7 +340,9 @@ class _Encabezado extends StatelessWidget {
         Text(
           // El contador se omite mientras carga en vez de mostrar "(0)", que
           // se leería como "no hay comentarios" justo antes de aparecer.
-          cargando ? 'Comentarios' : 'Comentarios ($total)',
+          cargando
+              ? 'profile.comments'.tr()
+              : 'comments.title_count'.tr(namedArgs: {'n': '$total'}),
           style: AppTypography.heading(16, color: context.colors.ink),
         ),
       ],
@@ -463,7 +469,7 @@ class _EstadoVacio extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'Sé el primero en comentar',
+              'comments.be_first'.tr(),
               style: TextStyle(fontSize: 14, color: context.colors.muted),
             ),
           ],
@@ -494,7 +500,7 @@ class _EstadoError extends StatelessWidget {
             const SizedBox(height: 8),
             TextButton(
               onPressed: onReintentar,
-              child: const Text('Reintentar'),
+              child: Text('common.retry'.tr()),
             ),
           ],
         ),
@@ -533,7 +539,7 @@ class _CampoComentario extends StatelessWidget {
             textInputAction: TextInputAction.newline,
             style: AppTypography.body(14.5, color: context.colors.ink),
             decoration: InputDecoration(
-              hintText: 'Escribe un comentario…',
+              hintText: 'comments.input_hint'.tr(),
               // El contador solo estorba hasta que estás cerca del tope; el
               // TextField lo respeta igual sin pintarlo.
               counterText: '',
@@ -590,7 +596,7 @@ class _CampoComentario extends StatelessWidget {
                           ),
                         )
                       : const Icon(Icons.send_rounded, size: 18),
-                  tooltip: 'Publicar comentario',
+                  tooltip: 'comments.post'.tr(),
                 );
               },
             ),
@@ -632,7 +638,7 @@ class TarjetaVerificaParaComentar extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Verifica tu cuenta para comentar',
+                  'comments.verify_title'.tr(),
                   style: AppTypography.heading(14.5, color: context.colors.ink),
                 ),
               ),
@@ -640,8 +646,7 @@ class TarjetaVerificaParaComentar extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Solo las cuentas verificadas —alumnos, personal UM, negocios y '
-            'externos— pueden dejar comentarios.',
+            'comments.verify_body'.tr(),
             style: TextStyle(fontSize: 13, color: context.colors.muted),
           ),
           const SizedBox(height: 4),
@@ -663,7 +668,7 @@ class TarjetaVerificaParaComentar extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 visualDensity: VisualDensity.compact,
               ),
-              icon: const Text('Verificar mi cuenta'),
+              icon: Text('comments.verify_action'.tr()),
               label: const Icon(Icons.arrow_forward_rounded, size: 16),
             ),
           ),
@@ -671,7 +676,7 @@ class TarjetaVerificaParaComentar extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(left: 8, bottom: 8),
               child: Text(
-                'Inicia sesión para verificarte.',
+                'comments.verify_login'.tr(),
                 style: TextStyle(fontSize: 12, color: context.colors.muted),
               ),
             ),

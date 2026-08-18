@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -7,6 +8,7 @@ import '../models.dart';
 import '../services/api_service.dart';
 import '../widgets/auto_refresh.dart';
 import '../widgets/product_card.dart';
+import '../widgets/product_grid_metrics.dart';
 import 'product_detail_screen.dart';
 
 String _capitalize(String text) =>
@@ -204,15 +206,21 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
   Widget build(BuildContext context) {
     final results = _filteredResults;
     final hasTrending = _trendingSearches.isNotEmpty;
+    // Hint estático de respaldo: es el que se ve mientras las tendencias
+    // viajan por red, y el único que queda si `getTrendingSearches` falla o
+    // devuelve la lista vacía (ver `_load`). Dejarlo en blanco deja el campo
+    // sin ninguna pista de qué se puede buscar justo cuando el backend ya
+    // falló, que es cuando más falta hace.
     final hintText = hasTrending
-        ? _capitalize(_trendingSearches[_termIndex % _trendingSearches.length])
-                  .substring(0, _charCount) +
+        ? _capitalize(
+                _trendingSearches[_termIndex % _trendingSearches.length],
+              ).substring(0, _charCount) +
               (_cursorVisible ? '▏' : '')
-        : 'Libro, electronico, servicio...';
+        : 'search.hint'.tr();
 
     return Scaffold(
       backgroundColor: context.colors.background,
-      appBar: AppBar(title: const Text('Buscar')),
+      appBar: AppBar(title: Text('common.search'.tr())),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
         children: [
@@ -262,7 +270,7 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        'Filtros avanzados',
+                        'search.advanced_filters'.tr(),
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
                           color: context.colors.ink,
@@ -272,7 +280,7 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                       if (_hasActiveFilters)
                         TextButton(
                           onPressed: _clearFilters,
-                          child: const Text('Limpiar'),
+                          child: Text('search.clear'.tr()),
                         ),
                     ],
                   ),
@@ -280,7 +288,7 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
 
                   // Precio mínimo / máximo
                   Text(
-                    'Rango de precio',
+                    'search.price_range'.tr(),
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
@@ -295,11 +303,11 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                           controller: _minPriceController,
                           onChanged: (_) => setState(() {}),
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             prefixText: r'$ ',
-                            hintText: 'Mín',
+                            hintText: 'search.min'.tr(),
                             isDense: true,
-                            contentPadding: EdgeInsets.symmetric(
+                            contentPadding: const EdgeInsets.symmetric(
                               horizontal: 12,
                               vertical: 10,
                             ),
@@ -321,11 +329,11 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                           controller: _maxPriceController,
                           onChanged: (_) => setState(() {}),
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             prefixText: r'$ ',
-                            hintText: 'Máx',
+                            hintText: 'search.max'.tr(),
                             isDense: true,
-                            contentPadding: EdgeInsets.symmetric(
+                            contentPadding: const EdgeInsets.symmetric(
                               horizontal: 12,
                               vertical: 10,
                             ),
@@ -338,7 +346,7 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
 
                   // Vendedor
                   Text(
-                    'Vendedor',
+                    'search.seller'.tr(),
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
@@ -350,11 +358,14 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                     controller: _sellerController,
                     onChanged: (_) => setState(() {}),
                     textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.person_outline_rounded, size: 20),
-                      hintText: 'Nombre del vendedor',
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(
+                        Icons.person_outline_rounded,
+                        size: 20,
+                      ),
+                      hintText: 'search.seller_hint'.tr(),
                       isDense: true,
-                      contentPadding: EdgeInsets.symmetric(
+                      contentPadding: const EdgeInsets.symmetric(
                         horizontal: 12,
                         vertical: 10,
                       ),
@@ -410,10 +421,19 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
                   ),
-                  items: const [
-                    DropdownMenuItem(value: 0, child: Text('Más recientes')),
-                    DropdownMenuItem(value: 1, child: Text('Menor precio')),
-                    DropdownMenuItem(value: 2, child: Text('Mayor precio')),
+                  items: [
+                    DropdownMenuItem(
+                      value: 0,
+                      child: Text('search.sort_recent'.tr()),
+                    ),
+                    DropdownMenuItem(
+                      value: 1,
+                      child: Text('search.sort_price_asc'.tr()),
+                    ),
+                    DropdownMenuItem(
+                      value: 2,
+                      child: Text('search.sort_price_desc'.tr()),
+                    ),
                   ],
                   onChanged: (v) {
                     if (v != null) setState(() => _sortValue = v);
@@ -436,7 +456,7 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
               padding: EdgeInsets.all(32),
               child: Center(
                 child: Text(
-                  'No se encontraron resultados.',
+                  'search.no_results'.tr(),
                   style: TextStyle(color: context.colors.muted),
                 ),
               ),
@@ -444,12 +464,9 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
           else
             for (final product in results) ...[
               SizedBox(
-                // 130 y no 122, igual que en ofertas: con un título de dos
-                // renglones MÁS la fila de atributos destacados (que sustituyó
-                // a la descripción y es más alta que ella), 122 dejaba el
-                // contenido a ~2 px de desbordar — cualquier variación de
-                // métrica de fuente lo tiraba a overflow (barras amarillas).
-                height: 130,
+                // Misma altura que ofertas; el porqué del número está en
+                // ProductGridMetrics.horizontalCardHeight.
+                height: ProductGridMetrics.horizontalCardHeight,
                 child: ProductCard(
                   product: product,
                   horizontal: true,

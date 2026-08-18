@@ -26,7 +26,7 @@ class PrivacyScreen extends StatelessWidget {
             const _SectionP(
               title: '1. Responsable del tratamiento',
               body:
-                  'Mercadito UM, parte de la Universidad de Montemorelos '
+                  'Marketplace UM, parte de la Universidad de Montemorelos '
                   '(en adelante, "la Plataforma"), es el responsable del '
                   'tratamiento de tus datos personales. Nuestro domicilio se '
                   'ubica en Montemorelos, Nuevo León, México.',
@@ -141,7 +141,7 @@ class PrivacyScreen extends StatelessWidget {
             Divider(color: context.colors.border),
             const SizedBox(height: 12),
             Text(
-              'Al usar Mercadito UM, confirmas que has leído y entendido '
+              'Al usar Marketplace UM, confirmas que has leído y entendido '
               'esta Política de Privacidad.',
               textAlign: TextAlign.center,
               style: TextStyle(

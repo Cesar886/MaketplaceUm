@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -77,7 +78,7 @@ class WantedPostCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  post.description ?? 'Sin descripción',
+                  post.description ?? 'wanted.no_description'.tr(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.body(11.5, color: context.colors.muted),
@@ -124,7 +125,7 @@ class _SeBuscaTag extends StatelessWidget {
   Widget build(BuildContext context) {
     final priceMin = post.priceMin;
     final priceMax = post.priceMax;
-    String label = 'Se busca';
+    String label = 'wanted.badge'.tr();
     if (priceMin != null && priceMax != null) {
       label =
           '${Product.formatPrice(priceMin)} - ${Product.formatPrice(priceMax)}';

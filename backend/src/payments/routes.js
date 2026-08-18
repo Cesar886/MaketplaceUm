@@ -739,7 +739,7 @@ function register(app) {
       }
 
       res.send(paginaFinal('¡Cuenta conectada!',
-        'Ya puedes recibir pagos en Mercadito UM.', true));
+        'Ya puedes recibir pagos en Marketplace UM.', true));
     } catch (err) {
       console.error(`[pagos] Error en callback de OAuth: ${
         err instanceof mp.MpError ? JSON.stringify(err.detalle) : err.stack}`);
@@ -1079,8 +1079,8 @@ function register(app) {
       }
 
       const descripcion = orden.items.length === 1
-        ? String(orden.items[0].title_snapshot || 'Compra en Mercadito UM').slice(0, 60)
-        : `Compra en Mercadito UM (${orden.items.length} productos)`;
+        ? String(orden.items[0].title_snapshot || 'Compra en Marketplace UM').slice(0, 60)
+        : `Compra en Marketplace UM (${orden.items.length} productos)`;
 
       // La comisión que de verdad se puede cobrar en ESTE cobro. Puede
       // salir 0 —vendedor que es la propia cuenta de la aplicación, o
@@ -1357,7 +1357,7 @@ function register(app) {
           // Con un vendedor de PRUEBA el correo del comprador se omite a
           // propósito. Mercado Pago rechaza los pagos de prueba cuyo
           // `payer.email` no corresponde a la cuenta con la que se entra al
-          // checkout, y el correo de Mercadito nunca es el del usuario de
+          // checkout, y el correo de Marketplace nunca es el del usuario de
           // prueba comprador (`test_user_…@testuser.com`). Sin el campo, MP
           // usa el de la sesión. En producción sí va: ahí el correo es el
           // bueno y quitarlo obligaría a escribirlo a mano.
@@ -1511,7 +1511,7 @@ function register(app) {
     const resultado = String(req.query.r || '');
 
     const { titulo, texto, ok } = resultado === 'ok'
-      ? { titulo: 'Pago enviado', texto: 'Vuelve a Mercadito UM para ver la confirmación.', ok: true }
+      ? { titulo: 'Pago enviado', texto: 'Vuelve a Marketplace UM para ver la confirmación.', ok: true }
       : resultado === 'pendiente'
         ? { titulo: 'Pago en revisión', texto: 'Mercado Pago está revisando tu pago. Vuelve a la app para seguirlo.', ok: true }
         : { titulo: 'Pago no completado', texto: 'No se completó el pago. Puedes intentarlo de nuevo desde la app.', ok: false };

@@ -1099,7 +1099,7 @@ Run: `cd /home/daniel/mercaditoUM && flutter build apk --release --build-number=
 Expected: `✓ Built build/app/outputs/flutter-apk/app-release.apk`
 
 Run: `/home/daniel/Android/Sdk/build-tools/36.1.0/apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk`
-Expected: `Signer #1 certificate DN: CN=Mercadito UM, OU=Dev, O=MercaditoUM, L=Unknown, ST=Unknown, C=MX` (the release keystore set up previously — confirms this change didn't accidentally fall back to debug signing).
+Expected: `Signer #1 certificate DN: CN=Marketplace UM, OU=Dev, O=MarketplaceUM, L=Unknown, ST=Unknown, C=MX` (the release keystore set up previously — confirms this change didn't accidentally fall back to debug signing).
 
 - [ ] **Step 3: Manual smoke check (documented, not automated)**
 

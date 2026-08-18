@@ -30,10 +30,10 @@ const cuerpo = Work_Sans({
 // transparencia en el icono de la pantalla de inicio y la pinta de negro.
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: 'Mercadito UM',
+  title: 'Marketplace UM',
   description:
     'Compra y vende dentro de la Universidad de Montemorelos.',
-  applicationName: 'Mercadito UM',
+  applicationName: 'Marketplace UM',
 };
 
 export const viewport = {

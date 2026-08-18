@@ -4,6 +4,7 @@ const sharp = require('sharp');
 const multer = require('multer');
 const db = require('../database');
 const { sendPush } = require('../push');
+const { presenciaDe } = require('./presenciaHttp');
 
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
 
@@ -180,6 +181,11 @@ function register(app) {
           // /api/sellers/:id. Hoy la UI del chat aún no lo pinta.
           carrera: otherUser.carrera || null,
           tipoVerificacion: otherUser.tipo_verificacion || null,
+          // Presencia ya filtrada por privacidad: quien no tiene permiso
+          // recibe exactamente lo mismo que si el otro estuviera offline.
+          // El "visor" es el dueño del inbox que se está leyendo, así que
+          // esto no concede nada que el endpoint no diera ya.
+          ...presenciaDe(req, userId, otherUser.id),
         } : null,
         lastMessage: lastMessage ? {
           id: lastMessage.id,

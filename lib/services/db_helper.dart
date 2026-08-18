@@ -1,5 +1,5 @@
 // db_helper.dart
-// Base de datos local (SQLite) para Mercadito UM usando el paquete sqflite.
+// Base de datos local (SQLite) para Marketplace UM usando el paquete sqflite.
 //
 // Dependencias (en pubspec.yaml):
 //   sqflite: ^2.3.0

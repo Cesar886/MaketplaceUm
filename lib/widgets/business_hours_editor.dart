@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -23,13 +24,13 @@ class BusinessHoursEditor extends StatefulWidget {
 
 class _BusinessHoursEditorState extends State<BusinessHoursEditor> {
   static const _dayNames = [
-    'Lunes',
-    'Martes',
-    'Miércoles',
-    'Jueves',
-    'Viernes',
-    'Sábado',
-    'Domingo',
+    'weekday_full.mon',
+    'weekday_full.tue',
+    'weekday_full.wed',
+    'weekday_full.thu',
+    'weekday_full.fri',
+    'weekday_full.sat',
+    'weekday_full.sun',
   ];
 
   late final Map<int, BusinessHoursRange> _hours = Map.of(widget.initialHours);
@@ -65,14 +66,14 @@ class _BusinessHoursEditorState extends State<BusinessHoursEditor> {
     final openResult = await showTimePicker(
       context: context,
       initialTime: _parseTime(current.open),
-      helpText: 'Hora de apertura — ${_dayNames[day]}',
+      helpText: 'Hora de apertura — ${_dayNames[day].tr()}',
     );
     if (openResult == null || !mounted) return;
 
     final closeResult = await showTimePicker(
       context: context,
       initialTime: _parseTime(current.close),
-      helpText: 'Hora de cierre — ${_dayNames[day]}',
+      helpText: 'Hora de cierre — ${_dayNames[day].tr()}',
     );
     if (closeResult == null || !mounted) return;
 
@@ -81,11 +82,9 @@ class _BusinessHoursEditorState extends State<BusinessHoursEditor> {
     final openMinutes = openResult.hour * 60 + openResult.minute;
     final closeMinutes = closeResult.hour * 60 + closeResult.minute;
     if (closeMinutes <= openMinutes) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('La hora de cierre debe ser posterior a la apertura'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('hours.close_after_open'.tr())));
       return;
     }
 
@@ -104,9 +103,9 @@ class _BusinessHoursEditorState extends State<BusinessHoursEditor> {
           children: [
             Icon(Icons.schedule_rounded, size: 16, color: context.colors.muted),
             const SizedBox(width: 6),
-            const Expanded(
+            Expanded(
               child: Text(
-                'Horario de atención (opcional)',
+                'hours.title_optional'.tr(),
                 style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
               ),
             ),

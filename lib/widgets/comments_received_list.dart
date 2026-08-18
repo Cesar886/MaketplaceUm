@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -81,7 +82,7 @@ class _CommentsReceivedListState extends State<CommentsReceivedList> {
       if (!mounted) return;
       setState(() {
         _cargandoInicial = false;
-        _error = 'No se pudieron cargar los comentarios.';
+        _error = 'comments.load_error'.tr();
       });
     }
   }
@@ -129,9 +130,7 @@ class _CommentsReceivedListState extends State<CommentsReceivedList> {
       // Caso real: el dueño borró la publicación pero el comentario sigue
       // referenciándola en una lista ya cargada.
       mensajero.showSnackBar(
-        const SnackBar(
-          content: Text('Esta publicación ya no está disponible.'),
-        ),
+        SnackBar(content: Text('comments.listing_gone'.tr())),
       );
     }
   }
@@ -161,7 +160,7 @@ class _CommentsReceivedListState extends State<CommentsReceivedList> {
           children: [
             Text(_error!, style: TextStyle(color: context.colors.muted)),
             const SizedBox(height: 8),
-            TextButton(onPressed: _cargar, child: const Text('Reintentar')),
+            TextButton(onPressed: _cargar, child: Text('common.retry'.tr())),
           ],
         ),
       );
@@ -183,15 +182,15 @@ class _CommentsReceivedListState extends State<CommentsReceivedList> {
             const SizedBox(height: 12),
             Text(
               widget.esPerfilPropio
-                  ? 'Aún no has recibido comentarios'
-                  : 'Este vendedor aún no tiene comentarios',
+                  ? 'comments.none_received'.tr()
+                  : 'comments.seller_none'.tr(),
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: context.colors.muted),
             ),
             if (widget.esPerfilPropio) ...[
               const SizedBox(height: 6),
               Text(
-                'Aparecerán aquí cuando alguien comente en tus publicaciones.',
+                'comments.none_received_hint'.tr(),
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12.5, color: context.colors.muted),
               ),
@@ -227,7 +226,7 @@ class _CommentsReceivedListState extends State<CommentsReceivedList> {
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Ver más comentarios'),
+                      : Text('comments.see_more'.tr()),
                 ),
               ),
             );
@@ -371,7 +370,7 @@ class _ProductoComentado extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            comentario.productTitle ?? 'Publicación',
+            comentario.productTitle ?? 'comments.listing'.tr(),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(

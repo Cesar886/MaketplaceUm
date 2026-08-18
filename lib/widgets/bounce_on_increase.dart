@@ -59,13 +59,17 @@ class _BounceOnIncreaseState extends State<BounceOnIncrease>
     // Sube rápido y baja más lento: el peso de la animación queda en el
     // regreso, que es lo que la hace leerse como rebote y no como parpadeo.
     TweenSequenceItem(
-      tween: Tween(begin: 1.0, end: widget.maxScale)
-          .chain(CurveTween(curve: Curves.easeOut)),
+      tween: Tween(
+        begin: 1.0,
+        end: widget.maxScale,
+      ).chain(CurveTween(curve: Curves.easeOut)),
       weight: 40,
     ),
     TweenSequenceItem(
-      tween: Tween(begin: widget.maxScale, end: 1.0)
-          .chain(CurveTween(curve: AppAnimations.entrance)),
+      tween: Tween(
+        begin: widget.maxScale,
+        end: 1.0,
+      ).chain(CurveTween(curve: AppAnimations.entrance)),
       weight: 60,
     ),
   ]).animate(_controller);

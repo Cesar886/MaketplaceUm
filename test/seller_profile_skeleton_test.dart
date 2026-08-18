@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mercadito_um/widgets/product_grid_metrics.dart';
 import 'package:mercadito_um/widgets/product_card_skeleton.dart';
 import 'package:mercadito_um/widgets/seller_profile_skeleton.dart';
 
@@ -31,7 +32,9 @@ void main() {
           (tester.widget<GridView>(find.byType(GridView)).gridDelegate)
               as SliverGridDelegateWithFixedCrossAxisCount;
       expect(delegate.crossAxisCount, 2);
-      expect(delegate.childAspectRatio, 0.66);
+      // 0.66 era una copia que se quedó atrás del grid real; ahora ambos
+      // leen ProductGridMetrics.
+      expect(delegate.childAspectRatio, ProductGridMetrics.aspectRatioFor(2));
     },
   );
 }

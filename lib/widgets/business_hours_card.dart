@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -23,13 +24,13 @@ class BusinessHoursCard extends StatelessWidget {
   final bool showStatusBadge;
 
   static const _dayNames = [
-    'Lunes',
-    'Martes',
-    'Miércoles',
-    'Jueves',
-    'Viernes',
-    'Sábado',
-    'Domingo',
+    'weekday_full.mon',
+    'weekday_full.tue',
+    'weekday_full.wed',
+    'weekday_full.thu',
+    'weekday_full.fri',
+    'weekday_full.sat',
+    'weekday_full.sun',
   ];
 
   @override
@@ -73,7 +74,9 @@ class BusinessHoursCard extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  range != null ? '${range.open}-${range.close}' : 'Cerrado',
+                  range != null
+                      ? '${range.open}-${range.close}'
+                      : 'status.closed'.tr(),
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: isToday ? FontWeight.w700 : FontWeight.w500,

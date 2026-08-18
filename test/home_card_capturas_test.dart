@@ -1,6 +1,6 @@
 // Capturas de revisión visual de la tarjeta del feed (ProductCard) en la
-// geometría REAL del home: ancho 390, 2 columnas, childAspectRatio 0.64,
-// padding 18 y crossAxisSpacing 12 — los mismos números de home_screen.dart.
+// geometría REAL del home: ancho 390, 2 columnas, padding 18 y las medidas
+// de ProductGridMetrics — la misma fuente que usa home_screen.dart.
 //
 // Igual que atributos_capturas_test.dart: no compara contra goldens, solo
 // escribe PNGs en build/capturas_home/ para poder mirar el resultado.
@@ -17,6 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mercadito_um/app_theme.dart';
 import 'package:mercadito_um/models.dart';
 import 'package:mercadito_um/widgets/product_card.dart';
+import 'package:mercadito_um/widgets/product_grid_metrics.dart';
 
 const _dirSalida = 'build/capturas_home';
 final _generarPng = Platform.environment['CAPTURAS'] == '1';
@@ -89,7 +90,9 @@ void main() {
     );
     final imagen = await objeto.toImage(pixelRatio: 2);
     final datos = await imagen.toByteData(format: ImageByteFormat.png);
-    File('$_dirSalida/$nombre.png').writeAsBytesSync(datos!.buffer.asUint8List());
+    File(
+      '$_dirSalida/$nombre.png',
+    ).writeAsBytesSync(datos!.buffer.asUint8List());
   }
 
   Product producto({
@@ -97,7 +100,8 @@ void main() {
     required String titulo,
     required num precio,
     num? precioAnterior,
-    String descripcion = 'Poco uso, sin manchas ni detalles, la vendo por mudanza',
+    String descripcion =
+        'Poco uso, sin manchas ni detalles, la vendo por mudanza',
     String categoria = 'clothes',
     String nombreCategoria = 'Ropa',
     List<Map<String, dynamic>> destacados = const [],
@@ -202,7 +206,11 @@ void main() {
     ),
   ];
 
-  Future<void> montarGrid(WidgetTester tester, ThemeData tema, Color fondo) async {
+  Future<void> montarGrid(
+    WidgetTester tester,
+    ThemeData tema,
+    Color fondo,
+  ) async {
     tester.view.physicalSize = const Size(390 * 3, 900 * 3);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
@@ -212,9 +220,9 @@ void main() {
         GridView.count(
           padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
           crossAxisCount: 2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 0.62,
+          crossAxisSpacing: ProductGridMetrics.spacing,
+          mainAxisSpacing: ProductGridMetrics.spacing,
+          childAspectRatio: ProductGridMetrics.aspectRatioFor(2),
           children: [
             for (final p in catalogo()) ProductCard(product: p, onTap: () {}),
           ],
@@ -250,8 +258,12 @@ void main() {
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: SizedBox(
-                  height: 130,
-                  child: ProductCard(product: p, horizontal: true, onTap: () {}),
+                  height: ProductGridMetrics.horizontalCardHeight,
+                  child: ProductCard(
+                    product: p,
+                    horizontal: true,
+                    onTap: () {},
+                  ),
                 ),
               ),
           ],

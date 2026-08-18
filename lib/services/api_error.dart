@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
@@ -49,13 +50,14 @@ enum CategoriaError {
   desconocido,
 }
 
-const String _mensajeSinConexion = 'Revisa tu conexión e intenta de nuevo.';
-const String _mensajeTimeout =
-    'La conexión está tardando demasiado. Intenta de nuevo.';
-const String _mensajeServidor =
-    'Algo salió mal de nuestro lado, intenta en unos minutos.';
-const String _mensajeDesconocido =
-    'Algo no salió como esperábamos. Intenta de nuevo.';
+// Claves, no constantes de texto: el mensaje se resuelve en el momento de
+// mostrarlo, que es la única forma de que respete el idioma activo. Se
+// mantienen como `const String` de clave para poder seguir usándolas como
+// valor por defecto de parámetro (ver [mensajeDeError]).
+const String _claveSinConexion = 'errors.no_connection_short';
+const String _claveTimeout = 'errors.timeout';
+const String _claveServidor = 'errors.server';
+const String _claveDesconocido = 'errors.unknown';
 
 /// Error de una llamada a la API, ya traducido.
 ///
@@ -73,7 +75,7 @@ class ApiException implements Exception {
   /// Fallo de red: nunca llegó a haber respuesta del servidor.
   factory ApiException.deRed(Object error, {StackTrace? stack}) {
     final categoria = _categoriaDeExcepcion(error);
-    registrarErrorTecnico('Fallo de red', error, stack);
+    registrarErrorTecnico('errors.network_log'.tr(), error, stack);
     return ApiException(
       _mensajePorCategoria(categoria),
       categoria: categoria,
@@ -143,12 +145,11 @@ class ApiException implements Exception {
 ///
 /// [fallback] permite dar contexto de la acción que falló ("No se pudo
 /// enviar el mensaje.") en los casos que no son de red.
-String mensajeDeError(
-  Object? error, {
-  String fallback = _mensajeDesconocido,
-  StackTrace? stack,
-}) {
-  if (error == null) return fallback;
+String mensajeDeError(Object? error, {String? fallback, StackTrace? stack}) {
+  // El fallback se resuelve aquí y no como valor por defecto del parámetro:
+  // `.tr()` no es constante.
+  final textoFallback = fallback ?? _claveDesconocido.tr();
+  if (error == null) return textoFallback;
 
   // Ya viene traducido: es el camino normal, porque el cliente HTTP convierte
   // los fallos de red antes de que salgan de ApiService.
@@ -156,7 +157,7 @@ String mensajeDeError(
 
   final categoria = _categoriaDeExcepcion(error);
   if (categoria != CategoriaError.desconocido) {
-    registrarErrorTecnico('Fallo de red', error, stack);
+    registrarErrorTecnico('errors.network_log'.tr(), error, stack);
     return _mensajePorCategoria(categoria);
   }
 
@@ -165,8 +166,8 @@ String mensajeDeError(
   // le añade y se comprueba que no arrastre nada técnico.
   final texto = _sinPrefijoDeExcepcion(error.toString());
   if (_pareceTecnico(texto)) {
-    registrarErrorTecnico('Error no clasificado', error, stack);
-    return fallback;
+    registrarErrorTecnico('errors.unclassified_log'.tr(), error, stack);
+    return textoFallback;
   }
   return texto;
 }
@@ -184,26 +185,42 @@ void registrarErrorTecnico(String contexto, Object error, [StackTrace? stack]) {
   _reportarErrorABackend(contexto, error, stack);
 }
 
+/// Cliente con el que se manda el reporte. Inyectable solo para poder
+/// probar el camino de fallo sin red real (ver api_error_test.dart).
+http.Client _clienteDeReporte = http.Client();
+
+@visibleForTesting
+set clienteDeReportePrueba(http.Client cliente) => _clienteDeReporte = cliente;
+
+@visibleForTesting
+void restaurarClienteDeReporte() => _clienteDeReporte = http.Client();
+
 /// Envía el detalle técnico a POST /api/client-errors. Fire-and-forget: si el
 /// backend no responde, no hay red o lo que sea, se ignora sin más — nunca
 /// debe tapar ni retrasar el error original que ya está manejando la
 /// pantalla que llamó a [registrarErrorTecnico].
 void _reportarErrorABackend(String contexto, Object error, StackTrace? stack) {
   final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/client-errors');
-  unawaited(
-    http
-        .post(
-          uri,
-          headers: const {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'contexto': contexto,
-            'error': error.toString(),
-            if (stack != null) 'stack': stack.toString(),
-            'plataforma': defaultTargetPlatform.name,
-          }),
-        )
-        .catchError((_) => http.Response('', 0)),
-  );
+  // `ignore()` descarta resultado Y error, que es exactamente el contrato de
+  // fire-and-forget de esta función.
+  //
+  // Antes decía `catchError((_) => http.Response('', 0))`, y ese Response
+  // falso era el bug: `http.Response` rechaza cualquier status por debajo de
+  // 100 con "Invalid status code 0", así que el propio manejador de error
+  // lanzaba. El fallo salía como excepción no capturada justo en el caso que
+  // quería silenciar — sin red — y por cada error registrado.
+  _clienteDeReporte
+      .post(
+        uri,
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'contexto': contexto,
+          'error': error.toString(),
+          if (stack != null) 'stack': stack.toString(),
+          'plataforma': defaultTargetPlatform.name,
+        }),
+      )
+      .ignore();
 }
 
 /// Excepciones que significan "no se pudo hablar con el servidor".
@@ -221,14 +238,14 @@ CategoriaError _categoriaDeExcepcion(Object error) {
 String _mensajePorCategoria(CategoriaError categoria) {
   switch (categoria) {
     case CategoriaError.sinConexion:
-      return _mensajeSinConexion;
+      return _claveSinConexion.tr();
     case CategoriaError.timeout:
-      return _mensajeTimeout;
+      return _claveTimeout.tr();
     case CategoriaError.servidor:
-      return _mensajeServidor;
+      return _claveServidor.tr();
     case CategoriaError.cliente:
     case CategoriaError.desconocido:
-      return _mensajeDesconocido;
+      return _claveDesconocido.tr();
   }
 }
 

@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -17,7 +18,7 @@ class FeaturedBadge extends StatelessWidget {
     // siempre pesa más en la jerarquía visual que el "patrocinado".
     return _Badge(
       icon: Icons.star_rounded,
-      label: 'Destacado',
+      label: 'badge.featured'.tr(),
       foreground: context.colors.accent,
       background: context.colors.accentTint,
       border: context.colors.accentTintBorder,
@@ -39,7 +40,7 @@ class OfferBadge extends StatelessWidget {
     // producto y no como un texto flotando encima de la foto.
     return _Badge(
       icon: Icons.local_offer_rounded,
-      label: label ?? 'Oferta',
+      label: label ?? 'badge.offer'.tr(),
       foreground: context.colors.onPrimary,
       background: context.colors.primary,
       compact: compact,
@@ -158,9 +159,9 @@ class InsigniaVerificada extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final etiqueta = switch (_tipoEfectivo) {
-      AccountType.estudiante => 'Estudiante verificado',
-      AccountType.negocio => 'Negocio verificado',
-      AccountType.particular => 'Verificado',
+      AccountType.estudiante => 'badge.verified_student'.tr(),
+      AccountType.negocio => 'badge.verified_business'.tr(),
+      AccountType.particular => 'badge.verified'.tr(),
     };
     const color = AppColors.verifiedBlue;
 
@@ -217,28 +218,46 @@ class AvailabilityBadge extends StatelessWidget {
     // (oro) y no disponible (gris). Ocho tonos distintos obligarían a leer
     // el texto para saber si puedo comprar; tres se distinguen de reojo.
     final (String label, Color foreground, Color background) = switch (status) {
-      ComputedStatus.available => ('Disponible', c.success, c.successBg),
-      ComputedStatus.soldOut => ('Agotado', c.mutedStrong, c.neutralBg),
+      ComputedStatus.available => (
+        'status.available'.tr(),
+        c.success,
+        c.successBg,
+      ),
+      ComputedStatus.soldOut => (
+        'status.sold_out'.tr(),
+        c.mutedStrong,
+        c.neutralBg,
+      ),
       ComputedStatus.availableOtherDay => (
         nextAvailableDay != null
-            ? 'Disponible el $nextAvailableDay'
-            : 'Próximamente',
+            ? 'status.available_on'.tr(namedArgs: {'day': nextAvailableDay!})
+            : 'status.coming_soon'.tr(),
         c.accent,
         c.accentTint,
       ),
       ComputedStatus.closed => (
-        opensAt != null ? 'Disponible: $opensAt' : 'Cerrado',
+        opensAt != null
+            ? 'status.available_at'.tr(namedArgs: {'time': opensAt!})
+            : 'status.closed'.tr(),
         c.accent,
         c.accentTint,
       ),
-      ComputedStatus.reserved => ('Apartado', c.accent, c.accentTint),
+      ComputedStatus.reserved => (
+        'status.reserved'.tr(),
+        c.accent,
+        c.accentTint,
+      ),
       ComputedStatus.negotiating => (
-        'En negociación',
+        'status.negotiating'.tr(),
         c.accent,
         c.surfaceMuted,
       ),
-      ComputedStatus.sold => ('Vendido', c.mutedStrong, c.neutralBg),
-      ComputedStatus.paused => ('Pausado', c.mutedStrong, c.neutralBg),
+      ComputedStatus.sold => ('status.sold'.tr(), c.mutedStrong, c.neutralBg),
+      ComputedStatus.paused => (
+        'status.paused'.tr(),
+        c.mutedStrong,
+        c.neutralBg,
+      ),
     };
 
     return Container(
@@ -292,7 +311,7 @@ class OpenStatusBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        isOpen ? 'Abierto' : 'Cerrado',
+        isOpen ? 'status.open'.tr() : 'status.closed'.tr(),
         style: TextStyle(
           color: foreground,
           fontSize: 10.5,
@@ -330,7 +349,7 @@ class RespondeRapidoBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return _Badge(
       icon: Icons.bolt_rounded,
-      label: 'Responde rápido',
+      label: 'badge.fast_replies'.tr(),
       foreground: context.colors.success,
       background: context.colors.successBg,
       compact: compact,
@@ -370,7 +389,8 @@ class RachaBadge extends StatelessWidget {
 /// Se pinta en una sola línea de alto fijo, y OCUPA EL LUGAR de la línea de
 /// descripción en la tarjeta (ver ProductCard) en vez de sumarse a ella. La
 /// celda de la cuadrícula tiene alto fijo por `childAspectRatio` y los
-/// resultados de búsqueda van dentro de un `SizedBox(height: 118)`: ahí no
+/// resultados de búsqueda van dentro de un `SizedBox` de alto fijo (ver
+/// `ProductGridMetrics.horizontalCardHeight`): ahí no
 /// existe "queda un poco apretado", lo que sobra desborda y raya la pantalla
 /// de amarillo. El alto va acotado (17 px) por la misma razón.
 ///

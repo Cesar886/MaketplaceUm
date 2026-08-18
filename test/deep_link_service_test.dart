@@ -1,6 +1,6 @@
 // El parseo del link entrante es la parte del deep linking que se puede
 // probar sin plataforma: decide si un Uri que llegó de fuera identifica una
-// publicación de Mercadito UM y cuál.
+// publicación de Marketplace UM y cuál.
 //
 // Importa porque el intent-filter de Android es más laxo que lo que la app
 // debe aceptar (captura cualquier /producto/… del dominio), y porque en

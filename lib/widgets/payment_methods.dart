@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -153,7 +154,7 @@ class PaymentMethodsSelector extends StatelessWidget {
         if (showError) ...[
           const SizedBox(height: 6),
           Text(
-            'Selecciona al menos un método de pago',
+            'publish.error_payment_required'.tr(),
             style: TextStyle(color: AppColors.danger, fontSize: 12),
           ),
         ],

@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -25,7 +26,7 @@ class QrDisplayScreen extends StatelessWidget {
         elevation: 0,
         systemOverlayStyle: SystemUiOverlayStyle.light,
         title: Text(
-          title ?? 'Código QR',
+          title ?? 'qr.title'.tr(),
           style: const TextStyle(color: Colors.white),
         ),
         leading: IconButton(
@@ -72,7 +73,7 @@ class QrDisplayScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'Muestra este código para que\nlo escaneen y vean el producto.',
+                'qr.show_hint'.tr(),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.5),
@@ -92,7 +93,7 @@ class QrDisplayScreen extends StatelessWidget {
                   ),
                 ),
                 icon: const Icon(Icons.close_rounded, size: 20),
-                label: const Text('Cerrar'),
+                label: Text('common.close'.tr()),
               ),
             ],
           ),

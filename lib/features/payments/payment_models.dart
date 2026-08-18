@@ -8,6 +8,8 @@ library;
 
 /// Tarjeta guardada, tal como la devuelve el backend: solo lo necesario
 /// para que la persona reconozca cuál es.
+import 'package:easy_localization/easy_localization.dart';
+
 class SavedCard {
   const SavedCard({
     required this.id,
@@ -43,13 +45,13 @@ class SavedCard {
       case 'mastercard':
         return 'Mastercard';
       case 'amex':
-        return 'American Express';
+        return 'card.amex'.tr();
       case 'debvisa':
-        return 'Visa Débito';
+        return 'card.visa_debit'.tr();
       case 'debmaster':
-        return 'Mastercard Débito';
+        return 'card.mastercard_debit'.tr();
       default:
-        return paymentMethod.isEmpty ? 'Tarjeta' : paymentMethod;
+        return paymentMethod.isEmpty ? 'card.generic'.tr() : paymentMethod;
     }
   }
 
@@ -141,6 +143,7 @@ class PaymentOrder {
 }
 
 /// En qué acabó un intento de cobro.
+
 enum EstadoPago { aprobado, pendiente, rechazado }
 
 /// Por qué carril se cobra una orden.
@@ -242,40 +245,37 @@ class CheckoutResult {
   String get mensaje {
     switch (estado) {
       case EstadoPago.aprobado:
-        return '¡Pago aprobado! Ya puedes coordinar la entrega por chat.';
+        return 'payment.approved_chat'.tr();
       case EstadoPago.pendiente:
-        return 'Tu pago está en revisión. Te avisamos en cuanto se confirme.';
+        return 'payment.under_review'.tr();
       case EstadoPago.rechazado:
         switch (statusDetail) {
           case 'cc_rejected_bad_filled_security_code':
-            return 'El código de seguridad (CVV) no es correcto.';
+            return 'payment.reject_cvv'.tr();
           case 'cc_rejected_bad_filled_date':
-            return 'La fecha de vencimiento no es correcta.';
+            return 'payment.reject_expiry'.tr();
           case 'cc_rejected_bad_filled_card_number':
-            return 'Revisa el número de la tarjeta.';
+            return 'payment.reject_number'.tr();
           case 'cc_rejected_insufficient_amount':
-            return 'Tu tarjeta no tiene fondos suficientes.';
+            return 'payment.reject_funds'.tr();
           case 'cc_rejected_high_risk':
-            return 'Tu banco rechazó el pago. Intenta con otra tarjeta.';
+            return 'payment.reject_risk'.tr();
           case 'cc_rejected_max_attempts':
-            return 'Demasiados intentos con esta tarjeta. Prueba con otra.';
+            return 'payment.reject_attempts'.tr();
           case 'cc_rejected_call_for_authorize':
-            return 'Tu banco necesita autorizar este pago. Llámalos e intenta de nuevo.';
+            return 'payment.reject_authorize'.tr();
           case 'cc_rejected_card_disabled':
-            return 'La tarjeta está inactiva. Llama a tu banco para activarla.';
+            return 'payment.reject_disabled'.tr();
           case 'cc_rejected_duplicated_payment':
-            return 'Ya hiciste un pago igual hace un momento. Revisa tus compras.';
+            return 'payment.reject_duplicate'.tr();
           default:
             // Los códigos de arriba son todos de tarjeta ('cc_'), así que
             // llegan solo por ese carril. El genérico no: es lo único que
             // se puede decir cuando el pago se hizo con la cuenta de
             // Mercado Pago y lo que sabemos es que la orden no prosperó.
             return switch (metodo) {
-              MetodoDePagoId.tarjeta =>
-                'El pago fue rechazado. Intenta con otra tarjeta.',
-              MetodoDePagoId.cuentaMp =>
-                'El pago no se completó. Puedes intentarlo de nuevo o pagar '
-                    'con tarjeta.',
+              MetodoDePagoId.tarjeta => 'payment.reject_generic_card'.tr(),
+              MetodoDePagoId.cuentaMp => 'payment.reject_generic_mp'.tr(),
             };
         }
     }
@@ -421,7 +421,8 @@ class VendorPaymentMethods {
   ///
   /// La pantalla de pago solo tiene sentido si esto es cierto; con los dos
   /// apagados lo que toca es explicar por qué, no pintar un selector vacío.
-  bool get puedeCobrarEnLaApp => puedeCobrarConTarjeta || puedeCobrarConCuentaMp;
+  bool get puedeCobrarEnLaApp =>
+      puedeCobrarConTarjeta || puedeCobrarConCuentaMp;
 
   /// El vendedor ANUNCIA tarjeta y además funciona. Más estricto que
   /// [puedeCobrarConTarjeta]: úsalo solo donde importe lo declarado.

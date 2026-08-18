@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -101,7 +102,7 @@ class _CartScreenState extends State<CartScreen> with AutoRefreshMixin {
 
     if (!auth.isLoggedIn) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Favoritos')),
+        appBar: AppBar(title: Text('nav.favorites'.tr())),
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(32),
@@ -115,12 +116,12 @@ class _CartScreenState extends State<CartScreen> with AutoRefreshMixin {
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'Tus favoritos',
+                  'favorites.title'.tr(),
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Inicia sesión para guardar productos favoritos y contactar vendedores.',
+                  'favorites.login_prompt'.tr(),
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: context.colors.muted,
@@ -136,7 +137,7 @@ class _CartScreenState extends State<CartScreen> with AutoRefreshMixin {
                         builder: (_) => const LoginScreen(),
                       ),
                     ),
-                    child: const Text('Iniciar sesión'),
+                    child: Text('auth.login_button'.tr()),
                   ),
                 ),
               ],
@@ -147,7 +148,7 @@ class _CartScreenState extends State<CartScreen> with AutoRefreshMixin {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Favoritos')),
+      appBar: AppBar(title: Text('nav.favorites'.tr())),
       body: _products.isEmpty
           ? _buildEmptyState()
           : RefreshIndicator(
@@ -184,7 +185,7 @@ class _CartScreenState extends State<CartScreen> with AutoRefreshMixin {
             ),
             const SizedBox(height: 16),
             Text(
-              'No tienes favoritos aún.\n¡Explora y guarda productos!',
+              'favorites.empty'.tr(),
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: context.colors.muted,
@@ -305,7 +306,7 @@ class _FavoriteItemTile extends StatelessWidget {
                     onPressed: onRemove,
                     icon: const Icon(Icons.favorite_rounded),
                     color: AppColors.danger,
-                    tooltip: 'Quitar de favoritos',
+                    tooltip: 'favorites.remove'.tr(),
                   ),
                 ],
               ),
@@ -318,7 +319,7 @@ class _FavoriteItemTile extends StatelessWidget {
                   OutlinedButton.icon(
                     onPressed: onChat,
                     icon: const Icon(Icons.chat_rounded, size: 16),
-                    label: const Text('Chat'),
+                    label: Text('nav.chat'.tr()),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,

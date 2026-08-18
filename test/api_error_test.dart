@@ -18,7 +18,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:mercadito_um/services/api_error.dart';
 
+import 'helpers/localizacion_de_prueba.dart';
+
 void main() {
+  // Los mensajes de este módulo ya salen del diccionario de i18n: sin
+  // cargarlo, `.tr()` devolvería la clave cruda ('errors.timeout').
+  setUpAll(inicializarTraducciones);
+
   /// La excepción tal cual la lanzó el dispositivo en el incidente.
   final socketReal = const SocketException(
     'Connection refused',
@@ -265,4 +271,64 @@ void main() {
       esperarSinFugas(mensaje);
     });
   });
+
+  group('reporte de errores al backend', () {
+    // Regresión de un crash en producción: con el dispositivo sin red, cada
+    // llamada a registrarErrorTecnico lanzaba
+    // "Invalid argument(s): Invalid status code 0" como excepción NO
+    // capturada. El culpable era el manejador de error del propio envío:
+    // `catchError((_) => http.Response('', 0))`, y `http.Response` rechaza
+    // cualquier status por debajo de 100. O sea, la función que existe para
+    // tragarse los fallos de red era la que los convertía en un crash.
+    //
+    // La regla que se protege: registrarErrorTecnico NUNCA puede propagar
+    // una excepción, ni síncrona ni asíncrona, pase lo que pase con la red.
+
+    tearDown(restaurarClienteDeReporte);
+
+    test('un envío que falla no propaga excepción', () async {
+      clienteDeReportePrueba = _ClienteQueFalla();
+
+      registrarErrorTecnico(
+        'Fallo de red',
+        const SocketException('Connection refused'),
+        StackTrace.current,
+      );
+
+      // El fallo del envío es asíncrono: sin este respiro la prueba
+      // terminaría antes de que la excepción tuviera ocasión de escapar, y
+      // pasaría incluso con el bug presente.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+
+    test('el envío ocurre de verdad cuando hay red', () async {
+      final cliente = _ClienteQueRegistra();
+      clienteDeReportePrueba = cliente;
+
+      registrarErrorTecnico('Contexto de prueba', Exception('detalle'));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(cliente.llamadas, 1);
+    });
+  });
+}
+
+/// Cliente que simula un dispositivo sin red: falla igual que `http` cuando
+/// no puede abrir el socket.
+class _ClienteQueFalla extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) =>
+      Future.error(http.ClientException('Connection closed', request.url));
+}
+
+/// Cliente que cuenta los envíos, para comprobar que silenciar el error no
+/// significó dejar de mandar el reporte.
+class _ClienteQueRegistra extends http.BaseClient {
+  int llamadas = 0;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    llamadas++;
+    return http.StreamedResponse(const Stream<List<int>>.empty(), 200);
+  }
 }

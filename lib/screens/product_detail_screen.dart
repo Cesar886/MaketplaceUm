@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
@@ -43,11 +44,10 @@ import 'wanted_post_screen.dart';
 /// filtraba con una lista negra de nombres de excepción, que dejaba pasar
 /// todo lo que no estuviera en la lista (un `HandshakeException`, o un
 /// `ClientException` con la IP y el puerto dentro).
-String friendlyErrorMessage(
-  Object error, {
-  String fallback = 'Ocurrió un error. Intenta de nuevo.',
-}) {
-  return mensajeDeError(error, fallback: fallback);
+String friendlyErrorMessage(Object error, {String? fallback}) {
+  // El fallback se resuelve dentro y no como valor por defecto del parámetro:
+  // un valor por defecto tiene que ser constante, y `.tr()` es una llamada.
+  return mensajeDeError(error, fallback: fallback ?? 'errors.generic'.tr());
 }
 
 class ProductDetailScreen extends StatefulWidget {
@@ -457,7 +457,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          'Mínimo en 30 días: ${Product.formatPrice(_lowest30d!)}',
+                          'product.lowest_30d'.tr(
+                            namedArgs: {
+                              'price': Product.formatPrice(_lowest30d!),
+                            },
+                          ),
                           style: AppTypography.label(
                             12,
                             color: AppColors.success,
@@ -486,16 +490,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
-                            children: const [
-                              Icon(
+                            children: [
+                              const Icon(
                                 Icons.block_rounded,
                                 size: 12,
                                 color: AppColors.danger,
                               ),
-                              SizedBox(width: 3),
+                              const SizedBox(width: 3),
                               Text(
-                                'Agotado',
-                                style: TextStyle(
+                                'status.sold_out'.tr(),
+                                style: const TextStyle(
                                   fontSize: 10.5,
                                   fontWeight: FontWeight.w600,
                                   color: AppColors.danger,
@@ -529,9 +533,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   ),
                   // ─── Descripción ──────────────────────────────────
                   const SizedBox(height: 22),
-                  const _SectionHeader(
+                  _SectionHeader(
                     icon: Icons.notes_rounded,
-                    label: 'Descripción',
+                    label: 'publish.field_description'.tr(),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -598,9 +602,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   // ─── Calificaciones del producto — no aplica a "se busca" ──────
                   if (!product.isWantedPost) ...[
                     const SizedBox(height: 24),
-                    const _SectionHeader(
+                    _SectionHeader(
                       icon: Icons.star_rounded,
-                      label: 'Califica este Producto',
+                      label: 'product.rate_this'.tr(),
                     ),
                     const SizedBox(height: 10),
                     _ProductRatingSection(
@@ -646,7 +650,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                     if (_cargandoDetalle || _relacionados.isNotEmpty) ...[
                       const SizedBox(height: 24),
                       ProductCarouselSection(
-                        title: 'También te puede interesar',
+                        title: 'product.related'.tr(),
                         products: _relacionados,
                         loading: _cargandoDetalle,
                         onProductTap: _abrirPublicacion,
@@ -660,7 +664,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   const SizedBox(height: 24),
                   _SectionHeader(
                     icon: Icons.storefront_rounded,
-                    label: product.isWantedPost ? 'Publicado por' : 'Vendedor',
+                    label: product.isWantedPost
+                        ? 'product.posted_by'.tr()
+                        : 'search.seller'.tr(),
                   ),
                   const SizedBox(height: 10),
                   _SellerCard(
@@ -681,9 +687,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   ],
                   const SizedBox(height: 24),
                   // ─── Compartir ──────────────────────────────────────
-                  const _SectionHeader(
+                  _SectionHeader(
                     icon: Icons.ios_share_rounded,
-                    label: 'Compartir',
+                    label: 'product.share'.tr(),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -692,7 +698,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         child: ElevatedButton.icon(
                           onPressed: () => _shareProduct(context),
                           icon: const Icon(Icons.ios_share_rounded, size: 18),
-                          label: const Text('Compartir enlace'),
+                          label: Text('product.share_link'.tr()),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -706,7 +712,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                           ),
                         ),
                         icon: const Icon(Icons.qr_code_rounded),
-                        tooltip: 'Mostrar código QR',
+                        tooltip: 'product.show_qr'.tr(),
                       ),
                     ],
                   ),
@@ -726,18 +732,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   TextButton.icon(
                     onPressed: () {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Reporte enviado. Revisaremos la publicación.',
-                          ),
-                        ),
+                        SnackBar(content: Text('product.report_sent'.tr())),
                       );
                     },
                     style: TextButton.styleFrom(
                       foregroundColor: context.colors.muted,
                     ),
                     icon: const Icon(Icons.flag_outlined, size: 18),
-                    label: const Text('Reportar publicacion'),
+                    label: Text('product.report'.tr()),
                   ),
                   const SizedBox(height: 16),
                   // Resolver búsqueda (solo visible para el dueño). El estado
@@ -792,7 +794,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   onPressed: () => _openWhatsapp(context),
                   icon: const FaIcon(FontAwesomeIcons.whatsapp),
                   color: context.colors.accent,
-                  tooltip: 'Contactar por WhatsApp',
+                  tooltip: 'product.contact_whatsapp'.tr(),
                 ),
               ],
               const SizedBox(width: 10),
@@ -807,8 +809,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         icon: const Icon(Icons.ios_share_rounded),
                         label: Text(
                           product.isWantedPost
-                              ? 'Compartir búsqueda'
-                              : 'Compartir producto',
+                              ? 'product.share_wanted'.tr()
+                              : 'product.share_product'.tr(),
                         ),
                       )
                     : product.isWantedPost
@@ -819,8 +821,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         icon: const Icon(Icons.chat_rounded),
                         label: Text(
                           product.isAvailable
-                              ? 'Responder'
-                              : 'Búsqueda resuelta',
+                              ? 'product.reply'.tr()
+                              : 'product.wanted_resolved'.tr(),
                         ),
                       )
                     : ElevatedButton.icon(
@@ -829,7 +831,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                             : null,
                         icon: const Icon(Icons.chat_rounded),
                         label: Text(
-                          product.isAvailable ? 'Chat' : 'Agotado por hoy',
+                          product.isAvailable
+                              ? 'nav.chat'.tr()
+                              : 'product.sold_out_today'.tr(),
                         ),
                       ),
               ),
@@ -904,12 +908,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       // esta pantalla y sin esto no sabría en qué quedó su pago.
       final aviso = switch (resultado?.estado) {
         null => null,
-        EstadoPago.aprobado => '¡Pago aprobado! El vendedor ya fue notificado.',
-        EstadoPago.pendiente =>
-          'Tu pago quedó en proceso. Te avisamos en cuanto se confirme.',
-        EstadoPago.rechazado =>
-          'El pago no se completó. Puedes intentarlo con otra tarjeta '
-              'o escribirle al vendedor.',
+        EstadoPago.aprobado => 'payment.approved'.tr(),
+        EstadoPago.pendiente => 'payment.pending'.tr(),
+        EstadoPago.rechazado => 'payment.rejected'.tr(),
       };
       if (aviso != null) {
         messenger.showSnackBar(SnackBar(content: Text(aviso)));
@@ -920,11 +921,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            mensajeDeError(
-              e,
-              fallback: 'No se pudo iniciar la compra.',
-              stack: s,
-            ),
+            mensajeDeError(e, fallback: 'payment.start_error'.tr(), stack: s),
           ),
         ),
       );
@@ -957,23 +954,26 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 
     if (product.isWantedPost) {
       Share.share(
-        'Mira esta búsqueda en Mercadito UM:\n\n$title\nPublicado por: $seller\n\n$url',
+        'product.share_wanted_body'.tr(
+          namedArgs: {'title': title, 'seller': seller, 'url': url},
+        ),
       );
       return;
     }
 
     final priceText = product.price == 0
-        ? 'Gratis'
+        ? 'product.free'.tr()
         : Product.formatPrice(product.price);
     final sellerName = seller.trim();
 
     final lines = <String>[
       '$title — $priceText',
-      if (sellerName.isNotEmpty) 'Vendedor: $sellerName',
+      if (sellerName.isNotEmpty)
+        'product.share_seller_line'.tr(namedArgs: {'seller': sellerName}),
       '',
       url,
       '',
-      'Mercadito UM',
+      'app.name'.tr(),
     ];
     Share.share(lines.join('\n'));
   }
@@ -993,16 +993,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     // código de país; WhatsApp lo requiere para el deep link `wa.me`.
     final phone = rawDigits.length == 10 ? '52$rawDigits' : rawDigits;
     final message = product.isWantedPost
-        ? 'Hola ${product.seller.name}, vi tu busqueda de "${product.title}" ¿Aún la necesitas?.'
-        : 'Hola ${product.seller.name}, me interesa "${product.title}" en Mercadito UM ¿Aún lo tienes?.';
+        ? 'product.whatsapp_wanted'.tr(
+            namedArgs: {'seller': product.seller.name, 'title': product.title},
+          )
+        : 'product.whatsapp_product'.tr(
+            namedArgs: {'seller': product.seller.name, 'title': product.title},
+          );
     final uri = Uri.parse(
       'https://wa.me/$phone?text=${Uri.encodeComponent(message)}',
     );
     final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudo abrir WhatsApp')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('product.whatsapp_error'.tr())));
     }
   }
 
@@ -1010,11 +1014,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     // Verificar que no sea su propio producto (solo si tiene sesión)
     final auth = context.read<AuthProvider>();
     if (auth.isLoggedIn && auth.backendSellerId == product.seller.id) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No puedes enviarte un mensaje a ti mismo'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('chat.self_message_error'.tr())));
       return;
     }
 
@@ -1057,10 +1059,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            friendlyErrorMessage(
-              e,
-              fallback: 'No se pudo abrir el chat. Intenta de nuevo.',
-            ),
+            friendlyErrorMessage(e, fallback: 'chat.open_error'.tr()),
           ),
           backgroundColor: AppColors.danger,
         ),
@@ -1082,7 +1081,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Marcada como resuelta')));
+      ).showSnackBar(SnackBar(content: Text('product.marked_resolved'.tr())));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1090,7 +1089,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
           content: Text(
             friendlyErrorMessage(
               e,
-              fallback: 'No se pudo marcar como resuelta. Intenta de nuevo.',
+              fallback: 'product.mark_resolved_error'.tr(),
             ),
           ),
           backgroundColor: AppColors.danger,
@@ -1140,17 +1139,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Eliminar producto'),
-        content: Text('¿Seguro que quieres eliminar "${product.title}"?'),
+        title: Text('product.delete_title'.tr()),
+        content: Text(
+          'product.delete_confirm'.tr(namedArgs: {'title': product.title}),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancelar'),
+            child: Text('common.cancel'.tr()),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: TextButton.styleFrom(foregroundColor: AppColors.danger),
-            child: const Text('Eliminar'),
+            child: Text('common.delete'.tr()),
           ),
         ],
       ),
@@ -1163,7 +1164,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Producto eliminado')));
+      ).showSnackBar(SnackBar(content: Text('product.deleted'.tr())));
       // Volver al inicio
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const HomeScreen()),
@@ -1174,10 +1175,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            friendlyErrorMessage(
-              e,
-              fallback: 'No se pudo eliminar el producto. Intenta de nuevo.',
-            ),
+            friendlyErrorMessage(e, fallback: 'product.delete_error'.tr()),
           ),
           backgroundColor: AppColors.danger,
         ),
@@ -1191,9 +1189,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     if (!auth.isLoggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Inicia sesión para realizar esta acción'),
+          content: Text('auth.login_required'.tr()),
           action: SnackBarAction(
-            label: 'Iniciar sesión',
+            label: 'auth.login_button'.tr(),
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
@@ -1218,11 +1216,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     final result = await showDialog<double>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Editar precio'),
+        title: Text('product.edit_price'.tr()),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Ingresa el nuevo precio para este producto.'),
+            Text('product.edit_price_help'.tr()),
             const SizedBox(height: 16),
             TextField(
               controller: priceController,
@@ -1230,9 +1228,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 decimal: true,
               ),
               autofocus: true,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 prefixText: '\$ ',
-                labelText: 'Nuevo precio',
+                labelText: 'product.new_price'.tr(),
                 border: OutlineInputBorder(),
               ),
             ),
@@ -1241,15 +1239,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancelar'),
+            child: Text('common.cancel'.tr()),
           ),
           FilledButton(
             onPressed: () {
               final value = double.tryParse(priceController.text);
               if (value == null || value <= 0) {
                 ScaffoldMessenger.of(ctx).showSnackBar(
-                  const SnackBar(
-                    content: Text('Ingresa un precio válido mayor a cero'),
+                  SnackBar(
+                    content: Text('publish.error_extra_price'.tr()),
                     backgroundColor: AppColors.danger,
                   ),
                 );
@@ -1257,7 +1255,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
               }
               Navigator.of(ctx).pop(value);
             },
-            child: const Text('Guardar'),
+            child: Text('common.save'.tr()),
           ),
         ],
       ),
@@ -1271,9 +1269,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       // Refrescar producto completo desde la API para reflejar ofertas, badges, etc.
       await _refreshProductFromApi();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Precio actualizado correctamente')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('product.price_updated'.tr())));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1281,7 +1279,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
           content: Text(
             friendlyErrorMessage(
               e,
-              fallback: 'No se pudo actualizar el precio. Intenta de nuevo.',
+              fallback: 'product.price_update_error'.tr(),
             ),
           ),
           backgroundColor: AppColors.danger,
@@ -1328,12 +1326,20 @@ class _BudgetTag extends StatelessWidget {
     if (min == null && max == null) return const SizedBox.shrink();
     final String label;
     if (min != null && max != null) {
-      label =
-          'Presupuesto: ${Product.formatPrice(min)} - ${Product.formatPrice(max)}';
+      label = 'product.budget_range'.tr(
+        namedArgs: {
+          'min': Product.formatPrice(min),
+          'max': Product.formatPrice(max),
+        },
+      );
     } else if (max != null) {
-      label = 'Presupuesto: hasta ${Product.formatPrice(max)}';
+      label = 'product.budget_up_to'.tr(
+        namedArgs: {'max': Product.formatPrice(max)},
+      );
     } else {
-      label = 'Presupuesto: desde ${Product.formatPrice(min!)}';
+      label = 'product.budget_from'.tr(
+        namedArgs: {'min': Product.formatPrice(min!)},
+      );
     }
     return Text(
       label,
@@ -1412,7 +1418,7 @@ class _ResolveWantedButtonState extends State<_ResolveWantedButton> {
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             : const Icon(Icons.check_circle_outline_rounded),
-        label: const Text('Marcar como resuelta'),
+        label: Text('product.mark_resolved'.tr()),
       ),
     );
   }
@@ -1582,7 +1588,7 @@ class _SellerCard extends StatelessWidget {
                                 Text(
                                   hasReviews
                                       ? '${seller.rating.toStringAsFixed(1)} (${seller.reviews})'
-                                      : 'Sin calificaciones',
+                                      : 'home.no_ratings'.tr(),
                                   style: TextStyle(
                                     fontWeight: FontWeight.w700,
                                     fontSize: 11.5,
@@ -1620,7 +1626,7 @@ class _SellerCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    'Ver ubicación y horarios',
+                    'product.see_location_hours'.tr(),
                     style: TextStyle(
                       color: context.colors.accent,
                       fontWeight: FontWeight.w600,
@@ -1640,7 +1646,9 @@ class _SellerCard extends StatelessWidget {
               Container(height: 1, color: context.colors.border),
               const SizedBox(height: 14),
               ProductCarouselSection(
-                title: 'Más de ${seller.name}',
+                title: 'product.more_from'.tr(
+                  namedArgs: {'seller': seller.name},
+                ),
                 icon: Icons.storefront_rounded,
                 products: otherProducts,
                 onProductTap: onProductTap,
@@ -1794,10 +1802,7 @@ class _InteractiveStarRatingState extends State<_InteractiveStarRating> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            friendlyErrorMessage(
-              e,
-              fallback: 'No se pudo enviar tu calificación. Intenta de nuevo.',
-            ),
+            friendlyErrorMessage(e, fallback: 'product.rating_error'.tr()),
           ),
           backgroundColor: AppColors.danger,
         ),

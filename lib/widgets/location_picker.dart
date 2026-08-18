@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
@@ -14,12 +15,14 @@ import '../utils/geo_utils.dart';
 /// A diferencia de [StaticMiniMap], este SÍ es interactivo (pan/zoom) —
 /// pensado para usarse una sola vez por flujo, no dentro de listas.
 class LocationPickerScreen extends StatefulWidget {
-  const LocationPickerScreen({
+  LocationPickerScreen({
     super.key,
     this.initialLat,
     this.initialLng,
-    this.title = 'Elige una ubicación',
-  });
+    String? title,
+    // El texto por defecto se resuelve en la lista de inicializadores: un
+    // valor por defecto de parámetro tiene que ser constante y `.tr()` no lo es.
+  }) : title = title ?? 'map.pick_location'.tr();
 
   final double? initialLat;
   final double? initialLng;
@@ -30,7 +33,7 @@ class LocationPickerScreen extends StatefulWidget {
     BuildContext context, {
     double? initialLat,
     double? initialLng,
-    String title = 'Elige una ubicación',
+    String? title,
   }) {
     return Navigator.of(context).push<ll.LatLng>(
       MaterialPageRoute(
@@ -110,13 +113,13 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        'Toca el mapa para colocar el pin',
+                        'map.tap_to_place'.tr(),
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ),
                     FilledButton(
                       onPressed: () => Navigator.of(context).pop(_picked),
-                      child: const Text('Confirmar ubicación'),
+                      child: Text('map.confirm_location'.tr()),
                     ),
                   ],
                 ),

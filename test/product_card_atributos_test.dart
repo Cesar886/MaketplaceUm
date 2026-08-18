@@ -1,6 +1,6 @@
 // Los badges de atributos entran en una tarjeta de ALTO ACOTADO: la
 // cuadrícula del home usa childAspectRatio fijo y los resultados de búsqueda
-// envuelven cada tarjeta en un SizedBox(height: 118). Ahí no existe "queda
+// envuelven cada tarjeta en un SizedBox de alto fijo. Ahí no existe "queda
 // apretado": lo que no cabe desborda y raya la pantalla de amarillo.
 //
 // Este archivo reproduce las tres geometrías reales donde vive ProductCard y
@@ -12,14 +12,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mercadito_um/app_theme.dart';
 import 'package:mercadito_um/models.dart';
 import 'package:mercadito_um/widgets/product_card.dart';
+import 'package:mercadito_um/widgets/product_grid_metrics.dart';
 
 void main() {
   /// Pinta [widget] y devuelve los desbordes VERTICALES que haya provocado.
   ///
   /// Solo el eje vertical, y no por comodidad: el alto de la tarjeta es fijo
-  /// (childAspectRatio en la cuadrícula, SizedBox(height: 118) en búsqueda) y
-  /// no tiene a dónde ceder, mientras que el ancho ya está protegido por el
-  /// `Expanded` de la fila inferior.
+  /// (ver ProductGridMetrics) y no tiene a dónde ceder, mientras que el ancho
+  /// ya está protegido por el `Expanded` y el `Flexible` de la fila inferior.
   ///
   /// El ancho además no es medible aquí: el entorno de prueba no carga
   /// Google Fonts y cae en una tipografía de respaldo mucho más ancha —el
@@ -102,8 +102,9 @@ void main() {
     const paddingLateral = 18.0 * 2;
     const espaciado = 12.0;
     final anchoCelda =
-        (anchoPantalla - paddingLateral - espaciado * (columnas - 1)) / columnas;
-    final aspecto = columnas == 3 ? 0.72 : 0.64;
+        (anchoPantalla - paddingLateral - espaciado * (columnas - 1)) /
+        columnas;
+    final aspecto = ProductGridMetrics.aspectRatioFor(columnas);
 
     return Center(
       child: SizedBox(
@@ -114,11 +115,11 @@ void main() {
     );
   }
 
-  /// Reproduce un resultado de búsqueda: tarjeta horizontal dentro del
-  /// SizedBox(height: 118) de `search_screen.dart`.
+  /// Reproduce un resultado de búsqueda: tarjeta horizontal con la misma
+  /// altura que le da `search_screen.dart`.
   Widget filaDeBusqueda(Product product) {
     return SizedBox(
-      height: 118,
+      height: ProductGridMetrics.horizontalCardHeight,
       child: ProductCard(
         product: product,
         horizontal: true,
@@ -224,21 +225,35 @@ void main() {
         tester,
         envolver(celdaDeCuadricula(productoSinBadges(), columnas: 2)),
       );
-      expect(
-        find.textContaining('Poco uso, sin manchas'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('Poco uso, sin manchas'), findsOneWidget);
     });
   });
 
   testWidgets('los badges se pintan con el valor que mandó el servidor', (
     tester,
   ) async {
+    // Los badges viven en la tarjeta HORIZONTAL (búsqueda y ofertas). En la
+    // cuadrícula del home la celda pasó a mostrar descripción a dos
+    // renglones en su lugar: no caben las dos cosas y ahí se prefirió la
+    // descripción.
+    await desbordesVerticalesAlPintar(
+      tester,
+      envolver(filaDeBusqueda(productoConBadges())),
+    );
+    expect(find.text('M'), findsOneWidget);
+    expect(find.text('Poco uso'), findsOneWidget);
+  });
+
+  testWidgets('la cuadrícula del home muestra descripción, no badges', (
+    tester,
+  ) async {
+    // La otra mitad de la decisión anterior. Sin este test, devolver los
+    // badges a la celda del home no rompería nada y volvería a desbordarla.
     await desbordesVerticalesAlPintar(
       tester,
       envolver(celdaDeCuadricula(productoConBadges(), columnas: 2)),
     );
-    expect(find.text('M'), findsOneWidget);
-    expect(find.text('Poco uso'), findsOneWidget);
+    expect(find.text('M'), findsNothing);
+    expect(find.textContaining('Poco uso, sin manchas'), findsOneWidget);
   });
 }

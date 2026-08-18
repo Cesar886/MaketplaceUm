@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -7,7 +8,7 @@ import '../services/deep_link_parser.dart';
 import '../services/publicacion_lookup.dart';
 import 'product_detail_screen.dart';
 
-/// Pantalla que escanea códigos QR de productos de Mercadito UM.
+/// Pantalla que escanea códigos QR de productos de Marketplace UM.
 ///
 /// El formato esperado en el QR es:
 ///   mercaditoum://product/ID_DEL_PRODUCTO
@@ -34,7 +35,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('Escanear QR'),
+        title: Text('nav.scan_qr'.tr()),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         systemOverlayStyle: SystemUiOverlayStyle.light,
@@ -71,20 +72,20 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                   width: 2,
                 ),
               ),
-              child: const Center(
+              child: Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.qr_code_scanner_rounded,
                       size: 64,
                       color: Colors.white54,
                     ),
-                    SizedBox(height: 12),
+                    const SizedBox(height: 12),
                     Text(
-                      'Apunta al código QR\nde un producto',
+                      'qr.aim'.tr(),
                       textAlign: TextAlign.center,
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: Colors.white70,
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
@@ -96,15 +97,15 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
             ),
           ),
           if (_processing)
-            const Center(
+            Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   CircularProgressIndicator(color: Colors.white),
-                  SizedBox(height: 16),
+                  const SizedBox(height: 16),
                   Text(
-                    'Buscando producto...',
-                    style: TextStyle(color: Colors.white70),
+                    'qr.searching'.tr(),
+                    style: const TextStyle(color: Colors.white70),
                   ),
                 ],
               ),
@@ -120,7 +121,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     try {
       final barcode = capture.barcodes.firstOrNull;
       if (barcode == null || barcode.rawValue == null) {
-        _showError('No se pudo leer el código QR');
+        _showError('qr.read_error'.tr());
         return;
       }
 
@@ -128,7 +129,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       final productId = _parseProductId(raw);
 
       if (productId == null) {
-        _showError('QR inválido. Escanea un código de Mercadito UM.');
+        _showError('qr.invalid'.tr());
         return;
       }
 
@@ -139,7 +140,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       if (!mounted) return;
 
       if (product == null) {
-        _showError('Publicación no encontrada. Verifica que el código sea válido.');
+        _showError('qr.not_found'.tr());
         return;
       }
 
@@ -150,7 +151,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
         ),
       );
     } catch (e) {
-      _showError('Publicación no encontrada. Verifica que el código sea válido.');
+      _showError('qr.not_found'.tr());
     }
   }
 
@@ -175,7 +176,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
         content: Text(message),
         backgroundColor: AppColors.danger,
         action: SnackBarAction(
-          label: 'Reintentar',
+          label: 'common.retry'.tr(),
           textColor: Colors.white,
           onPressed: () => setState(() => _scanning = true),
         ),

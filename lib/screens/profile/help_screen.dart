@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../../app_theme.dart';
@@ -5,48 +6,30 @@ import '../../app_theme.dart';
 class HelpScreen extends StatelessWidget {
   const HelpScreen({super.key});
 
-  static const _faqs = <(String, String)>[
-    (
-      '¿Cómo publico un producto?',
-      'Ve a la pestaña "Publicar", elige una categoría, agrega fotos, '
-          'título, descripción y precio, y confirma para que quede visible '
-          'en el feed.',
-    ),
-    (
-      '¿Cómo contacto a un vendedor?',
-      'Abre el detalle de un producto y toca "Contactar" para iniciar un '
-          'chat directo con el vendedor dentro de la app.',
-    ),
-    (
-      '¿Cómo funciona la verificación de cuenta?',
-      'Desde tu perfil puedes iniciar la verificación subiendo tu '
-          'credencial universitaria o identificación. Un administrador '
-          'revisa la solicitud y activa el badge correspondiente.',
-    ),
-    (
-      '¿Cómo reporto un problema?',
-      'En el perfil del usuario o dentro de un chat encontrarás la opción '
-          'de reportar. Describe la situación y el equipo de soporte la '
-          'revisará.',
-    ),
-    (
-      '¿Cómo contacto a soporte?',
-      'Escríbenos a soporte@mercaditoum.site y te responderemos en un '
-          'plazo máximo de 48 horas hábiles.',
-    ),
+  /// Claves, no textos: la lista es `const` y `.tr()` no lo es. Se traducen
+  /// al pintarlas, que además es lo que permite cambiar de idioma con la
+  /// pantalla abierta.
+  static const _faqs = <String>[
+    'publish',
+    'contact',
+    'verification',
+    'report',
+    'support',
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Ayuda')),
+      appBar: AppBar(title: Text('help.title'.tr())),
       body: SafeArea(
         child: ListView.separated(
           padding: const EdgeInsets.all(18),
           itemCount: _faqs.length,
           separatorBuilder: (_, _) => const SizedBox(height: 10),
           itemBuilder: (context, index) {
-            final (question, answer) = _faqs[index];
+            final clave = _faqs[index];
+            final question = 'help.${clave}_q'.tr();
+            final answer = 'help.${clave}_a'.tr();
             return Container(
               decoration: BoxDecoration(
                 color: context.colors.surface,

@@ -1,11 +1,13 @@
 import 'dart:io';
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../app_theme.dart';
+import '../../mock_data.dart';
 import '../../models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_error.dart';
@@ -153,7 +155,14 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       if (!mounted) return;
       setState(() => _categories = categories);
     } catch (_) {
-      // Sin categorías: el dropdown queda vacío, no bloquea el resto del formulario.
+      // Respaldo local, igual que publish_product_screen y wanted_post_screen.
+      //
+      // "No bloquea el resto del formulario" era verdad a medias: un
+      // DropdownButton sin items se auto-deshabilita, así que la categoría
+      // del negocio quedaba imposible de cambiar y sin explicación. Los ids
+      // de `mockCategories` son los mismos que sirve el backend.
+      if (!mounted) return;
+      setState(() => _categories = mockCategories);
     }
   }
 
@@ -189,7 +198,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       context,
       initialLat: _locationLat,
       initialLng: _locationLng,
-      title: 'Ubicación de tu negocio',
+      title: 'register.business_location_title'.tr(),
     );
     if (picked != null) {
       setState(() {
@@ -204,9 +213,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     if (_selectedPaymentMethods.isEmpty) {
       setState(() => _showPaymentMethodsError = true);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Selecciona al menos un método de pago que aceptas.'),
-        ),
+        SnackBar(content: Text('register.payment_methods_required'.tr())),
       );
       return;
     }
@@ -244,7 +251,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
             mensajeDeError(
               e,
               stack: stack,
-              fallback: 'No se pudieron guardar los cambios. Intenta de nuevo.',
+              fallback: 'publish.save_error'.tr(),
             ),
           ),
         ),
@@ -341,7 +348,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
         Navigator.of(context).pop(_estadoMpCambio);
       },
       child: Scaffold(
-        appBar: AppBar(title: const Text('Editar perfil')),
+        appBar: AppBar(title: Text('edit_profile.title'.tr())),
         body: SafeArea(
           child: Form(
             key: _formKey,
@@ -355,30 +362,30 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                   TextFormField(
                     controller: _nameController,
                     textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(
-                      labelText: 'Nombre',
-                      prefixIcon: Icon(Icons.person_outline_rounded),
+                    decoration: InputDecoration(
+                      labelText: 'edit_profile.name'.tr(),
+                      prefixIcon: const Icon(Icons.person_outline_rounded),
                     ),
                     validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'Ingresa tu nombre'
+                        ? 'validation.name_required'.tr()
                         : null,
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _phoneController,
                     keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(
-                      labelText: 'Teléfono',
-                      prefixIcon: Icon(Icons.phone_outlined),
+                    decoration: InputDecoration(
+                      labelText: 'edit_profile.phone'.tr(),
+                      prefixIcon: const Icon(Icons.phone_outlined),
                     ),
                   ),
                   if (_isBusiness) ...[
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
                       initialValue: _selectedCategoryId,
-                      decoration: const InputDecoration(
-                        labelText: 'Rubro del negocio',
-                        prefixIcon: Icon(Icons.storefront_outlined),
+                      decoration: InputDecoration(
+                        labelText: 'edit_profile.business_category'.tr(),
+                        prefixIcon: const Icon(Icons.storefront_outlined),
                       ),
                       items: [
                         for (final category in _categories)
@@ -397,18 +404,18 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                       maxLines: 4,
                       maxLength: _kMaxBusinessDescriptionLength,
                       textCapitalization: TextCapitalization.sentences,
-                      decoration: const InputDecoration(
-                        labelText: 'Descripción corta del negocio',
+                      decoration: InputDecoration(
+                        labelText: 'edit_profile.business_description'.tr(),
                         alignLabelWithHint: true,
                         prefixIcon: Padding(
-                          padding: EdgeInsets.only(bottom: 48),
-                          child: Icon(Icons.notes_rounded),
+                          padding: const EdgeInsets.only(bottom: 48),
+                          child: const Icon(Icons.notes_rounded),
                         ),
                       ),
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'Ubicación del negocio (opcional)',
+                      'register.business_location_optional'.tr(),
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 13,
@@ -430,13 +437,13 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                       icon: const Icon(Icons.map_outlined),
                       label: Text(
                         _locationLat != null
-                            ? 'Cambiar ubicación'
-                            : 'Elegir ubicación en el mapa',
+                            ? 'register.change_location'.tr()
+                            : 'edit_profile.pick_location'.tr(),
                       ),
                     ),
                     const SizedBox(height: 24),
                     Text(
-                      'Redes sociales (opcional)',
+                      'edit_profile.social_links'.tr(),
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 13,
@@ -472,9 +479,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                     TextFormField(
                       controller: _whatsappController,
                       keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'WhatsApp',
-                        hintText: '521XXXXXXXXXX (con código de país)',
+                        hintText: 'edit_profile.whatsapp_hint'.tr(),
                         prefixIcon: FaIcon(FontAwesomeIcons.whatsapp, size: 20),
                       ),
                       validator: (v) => validateWhatsappNumber(v ?? ''),
@@ -508,7 +515,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                   // compra. Un estudiante que vende comida también cierra.
                   const SizedBox(height: 20),
                   Text(
-                    'Horario de atención',
+                    'edit_profile.business_hours'.tr(),
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 13,
@@ -522,7 +529,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                   ),
                   const SizedBox(height: 20),
                   Text(
-                    'Métodos de pago que aceptas',
+                    'edit_profile.payment_methods'.tr(),
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 13,
@@ -543,10 +550,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                     // es peor que dejársela y que el guardado la rechace con un
                     // motivo concreto.
                     metodosBloqueados: _estadoMp == EstadoCobros.sinConectar
-                        ? const {
-                            'tarjeta':
-                                'Conecta Mercado Pago para aceptar pagos con tarjeta.',
-                          }
+                        ? {'tarjeta': 'edit_profile.card_needs_mp'.tr()}
                         : const {},
                     onChanged: (methods) => setState(() {
                       _selectedPaymentMethods
@@ -579,7 +583,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                                 color: Colors.white,
                               ),
                             )
-                          : const Text('Guardar'),
+                          : Text('common.save'.tr()),
                     ),
                   ),
                 ],
@@ -635,16 +639,16 @@ class _FilaConexionMercadoPago extends StatelessWidget {
 
     final String detalle;
     if (cargando) {
-      detalle = 'Comprobando…';
+      detalle = 'edit_profile.mp_checking'.tr();
     } else if (conectado) {
-      detalle = 'Conectado · puedes cobrar con tarjeta';
+      detalle = 'edit_profile.mp_connected'.tr();
     } else if (desconocido) {
       // Deliberadamente NO dice "Sin conectar": puede estar perfectamente
       // conectado y ser nuestro servidor el que no contesta. Decirle que no
       // lo está lo manda a reconectar algo que no está roto.
-      detalle = 'No pudimos comprobarlo · toca para reintentar';
+      detalle = 'edit_profile.mp_unknown'.tr();
     } else {
-      detalle = 'Sin conectar · toca para recibir pagos con tarjeta';
+      detalle = 'edit_profile.mp_disconnected'.tr();
     }
 
     return InkWell(

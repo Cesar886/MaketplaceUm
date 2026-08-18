@@ -4,6 +4,7 @@ import '../models.dart';
 import '../models/verification_requirement.dart';
 import '../services/anonymous_id.dart';
 import '../services/api_service.dart';
+import '../services/chat_socket_service.dart';
 import '../services/db_helper.dart';
 import '../services/push_service.dart';
 
@@ -513,6 +514,11 @@ class AuthProvider extends ChangeNotifier {
     _campoRechazado = null;
     _puedeReintentarEn = 0;
     ApiService.clearToken();
+    // Cerrar el socket marca al usuario como desconectado del lado del
+    // servidor en el acto, y `forgetUser` evita que una reconexión lo vuelva
+    // a encender con las credenciales de la sesión que acaba de terminar.
+    ChatSocketService.instance.forgetUser();
+    ChatSocketService.instance.disconnect();
     await _clearSession();
     notifyListeners();
   }

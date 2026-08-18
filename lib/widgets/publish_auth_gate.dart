@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -52,7 +53,7 @@ class PublishAuthGate extends StatelessWidget {
                     builder: (_) => const RegisterTypeScreen(),
                   ),
                 ),
-                child: const Text('Crear cuenta'),
+                child: Text('auth.create_account'.tr()),
               ),
             ),
             const SizedBox(height: 10),
@@ -62,7 +63,7 @@ class PublishAuthGate extends StatelessWidget {
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
                 ),
-                child: const Text('Ya tengo cuenta'),
+                child: Text('auth.have_account_action'.tr()),
               ),
             ),
           ],

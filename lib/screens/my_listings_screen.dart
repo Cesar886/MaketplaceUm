@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -79,18 +80,14 @@ class _MyListingsScreenState extends State<MyListingsScreen>
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            desfijar
-                ? 'Publicación desfijada'
-                : 'Publicación fijada en tu perfil',
+            desfijar ? 'listings.unpinned'.tr() : 'listings.pinned'.tr(),
           ),
         ),
       );
     } catch (_) {
       if (!mounted) return;
       messenger.showSnackBar(
-        const SnackBar(
-          content: Text('No se pudo cambiar la publicación fijada.'),
-        ),
+        SnackBar(content: Text('listings.pin_error'.tr())),
       );
     } finally {
       if (mounted) setState(() => _fijando = false);
@@ -106,7 +103,7 @@ class _MyListingsScreenState extends State<MyListingsScreen>
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Mis publicaciones')),
+      appBar: AppBar(title: Text('profile.my_listings'.tr())),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
@@ -116,7 +113,7 @@ class _MyListingsScreenState extends State<MyListingsScreen>
                 const Spacer(),
                 IconButton.filled(
                   onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Nueva publicacion mock')),
+                    SnackBar(content: Text('listings.new_mock'.tr())),
                   ),
                   icon: const Icon(Icons.add_rounded),
                 ),
@@ -124,7 +121,7 @@ class _MyListingsScreenState extends State<MyListingsScreen>
             ),
             const SizedBox(height: 8),
             Text(
-              'Administra tus productos activos, destacados y expirados.',
+              'listings.subtitle'.tr(),
               style: TextStyle(
                 color: context.colors.muted,
                 fontWeight: FontWeight.w600,
@@ -340,7 +337,9 @@ class _MyListingTile extends StatelessWidget {
               // backend de verdad; renovar y destacar siguen simuladas.
               IconButton(
                 onPressed: onFijar,
-                tooltip: fijado ? 'Quitar de tu perfil' : 'Fijar en tu perfil',
+                tooltip: fijado
+                    ? 'listings.unpin_action'.tr()
+                    : 'listings.pin_action'.tr(),
                 icon: Icon(
                   fijado ? Icons.push_pin_rounded : Icons.push_pin_outlined,
                   color: fijado ? context.colors.accent : context.colors.muted,
@@ -350,19 +349,21 @@ class _MyListingTile extends StatelessWidget {
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: () =>
-                      _showMockMessage(context, 'Renovacion simulada'),
+                      _showMockMessage(context, 'listings.renew_mock'.tr()),
                   icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('Renovar'),
+                  label: Text('listings.renew'.tr()),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () =>
-                      _showMockMessage(context, 'Plan de destacado simulado'),
+                      _showMockMessage(context, 'listings.highlight_mock'.tr()),
                   icon: const Icon(Icons.star_rounded),
                   label: Text(
-                    status == ListingStatus.featured ? 'Extender' : 'Destacar',
+                    status == ListingStatus.featured
+                        ? 'listings.extend'.tr()
+                        : 'listings.highlight'.tr(),
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: context.colors.accent,

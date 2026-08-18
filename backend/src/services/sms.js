@@ -54,7 +54,7 @@ async function enviarCodigo(telefono, codigo) {
     from: process.env.TWILIO_FROM,
     to: telefono,
     body:
-      `Mercadito UM: tu código de verificación es ${codigo}. ` +
+      `Marketplace UM: tu código de verificación es ${codigo}. ` +
       `Vence en ${VIGENCIA_MINUTOS} minutos.`,
   });
   return { modo };

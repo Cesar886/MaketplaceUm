@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -92,7 +93,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
         _guardando = false;
         _error = mensajeDeError(
           e,
-          fallback: 'No se pudo guardar la tarjeta.',
+          fallback: 'payments_api.save_card_error'.tr(),
           stack: s,
         );
       });
@@ -104,7 +105,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
     final colors = context.colors;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Agregar tarjeta')),
+      appBar: AppBar(title: Text('card.add'.tr())),
       body: SafeArea(
         // Ya no hay carga asíncrona previa: la clave pública del vendedor
         // llega como parámetro desde el checkout, que es quien la consultó.
@@ -116,7 +117,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
             children: [
               _CampoTarjeta(
                 controller: _numero,
-                etiqueta: 'Número de tarjeta',
+                etiqueta: 'card.number'.tr(),
                 teclado: TextInputType.number,
                 formatters: [
                   FilteringTextInputFormatter.digitsOnly,
@@ -154,8 +155,9 @@ class _AddCardScreenState extends State<AddCardScreen> {
                         FilteringTextInputFormatter.digitsOnly,
                         LengthLimitingTextInputFormatter(4),
                       ],
-                      validador: (v) =>
-                          (v == null || v.length < 3) ? 'CVV incompleto' : null,
+                      validador: (v) => (v == null || v.length < 3)
+                          ? 'card.cvv_incomplete'.tr()
+                          : null,
                     ),
                   ),
                 ],
@@ -163,15 +165,15 @@ class _AddCardScreenState extends State<AddCardScreen> {
               const SizedBox(height: 14),
               _CampoTarjeta(
                 controller: _titular,
-                etiqueta: 'Nombre del titular',
-                hint: 'Como aparece en la tarjeta',
+                etiqueta: 'card.holder'.tr(),
+                hint: 'card.holder_hint'.tr(),
                 teclado: TextInputType.name,
                 formatters: [
                   UpperCaseTextFormatter(),
                   LengthLimitingTextInputFormatter(40),
                 ],
                 validador: (v) => (v == null || v.trim().length < 3)
-                    ? 'Escribe el nombre del titular'
+                    ? 'card.holder_write'.tr()
                     : null,
               ),
               const SizedBox(height: 20),
@@ -202,7 +204,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Guardar tarjeta'),
+                      : Text('card.save'.tr()),
                 ),
               ),
               const SizedBox(height: 14),
@@ -212,8 +214,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Los datos de tu tarjeta viajan cifrados a Mercado '
-                      'Pago. Mercadito UM nunca los recibe ni los guarda.',
+                      'card.security_note'.tr(),
                       style: TextStyle(
                         fontSize: 12,
                         height: 1.4,
@@ -234,7 +235,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
   /// todos los errores de captura los detecta aquí mismo, al instante.
   String? _validarNumero(String? valor) {
     final digitos = (valor ?? '').replaceAll(' ', '');
-    if (digitos.length < 13) return 'Número incompleto';
+    if (digitos.length < 13) return 'card.number_incomplete'.tr();
     var suma = 0;
     var alterna = false;
     for (var i = digitos.length - 1; i >= 0; i--) {
@@ -246,7 +247,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
       suma += n;
       alterna = !alterna;
     }
-    return suma % 10 == 0 ? null : 'El número de tarjeta no es válido';
+    return suma % 10 == 0 ? null : 'card.number_invalid'.tr();
   }
 
   String? _validarVencimiento(String? valor) {
@@ -255,13 +256,13 @@ class _AddCardScreenState extends State<AddCardScreen> {
     final mes = int.tryParse(v.substring(0, 2));
     final anio = int.tryParse(v.substring(3));
     if (mes == null || anio == null || mes < 1 || mes > 12)
-      return 'Fecha inválida';
+      return 'card.date_invalid'.tr();
 
     // Una tarjeta vale hasta el ÚLTIMO día de su mes de vencimiento.
     final ahora = DateTime.now();
     final ultimoDia = DateTime(2000 + anio, mes + 1, 0);
     if (ultimoDia.isBefore(DateTime(ahora.year, ahora.month, ahora.day))) {
-      return 'Tarjeta vencida';
+      return 'card.expired'.tr();
     }
     return null;
   }

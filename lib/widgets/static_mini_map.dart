@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -95,7 +96,7 @@ class StaticMiniMap extends StatelessWidget {
                                   ? null
                                   : const {
                                       'User-Agent':
-                                          'MercaditoUM/1.0 (Flutter app)',
+                                          'MarketplaceUM/1.0 (Flutter app)',
                                     },
                             ),
                             fit: BoxFit.cover,
@@ -125,16 +126,16 @@ class StaticMiniMap extends StatelessWidget {
               color: Theme.of(context).colorScheme.surfaceContainerHighest,
               child: InkWell(
                 onTap: () => _openInMaps(lat!, lng!),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.map_outlined, size: 16),
-                      SizedBox(width: 6),
+                      const Icon(Icons.map_outlined, size: 16),
+                      const SizedBox(width: 6),
                       Text(
-                        'Ver en Maps',
-                        style: TextStyle(
+                        'map.open_in_maps'.tr(),
+                        style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                         ),

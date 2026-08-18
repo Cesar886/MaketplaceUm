@@ -108,7 +108,7 @@ class VerificacionException implements Exception {
   String toString() => mensaje;
 }
 
-/// Servicio centralizado para consumir la API REST de Mercadito UM.
+/// Servicio centralizado para consumir la API REST de Marketplace UM.
 ///
 /// Auto-detecta la URL base según plataforma / entorno.
 /// Si falla, usa [customBaseUrl] para override manual.
@@ -184,6 +184,10 @@ class ApiService {
   static void clearToken() {
     _token = null;
   }
+
+  /// Token de la sesión actual, para quien no pasa por [_authHeaders]: el
+  /// handshake de Socket.IO, que autentica por payload y no por cabecera.
+  static String? get token => _token;
 
   static Map<String, String> get _authHeaders {
     final headers = <String, String>{'Content-Type': 'application/json'};
@@ -996,6 +1000,36 @@ class ApiService {
       throw Exception(body['error'] ?? 'Error al cambiar estado');
     }
     return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  // ─── Privacidad ──────────────────────────────────────────────
+
+  /// ¿Está compartiendo el usuario su estado en línea?
+  static Future<bool> getShowOnlineStatus() async {
+    final res = await _client.get(_uri('/me/privacy'), headers: _authHeaders);
+    if (res.statusCode != 200) {
+      throw Exception('Error al leer la configuración de privacidad');
+    }
+    return (jsonDecode(res.body) as Map<String, dynamic>)['showOnlineStatus']
+        as bool;
+  }
+
+  /// Enciende o apaga "mostrar mi estado en línea".
+  ///
+  /// Apagarlo es recíproco por diseño del backend: quien lo apaga tampoco ve
+  /// el estado de los demás.
+  static Future<bool> setShowOnlineStatus(bool mostrar) async {
+    final res = await _client.patch(
+      _uri('/me/privacy'),
+      headers: _authHeaders,
+      body: jsonEncode({'showOnlineStatus': mostrar}),
+    );
+    if (res.statusCode != 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['error'] ?? 'Error al guardar la privacidad');
+    }
+    return (jsonDecode(res.body) as Map<String, dynamic>)['showOnlineStatus']
+        as bool;
   }
 
   /// Fija el stock de un producto a una cantidad exacta (solo el dueño).

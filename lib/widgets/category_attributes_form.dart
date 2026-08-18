@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -140,14 +141,14 @@ class _CategoryAttributesFormState extends State<CategoryAttributesForm> {
             ),
             const SizedBox(width: 8),
             Text(
-              'Detalles del producto',
+              'attributes.product_details'.tr(),
               style: AppTypography.heading(15, color: context.colors.ink),
             ),
           ],
         ),
         const SizedBox(height: 4),
         Text(
-          'Todo es opcional, pero responderlo evita la mitad de las preguntas por chat.',
+          'attributes.optional_hint'.tr(),
           style: AppTypography.body(12.5, color: context.colors.muted),
         ),
         const SizedBox(height: 18),
@@ -224,7 +225,7 @@ class _EtiquetaPregunta extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text.rich(
       TextSpan(
-        text: pregunta.label,
+        text: traducirCatalogo(pregunta.label),
         children: [
           if (pregunta.obligatoria)
             TextSpan(
@@ -267,10 +268,12 @@ class _BooleanRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Expanded(child: _EtiquetaPregunta(pregunta: pregunta, enFalta: enFalta)),
+        Expanded(
+          child: _EtiquetaPregunta(pregunta: pregunta, enFalta: enFalta),
+        ),
         const SizedBox(width: 12),
         _OpcionSiNo(
-          texto: 'Sí',
+          texto: 'common.yes'.tr(),
           activo: valor == true,
           onTap: () => onChanged(valor == true ? null : true),
         ),
@@ -353,7 +356,9 @@ class _SelectField extends StatelessWidget {
           children: [
             for (final opcion in pregunta.options)
               _Chip(
-                texto: opcion,
+                // Se traduce solo lo que se ve: `opcion` sigue siendo el
+                // valor en español que se guarda y se manda al servidor.
+                texto: traducirCatalogo(opcion),
                 activo: valor == opcion,
                 // Volver a tocar la opción elegida la deselecciona: sin eso,
                 // una pregunta opcional se vuelve irreversible en cuanto se
@@ -500,7 +505,7 @@ class _MultiSelectFieldState extends State<_MultiSelectField> {
           children: [
             for (final opcion in widget.pregunta.options)
               _Chip(
-                texto: opcion,
+                texto: traducirCatalogo(opcion),
                 activo: widget.valores.contains(opcion),
                 onTap: () => _alternar(opcion),
               ),
@@ -521,7 +526,10 @@ class _MultiSelectFieldState extends State<_MultiSelectField> {
                 transitionBuilder: (child, animation) => FadeTransition(
                   opacity: animation,
                   child: ScaleTransition(
-                    scale: Tween<double>(begin: 0.94, end: 1).animate(animation),
+                    scale: Tween<double>(
+                      begin: 0.94,
+                      end: 1,
+                    ).animate(animation),
                     child: child,
                   ),
                 ),
@@ -618,9 +626,7 @@ class _CustomChipInput extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: enfocado ? accent : context.colors.border,
-        ),
+        border: Border.all(color: enfocado ? accent : context.colors.border),
         boxShadow: enfocado
             ? [
                 BoxShadow(
@@ -657,7 +663,7 @@ class _CustomChipInput extends StatelessWidget {
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                hintText: 'Escribe y presiona enter',
+                hintText: 'attributes.type_and_enter'.tr(),
                 hintStyle: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w400,
@@ -778,9 +784,13 @@ class _TextoField extends StatelessWidget {
           : TextInputType.text,
       textCapitalization: TextCapitalization.sentences,
       decoration: InputDecoration(
-        labelText: pregunta.obligatoria ? '${pregunta.label} *' : pregunta.label,
-        hintText: pregunta.placeholder,
-        errorText: enFalta ? 'Falta responder' : null,
+        labelText: pregunta.obligatoria
+            ? '${traducirCatalogo(pregunta.label)} *'
+            : traducirCatalogo(pregunta.label),
+        hintText: pregunta.placeholder == null
+            ? null
+            : traducirCatalogo(pregunta.placeholder!),
+        errorText: enFalta ? 'attributes.missing_answer'.tr() : null,
       ),
       onChanged: (v) => onChanged(v.trim()),
     );

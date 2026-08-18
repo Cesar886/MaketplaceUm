@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -66,14 +67,12 @@ class _RecentProductsScreenState extends State<RecentProductsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Limpiar historial'),
-        content: const Text(
-          '¿Eliminar todos los productos vistos recientemente?',
-        ),
+        title: Text('recent.clear_title'.tr()),
+        content: Text('recent.clear_confirm'.tr()),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancelar'),
+            child: Text('common.cancel'.tr()),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
@@ -91,20 +90,20 @@ class _RecentProductsScreenState extends State<RecentProductsScreen> {
     setState(() => _products = []);
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Historial limpiado')));
+    ).showSnackBar(SnackBar(content: Text('recent.cleared'.tr())));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Vistos recientemente'),
+        title: Text('profile.recently_viewed'.tr()),
         actions: [
           if (_products.isNotEmpty)
             IconButton(
               onPressed: _clearHistory,
               icon: const Icon(Icons.delete_sweep_rounded),
-              tooltip: 'Limpiar historial',
+              tooltip: 'recent.clear_title'.tr(),
             ),
         ],
       ),
@@ -124,7 +123,7 @@ class _RecentProductsScreenState extends State<RecentProductsScreen> {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'Aún no has visto ningún producto.\n¡Explora el mercado!',
+                      'recent.empty'.tr(),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: context.colors.muted,

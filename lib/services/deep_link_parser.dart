@@ -1,6 +1,6 @@
 import '../config/app_config.dart';
 
-/// Decide si un link que llegó de fuera apunta a una publicación de Mercadito
+/// Decide si un link que llegó de fuera apunta a una publicación de Marketplace
 /// UM, y a cuál.
 ///
 /// Vive aparte de `DeepLinkService` porque es la única parte del deep linking
@@ -33,7 +33,7 @@ String? _idValido(String crudo) {
 }
 
 /// Id de la publicación que identifica [uri], o null si el link no apunta a
-/// una publicación de Mercadito UM.
+/// una publicación de Marketplace UM.
 String? idDePublicacionEnLink(Uri uri) {
   final segmentos = uri.pathSegments;
 

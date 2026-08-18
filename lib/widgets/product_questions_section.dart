@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -102,9 +103,9 @@ class _ProductQuestionsSectionState extends State<ProductQuestionsSection> {
     if (!auth.isLoggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Inicia sesión para hacer una pregunta'),
+          content: Text('questions.login_prompt'.tr()),
           action: SnackBarAction(
-            label: 'Iniciar sesión',
+            label: 'auth.login_button'.tr(),
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
             ),
@@ -129,11 +130,9 @@ class _ProductQuestionsSectionState extends State<ProductQuestionsSection> {
         _total += 1;
         _pendientes += 1;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Pregunta enviada. Te avisamos cuando respondan.'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('questions.sent'.tr())));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -144,7 +143,7 @@ class _ProductQuestionsSectionState extends State<ProductQuestionsSection> {
 
   String _mensajeDeError(Object error) {
     final texto = error.toString().replaceFirst('Exception: ', '');
-    return texto.length > 140 ? 'No se pudo enviar la pregunta.' : texto;
+    return texto.length > 140 ? 'questions.send_error'.tr() : texto;
   }
 
   @override
@@ -171,7 +170,7 @@ class _ProductQuestionsSectionState extends State<ProductQuestionsSection> {
             Icon(Icons.forum_outlined, size: 18, color: context.colors.accent),
             const SizedBox(width: 8),
             Text(
-              'Preguntas y respuestas',
+              'questions.title'.tr(),
               style: AppTypography.heading(15, color: context.colors.ink),
             ),
             if (esDueno && _pendientes > 0) ...[
@@ -198,7 +197,7 @@ class _ProductQuestionsSectionState extends State<ProductQuestionsSection> {
                   visualDensity: VisualDensity.compact,
                 ),
                 icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('Hacer una pregunta'),
+                label: Text('questions.ask'.tr()),
               ),
             const Spacer(),
             TextButton(
@@ -210,8 +209,8 @@ class _ProductQuestionsSectionState extends State<ProductQuestionsSection> {
               ),
               child: Text(
                 _total > _preguntas.length
-                    ? 'Ver las $_total preguntas'
-                    : 'Ver todas',
+                    ? 'questions.see_n'.tr(namedArgs: {'n': '$_total'})
+                    : 'questions.see_all'.tr(),
               ),
             ),
           ],
@@ -241,7 +240,7 @@ class _InvitacionAPreguntar extends StatelessWidget {
           visualDensity: VisualDensity.compact,
         ),
         icon: const Icon(Icons.help_outline_rounded, size: 18),
-        label: const Text('¿Tienes una duda? Pregúntale al vendedor'),
+        label: Text('questions.cta'.tr()),
       ),
     );
   }
@@ -283,13 +282,20 @@ class _ChipPendientes extends StatelessWidget {
 
 /// Hoja para escribir una pregunta. Devuelve el texto ya validado en cliente
 /// (espejo del backend, no sustituto) o null si se canceló.
+/// Los textos son opcionales y se resuelven dentro: un valor por defecto de
+/// parámetro tiene que ser constante, y `.tr()` es una llamada.
 Future<String?> mostrarModalPregunta(
   BuildContext context, {
-  String titulo = 'Hacer una pregunta',
-  String etiqueta = 'Escribe tu pregunta',
-  String textoBoton = 'Enviar pregunta',
+  String? titulo,
+  String? etiqueta,
+  String? textoBoton,
   String? valorInicial,
 }) {
+  // Locales `final`: dentro del closure de `builder` Dart no conserva la
+  // promoción de un parámetro nullable, aunque ya se le haya asignado.
+  final tituloFinal = titulo ?? 'questions.ask'.tr();
+  final etiquetaFinal = etiqueta ?? 'questions.input_label'.tr();
+  final botonFinal = textoBoton ?? 'questions.send'.tr();
   return showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
@@ -298,9 +304,9 @@ Future<String?> mostrarModalPregunta(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
     builder: (contextoHoja) => _HojaTexto(
-      titulo: titulo,
-      etiqueta: etiqueta,
-      textoBoton: textoBoton,
+      titulo: tituloFinal,
+      etiqueta: etiquetaFinal,
+      textoBoton: botonFinal,
       valorInicial: valorInicial,
     ),
   );

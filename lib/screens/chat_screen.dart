@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:image_picker/image_picker.dart';
@@ -297,9 +298,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (index < 0) {
       // El citado ya no está en la lista cargada (chat recortado o borrado).
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se encontró el mensaje original')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('chat.original_not_found'.tr())));
       return;
     }
 
@@ -411,11 +412,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            mensajeDeError(
-              e,
-              stack: stack,
-              fallback: 'No se pudo enviar el mensaje. Intenta de nuevo.',
-            ),
+            mensajeDeError(e, stack: stack, fallback: 'chat.send_error'.tr()),
           ),
         ),
       );
@@ -459,7 +456,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             mensajeDeError(
               e,
               stack: stack,
-              fallback: 'No se pudo enviar la imagen. Intenta de nuevo.',
+              fallback: 'chat.send_image_error'.tr(),
             ),
           ),
         ),
@@ -494,17 +491,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Eliminar mensaje'),
-        content: const Text('¿Seguro que quieres eliminar este mensaje?'),
+        title: Text('chat.delete_message'.tr()),
+        content: Text('chat.delete_message_confirm'.tr()),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancelar'),
+            child: Text('common.cancel'.tr()),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: TextButton.styleFrom(foregroundColor: AppColors.danger),
-            child: const Text('Eliminar'),
+            child: Text('common.delete'.tr()),
           ),
         ],
       ),
@@ -528,7 +525,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             mensajeDeError(
               e,
               stack: stack,
-              fallback: 'No se pudo eliminar el mensaje. Intenta de nuevo.',
+              fallback: 'chat.delete_message_error'.tr(),
             ),
           ),
         ),
@@ -548,7 +545,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Chat'),
+        title: Text('nav.chat'.tr()),
         actions: [
           if (_displayProduct != null)
             IconButton(
@@ -579,7 +576,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'No se pudieron cargar los mensajes',
+                          'chat.load_error'.tr(),
                           style: TextStyle(
                             color: context.colors.muted,
                             fontWeight: FontWeight.w500,
@@ -589,7 +586,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         TextButton.icon(
                           onPressed: _loadMessages,
                           icon: const Icon(Icons.refresh_rounded),
-                          label: const Text('Reintentar'),
+                          label: Text('common.retry'.tr()),
                         ),
                       ],
                     ),
@@ -606,7 +603,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         ),
                         SizedBox(height: 12),
                         Text(
-                          'Envía un mensaje para empezar',
+                          'chat.empty'.tr(),
                           style: TextStyle(
                             color: context.colors.muted,
                             fontWeight: FontWeight.w500,
@@ -702,8 +699,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         onChanged: _onTextChanged,
                         minLines: 1,
                         maxLines: 4,
-                        decoration: const InputDecoration(
-                          hintText: 'Escribe un mensaje...',
+                        decoration: InputDecoration(
+                          hintText: 'chat.input_hint'.tr(),
                           contentPadding: EdgeInsets.symmetric(
                             horizontal: 16,
                             vertical: 12,
@@ -891,7 +888,7 @@ class _QuotedMessage extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    esMio ? 'Tú' : 'Comprador',
+                    esMio ? 'chat.you'.tr() : 'chat.buyer'.tr(),
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
@@ -915,7 +912,7 @@ class _QuotedMessage extends StatelessWidget {
                 visualDensity: VisualDensity.compact,
                 constraints: const BoxConstraints(),
                 padding: const EdgeInsets.only(left: 8),
-                tooltip: 'Cancelar respuesta',
+                tooltip: 'chat.cancel_reply'.tr(),
               ),
           ],
         ),
@@ -1083,7 +1080,7 @@ class _ProductBar extends StatelessWidget {
                 ),
               ),
               Text(
-                'Chat de compra',
+                'chat.purchase_chat'.tr(),
                 style: TextStyle(color: context.colors.muted, fontSize: 12),
               ),
               const SizedBox(width: 4),

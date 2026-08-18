@@ -72,7 +72,7 @@ class CookiesScreen extends StatelessWidget {
             const _SectionC(
               title: 'Consentimiento',
               body:
-                  'Al usar Mercadito UM, aceptas el uso de cookies esenciales '
+                  'Al usar Marketplace UM, aceptas el uso de cookies esenciales '
                   'y de preferencias necesarias para el funcionamiento de la '
                   'Plataforma. Para las cookies analíticas, solicitaremos tu '
                   'consentimiento explícito la primera vez que uses la app.',
@@ -94,7 +94,7 @@ class CookiesScreen extends StatelessWidget {
             Divider(color: context.colors.border),
             const SizedBox(height: 12),
             Text(
-              'Al continuar usando Mercadito UM, aceptas el uso de cookies '
+              'Al continuar usando Marketplace UM, aceptas el uso de cookies '
               'según lo descrito en este aviso.',
               textAlign: TextAlign.center,
               style: TextStyle(

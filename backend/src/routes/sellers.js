@@ -4,6 +4,7 @@ const sharp = require('sharp');
 const multer = require('multer');
 const { sellers, categories, updateSellerField } = require('../data');
 const { requireAuth, optionalAuth } = require('../auth');
+const { presenciaDe } = require('./presenciaHttp');
 const db = require('../database');
 const {
   validateName,
@@ -72,11 +73,15 @@ function register(app) {
   app.get('/api/sellers/:id', optionalAuth, (req, res) => {
     const seller = sellers.find(s => s.id === req.params.id);
     if (!seller) return res.status(404).json({ error: 'Vendedor no encontrado' });
+    // Un visitante sin sesión no tiene "visor", así que nunca ve presencia:
+    // si no, bastaría con cerrar sesión para saltarse la reciprocidad del
+    // ajuste de privacidad.
+    const presencia = presenciaDe(req, req.user ? req.user.id : null, seller.id);
     if (req.user && req.user.id === seller.id) {
       const rawRow = db.getDb().prepare('SELECT email FROM sellers WHERE id = ?').get(seller.id);
-      return res.json({ ...conMetricas(seller), email: rawRow.email || null });
+      return res.json({ ...conMetricas(seller), ...presencia, email: rawRow.email || null });
     }
-    res.json(conMetricas(seller));
+    res.json({ ...conMetricas(seller), ...presencia });
   });
 
   // PATCH /api/sellers/:id — editar el propio perfil (usuario o negocio).

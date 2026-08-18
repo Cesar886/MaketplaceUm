@@ -73,10 +73,7 @@ void main() {
         ProductAttributesSection(
           product: producto(
             categoria: 'electronics',
-            atributos: {
-              'estado_electronico': 'Usado',
-              'tiene_garantia': false,
-            },
+            atributos: {'estado_electronico': 'Usado', 'tiene_garantia': false},
           ),
         ),
       ),

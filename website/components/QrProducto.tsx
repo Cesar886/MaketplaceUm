@@ -35,7 +35,7 @@ export default function QrProducto({ url }: { url: string }) {
           Escanea con tu celular
         </p>
         <p style={{ margin: '4px 0 0', color: 'var(--muted)', fontSize: 14 }}>
-          Abre este producto en Mercadito UM y escríbele al vendedor.
+          Abre este producto en Marketplace UM y escríbele al vendedor.
         </p>
       </div>
     </div>

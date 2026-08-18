@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -69,7 +70,7 @@ class ProductAttributesSection extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Text(
-              'Detalles adicionales',
+              'attributes.extra_details'.tr(),
               style: AppTypography.heading(15, color: context.colors.ink),
             ),
           ],
@@ -113,7 +114,7 @@ class ProductAttributesSection extends StatelessWidget {
       final duracion = atributos['duracion_garantia'];
       final texto = (duracion is String && duracion.trim().isNotEmpty)
           ? '$duracion de garantía'
-          : 'Con garantía';
+          : 'attributes.with_warranty'.tr();
       chips.add(_ChipDato(icon: Icons.verified_outlined, texto: texto));
     }
 
@@ -211,7 +212,7 @@ class _AcordeonDetallesState extends State<_AcordeonDetalles> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Ver todos los detalles',
+                  'attributes.see_all'.tr(),
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -250,12 +251,10 @@ class _AcordeonDetallesState extends State<_AcordeonDetalles> {
                     ),
                     child: Column(
                       children: [
-                        for (final (i, entrada) in widget.respuestas.indexed) ...[
+                        for (final (i, entrada)
+                            in widget.respuestas.indexed) ...[
                           if (i > 0)
-                            Container(
-                              height: 1,
-                              color: context.colors.border,
-                            ),
+                            Container(height: 1, color: context.colors.border),
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 10),
                             child: _FilaAtributo(
@@ -291,7 +290,7 @@ class _FilaAtributo extends StatelessWidget {
         Flexible(
           flex: 5,
           child: Text(
-            _etiquetaCorta(pregunta.label),
+            _etiquetaCorta(traducirCatalogo(pregunta.label)),
             style: AppTypography.body(13.5, color: context.colors.muted),
           ),
         ),
@@ -320,13 +319,16 @@ class _FilaAtributo extends StatelessWidget {
         spacing: 6,
         runSpacing: 6,
         children: [
-          for (final item in valor as List) _ChipValor(texto: item.toString()),
+          for (final item in valor as List)
+            // Los valores propios que escribió el vendedor no están en el
+            // catálogo: `traducirCatalogo` los devuelve tal cual.
+            _ChipValor(texto: traducirCatalogo(item.toString())),
         ],
       );
     }
 
     return Text(
-      valor.toString(),
+      traducirCatalogo(valor.toString()),
       textAlign: TextAlign.right,
       style: TextStyle(
         fontSize: 13.5,
@@ -358,13 +360,11 @@ class _BadgeBooleano extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = activo ? context.colors.success : context.colors.muted;
-    final texto = activo ? 'Sí' : 'No';
+    final texto = activo ? 'common.yes'.tr() : 'common.no'.tr();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: activo
-            ? context.colors.successBg
-            : context.colors.surfaceMuted,
+        color: activo ? context.colors.successBg : context.colors.surfaceMuted,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(

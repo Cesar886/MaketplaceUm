@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -129,7 +130,7 @@ class _ProductQuestionsScreenState extends State<ProductQuestionsScreen> {
       if (!mounted) return;
       setState(() {
         _cargandoInicial = false;
-        _error = 'No se pudieron cargar las preguntas.';
+        _error = 'questions.load_error'.tr();
       });
     }
   }
@@ -263,8 +264,8 @@ class _ProductQuestionsScreenState extends State<ProductQuestionsScreen> {
         // dice de un vistazo si el hilo tiene una pregunta o cuarenta.
         title: Text(
           _total > 0
-              ? 'Preguntas y respuestas ($_total)'
-              : 'Preguntas y respuestas',
+              ? 'questions.title_count'.tr(namedArgs: {'n': '\$_total'})
+              : 'questions.title'.tr(),
         ),
         bottom: esDueno && (_pendientes > 0 || _soloPendientes)
             ? PreferredSize(
@@ -291,7 +292,7 @@ class _ProductQuestionsScreenState extends State<ProductQuestionsScreen> {
                 child: ElevatedButton.icon(
                   onPressed: _preguntar,
                   icon: const Icon(Icons.help_outline_rounded, size: 18),
-                  label: const Text('Hacer una pregunta'),
+                  label: Text('questions.ask'.tr()),
                 ),
               ),
             ),
@@ -316,7 +317,7 @@ class _ProductQuestionsScreenState extends State<ProductQuestionsScreen> {
         texto: _error!,
         accion: TextButton(
           onPressed: _cargarInicial,
-          child: const Text('Reintentar'),
+          child: Text('common.retry'.tr()),
         ),
       );
     }
@@ -325,10 +326,10 @@ class _ProductQuestionsScreenState extends State<ProductQuestionsScreen> {
       return _MensajeCentrado(
         icono: Icons.forum_outlined,
         texto: _soloPendientes
-            ? 'No te queda ninguna pregunta sin responder.'
+            ? 'questions.none_pending'.tr()
             : esDueno
-            ? 'Todavía nadie ha preguntado en esta publicación.'
-            : 'Sé el primero en preguntar sobre esta publicación.',
+            ? 'questions.empty'.tr()
+            : 'questions.be_first'.tr(),
       );
     }
 
@@ -411,7 +412,7 @@ class _FiltroPendientes extends StatelessWidget {
               label: Text(
                 pendientes > 0
                     ? 'Sin responder ($pendientes)'
-                    : 'Sin responder',
+                    : 'questions.unanswered'.tr(),
               ),
               selected: soloPendientes,
               onSelected: (_) => onCambiar(true),
@@ -486,7 +487,9 @@ class _AccionesDelVendedorState extends State<_AccionesDelVendedor> {
             size: 16,
           ),
           label: Text(
-            widget.pregunta.isAnswered ? 'Editar respuesta' : 'Responder',
+            widget.pregunta.isAnswered
+                ? 'questions.edit_answer'.tr()
+                : 'Responder',
           ),
         ),
       );
@@ -503,7 +506,7 @@ class _AccionesDelVendedorState extends State<_AccionesDelVendedor> {
           maxLength: kLargoMaximoPregunta,
           textCapitalization: TextCapitalization.sentences,
           decoration: InputDecoration(
-            hintText: 'Escribe tu respuesta',
+            hintText: 'questions.answer_label'.tr(),
             isDense: true,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           ),
@@ -516,7 +519,7 @@ class _AccionesDelVendedorState extends State<_AccionesDelVendedor> {
               style: TextButton.styleFrom(
                 foregroundColor: context.colors.muted,
               ),
-              child: const Text('Cancelar'),
+              child: Text('common.cancel'.tr()),
             ),
             const Spacer(),
             FilledButton(
@@ -529,7 +532,7 @@ class _AccionesDelVendedorState extends State<_AccionesDelVendedor> {
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text('Publicar respuesta'),
+                  : Text('questions.post_answer'.tr()),
             ),
           ],
         ),

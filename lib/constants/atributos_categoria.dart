@@ -14,6 +14,8 @@
 /// archivos y falla si se desincronizan. Si tocas uno, toca el otro.
 library;
 
+import 'package:easy_localization/easy_localization.dart';
+
 enum AtributoTipo { booleano, seleccion, seleccionMultiple, texto, numero }
 
 /// Una pregunta del formulario dinámico.
@@ -454,4 +456,49 @@ Map<String, dynamic> depurarRespuestas(
     limpio[pregunta.key] = valor is String ? valor.trim() : valor;
   }
   return limpio;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Traducción del catálogo
+//
+// Las etiquetas de arriba se quedan en español a propósito: este archivo es
+// el espejo literal de `backend/src/config/atributosCategoria.js`, y hay un
+// test de paridad que compara ambos textos. Convertirlas en claves rompería
+// esa comparación y con ella la garantía de que cliente y servidor hablan
+// del mismo catálogo.
+//
+// La traducción ocurre al PINTAR: cada texto tiene una clave derivada de sí
+// mismo en `catalog.*`, y si esa clave no existe se cae al español original.
+// Así, un atributo nuevo en el backend aparece en la app desde el primer día
+// —en español— en vez de mostrar una clave cruda.
+
+/// Traduce un texto del catálogo (etiqueta, placeholder, opción o badge).
+///
+/// Los VALORES de `options` se traducen solo para mostrarlos: lo que se
+/// guarda y se manda al servidor sigue siendo el string en español, que es
+/// la llave real del dato. Traducir lo persistido rompería las respuestas ya
+/// publicadas y las condiciones `showIfEquals`.
+String traducirCatalogo(String texto) {
+  final clave = 'catalog.${_slugDeCatalogo(texto)}';
+  // Se pregunta ANTES de traducir en vez de comparar el resultado con la
+  // clave: los valores propios que escribe el vendedor ("M", "7½") nunca
+  // están en el catálogo, y pedirlos igual llenaría la consola de avisos de
+  // clave faltante en un caso que es completamente normal.
+  return trExists(clave) ? clave.tr() : texto;
+}
+
+/// Misma normalización que generó las claves en `assets/translations`:
+/// sin acentos, no alfanuméricos a `_`, minúsculas, cortado a 48.
+String _slugDeCatalogo(String texto) {
+  const acentos = 'áéíóúüñÁÉÍÓÚÜÑ¿¡';
+  const planos = 'aeiouunAEIOUUN  ';
+  final buffer = StringBuffer();
+  for (final rune in texto.runes) {
+    final ch = String.fromCharCode(rune);
+    final i = acentos.indexOf(ch);
+    buffer.write(i == -1 ? ch : planos[i]);
+  }
+  var s = buffer.toString().replaceAll(RegExp(r'[^a-zA-Z0-9]+'), '_');
+  s = s.replaceAll(RegExp(r'^_+|_+$'), '').toLowerCase();
+  return s.length > 48 ? s.substring(0, 48) : s;
 }

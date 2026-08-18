@@ -5,7 +5,7 @@ import 'package:mercadito_um/widgets/product_card_skeleton.dart';
 
 void main() {
   // Ancho/alto realistas de una celda del grid real (2 columnas,
-  // childAspectRatio: 0.64), no el tamaño completo de pantalla — evita un
+  // ver ProductGridMetrics), no el tamaño completo de pantalla — evita un
   // overflow artificial que no ocurre dentro del SliverGrid real.
   const cellSize = Size(170, 265);
 

@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -81,7 +82,7 @@ class _ConnectMpScreenState extends State<ConnectMpScreen>
       setState(
         () => _error = mensajeDeError(
           e,
-          fallback: 'No se pudo consultar tu cuenta de pagos.',
+          fallback: 'payments_api.account_error'.tr(),
           stack: s,
         ),
       );
@@ -100,9 +101,7 @@ class _ConnectMpScreenState extends State<ConnectMpScreen>
       if (!abierto) {
         _abriendo = false;
         if (!mounted) return;
-        setState(
-          () => _error = 'No se pudo abrir Mercado Pago en tu navegador.',
-        );
+        setState(() => _error = 'mp.browser_error'.tr());
       }
     } catch (e, s) {
       _abriendo = false;
@@ -110,7 +109,7 @@ class _ConnectMpScreenState extends State<ConnectMpScreen>
       setState(
         () => _error = mensajeDeError(
           e,
-          fallback: 'No se pudo iniciar la conexión con Mercado Pago.',
+          fallback: 'payments_api.connect_error'.tr(),
           stack: s,
         ),
       );
@@ -121,15 +120,12 @@ class _ConnectMpScreenState extends State<ConnectMpScreen>
     final confirmado = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('¿Desconectar Mercado Pago?'),
-        content: const Text(
-          'Dejarás de recibir pagos por la app hasta que vuelvas a conectarla. '
-          'Los pagos que ya recibiste no se ven afectados.',
-        ),
+        title: Text('mp.disconnect_title'.tr()),
+        content: Text('mp.disconnect_body'.tr()),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
+            child: Text('common.cancel'.tr()),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -151,7 +147,7 @@ class _ConnectMpScreenState extends State<ConnectMpScreen>
       setState(
         () => _error = mensajeDeError(
           e,
-          fallback: 'No se pudo desconectar tu cuenta.',
+          fallback: 'payments_api.disconnect_error'.tr(),
           stack: s,
         ),
       );
@@ -161,7 +157,7 @@ class _ConnectMpScreenState extends State<ConnectMpScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Recibir pagos')),
+      appBar: AppBar(title: Text('mp.title'.tr())),
       body: SafeArea(
         child: RefreshIndicator(onRefresh: _cargar, child: _cuerpo()),
       ),
@@ -184,13 +180,7 @@ class _ConnectMpScreenState extends State<ConnectMpScreen>
           if (_estado!.connected)
             _TarjetaConectada(onDesconectar: _desconectar)
           else if (!_estado!.canConnect)
-            const _Aviso(
-              texto:
-                  'Antes de conectar tu cuenta de cobros tienes que confirmar el '
-                  'código que te enviamos por correo o SMS. Empieza la verificación '
-                  'desde tu perfil.',
-              esError: false,
-            )
+            _Aviso(texto: 'mp.verify_first'.tr(), esError: false)
           else
             _TarjetaDesconectada(onConectar: _conectar),
         ],
@@ -226,7 +216,7 @@ class _TarjetaConectada extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Tu cuenta está conectada',
+                      'mp.connected_title'.tr(),
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         color: colors.ink,
@@ -234,8 +224,7 @@ class _TarjetaConectada extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Ya puedes recibir pagos por la app. El dinero llega '
-                      'directo a tu cuenta de Mercado Pago.',
+                      'mp.connected_body'.tr(),
                       style: TextStyle(fontSize: 13, color: colors.muted),
                     ),
                   ],
@@ -248,7 +237,7 @@ class _TarjetaConectada extends StatelessWidget {
         TextButton(
           onPressed: onDesconectar,
           child: Text(
-            'Desconectar cuenta',
+            'mp.disconnect_action'.tr(),
             style: TextStyle(color: colors.danger),
           ),
         ),
@@ -279,7 +268,7 @@ class _TarjetaDesconectada extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Cobra dentro de Mercadito UM',
+                'mp.pitch_title'.tr(),
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
@@ -288,9 +277,7 @@ class _TarjetaDesconectada extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                'Conecta tu cuenta de Mercado Pago para que la gente pueda '
-                'pagarte con tarjeta desde la app. El dinero llega directo a '
-                'tu cuenta, sin pasar por nosotros.',
+                'mp.pitch_body'.tr(),
                 style: TextStyle(
                   fontSize: 14,
                   height: 1.5,
@@ -298,23 +285,23 @@ class _TarjetaDesconectada extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              const _Punto('Necesitas una cuenta de Mercado Pago (es gratis).'),
-              const _Punto('Se te cobra una comisión por venta.'),
-              const _Punto('Puedes desconectarla cuando quieras.'),
+              _Punto('mp.bullet_account'.tr()),
+              _Punto('mp.bullet_fee'.tr()),
+              _Punto('mp.bullet_disconnect'.tr()),
             ],
           ),
         ),
         const SizedBox(height: 20),
         FilledButton(
           onPressed: onConectar,
-          child: const Padding(
-            padding: EdgeInsets.symmetric(vertical: 4),
-            child: Text('Conectar Mercado Pago'),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Text('verification.connect_mp'.tr()),
           ),
         ),
         const SizedBox(height: 10),
         Text(
-          'Se abrirá tu navegador para que inicies sesión en Mercado Pago.',
+          'mp.browser_note'.tr(),
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 12, color: colors.muted),
         ),

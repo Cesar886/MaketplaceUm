@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -54,8 +55,8 @@ class VerificationChecklist extends StatelessWidget {
               Expanded(
                 child: Text(
                   faltan == 0
-                      ? 'Todo listo para verificarte'
-                      : 'Te falta $faltan ${faltan == 1 ? 'requisito' : 'requisitos'}',
+                      ? 'checklist.ready'.tr()
+                      : 'checklist.missing'.plural(faltan),
                   style: AppTypography.heading(14.5, color: colors.ink),
                 ),
               ),

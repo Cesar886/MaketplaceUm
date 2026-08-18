@@ -1,4 +1,7 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+
+import 'utils/estado_conexion.dart';
 
 /// Convierte una fecha ISO en un texto relativo corto ("Hace 5 min").
 /// Usado por publicaciones que no traen un `publishedAgo` ya calculado
@@ -7,11 +10,17 @@ String relativeTimeFromIso(String iso) {
   final parsed = DateTime.tryParse(iso);
   if (parsed == null) return '';
   final diff = DateTime.now().difference(parsed);
-  if (diff.inMinutes < 1) return 'Ahora';
-  if (diff.inHours < 1) return 'Hace ${diff.inMinutes} min';
-  if (diff.inDays < 1) return 'Hace ${diff.inHours} h';
-  if (diff.inDays < 7) return 'Hace ${diff.inDays} d';
-  return 'Hace ${(diff.inDays / 7).floor()} sem';
+  if (diff.inMinutes < 1) return 'time.now'.tr();
+  if (diff.inHours < 1) {
+    return 'time.minutes_ago'.tr(namedArgs: {'n': '${diff.inMinutes}'});
+  }
+  if (diff.inDays < 1) {
+    return 'time.hours_ago'.tr(namedArgs: {'n': '${diff.inHours}'});
+  }
+  if (diff.inDays < 7) {
+    return 'time.days_ago'.tr(namedArgs: {'n': '${diff.inDays}'});
+  }
+  return 'time.weeks_ago'.tr(namedArgs: {'n': '${(diff.inDays / 7).floor()}'});
 }
 
 /// Map from icon name strings (from backend) to Flutter [IconData].
@@ -169,6 +178,7 @@ class Seller {
     this.tipoVerificacion,
     this.colorAcento,
     this.productoFijadoId,
+    this.estadoConexion = EstadoConexion.desconocido,
     this.respondeRapido = false,
     this.rachaSemanas = 0,
     this.facebookUrl,
@@ -207,6 +217,7 @@ class Seller {
       tipoVerificacion: json['tipoVerificacion'] as String?,
       colorAcento: json['colorAcento'] as String?,
       productoFijadoId: json['productoFijadoId'] as String?,
+      estadoConexion: EstadoConexion.desdeJson(json),
       // Ambas solo llegan en el detalle del vendedor, no en el listado: los
       // defaults dejan que un Seller construido desde una respuesta parcial
       // simplemente no muestre los badges, en vez de reventar.
@@ -280,6 +291,11 @@ class Seller {
   /// es siempre resoluble.
   final String? productoFijadoId;
 
+  /// Presencia que traía la respuesta. Es la SEMILLA de la primera pintura;
+  /// lo que se muestra sale de PresenceService, que además recibe los
+  /// cambios en vivo por socket.
+  final EstadoConexion estadoConexion;
+
   /// La MEDIANA de su tiempo de respuesta está por debajo del umbral del
   /// sistema. Lo decide el backend para que la app no tenga que conocer el
   /// umbral ni recibir los tiempos crudos de nadie.
@@ -348,13 +364,13 @@ enum ManualStatus {
   String get label {
     switch (this) {
       case ManualStatus.reserved:
-        return 'Apartado';
+        return 'status.reserved'.tr();
       case ManualStatus.sold:
-        return 'Vendido';
+        return 'status.sold'.tr();
       case ManualStatus.negotiating:
-        return 'En negociación';
+        return 'status.negotiating'.tr();
       case ManualStatus.paused:
-        return 'Pausado';
+        return 'status.paused'.tr();
     }
   }
 
@@ -522,7 +538,7 @@ class Product {
       }
       return Seller(
         id: json['seller'] as String? ?? '',
-        name: 'Vendedor',
+        name: 'search.seller'.tr(),
         avatarInitials: '??',
         major: '',
         rating: 0,
@@ -840,7 +856,8 @@ class CartItem {
       id: json['id'] as String? ?? '',
       product: Product.fromJson(json['product'] as Map<String, dynamic>),
       quantity: json['quantity'] as int? ?? 1,
-      meetingPoint: json['meetingPoint'] as String? ?? 'Por definir',
+      meetingPoint:
+          json['meetingPoint'] as String? ?? 'cart.meeting_point_tbd'.tr(),
     );
   }
 
@@ -1103,6 +1120,7 @@ class ChatUser {
     required this.name,
     this.avatarInitials = '',
     this.logoUrl,
+    this.estadoConexion = EstadoConexion.desconocido,
   });
 
   factory ChatUser.fromJson(Map<String, dynamic> json) {
@@ -1111,6 +1129,7 @@ class ChatUser {
       name: json['name'] as String? ?? '',
       avatarInitials: json['avatarInitials'] as String? ?? '',
       logoUrl: json['logoUrl'] as String?,
+      estadoConexion: EstadoConexion.desdeJson(json),
     );
   }
 
@@ -1118,6 +1137,10 @@ class ChatUser {
   final String name;
   final String avatarInitials;
   final String? logoUrl;
+
+  /// Presencia tal y como venía en la respuesta. Es solo la SEMILLA: lo que
+  /// se pinta sale de PresenceService, que además recibe los cambios en vivo.
+  final EstadoConexion estadoConexion;
 }
 
 /// El mensaje al que responde otro, resumido para pintar la cita.

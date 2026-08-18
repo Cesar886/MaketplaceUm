@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -13,6 +14,9 @@ class OnboardingSlide {
   });
 
   final OnboardingArte arte;
+
+  /// Claves de traducción, no textos: la lista de slides es `const`.
+  /// Se resuelven con `.tr()` al pintar cada slide.
   final String titulo;
   final String cuerpo;
 }
@@ -25,24 +29,18 @@ class OnboardingSlide {
 const slidesOnboarding = <OnboardingSlide>[
   OnboardingSlide(
     arte: OnboardingArte.puesto,
-    titulo: 'El mercadito de tu universidad',
-    cuerpo:
-        'Compra y vende entre estudiantes verificados de la UM. '
-        'Sin intermediarios y sin salir del campus.',
+    titulo: 'onboarding.slide1_title',
+    cuerpo: 'onboarding.slide1_body',
   ),
   OnboardingSlide(
     arte: OnboardingArte.descubre,
-    titulo: 'Encuentra y pregunta',
-    cuerpo:
-        'Explora el feed, guarda lo que te lata en favoritos y escríbele '
-        'directo a quien vende. No necesitas cuenta para mirar.',
+    titulo: 'onboarding.slide2_title',
+    cuerpo: 'onboarding.slide2_body',
   ),
   OnboardingSlide(
     arte: OnboardingArte.vende,
-    titulo: 'Publica en un minuto',
-    cuerpo:
-        'Una foto, un precio y listo. Tu publicación queda visible para '
-        'toda la comunidad al instante.',
+    titulo: 'onboarding.slide3_title',
+    cuerpo: 'onboarding.slide3_body',
   ),
 ];
 
@@ -120,7 +118,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           child: TextButton(
                             onPressed: _terminar,
                             child: Text(
-                              'Saltar',
+                              'onboarding.skip'.tr(),
                               style: AppTypography.label(
                                 15,
                                 color: colors.muted,
@@ -136,7 +134,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 controller: _pageController,
                 onPageChanged: (i) => setState(() => _pagina = i),
                 itemCount: slidesOnboarding.length,
-                itemBuilder: (context, i) => _Lamina(slide: slidesOnboarding[i]),
+                itemBuilder: (context, i) =>
+                    _Lamina(slide: slidesOnboarding[i]),
               ),
             ),
             _Puntos(total: slidesOnboarding.length, activo: _pagina),
@@ -147,7 +146,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: ElevatedButton(
                   key: const Key('onboarding-primario'),
                   onPressed: _avanzar,
-                  child: Text(_esUltima ? 'Empezar' : 'Siguiente'),
+                  child: Text(
+                    _esUltima ? 'onboarding.start'.tr() : 'common.next'.tr(),
+                  ),
                 ),
               ),
             ),
@@ -175,13 +176,13 @@ class _Lamina extends StatelessWidget {
           OnboardingIllustration(arte: slide.arte, size: 220),
           const SizedBox(height: 40),
           Text(
-            slide.titulo,
+            slide.titulo.tr(),
             textAlign: TextAlign.center,
             style: AppTypography.heading(27, color: colors.ink),
           ),
           const SizedBox(height: 14),
           Text(
-            slide.cuerpo,
+            slide.cuerpo.tr(),
             textAlign: TextAlign.center,
             style: AppTypography.body(16, color: colors.muted),
           ),

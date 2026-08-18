@@ -1,17 +1,24 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app_theme.dart';
 import '../models.dart';
 import '../services/api_service.dart';
+import '../services/chat_socket_service.dart';
+import '../services/presence_service.dart';
+import '../utils/estado_conexion.dart';
 import '../widgets/badges.dart';
 import '../widgets/comments_received_list.dart';
 import '../widgets/payment_methods.dart';
 import '../widgets/product_card.dart';
+import '../widgets/product_grid_metrics.dart';
 import '../widgets/profile_banner.dart';
 import '../widgets/seller_profile_skeleton.dart';
 import '../widgets/seller_schedule_location_row.dart';
+import '../widgets/online_status_avatar.dart';
 import '../widgets/social_links_row.dart';
 import '../widgets/user_role.dart';
 import 'product_detail_screen.dart';
@@ -80,6 +87,9 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
   @override
   void dispose() {
     _tabs.dispose();
+    // La conexión es única y compartida: una sala que no se abandona sigue
+    // recibiendo eventos de alguien que ya nadie mira.
+    ChatSocketService.instance.unsubscribePresence([widget.sellerId]);
     super.dispose();
   }
 
@@ -95,6 +105,11 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
       ]);
       if (!mounted) return;
       final seller = results[0] as Seller;
+      // Semilla + suscripción: el REST deja el estado correcto para la
+      // primera pintura y el socket se encarga de los cambios mientras el
+      // perfil siga abierto.
+      context.read<PresenceService>().sembrar(seller.id, seller.estadoConexion);
+      ChatSocketService.instance.subscribePresence([seller.id]);
       setState(() {
         _seller = seller;
         _products = ordenarConFijadoPrimero(
@@ -106,7 +121,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = 'No se pudo cargar el perfil. Intenta de nuevo.';
+        _error = 'seller.load_error'.tr();
         _loading = false;
       });
     }
@@ -119,16 +134,17 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
     final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.isEmpty) return;
     final normalized = digits.length == 10 ? '52$digits' : digits;
-    final message =
-        'Hola ${seller.name}, vi tu perfil en Mercadito UM y quiero platicarte.';
+    final message = 'seller.whatsapp_message'.tr(
+      namedArgs: {'seller': seller.name},
+    );
     final uri = Uri.parse(
       'https://wa.me/$normalized?text=${Uri.encodeComponent(message)}',
     );
     final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudo abrir WhatsApp')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('product.whatsapp_error'.tr())));
     }
   }
 
@@ -141,7 +157,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
         seller != null &&
         (seller.phone ?? '').trim().isNotEmpty;
     return Scaffold(
-      appBar: AppBar(title: const Text('Perfil')),
+      appBar: AppBar(title: Text('nav.profile'.tr())),
       body: AnimatedSwitcher(
         duration: AppAnimations.medium,
         child: _loading
@@ -173,7 +189,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                       FontAwesomeIcons.whatsapp,
                       color: Colors.white,
                     ),
-                    label: const Text('Contactar por WhatsApp'),
+                    label: Text('product.contact_whatsapp'.tr()),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: context.colors.primary,
                       foregroundColor: Colors.white,
@@ -191,6 +207,9 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
 
   Widget _buildContent(BuildContext context) {
     final seller = _seller!;
+    // `watch` para que el punto se encienda y se apague solo mientras el
+    // perfil está abierto, sin recargar.
+    final estadoConexion = context.watch<PresenceService>().estadoDe(seller.id);
     // El acento de ESTA pantalla es el del vendedor que se está viendo, no
     // el de quien mira: el color es parte de su perfil, así que su tienda se
     // ve igual desde cualquier teléfono.
@@ -236,24 +255,13 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
               padding: const EdgeInsets.fromLTRB(18, 28, 18, 14),
               child: Column(
                 children: [
-                  CircleAvatar(
+                  OnlineStatusAvatar(
                     radius: 40,
-                    backgroundColor: context.colors.primary.withValues(
-                      alpha: 0.12,
-                    ),
-                    backgroundImage: seller.logoUrl != null
-                        ? NetworkImage(ApiService.baseUrl + seller.logoUrl!)
+                    iniciales: seller.avatarInitials,
+                    imageUrl: seller.logoUrl != null
+                        ? ApiService.baseUrl + seller.logoUrl!
                         : null,
-                    child: seller.logoUrl == null
-                        ? Text(
-                            seller.avatarInitials,
-                            style: TextStyle(
-                              color: context.colors.primary,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 22,
-                            ),
-                          )
-                        : null,
+                    enLinea: estadoConexion.enLinea,
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -284,6 +292,30 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  // "Activo hace 5 min" solo cuando NO está en línea: con el
+                  // punto verde delante, repetirlo en texto sería ruido. Y si
+                  // no hay dato (o es de hace más de una semana) la línea
+                  // entera desaparece en vez de dejar un hueco.
+                  if (!estadoConexion.enLinea) ...[
+                    Builder(
+                      builder: (context) {
+                        final etiqueta = etiquetaUltimaActividad(
+                          estadoConexion.ultimaActividad,
+                        );
+                        if (etiqueta == null) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            etiqueta,
+                            style: TextStyle(
+                              color: context.colors.muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                   const SizedBox(height: 6),
                   Row(
                     mainAxisSize: MainAxisSize.min,
@@ -297,7 +329,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                       Text(
                         seller.reviews > 0
                             ? '${seller.rating.toStringAsFixed(1)} (${seller.reviews})'
-                            : 'Sin calificaciones',
+                            : 'home.no_ratings'.tr(),
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ],
@@ -351,7 +383,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Métodos de pago aceptados',
+                    'seller.payment_methods'.tr(),
                     style: AppTypography.heading(16, color: context.colors.ink),
                   ),
                   const SizedBox(height: 10),
@@ -409,25 +441,22 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                     ),
                     child: Center(
                       child: Text(
-                        'Sin publicaciones activas',
+                        'seller.no_listings'.tr(),
                         style: TextStyle(color: context.colors.muted),
                       ),
                     ),
                   )
                 : LayoutBuilder(
                     builder: (context, constraints) {
-                      final columns = constraints.maxWidth >= 720 ? 3 : 2;
+                      final columns = ProductGridMetrics.columnsFor(
+                        constraints.maxWidth,
+                      );
                       return GridView.builder(
                         padding: const EdgeInsets.symmetric(horizontal: 18),
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
                         itemCount: _products.length,
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: columns,
-                          mainAxisSpacing: 12,
-                          crossAxisSpacing: 12,
-                          childAspectRatio: columns == 3 ? 0.72 : 0.62,
-                        ),
+                        gridDelegate: ProductGridMetrics.delegateFor(columns),
                         itemBuilder: (context, index) {
                           final product = _products[index];
                           final card = ProductCard(

@@ -32,7 +32,8 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
 const bcrypt = require('bcryptjs');
-const { generateToken, requireAuth } = require('./auth');
+const { generateToken, requireAuth, verificarToken } = require('./auth');
+const { crearRegistroPresencia } = require('./presence');
 const { sellers, saveData, registerSeller, updateSellerField } = require('./data');
 const { validateName, validateEmail, validatePassword, validatePhone, validateBusinessHours, validatePaymentMethods } = require('./validation/sellerProfile');
 
@@ -53,6 +54,7 @@ const routes = [
   require('./routes/questions'),
   require('./routes/search'),
   require('./routes/clientErrors'),
+  require('./routes/privacy'),
   // Pagos con Mercado Pago (split payments). Aislado en su propia carpeta
   // para que sea fácil de auditar por separado; no arranca nada al cargarse
   // y responde 503 mientras falten credenciales en .env.
@@ -105,6 +107,26 @@ app.use(
 // Compartir la instancia io para que las rutas puedan emitir eventos
 app.set('io', io);
 
+// ─── Presencia ──────────────────────────────────────────────
+// Quién está en línea se deduce de los sockets abiertos: no hace falta
+// heartbeat ni columna persistida (ver presence.js y la migración 37).
+//
+// Los eventos viajan por salas `presence:<userId>`, no a los interlocutores
+// uno por uno: así el detalle de un vendedor con el que aún no hay chat
+// también recibe cambios en vivo, y el filtro de privacidad se aplica UNA
+// vez —al suscribirse— en vez de en cada emisión.
+const presencia = crearRegistroPresencia({
+  guardarUltimaActividad: (userId, iso) => db.setUltimaActividad(userId, iso),
+  emitirCambio: ({ userId, online, lastActive }) => {
+    // Si el usuario oculta su estado nadie pudo suscribirse a su sala, pero
+    // se comprueba igual: la preferencia puede haber cambiado mientras
+    // había suscriptores vivos.
+    if (!db.getPresencia(userId).comparteEstado) return;
+    io.to(`presence:${userId}`).emit('presence:update', { userId, online, lastActive });
+  },
+});
+app.set('presencia', presencia);
+
 io.on('connection', (socket) => {
   console.log(`🟢 Cliente Socket.IO conectado: ${socket.id}`);
 
@@ -143,14 +165,66 @@ io.on('connection', (socket) => {
     console.log(`  → ${socket.id} salió de product:${productId}`);
   });
 
-  // Unirse a una sala personal para recibir notificaciones de nuevas conversaciones
-  socket.on('register:user', (userId) => {
+  // Unirse a una sala personal para recibir notificaciones de nuevas
+  // conversaciones y, si viene token, quedar marcado como "en línea".
+  //
+  // El argumento acepta las dos formas a propósito: `userId` suelto (lo que
+  // mandan los clientes ya instalados) y `{ userId, token }` (lo que manda
+  // la app desde que existe la presencia). Sin token la sala funciona igual
+  // que siempre pero NO se marca presencia: el estado en línea es visible
+  // para terceros, así que un `userId` que cualquiera puede escribir no
+  // basta para encenderlo.
+  socket.on('register:user', (payload) => {
+    const userId = typeof payload === 'string' ? payload : payload && payload.userId;
+    const token = typeof payload === 'object' && payload ? payload.token : null;
+    if (!userId) return;
+
     socket.join(`user:${userId}`);
     console.log(`  → ${socket.id} registrado como user:${userId}`);
+
+    if (!token || verificarToken(token) !== userId) return;
+    socket.data.userId = userId;
+    presencia.conectar(userId, socket.id);
+  });
+
+  // Seguir el estado en línea de otro usuario (su fila en la lista de chats,
+  // o su perfil abierto). La privacidad se resuelve aquí: si cualquiera de
+  // los dos oculta su estado, la suscripción simplemente no se concede y el
+  // cliente nunca recibe eventos de esa persona.
+  socket.on('presence:subscribe', (userIds) => {
+    const objetivos = Array.isArray(userIds) ? userIds : [userIds];
+    const visorId = socket.data.userId;
+    if (!visorId || !db.getPresencia(visorId).comparteEstado) return;
+
+    const suscritos = [];
+    const enLinea = [];
+    for (const objetivoId of objetivos) {
+      if (typeof objetivoId !== 'string' || !objetivoId) continue;
+      if (!db.getPresencia(objetivoId).comparteEstado) continue;
+      socket.join(`presence:${objetivoId}`);
+      suscritos.push(objetivoId);
+      if (presencia.estaEnLinea(objetivoId)) enLinea.push(objetivoId);
+    }
+    // Estado inicial en la misma vuelta: sin esto la pantalla se queda con lo
+    // que trajo el REST hasta que alguien cambie de estado.
+    //
+    // Va `subscribed` además de `online` para que el cliente pueda APAGAR a
+    // quien se fue mientras la app estaba en segundo plano: con solo la lista
+    // de conectados no habría forma de distinguir "está offline" de "no
+    // pregunté por él", y el punto verde se quedaría pegado.
+    socket.emit('presence:snapshot', { subscribed: suscritos, online: enLinea });
+  });
+
+  socket.on('presence:unsubscribe', (userIds) => {
+    const objetivos = Array.isArray(userIds) ? userIds : [userIds];
+    for (const objetivoId of objetivos) {
+      if (typeof objetivoId === 'string' && objetivoId) socket.leave(`presence:${objetivoId}`);
+    }
   });
 
   socket.on('disconnect', () => {
     console.log(`🔴 Cliente Socket.IO desconectado: ${socket.id}`);
+    presencia.desconectar(socket.id);
   });
 });
 
@@ -413,7 +487,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Mercadito UM API corriendo en http://localhost:${PORT}`);
+  console.log(`🚀 Marketplace UM API corriendo en http://localhost:${PORT}`);
 });
 
 // Node cierra los sockets keep-alive inactivos a los 5s por defecto

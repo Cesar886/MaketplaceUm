@@ -89,7 +89,7 @@ void main() {
     expect(AppTheme.dark().brightness, Brightness.dark);
   });
 
-  // ─── Color de acento ──────────────────────────────────────────
+  // ─── Theme ──────────────────────────────────────────
 
   /// Vendedor mínimo con un color ya elegido, como lo devolvería el backend.
   Seller sellerConColor(String? colorAcento) => Seller(

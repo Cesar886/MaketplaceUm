@@ -1,7 +1,7 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "Backend API para Mercadito UM",
+  "description": "Backend API para Marketplace UM",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

@@ -43,7 +43,7 @@ const config = {
   // simplemente es rechazada al registrarla.
   appPublicUrl: (process.env.APP_PUBLIC_URL || '').replace(/\/$/, ''),
 
-  // Esquema de deep link de la app, para devolver al vendedor a Mercadito
+  // Esquema de deep link de la app, para devolver al vendedor a Marketplace
   // después de autorizar en el navegador.
   appDeepLinkScheme: process.env.APP_DEEP_LINK_SCHEME || 'mercaditoum',
 

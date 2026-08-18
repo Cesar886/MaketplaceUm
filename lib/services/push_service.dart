@@ -160,7 +160,7 @@ class PushService {
 
       localNotificationsPlugin.show(
         message.hashCode,
-        title ?? 'Mercadito UM',
+        title ?? 'Marketplace UM',
         body ?? '',
         NotificationDetails(
           android: AndroidNotificationDetails(

@@ -33,10 +33,10 @@ function metaDe(publicacion: PublicacionPublica): {
     const rango = formatearRango(publicacion.precioMin, publicacion.precioMax);
 
     return {
-      titulo: `${publicacion.titulo} - Se busca en Mercadito UM`,
+      titulo: `${publicacion.titulo} - Se busca en Marketplace UM`,
       descripcion: publicacion.descripcion
         ? resumen(publicacion.descripcion)
-        : `${encabezado}${rango ? `: ${rango}` : ''}. Publicado en Mercadito UM.`,
+        : `${encabezado}${rango ? `: ${rango}` : ''}. Publicado en Marketplace UM.`,
       // Una búsqueda no tiene fotos. Sin `og:image` WhatsApp cae a la tarjeta
       // pequeña, que es lo correcto: inventar una imagen genérica haría que
       // todas las búsquedas compartidas se vieran idénticas.
@@ -45,10 +45,10 @@ function metaDe(publicacion: PublicacionPublica): {
   }
 
   return {
-    titulo: `${publicacion.titulo} - Mercadito UM`,
+    titulo: `${publicacion.titulo} - Marketplace UM`,
     descripcion: publicacion.descripcion
       ? resumen(publicacion.descripcion)
-      : `${formatearPrecio(publicacion.precio)} · Disponible en Mercadito UM.`,
+      : `${formatearPrecio(publicacion.precio)} · Disponible en Marketplace UM.`,
     foto: publicacion.fotos[0] ? urlFoto(publicacion.fotos[0]) : null,
   };
 }
@@ -64,7 +64,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   if (!publicacion) {
     return {
-      title: 'Publicación no disponible - Mercadito UM',
+      title: 'Publicación no disponible - Marketplace UM',
       // Un 404 no debe quedar indexado ni acumular señales de SEO.
       robots: { index: false, follow: false },
     };
@@ -81,7 +81,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       title: titulo,
       description: descripcion,
       url,
-      siteName: 'Mercadito UM',
+      siteName: 'Marketplace UM',
       locale: 'es_MX',
       // og:product no es un tipo válido del estándar OG que Next tipe; el
       // que corresponde a un artículo a la venta es 'website' salvo que se

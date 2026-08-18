@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -91,8 +92,8 @@ class MpTokenizer {
         'Tokenización de tarjeta: fallo de red (${error.runtimeType})',
         'sin detalle: el cuerpo de esta petición no se registra',
       );
-      throw const ApiException(
-        'No pudimos validar tu tarjeta. Revisa tu conexión e intenta de nuevo.',
+      throw ApiException(
+        'card.validate_network_error'.tr(),
         categoria: CategoriaError.sinConexion,
       );
     }
@@ -101,8 +102,8 @@ class MpTokenizer {
       final datos = jsonDecodeSeguro(res.body);
       final token = datos?['id'] as String?;
       if (token != null && token.isNotEmpty) return token;
-      throw const ApiException(
-        'No pudimos validar tu tarjeta. Intenta de nuevo.',
+      throw ApiException(
+        'card.validate_error'.tr(),
         categoria: CategoriaError.servidor,
       );
     }
@@ -138,32 +139,32 @@ class MpTokenizer {
 
     switch (codigo) {
       case '205':
-        return 'Escribe el número de tu tarjeta.';
+        return 'card.number_required'.tr();
       case '208':
       case '209':
-        return 'Escribe la fecha de vencimiento.';
+        return 'card.expiry_required'.tr();
       case '212':
       case '214':
-        return 'Falta el documento del titular.';
+        return 'card.document_required'.tr();
       case '221':
-        return 'Escribe el nombre del titular tal como aparece en la tarjeta.';
+        return 'card.holder_required'.tr();
       case '224':
-        return 'Escribe el código de seguridad (CVV).';
+        return 'card.cvv_required'.tr();
       case 'E301':
-        return 'El número de tarjeta no es válido. Revísalo.';
+        return 'card.number_invalid_check'.tr();
       case 'E302':
-        return 'El código de seguridad (CVV) no es válido.';
+        return 'card.cvv_invalid'.tr();
       case '316':
-        return 'El nombre del titular no es válido.';
+        return 'card.holder_invalid'.tr();
       case '322':
       case '323':
       case '324':
-        return 'El documento del titular no es válido.';
+        return 'card.document_invalid'.tr();
       case '325':
       case '326':
-        return 'La fecha de vencimiento no es válida.';
+        return 'card.expiry_invalid'.tr();
       default:
-        return 'Revisa los datos de tu tarjeta e intenta de nuevo.';
+        return 'card.review_data'.tr();
     }
   }
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart' as ll;
@@ -189,9 +190,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
       }
     } catch (_) {
       if (!mounted) return;
-      setState(
-        () => _error = 'No hay conexión con el servidor. Inténtalo de nuevo.',
-      );
+      setState(() => _error = 'errors.no_connection'.tr());
     } finally {
       if (mounted) setState(() => _enviando = false);
     }
@@ -293,7 +292,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
     if (dominio == null) {
       setState(() {
         _campoConError = 'tipo';
-        _error = 'Selecciona tu dominio';
+        _error = 'validation.domain_required'.tr();
       });
       return Future.value();
     }
@@ -310,7 +309,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
     if (correo != null && faltaCarrera) {
       setState(() {
         _campoConError = 'carrera';
-        _error = 'Selecciona tu carrera de la lista';
+        _error = 'validation.major_required'.tr();
       });
     }
     if (correo == null || faltaCarrera) return Future.value();
@@ -368,8 +367,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
       setState(() {
         _faltaMercadoPago = true;
         _error =
-            _auth.motivoRechazo ??
-            'Conecta tu cuenta de Mercado Pago para completar la verificación.';
+            _auth.motivoRechazo ?? 'verification.connect_mp_to_finish'.tr();
         _campoConError = _auth.campoRechazado;
       });
     });
@@ -393,9 +391,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
         return;
       }
       setState(() {
-        _error =
-            _auth.motivoRechazo ??
-            'Todavía no vemos tu cuenta de Mercado Pago conectada.';
+        _error = _auth.motivoRechazo ?? 'verification.mp_not_connected'.tr();
         _campoConError = 'mercadopago';
       });
     });
@@ -404,7 +400,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
   Future<void> _verificarNegocio() {
     if (_ubicacion == null) {
       setState(() {
-        _error = 'Coloca el pin de ubicación de tu negocio';
+        _error = 'verification.location_pin_required'.tr();
         _campoConError = 'ubicacion';
       });
       return Future.value();
@@ -423,9 +419,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
         // Rechazo: el backend dice qué campo corregir y el usuario reintenta
         // desde la misma pantalla, sin volver a empezar.
         setState(() {
-          _error =
-              _auth.motivoRechazo ??
-              'No pudimos verificar los datos de tu negocio.';
+          _error = _auth.motivoRechazo ?? 'verification.business_failed'.tr();
           _campoConError = _auth.campoRechazado;
         });
       }
@@ -471,9 +465,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No se pudo abrir tu perfil. Intenta de nuevo.'),
-          ),
+          SnackBar(content: Text('verification.open_profile_error'.tr())),
         );
       }
       return null;
@@ -485,7 +477,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
       context,
       initialLat: _ubicacion?.latitude,
       initialLng: _ubicacion?.longitude,
-      title: 'Ubicación de tu negocio',
+      title: 'register.business_location_title'.tr(),
     );
     if (punto != null && mounted) {
       setState(() {
@@ -518,7 +510,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Verificación')),
+      appBar: AppBar(title: Text('verification.title'.tr())),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
@@ -527,19 +519,20 @@ class _VerificationScreenState extends State<VerificationScreen> {
             children: [
               Text(
                 _faltaMercadoPago
-                    ? 'Último paso'
+                    ? 'verification.last_step'.tr()
                     : _esperandoCodigo
-                    ? 'Ingresa tu código'
+                    ? 'verification.enter_code'.tr()
                     : _titulo,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 6),
               Text(
                 _faltaMercadoPago
-                    ? 'Tu identidad ya quedó confirmada. Conecta tu cuenta de '
-                          'Mercado Pago para terminar de verificarte.'
+                    ? 'verification.identity_confirmed_connect_mp'.tr()
                     : _esperandoCodigo
-                    ? 'Enviamos un código de 6 dígitos a $_destinoCodigo. Vence en 10 minutos.'
+                    ? 'verification.code_sent'.tr(
+                        namedArgs: {'destination': _destinoCodigo ?? ''},
+                      )
                     : _descripcion,
                 style: TextStyle(
                   color: context.colors.muted,
@@ -563,9 +556,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
               if (_codigoDev != null) ...[
                 _CajaAviso(
-                  mensaje:
-                      'Modo desarrollo: el servidor no tiene configurado el '
-                      'envío, tu código es $_codigoDev',
+                  mensaje: 'verification.dev_code'.tr(
+                    namedArgs: {'code': '$_codigoDev'},
+                  ),
                   color: context.colors.accent,
                   icono: Icons.build_rounded,
                 ),
@@ -600,7 +593,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   width: double.infinity,
                   child: OutlinedButton(
                     onPressed: _enviando ? null : _posponer,
-                    child: const Text('Hacerlo después'),
+                    child: Text('verification.do_later'.tr()),
                   ),
                 ),
             ],
@@ -614,17 +607,15 @@ class _VerificationScreenState extends State<VerificationScreen> {
   // personal de la universidad, y quien lo distingue es el dominio elegido,
   // no un texto que haya que mantener en dos versiones.
   String get _titulo => switch (widget.tipo) {
-    AccountType.estudiante => 'Verifica tu cuenta',
-    AccountType.negocio => 'Verifica tu negocio',
-    AccountType.particular => 'Verifica tu número',
+    AccountType.estudiante => 'verification.title_student'.tr(),
+    AccountType.negocio => 'verification.title_business'.tr(),
+    AccountType.particular => 'verification.title_phone'.tr(),
   };
 
   String get _descripcion => switch (widget.tipo) {
-    AccountType.estudiante =>
-      'Te enviaremos un código a tu correo institucional.',
-    AccountType.negocio => ' Verificamos tu negocio.',
-    AccountType.particular =>
-      'Te enviaremos un código por SMS. La verificación es automática.',
+    AccountType.estudiante => 'verification.desc_student'.tr(),
+    AccountType.negocio => 'verification.desc_business'.tr(),
+    AccountType.particular => 'verification.desc_phone'.tr(),
   };
 
   Widget _buildFormulario() => switch (widget.tipo) {
@@ -654,7 +645,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
         ),
         const SizedBox(height: 18),
         _BotonPrincipal(
-          etiqueta: 'Ya la conecté, verificar',
+          etiqueta: 'verification.already_connected'.tr(),
           cargando: _enviando,
           onPressed: _reintentarTrasConectar,
         ),
@@ -676,8 +667,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
         _CampoTexto(
           controller: esEstudiante ? _matriculaController : _telefonoController,
           etiqueta: esEstudiante
-              ? (_dominio?.etiquetaCampo ?? 'Correo institucional')
-              : 'Número de teléfono',
+              ? (_dominio?.etiquetaCampo ??
+                    'verification.institutional_email'.tr())
+              : 'verification.phone_number'.tr(),
           icono: esEstudiante ? Icons.badge_rounded : Icons.phone_rounded,
           // Bloqueado pero con el sufijo puesto: se sigue leyendo como el
           // correo completo al que se mandó el código.
@@ -707,7 +699,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
         const SizedBox(height: 22),
         _BotonPrincipal(
-          etiqueta: 'Verificar código',
+          etiqueta: 'verification.verify_code'.tr(),
           cargando: _enviando,
           // Deshabilitado hasta tener las 6 casillas: un código a medias solo
           // consume uno de los intentos que cuenta el backend.
@@ -722,13 +714,19 @@ class _VerificationScreenState extends State<VerificationScreen> {
               : _reenviarCodigo,
           child: Text(
             _segundosReenvio > 0
-                ? '¿No te llegó? Reenviar en ${_segundosReenvio}s'
-                : '¿No te llegó? Reenviar código',
+                ? 'verification.resend_in'.tr(
+                    namedArgs: {'seconds': '$_segundosReenvio'},
+                  )
+                : 'verification.resend'.tr(),
           ),
         ),
         TextButton(
           onPressed: _enviando ? null : _volverAlFormulario,
-          child: Text(esEstudiante ? 'Cambiar el correo' : 'Cambiar el número'),
+          child: Text(
+            esEstudiante
+                ? 'verification.change_email'.tr()
+                : 'verification.change_phone'.tr(),
+          ),
         ),
       ],
     );
@@ -778,7 +776,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
         const SizedBox(height: 24),
         _BotonPrincipal(
-          etiqueta: 'Enviar código',
+          etiqueta: 'verification.send_code'.tr(),
           cargando: _enviando,
           onPressed: _solicitarCodigoEstudiante,
         ),
@@ -791,14 +789,14 @@ class _VerificationScreenState extends State<VerificationScreen> {
       children: [
         _CampoTexto(
           controller: _telefonoController,
-          etiqueta: 'Número de teléfono *',
+          etiqueta: 'verification.phone_number_required'.tr(),
           icono: Icons.phone_rounded,
           tipoTeclado: TextInputType.phone,
           conError: _campoConError == 'telefono',
         ),
         const SizedBox(height: 24),
         _BotonPrincipal(
-          etiqueta: 'Enviar código por SMS',
+          etiqueta: 'verification.send_code_sms'.tr(),
           cargando: _enviando,
           onPressed: _solicitarCodigoExterno,
         ),
@@ -813,14 +811,14 @@ class _VerificationScreenState extends State<VerificationScreen> {
       children: [
         _CampoTexto(
           controller: _nombreNegocioController,
-          etiqueta: 'Nombre del negocio *',
+          etiqueta: 'register.business_name'.tr(),
           icono: Icons.storefront_rounded,
           conError: _campoConError == 'nombre_negocio',
         ),
         const SizedBox(height: 18),
 
         Text(
-          'Ubicación del negocio *',
+          'verification.business_location_required'.tr(),
           style: TextStyle(
             fontWeight: FontWeight.w700,
             color: conErrorUbicacion ? AppColors.danger : context.colors.ink,
@@ -840,17 +838,19 @@ class _VerificationScreenState extends State<VerificationScreen> {
           onPressed: _enviando ? null : _elegirUbicacion,
           icon: const Icon(Icons.place_rounded),
           label: Text(
-            _ubicacion == null ? 'Colocar pin en el mapa' : 'Cambiar ubicación',
+            _ubicacion == null
+                ? 'verification.place_pin'.tr()
+                : 'register.change_location'.tr(),
           ),
         ),
         const SizedBox(height: 18),
 
         _CampoTexto(
           controller: _linkController,
-          etiqueta: 'Link de Facebook, Instagram o Maps *',
+          etiqueta: 'verification.social_link'.tr(),
           icono: Icons.link_rounded,
           tipoTeclado: TextInputType.url,
-          ayuda: 'Un solo link. Comprobamos que la página exista.',
+          ayuda: 'verification.social_link_help'.tr(),
           conError: _campoConError == 'link_red_social',
         ),
         const SizedBox(height: 24),
@@ -871,7 +871,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
         const SizedBox(height: 18),
 
         _BotonPrincipal(
-          etiqueta: 'Verificar negocio',
+          etiqueta: 'verification.verify_business'.tr(),
           cargando: _enviando,
           onPressed: _verificarNegocio,
         ),
@@ -920,7 +920,7 @@ class _FilaConectarMercadoPago extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                'Cuenta de cobros *',
+                'verification.payout_account'.tr(),
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
                   color: colors.ink,
@@ -930,8 +930,7 @@ class _FilaConectarMercadoPago extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Una cuenta verificada puede cobrar dentro de la app. '
-            'Conecta tu cuenta de Mercado Pago para completar la verificación.',
+            'verification.payout_account_help'.tr(),
             style: TextStyle(fontSize: 12, color: colors.muted),
           ),
           const SizedBox(height: 10),
@@ -947,7 +946,7 @@ class _FilaConectarMercadoPago extends StatelessWidget {
                   }
                 : null,
             icon: const Icon(Icons.link_rounded),
-            label: const Text('Conectar Mercado Pago'),
+            label: Text('verification.connect_mp'.tr()),
           ),
         ],
       ),
@@ -1081,7 +1080,8 @@ class _CampoCorreoInstitucionalState extends State<_CampoCorreoInstitucional> {
     return InputDecorator(
       isFocused: widget.focusNode.hasFocus,
       decoration: InputDecoration(
-        labelText: '${dominio?.etiquetaCampo ?? 'Correo institucional'} *',
+        labelText:
+            '${dominio?.etiquetaCampo ?? 'verification.institutional_email'.tr()} *',
         prefixIcon: const Icon(Icons.badge_rounded),
         // El sufijo/desplegable ya está a la vista aunque el campo esté
         // vacío, así que la etiqueta no debe taparlo bajando a la línea.
@@ -1114,7 +1114,7 @@ class _CampoCorreoInstitucionalState extends State<_CampoCorreoInstitucional> {
                   FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9.]')),
               ],
               decoration: InputDecoration.collapsed(
-                hintText: habilitado ? null : 'Elige tu dominio →',
+                hintText: habilitado ? null : 'verification.pick_domain'.tr(),
                 hintStyle: TextStyle(
                   color: context.colors.muted,
                   fontWeight: FontWeight.w500,
@@ -1241,7 +1241,7 @@ class _CampoCarreraState extends State<_CampoCarrera> {
           controller: controller,
           focusNode: focusNode,
           decoration: InputDecoration(
-            labelText: 'Carrera *',
+            labelText: 'verification.major'.tr(),
             prefixIcon: const Icon(Icons.school_rounded),
             enabledBorder: widget.conError
                 ? const OutlineInputBorder(

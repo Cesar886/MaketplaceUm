@@ -1,10 +1,12 @@
 import 'dart:io';
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../app_theme.dart';
+import '../../mock_data.dart';
 import '../../models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_error.dart';
@@ -58,10 +60,14 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
   final Set<String> _selectedPaymentMethods = {};
   bool _showPaymentMethodsError = false;
 
-  final _typeLabels = <String, String>{
-    'estudiante': 'Estudiante',
-    'particular': 'Particular',
-    'negocio': 'Negocio',
+  /// Etiqueta del tipo de cuenta para el título. Se resuelve en cada
+  /// `build` (no en un campo `final`) porque el idioma puede cambiar con la
+  /// pantalla ya montada.
+  String _typeLabel(String tipo) => switch (tipo) {
+    'estudiante' => 'auth.type_student_short'.tr(),
+    'particular' => 'auth.type_external_title'.tr(),
+    'negocio' => 'auth.type_vendor_title'.tr(),
+    _ => 'auth.account'.tr(),
   };
 
   bool get _isBusiness => widget.userType == 'negocio';
@@ -84,8 +90,19 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
         _loadingCategories = false;
       });
     } catch (_) {
+      // Respaldo local, igual que publish_product_screen y wanted_post_screen.
+      //
+      // Aquí el agujero pesaba más que en las otras pantallas: sin items el
+      // desplegable se auto-deshabilita, y como el registro de negocio manda
+      // `_selectedBusinessCategory` sí o sí, todos los que se registraran con
+      // el endpoint caído quedarían clasificados en el 'food' que trae por
+      // defecto, sin haber podido elegir otra cosa.
       if (!mounted) return;
-      setState(() => _loadingCategories = false);
+      setState(() {
+        _businessCategories = mockCategories;
+        _selectedBusinessCategory = mockCategories.first.id;
+        _loadingCategories = false;
+      });
     }
   }
 
@@ -120,7 +137,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
       context,
       initialLat: _locationLat,
       initialLng: _locationLng,
-      title: 'Ubicación de tu negocio',
+      title: 'register.business_location_title'.tr(),
     );
     if (picked != null) {
       setState(() {
@@ -135,21 +152,14 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
     if (_selectedPaymentMethods.isEmpty) {
       setState(() => _showPaymentMethodsError = true);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Selecciona al menos un método de pago que aceptas.'),
-        ),
+        SnackBar(content: Text('register.payment_methods_required'.tr())),
       );
       return;
     }
     if (!_acceptedTerms) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Debes aceptar los Términos y Condiciones '
-            'y la Política de Privacidad para continuar.',
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('register.terms_required'.tr())));
       return;
     }
 
@@ -244,7 +254,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
             mensajeDeError(
               e,
               stack: stack,
-              fallback: 'No se pudo completar el registro. Intenta de nuevo.',
+              fallback: 'register.submit_error'.tr(),
             ),
           ),
         ),
@@ -255,12 +265,14 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final typeLabel = _typeLabels[widget.userType] ?? 'Cuenta';
+    final typeLabel = _typeLabel(widget.userType);
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _isBusiness ? 'Registrar negocio' : 'Datos básicos - $typeLabel',
+          _isBusiness
+              ? 'register.title_business'.tr()
+              : 'register.title_basic'.tr(namedArgs: {'type': typeLabel}),
         ),
       ),
       body: SafeArea(
@@ -305,7 +317,11 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                               color: Colors.white,
                             ),
                           )
-                        : Text(_isBusiness ? 'Crear negocio' : 'Crear cuenta'),
+                        : Text(
+                            _isBusiness
+                                ? 'register.submit_business'.tr()
+                                : 'auth.create_account'.tr(),
+                          ),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -313,7 +329,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      '¿Ya tienes cuenta? ',
+                      'auth.have_account'.tr(),
                       style: TextStyle(
                         color: context.colors.muted,
                         fontWeight: FontWeight.w500,
@@ -328,7 +344,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                         );
                       },
                       child: Text(
-                        'Inicia sesión',
+                        'auth.login_button'.tr(),
                         style: TextStyle(
                           color: context.colors.primary,
                           fontWeight: FontWeight.w700,
@@ -350,10 +366,13 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
 
   List<Widget> _buildStandardHeader() {
     return [
-      Text('Tus datos', style: Theme.of(context).textTheme.titleLarge),
+      Text(
+        'register.your_data'.tr(),
+        style: Theme.of(context).textTheme.titleLarge,
+      ),
       const SizedBox(height: 6),
       Text(
-        'Completa tu información para crear la cuenta.',
+        'register.your_data_subtitle'.tr(),
         style: TextStyle(
           color: context.colors.muted,
           fontWeight: FontWeight.w600,
@@ -365,12 +384,12 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
   List<Widget> _buildBusinessHeader() {
     return [
       Text(
-        'Registra tu negocio',
+        'register.business_heading'.tr(),
         style: Theme.of(context).textTheme.titleLarge,
       ),
       const SizedBox(height: 6),
       Text(
-        'Completa los datos de tu negocio para aparecer en el campus.',
+        'register.business_subtitle'.tr(),
         style: TextStyle(
           color: context.colors.muted,
           fontWeight: FontWeight.w600,
@@ -385,13 +404,14 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
     return [
       TextFormField(
         controller: _nameController,
-        decoration: const InputDecoration(
-          labelText: 'Nombre completo',
-          prefixIcon: Icon(Icons.person_rounded),
+        decoration: InputDecoration(
+          labelText: 'register.full_name'.tr(),
+          prefixIcon: const Icon(Icons.person_rounded),
         ),
         textCapitalization: TextCapitalization.words,
-        validator: (v) =>
-            (v == null || v.trim().isEmpty) ? 'Ingresa tu nombre' : null,
+        validator: (v) => (v == null || v.trim().isEmpty)
+            ? 'validation.name_required'.tr()
+            : null,
       ),
       const SizedBox(height: 14),
       _buildEmailField(),
@@ -409,18 +429,18 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
   List<Widget> _buildBusinessSections() {
     return [
       // ─── Datos del negocio ────────────────────────────────
-      _buildSectionTitle('Datos del negocio', Icons.store_rounded),
+      _buildSectionTitle('register.section_business'.tr(), Icons.store_rounded),
       const SizedBox(height: 14),
       TextFormField(
         controller: _businessNameController,
-        decoration: const InputDecoration(
-          labelText: 'Nombre del negocio *',
-          hintText: 'Ej. Tacos El Primo, Tutoring Chiapas',
-          prefixIcon: Icon(Icons.store_rounded),
+        decoration: InputDecoration(
+          labelText: 'register.business_name'.tr(),
+          hintText: 'register.business_name_hint'.tr(),
+          prefixIcon: const Icon(Icons.store_rounded),
         ),
         textCapitalization: TextCapitalization.words,
         validator: (v) => (v == null || v.trim().isEmpty)
-            ? 'Ingresa el nombre del negocio'
+            ? 'validation.business_name_required'.tr()
             : null,
       ),
       const SizedBox(height: 14),
@@ -428,9 +448,9 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
           ? const LinearProgressIndicator()
           : DropdownButtonFormField<String>(
               initialValue: _selectedBusinessCategory,
-              decoration: const InputDecoration(
-                labelText: 'Categoría / Giro *',
-                prefixIcon: Icon(Icons.category_rounded),
+              decoration: InputDecoration(
+                labelText: 'register.business_category'.tr(),
+                prefixIcon: const Icon(Icons.category_rounded),
               ),
               items: [
                 for (final cat in _businessCategories)
@@ -496,8 +516,8 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
               Expanded(
                 child: Text(
                   _logoFile != null
-                      ? 'Logo seleccionado ✓'
-                      : 'Logo del negocio (opcional)',
+                      ? 'register.logo_selected'.tr()
+                      : 'register.logo_optional'.tr(),
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color: _logoFile != null
@@ -517,14 +537,13 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
         controller: _businessDescriptionController,
         minLines: 2,
         maxLines: 3,
-        decoration: const InputDecoration(
-          labelText: 'Descripción breve (opcional)',
-          hintText:
-              'Ej. Vendemos comida casera los martes y jueves en el edificio B',
+        decoration: InputDecoration(
+          labelText: 'register.short_description'.tr(),
+          hintText: 'register.short_description_hint'.tr(),
           alignLabelWithHint: true,
           prefixIcon: Padding(
-            padding: EdgeInsets.only(bottom: 32),
-            child: Icon(Icons.description_rounded),
+            padding: const EdgeInsets.only(bottom: 32),
+            child: const Icon(Icons.description_rounded),
           ),
         ),
         textCapitalization: TextCapitalization.sentences,
@@ -536,7 +555,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
       ),
       const SizedBox(height: 14),
       Text(
-        'Ubicación del negocio (opcional)',
+        'register.business_location_optional'.tr(),
         style: TextStyle(
           fontWeight: FontWeight.w700,
           fontSize: 13,
@@ -558,25 +577,28 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
         icon: const Icon(Icons.map_outlined),
         label: Text(
           _locationLat != null
-              ? 'Cambiar ubicación'
-              : 'Marcar ubicación en el mapa',
+              ? 'register.change_location'.tr()
+              : 'register.mark_location'.tr(),
         ),
       ),
 
       const SizedBox(height: 24),
       // ─── Datos de contacto ─────────────────────────────────
-      _buildSectionTitle('Datos de contacto', Icons.contacts_rounded),
+      _buildSectionTitle(
+        'register.section_contact'.tr(),
+        Icons.contacts_rounded,
+      ),
       const SizedBox(height: 14),
       TextFormField(
         controller: _responsibleNameController,
-        decoration: const InputDecoration(
-          labelText: 'Nombre del responsable *',
-          hintText: '¿Quién está a cargo del negocio?',
-          prefixIcon: Icon(Icons.person_rounded),
+        decoration: InputDecoration(
+          labelText: 'register.owner_name'.tr(),
+          hintText: 'register.owner_name_hint'.tr(),
+          prefixIcon: const Icon(Icons.person_rounded),
         ),
         textCapitalization: TextCapitalization.words,
         validator: (v) => (v == null || v.trim().isEmpty)
-            ? 'Ingresa el nombre del responsable'
+            ? 'validation.owner_name_required'.tr()
             : null,
       ),
       const SizedBox(height: 14),
@@ -617,10 +639,13 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionTitle('Métodos de pago', Icons.payments_rounded),
+        _buildSectionTitle(
+          'register.section_payments'.tr(),
+          Icons.payments_rounded,
+        ),
         const SizedBox(height: 6),
         Text(
-          '¿Qué métodos de pago aceptas? Selecciona al menos uno.',
+          'register.payment_methods_prompt'.tr(),
           style: TextStyle(
             color: context.colors.muted,
             fontWeight: FontWeight.w600,
@@ -647,14 +672,16 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
   Widget _buildEmailField() {
     return TextFormField(
       controller: _emailController,
-      decoration: const InputDecoration(
-        labelText: 'Correo electrónico',
-        prefixIcon: Icon(Icons.email_rounded),
+      decoration: InputDecoration(
+        labelText: 'auth.email_label'.tr(),
+        prefixIcon: const Icon(Icons.email_rounded),
       ),
       keyboardType: TextInputType.emailAddress,
       validator: (v) {
-        if (v == null || v.trim().isEmpty) return 'Ingresa tu correo';
-        if (!v.contains('@')) return 'Correo inválido';
+        if (v == null || v.trim().isEmpty) {
+          return 'validation.email_required'.tr();
+        }
+        if (!v.contains('@')) return 'validation.email_invalid'.tr();
         return null;
       },
     );
@@ -663,13 +690,14 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
   Widget _buildPhoneField() {
     return TextFormField(
       controller: _phoneController,
-      decoration: const InputDecoration(
-        labelText: 'Teléfono / WhatsApp',
-        prefixIcon: Icon(Icons.phone_rounded),
+      decoration: InputDecoration(
+        labelText: 'register.phone'.tr(),
+        prefixIcon: const Icon(Icons.phone_rounded),
       ),
       keyboardType: TextInputType.phone,
-      validator: (v) =>
-          (v == null || v.trim().isEmpty) ? 'Ingresa tu teléfono' : null,
+      validator: (v) => (v == null || v.trim().isEmpty)
+          ? 'validation.phone_required'.tr()
+          : null,
     );
   }
 
@@ -677,7 +705,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
     return TextFormField(
       controller: _passwordController,
       decoration: InputDecoration(
-        labelText: 'Contraseña',
+        labelText: 'auth.password_label'.tr(),
         prefixIcon: const Icon(Icons.lock_rounded),
         suffixIcon: IconButton(
           icon: Icon(
@@ -690,7 +718,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
       ),
       obscureText: _obscurePassword,
       validator: (v) {
-        if (v == null || v.length < 6) return 'Mínimo 6 caracteres';
+        if (v == null || v.length < 6) return 'validation.password_min'.tr();
         return null;
       },
     );
@@ -700,7 +728,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
     return TextFormField(
       controller: _confirmPasswordController,
       decoration: InputDecoration(
-        labelText: 'Confirmar contraseña',
+        labelText: 'register.confirm_password'.tr(),
         prefixIcon: const Icon(Icons.lock_rounded),
         suffixIcon: IconButton(
           icon: Icon(
@@ -714,7 +742,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
       obscureText: _obscureConfirm,
       validator: (v) {
         if (v != _passwordController.text) {
-          return 'Las contraseñas no coinciden';
+          return 'validation.passwords_mismatch'.tr();
         }
         return null;
       },
@@ -757,7 +785,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                     height: 1.4,
                   ),
                   children: [
-                    const TextSpan(text: 'Acepto los '),
+                    TextSpan(text: 'register.accept_terms_prefix'.tr()),
                     WidgetSpan(
                       alignment: PlaceholderAlignment.baseline,
                       baseline: TextBaseline.alphabetic,
@@ -768,7 +796,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                           ),
                         ),
                         child: Text(
-                          'Términos y Condiciones',
+                          'settings.terms'.tr(),
                           style: TextStyle(
                             color: context.colors.primary,
                             fontWeight: FontWeight.w700,
@@ -777,7 +805,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                         ),
                       ),
                     ),
-                    const TextSpan(text: ' y la '),
+                    TextSpan(text: 'register.accept_terms_middle'.tr()),
                     WidgetSpan(
                       alignment: PlaceholderAlignment.baseline,
                       baseline: TextBaseline.alphabetic,
@@ -788,7 +816,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
                           ),
                         ),
                         child: Text(
-                          'Política de Privacidad',
+                          'settings.privacy'.tr(),
                           style: TextStyle(
                             color: context.colors.primary,
                             fontWeight: FontWeight.w700,

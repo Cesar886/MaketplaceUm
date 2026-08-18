@@ -85,4 +85,20 @@ function optionalAuth(req, _res, next) {
   next();
 }
 
-module.exports = { generateToken, requireAuth, optionalAuth, JWT_SECRET };
+/**
+ * Resuelve un token a su userId, o null si no es válido.
+ *
+ * Lo usa el handshake de Socket.IO, que no pasa por los middlewares de
+ * Express y no tiene un `res` al que responder 401: ahí lo único que hace
+ * falta es saber si el `userId` que dice el cliente es realmente suyo.
+ */
+function verificarToken(token) {
+  if (!token || typeof token !== 'string') return null;
+  try {
+    return jwt.verify(token, JWT_SECRET).sub || null;
+  } catch (err) {
+    return null;
+  }
+}
+
+module.exports = { generateToken, requireAuth, optionalAuth, verificarToken, JWT_SECRET };

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -48,7 +49,9 @@ class MockProductImage extends StatelessWidget {
               Positioned(
                 left: 0,
                 top: 0,
-                child: OfferCornerTag(label: product.discountLabel ?? 'Oferta'),
+                child: OfferCornerTag(
+                  label: product.discountLabel ?? 'badge.offer'.tr(),
+                ),
               ),
             if (showFeaturedBadge && product.isFeatured)
               const Positioned(
@@ -255,7 +258,9 @@ class CategoryImagePlaceholder extends StatelessWidget {
               Positioned(
                 left: 0,
                 top: 0,
-                child: OfferCornerTag(label: product.discountLabel ?? 'Oferta'),
+                child: OfferCornerTag(
+                  label: product.discountLabel ?? 'badge.offer'.tr(),
+                ),
               ),
             if (showFeaturedBadge && product.isFeatured)
               const Positioned(

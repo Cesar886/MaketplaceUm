@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -35,26 +36,30 @@ class PublishProductScreen extends StatefulWidget {
 }
 
 class _PublishProductScreenState extends State<PublishProductScreen> {
+  /// Claves, no textos: se traducen en el `build` (ver más abajo) porque el
+  /// idioma puede cambiar con la pantalla ya montada, y una lista `const`
+  /// de textos se quedaría congelada en el idioma de arranque.
   static const List<String> _dayNames = [
-    'Lun',
-    'Mar',
-    'Mié',
-    'Jue',
-    'Vie',
-    'Sáb',
-    'Dom',
+    'weekday.mon',
+    'weekday.tue',
+    'weekday.wed',
+    'weekday.thu',
+    'weekday.fri',
+    'weekday.sat',
+    'weekday.sun',
   ];
 
   // Mismos índices que _dayNames (0=lunes..6=domingo), en minúscula y
   // completos para el texto del badge calculado ("Disponible el miércoles").
+  // Mismas claves-no-textos que [_dayNames], por el mismo motivo.
   static const List<String> _dayFullNames = [
-    'lunes',
-    'martes',
-    'miércoles',
-    'jueves',
-    'viernes',
-    'sábado',
-    'domingo',
+    'weekday_full.mon',
+    'weekday_full.tue',
+    'weekday_full.wed',
+    'weekday_full.thu',
+    'weekday_full.fri',
+    'weekday_full.sat',
+    'weekday_full.sun',
   ];
 
   final _titleController = TextEditingController();
@@ -255,7 +260,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       context,
       initialLat: _customLocationLat,
       initialLng: _customLocationLng,
-      title: 'Ubicación de esta publicación',
+      title: 'publish.listing_location_title'.tr(),
     );
     if (picked != null) {
       setState(() {
@@ -293,26 +298,26 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     final price = _priceController.text.trim();
 
     if (title.isEmpty) {
-      _showError('Escribe un título para el producto');
+      _showError('publish.error_title_required'.tr());
       return;
     }
     if (description.isEmpty) {
-      _showError('Escribe una descripción del producto');
+      _showError('publish.error_description_required'.tr());
       return;
     }
     if (price.isEmpty) {
-      _showError('Escribe el precio del producto');
+      _showError('publish.error_price_required'.tr());
       return;
     }
     if (_totalImageCount == 0) {
-      _showError('Agrega al menos una foto del producto');
+      _showError('publish.error_photo_required'.tr());
       return;
     }
     // Solo se exige a quien no tiene métodos en el perfil: para el resto no
     // hay nada que elegir aquí, ya vienen heredados.
     if (_eligeMetodosDePago && _customPaymentMethods.isEmpty) {
       setState(() => _showPaymentMethodsError = true);
-      _showError('Selecciona al menos un método de pago');
+      _showError('publish.error_payment_required'.tr());
       return;
     }
     if (!_validarAtributos()) return;
@@ -322,9 +327,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     // rechaza igual; esto solo evita el viaje.
     final parsedStock = int.tryParse(_stockController.text.trim());
     if (parsedStock == null || parsedStock < 0) {
-      _showError(
-        'Indica cuántas unidades tienes disponibles (0 si no te queda ninguna).',
-      );
+      _showError('publish.error_stock_required'.tr());
       return;
     }
     final int stockQuantity = parsedStock;
@@ -337,7 +340,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       final auth = context.read<AuthProvider>();
       final synced = await auth.ensureBackendSync();
       if (!synced) {
-        _showError('Error de autenticación. Vuelve a iniciar sesión.');
+        _showError('errors.auth_expired'.tr());
         return;
       }
 
@@ -385,9 +388,9 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           _atributos = {};
           _atributosFaltantes = {};
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Producto publicado exitosamente')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('publish.published_ok'.tr())));
       }
     } catch (e, stack) {
       if (!mounted) return;
@@ -396,8 +399,8 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           e,
           stack: stack,
           fallback: _isEditing
-              ? 'No se pudieron guardar los cambios. Intenta de nuevo.'
-              : 'No se pudo publicar el producto. Intenta de nuevo.',
+              ? 'publish.save_error'.tr()
+              : 'publish.publish_error'.tr(),
         ),
       );
     } finally {
@@ -445,8 +448,15 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
         await ApiService.updateProduct(product.id, newPrice);
       } catch (e, stack) {
         warnings.add(
-          'El precio no se pudo actualizar: '
-          '${mensajeDeError(e, stack: stack, fallback: 'intenta de nuevo.')}',
+          'publish.price_update_error'.tr(
+            namedArgs: {
+              'reason': mensajeDeError(
+                e,
+                stack: stack,
+                fallback: 'publish.try_again'.tr(),
+              ),
+            },
+          ),
         );
       }
     }
@@ -463,8 +473,15 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
         );
       } catch (e, stack) {
         warnings.add(
-          'El stock no se pudo actualizar: '
-          '${mensajeDeError(e, stack: stack, fallback: 'intenta de nuevo.')}',
+          'publish.stock_update_error'.tr(
+            namedArgs: {
+              'reason': mensajeDeError(
+                e,
+                stack: stack,
+                fallback: 'publish.try_again'.tr(),
+              ),
+            },
+          ),
         );
       }
     }
@@ -474,8 +491,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       SnackBar(
         content: Text(
           warnings.isEmpty
-              ? 'Cambios guardados exitosamente'
-              : 'Producto actualizado, con avisos: ${warnings.join(' · ')}',
+              ? 'publish.changes_saved'.tr()
+              : 'publish.updated_with_warnings'.tr(
+                  namedArgs: {'warnings': warnings.join(' · ')},
+                ),
         ),
       ),
     );
@@ -512,7 +531,9 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     final primera = preguntasDeCategoria(
       _selectedCategoryId,
     ).firstWhere((p) => p.key == faltantes.first);
-    _showError('Falta responder: ${primera.label}');
+    _showError(
+      'publish.error_missing_answer'.tr(namedArgs: {'field': primera.label}),
+    );
     return false;
   }
 
@@ -522,7 +543,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
 
   void _addExtra() {
     if (_extras.length >= 8) {
-      _showError('Máximo 8 extras por producto');
+      _showError('publish.error_max_extras'.tr());
       return;
     }
     final name = _extraNameController.text.trim();
@@ -530,7 +551,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     if (name.isEmpty) return;
     final price = double.tryParse(priceText);
     if (price == null || price <= 0) {
-      _showError('Ingresa un precio válido mayor a cero');
+      _showError('publish.error_extra_price'.tr());
       return;
     }
     setState(() {
@@ -550,16 +571,18 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     final priceText = _extraPriceController.text.trim();
     if (name.isEmpty && priceText.isEmpty) return true;
     if (_extras.length >= 8) {
-      _showError('Máximo 8 extras por producto');
+      _showError('publish.error_max_extras'.tr());
       return false;
     }
     if (name.isEmpty) {
-      _showError('Falta el nombre del extra que empezaste a agregar');
+      _showError('publish.error_extra_name'.tr());
       return false;
     }
     final price = double.tryParse(priceText);
     if (price == null || price <= 0) {
-      _showError('El extra "$name" necesita un precio válido mayor a cero');
+      _showError(
+        'publish.error_extra_price_named'.tr(namedArgs: {'name': name}),
+      );
       return false;
     }
     setState(() {
@@ -607,7 +630,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       }
       return (
         ComputedStatus.availableOtherDay,
-        nextDay != null ? _dayFullNames[nextDay] : null,
+        nextDay != null ? _dayFullNames[nextDay].tr() : null,
         null,
       );
     }
@@ -644,7 +667,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     return Row(
       children: [
         Text(
-          'Así se verá: ',
+          'publish.preview_prefix'.tr(),
           style: TextStyle(
             color: context.colors.muted,
             fontSize: 12.5,
@@ -697,15 +720,15 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                 color: context.colors.muted,
               ),
               const SizedBox(width: 6),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Días disponibles',
+                  'publish.available_days'.tr(),
                   style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                 ),
               ),
               Text(
                 _selectedDays.isEmpty
-                    ? 'Opcional · todos los días'
+                    ? 'publish.all_days'.tr()
                     : '${_selectedDays.length}/7',
                 style: TextStyle(
                   fontSize: 11.5,
@@ -722,7 +745,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
             children: List.generate(7, (i) {
               final selected = _selectedDays.contains(i);
               return FilterChip(
-                label: Text(_dayNames[i], style: const TextStyle(fontSize: 12)),
+                label: Text(
+                  _dayNames[i].tr(),
+                  style: const TextStyle(fontSize: 12),
+                ),
                 selected: selected,
                 showCheckmark: false,
                 selectedColor: context.colors.primary.withValues(alpha: 0.12),
@@ -781,7 +807,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Inventario',
+                  'publish.inventory'.tr(),
                   style: AppTypography.heading(15, color: context.colors.ink),
                 ),
               ),
@@ -794,9 +820,9 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           TextField(
             controller: _stockController,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Cantidad disponible *',
-              helperText: 'Pon 0 si ahora mismo no te queda ninguno.',
+            decoration: InputDecoration(
+              labelText: 'publish.stock_available'.tr(),
+              helperText: 'publish.stock_helper'.tr(),
               border: OutlineInputBorder(),
               isDense: true,
             ),
@@ -804,13 +830,13 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           const SizedBox(height: 10),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text(
-              '¿Se reinicia automáticamente cada día?',
-              style: TextStyle(fontWeight: FontWeight.w600),
+            title: Text(
+              'publish.stock_daily_reset'.tr(),
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
-            subtitle: const Text(
-              'El stock volverá a esta cantidad a medianoche.',
-              style: TextStyle(fontSize: 12),
+            subtitle: Text(
+              'publish.stock_daily_reset_help'.tr(),
+              style: const TextStyle(fontSize: 12),
             ),
             value: _autoResetStock,
             onChanged: (val) => setState(() => _autoResetStock = val),
@@ -848,7 +874,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Extras opcionales',
+                  'publish.extras'.tr(),
                   style: AppTypography.heading(15, color: context.colors.ink),
                 ),
               ),
@@ -862,7 +888,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  'Opcional',
+                  'common.optional'.tr(),
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     color: context.colors.muted,
@@ -873,7 +899,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            r'Tu producto tiene variantes? Agrega extras como "Con estuche +$25", "Impresion a color +$10"',
+            'publish.extras_help'.tr(),
             style: TextStyle(
               color: context.colors.muted,
               fontWeight: FontWeight.w600,
@@ -929,10 +955,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                 flex: 2,
                 child: TextField(
                   controller: _extraNameController,
-                  decoration: const InputDecoration(
-                    hintText: 'Nombre del extra',
+                  decoration: InputDecoration(
+                    hintText: 'publish.extra_name_hint'.tr(),
                     isDense: true,
-                    contentPadding: EdgeInsets.symmetric(
+                    contentPadding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 10,
                     ),
@@ -1005,11 +1031,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     if (_loading) {
       content = const Center(child: CircularProgressIndicator());
     } else if (!auth.isLoggedIn) {
-      content = const PublishAuthGate(
+      content = PublishAuthGate(
         icon: Icons.add_circle_outline_rounded,
-        title: 'Crea tu cuenta para publicar',
-        subtitle:
-            'Regístrate para publicar tu producto y que otros estudiantes lo vean. Ver el feed y contactar vendedores no requiere cuenta.',
+        title: 'publish.account_required_title'.tr(),
+        subtitle: 'publish.account_required_body'.tr(),
       );
     } else {
       content = _buildForm();
@@ -1028,7 +1053,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
 
     return Scaffold(
       backgroundColor: context.colors.background,
-      appBar: AppBar(title: const Text('Editar producto'), centerTitle: false),
+      appBar: AppBar(
+        title: Text('publish.edit_title'.tr()),
+        centerTitle: false,
+      ),
       body: SafeArea(top: false, child: content),
       bottomNavigationBar: showSaveBar ? _buildEditSaveBar() : null,
     );
@@ -1052,7 +1080,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                 onPressed: _publishing
                     ? null
                     : () => Navigator.of(context).pop(),
-                child: const Text('Cancelar'),
+                child: Text('common.cancel'.tr()),
               ),
             ),
             const SizedBox(width: 12),
@@ -1070,7 +1098,11 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                         ),
                       )
                     : const Icon(Icons.check_rounded),
-                label: Text(_publishing ? 'Guardando...' : 'Guardar cambios'),
+                label: Text(
+                  _publishing
+                      ? 'publish.saving'.tr()
+                      : 'publish.save_changes'.tr(),
+                ),
               ),
             ),
           ],
@@ -1090,7 +1122,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Ubicación (opcional)',
+          'publish.location_optional'.tr(),
           style: AppTypography.heading(15, color: context.colors.ink),
         ),
         const SizedBox(height: 10),
@@ -1100,8 +1132,8 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
             value: _LocationChoice.useSaved,
             groupValue: _locationChoice,
             onChanged: (v) => setState(() => _locationChoice = v!),
-            title: const Text('Usar la ubicación de mi negocio'),
-            subtitle: const Text('Recomendado — un solo tap'),
+            title: Text('publish.use_business_location'.tr()),
+            subtitle: Text('publish.use_business_location_hint'.tr()),
           ),
           RadioListTile<_LocationChoice>(
             contentPadding: EdgeInsets.zero,
@@ -1113,14 +1145,14 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
             // (radio en "custom" pero sin coordenadas → se perdería la
             // ubicación silenciosamente al publicar).
             onChanged: (_) => _pickCustomLocation(),
-            title: const Text('Elegir otra ubicación para esta publicación'),
+            title: Text('publish.choose_other_location'.tr()),
           ),
           RadioListTile<_LocationChoice>(
             contentPadding: EdgeInsets.zero,
             value: _LocationChoice.none,
             groupValue: _locationChoice,
             onChanged: (v) => setState(() => _locationChoice = v!),
-            title: const Text('No agregar ubicación'),
+            title: Text('publish.no_location'.tr()),
           ),
         ] else
           OutlinedButton.icon(
@@ -1128,8 +1160,8 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
             icon: const Icon(Icons.map_outlined),
             label: Text(
               _locationChoice == _LocationChoice.custom
-                  ? 'Cambiar ubicación de esta publicación'
-                  : 'Elegir ubicación en el mapa (opcional)',
+                  ? 'publish.change_listing_location'.tr()
+                  : 'publish.pick_location_map'.tr(),
             ),
           ),
         if (_locationChoice == _LocationChoice.custom &&
@@ -1158,17 +1190,20 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Métodos de pago',
+          'register.section_payments'.tr(),
           style: AppTypography.heading(15, color: context.colors.ink),
         ),
         const SizedBox(height: 4),
         Text(
           _eligeMetodosDePago
-              ? 'Aún no tienes métodos de pago en tu perfil. Elige cómo te '
-                    'pueden pagar.'
-              : 'Usa los de tu perfil: '
-                    '${_sellerPaymentMethods.map((id) => paymentMethodById(id)?.label ?? id).join(', ')}. '
-                    'Para cambiarlos, edita tu perfil.',
+              ? 'publish.payment_none_yet'.tr()
+              : 'publish.payment_from_profile'.tr(
+                  namedArgs: {
+                    'methods': _sellerPaymentMethods
+                        .map((id) => paymentMethodById(id)?.label ?? id)
+                        .join(', '),
+                  },
+                ),
           style: TextStyle(color: context.colors.muted, fontSize: 13),
         ),
         if (_eligeMetodosDePago) ...[
@@ -1207,15 +1242,17 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
         SnackBar(
           content: Text(
             status != null
-                ? 'Estado cambiado a "${status.label}"'
-                : 'Producto reactivado: el badge vuelve a calcularse automático',
+                ? 'publish.status_changed'.tr(
+                    namedArgs: {'status': status.label},
+                  )
+                : 'publish.status_reactivated'.tr(),
           ),
         ),
       );
     } catch (e) {
       if (!mounted) return;
       setState(() => _updatingStatus = false);
-      _showError('No se pudo cambiar el estado. Intenta de nuevo.');
+      _showError('publish.status_change_error'.tr());
     }
   }
 
@@ -1256,14 +1293,14 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Gestión de venta',
+          'publish.sale_management'.tr(),
           style: AppTypography.heading(15, color: context.colors.ink),
         ),
         const SizedBox(height: 4),
         Text(
           _currentStatus != null
-              ? 'Este estado sobreescribe el badge automático hasta que lo reactives.'
-              : 'Actívalo solo si necesitas anular temporalmente el cálculo automático (ver "Reglas de disponibilidad").',
+              ? 'publish.status_override_on'.tr()
+              : 'publish.status_override_off'.tr(),
           style: TextStyle(color: context.colors.muted, fontSize: 13),
         ),
         const SizedBox(height: 10),
@@ -1308,7 +1345,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                   size: 18,
                   color: AppColors.success,
                 ),
-                label: const Text('Reactivar'),
+                label: Text('publish.reactivate'.tr()),
                 labelStyle: const TextStyle(
                   color: AppColors.success,
                   fontWeight: FontWeight.w600,
@@ -1327,12 +1364,12 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       children: [
         if (!_isEditing) ...[
           Text(
-            'Publicar producto',
+            'nav.publish_product'.tr(),
             style: AppTypography.heading(22, color: context.colors.ink),
           ),
           const SizedBox(height: 6),
           Text(
-            'Completa la información básica para publicar tu producto en el marketplace.',
+            'publish.subtitle'.tr(),
             style: AppTypography.body(14, color: context.colors.muted),
           ),
           const SizedBox(height: 20),
@@ -1340,7 +1377,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
 
         // ─── Fotos ──────────────────────────────────────
         Text(
-          'Fotos',
+          'publish.photos'.tr(),
           style: AppTypography.heading(15, color: context.colors.ink),
         ),
         const SizedBox(height: 10),
@@ -1377,9 +1414,9 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
         TextField(
           controller: _titleController,
           textCapitalization: TextCapitalization.sentences,
-          decoration: const InputDecoration(
-            labelText: 'Título',
-            hintText: 'Ej. Calculadora científica Casio',
+          decoration: InputDecoration(
+            labelText: 'publish.field_title'.tr(),
+            hintText: 'publish.field_title_hint'.tr(),
           ),
         ),
         const SizedBox(height: 12),
@@ -1388,9 +1425,9 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           minLines: 4,
           maxLines: 5,
           textCapitalization: TextCapitalization.sentences,
-          decoration: const InputDecoration(
-            labelText: 'Descripción',
-            hintText: 'Estado, punto de entrega, detalles importantes...',
+          decoration: InputDecoration(
+            labelText: 'publish.field_description'.tr(),
+            hintText: 'publish.field_description_hint'.tr(),
             alignLabelWithHint: true,
           ),
         ),
@@ -1401,9 +1438,9 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
               child: TextField(
                 controller: _priceController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   prefixText: r'$ ',
-                  labelText: 'Precio',
+                  labelText: 'publish.field_price'.tr(),
                 ),
               ),
             ),
@@ -1411,7 +1448,9 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
             Expanded(
               child: DropdownButtonFormField<String>(
                 value: _selectedCategoryId,
-                decoration: const InputDecoration(labelText: 'Categoría'),
+                decoration: InputDecoration(
+                  labelText: 'publish.field_category'.tr(),
+                ),
                 items: [
                   for (final category in _categories)
                     DropdownMenuItem(
@@ -1503,7 +1542,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.publish_rounded),
-            label: const Text('Publicar ahora'),
+            label: Text('publish.publish_now'.tr()),
           ),
         ],
       ],
@@ -1537,7 +1576,7 @@ class _AddPhotoTile extends StatelessWidget {
             children: [
               Icon(Icons.photo_library_rounded, color: context.colors.primary),
               SizedBox(width: 10),
-              Text('Galería'),
+              Text('publish.gallery'.tr()),
             ],
           ),
         ),
@@ -1547,7 +1586,7 @@ class _AddPhotoTile extends StatelessWidget {
             children: [
               Icon(Icons.camera_alt_rounded, color: context.colors.primary),
               SizedBox(width: 10),
-              Text('Cámara'),
+              Text('publish.camera'.tr()),
             ],
           ),
         ),
@@ -1574,7 +1613,7 @@ class _AddPhotoTile extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Text(
-                'Subir fotos',
+                'publish.upload_photos'.tr(),
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -1754,7 +1793,7 @@ class _HighlightSection extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Destaca tu publicación',
+                  'publish.highlight_title'.tr(),
                   style: AppTypography.heading(15, color: context.colors.ink),
                 ),
               ),
@@ -1768,7 +1807,7 @@ class _HighlightSection extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  'Opcional',
+                  'common.optional'.tr(),
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     color: context.colors.muted,
@@ -1779,7 +1818,7 @@ class _HighlightSection extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Publicar es gratis. Si eliges un plan, tu producto aparece primero en Destacados.',
+            'publish.highlight_help'.tr(),
             style: TextStyle(
               color: context.colors.muted,
               fontWeight: FontWeight.w600,
@@ -1799,7 +1838,7 @@ class _HighlightSection extends StatelessWidget {
                   padding: const EdgeInsets.only(right: 8),
                   child: ChoiceChip(
                     selected: selectedPlanId == null,
-                    label: const Text('Sin plan'),
+                    label: Text('publish.no_plan'.tr()),
                     // Deseleccionar tiene que ser una opción visible. Sin este
                     // chip, quien elige un plan por curiosidad solo puede
                     // deshacerlo adivinando que se toca otra vez.
@@ -1842,9 +1881,9 @@ class _HighlightSection extends StatelessWidget {
   /// distingue nada. Lo que diferencia a los planes es cuánto duran.
   String _etiquetaCorta(HighlightPlan plan) {
     if (plan.days <= 0) return plan.title;
-    if (plan.days == 1) return '24 h';
-    if (plan.days >= 30) return 'Mensual';
-    return '${plan.days} días';
+    if (plan.days == 1) return 'publish.plan_24h'.tr();
+    if (plan.days >= 30) return 'publish.plan_monthly'.tr();
+    return 'home.duration_days'.tr(namedArgs: {'days': '${plan.days}'});
   }
 }
 

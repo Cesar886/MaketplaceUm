@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -48,12 +49,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   const AppLogo(size: 48, showText: false),
                   const SizedBox(height: 16),
                   Text(
-                    'Iniciar sesión',
+                    'auth.login_title'.tr(),
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Ingresa tu correo y contraseña para continuar.',
+                    'auth.login_subtitle'.tr(),
                     style: TextStyle(
                       color: context.colors.muted,
                       fontWeight: FontWeight.w600,
@@ -62,14 +63,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 28),
                   TextFormField(
                     controller: _emailController,
-                    decoration: const InputDecoration(
-                      labelText: 'Correo electrónico',
-                      prefixIcon: Icon(Icons.email_rounded),
+                    decoration: InputDecoration(
+                      labelText: 'auth.email_label'.tr(),
+                      prefixIcon: const Icon(Icons.email_rounded),
                     ),
                     keyboardType: TextInputType.emailAddress,
                     validator: (v) {
                       if (v == null || v.trim().isEmpty)
-                        return 'Ingresa tu correo';
+                        return 'validation.email_required'.tr();
                       return null;
                     },
                   ),
@@ -77,7 +78,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   TextFormField(
                     controller: _passwordController,
                     decoration: InputDecoration(
-                      labelText: 'Contraseña',
+                      labelText: 'auth.password_label'.tr(),
                       prefixIcon: const Icon(Icons.lock_rounded),
                       suffixIcon: IconButton(
                         icon: Icon(
@@ -91,7 +92,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     obscureText: _obscure,
                     validator: (v) {
                       if (v == null || v.isEmpty)
-                        return 'Ingresa tu contraseña';
+                        return 'validation.password_required'.tr();
                       return null;
                     },
                   ),
@@ -127,10 +128,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                 );
                               } else {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Correo o contraseña incorrectos',
-                                    ),
+                                  SnackBar(
+                                    content: Text('auth.login_failed'.tr()),
                                   ),
                                 );
                               }
@@ -144,7 +143,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 color: Colors.white,
                               ),
                             )
-                          : const Text('Iniciar sesión'),
+                          : Text('auth.login_button'.tr()),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -152,7 +151,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        '¿No tienes cuenta? ',
+                        'auth.no_account'.tr(),
                         style: TextStyle(
                           color: context.colors.muted,
                           fontWeight: FontWeight.w600,
@@ -165,7 +164,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         child: Text(
-                          'Crear cuenta',
+                          'auth.create_account'.tr(),
                           style: TextStyle(
                             color: context.colors.primary,
                             fontWeight: FontWeight.w700,

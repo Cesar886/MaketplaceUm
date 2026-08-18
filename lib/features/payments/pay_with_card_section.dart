@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../../app_theme.dart';
@@ -141,12 +142,11 @@ class _PayWithCardSectionState extends State<PayWithCardSection> {
 
     final stock = product.stockQuantity;
     if (stock != null && stock <= 0) {
-      return 'Agotado. Este producto no tiene unidades disponibles.';
+      return 'pay.blocked_sold_out'.tr();
     }
 
     if (product.seller.isOpenNow == false) {
-      return 'Cerrado ahora mismo. No se pueden procesar pagos hasta que '
-          'el vendedor vuelva a abrir.';
+      return 'pay.blocked_closed'.tr();
     }
     return null;
   }
@@ -286,7 +286,7 @@ class _PayWithCardSectionState extends State<PayWithCardSection> {
               // que solo cobran con Mercado Pago. Quien sí distingue es el
               // icono, que no promete nada.
               child: Text(
-                widget.pagando ? 'Preparando tu pago…' : 'Pagar ahora',
+                widget.pagando ? 'pay.preparing'.tr() : 'pay.pay_now'.tr(),
                 style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
@@ -302,8 +302,7 @@ class _PayWithCardSectionState extends State<PayWithCardSection> {
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                'Procesado por Mercado Pago. Tus datos de tarjeta no pasan '
-                'por Mercadito UM.',
+                'pay.processed_by_mp'.tr(),
                 style: AppTypography.body(11.5, color: colors.muted),
               ),
             ),
@@ -345,7 +344,7 @@ class _PayWithCardSectionState extends State<PayWithCardSection> {
         ),
         const SizedBox(height: 14),
         Text(
-          _fallo ? 'No pudimos comprobarlo' : 'Se acuerda con el vendedor',
+          _fallo ? 'pay.check_failed_title'.tr() : 'pay.offline_title'.tr(),
           style: AppTypography.label(
             15.5,
             weight: FontWeight.w800,
@@ -358,10 +357,8 @@ class _PayWithCardSectionState extends State<PayWithCardSection> {
               // "No pude comprobarlo" y "no cobra en la app" llevan a acciones
               // distintas —reintentar o escribirle—, así que no se colapsan en
               // un mensaje único.
-              ? 'No pudimos consultar los pagos en línea de este vendedor. '
-                    'Puedes reintentar o acordar el pago directamente con él.'
-              : 'Este vendedor todavía no recibe pagos dentro de la app. '
-                    'El pago y la entrega se coordinan directamente con él.',
+              ? 'pay.check_failed_body'.tr()
+              : 'pay.offline_body'.tr(),
           style: AppTypography.body(12.5, color: colors.muted),
         ),
         if (declarados.isNotEmpty) ...[
@@ -398,11 +395,11 @@ class _PayWithCardSectionState extends State<PayWithCardSection> {
                 ? OutlinedButton.icon(
                     onPressed: _cargar,
                     icon: const Icon(Icons.refresh_rounded, size: 18),
-                    label: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 4),
+                    label: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Text(
-                        'Reintentar',
-                        style: TextStyle(
+                        'common.retry'.tr(),
+                        style: const TextStyle(
                           fontSize: 14.5,
                           fontWeight: FontWeight.w700,
                         ),
@@ -412,11 +409,11 @@ class _PayWithCardSectionState extends State<PayWithCardSection> {
                 : OutlinedButton.icon(
                     onPressed: widget.onContactar,
                     icon: const Icon(Icons.chat_rounded, size: 18),
-                    label: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 4),
+                    label: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Text(
-                        'Acordar pago por chat',
-                        style: TextStyle(
+                        'pay.arrange_by_chat'.tr(),
+                        style: const TextStyle(
                           fontSize: 14.5,
                           fontWeight: FontWeight.w700,
                         ),
@@ -432,8 +429,7 @@ class _PayWithCardSectionState extends State<PayWithCardSection> {
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                'Los pagos fuera de la app no pasan por Mercadito UM: '
-                'acuérdalos solo con quien te dé confianza.',
+                'pay.offline_warning'.tr(),
                 style: AppTypography.body(11.5, color: colors.muted),
               ),
             ),
@@ -581,11 +577,14 @@ class _SelectorDeCantidad extends StatelessWidget {
 
     return Row(
       children: [
-        Text('Cantidad', style: AppTypography.body(13, color: colors.muted)),
+        Text(
+          'pay.quantity'.tr(),
+          style: AppTypography.body(13, color: colors.muted),
+        ),
         const Spacer(),
         _PasoCantidad(
           icon: Icons.remove_rounded,
-          tooltip: 'Quitar una unidad',
+          tooltip: 'pay.remove_unit'.tr(),
           onPressed: puedeBajar ? () => onCambiar(-1) : null,
         ),
         // Ancho fijo para que el número no empuje los botones al pasar de una
@@ -604,7 +603,7 @@ class _SelectorDeCantidad extends StatelessWidget {
         ),
         _PasoCantidad(
           icon: Icons.add_rounded,
-          tooltip: 'Agregar una unidad',
+          tooltip: 'pay.add_unit'.tr(),
           onPressed: puedeSubir ? () => onCambiar(1) : null,
         ),
       ],

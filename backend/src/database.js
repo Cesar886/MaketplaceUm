@@ -1342,7 +1342,67 @@ function runMigrations() {
     db.exec(`ALTER TABLE products ADD COLUMN atributos_categoria TEXT DEFAULT NULL`);
   }
 
+  // 37. Presencia ("en línea" / "activo hace X").
+  //
+  //     Solo dos columnas, y NINGUNA de ellas es `is_online`. Quién está
+  //     conectado ahora mismo se sabe por los sockets abiertos (ver
+  //     presence.js): persistirlo dejaría a todo el mundo marcado en línea
+  //     si el proceso muere sin llegar a escribir el `false`.
+  //
+  //     `last_active` se escribe UNA vez, al cerrarse el último socket del
+  //     usuario — no en cada latido. NULL significa "nunca se ha registrado
+  //     una desconexión", que es lo correcto para las filas ya existentes.
+  //
+  //     `show_online_status` arranca en 1 (compartir) porque es el
+  //     comportamiento que la función anuncia; quien no lo quiera lo apaga
+  //     en Configuración → Privacidad, y entonces deja de emitirse su
+  //     estado y también de recibir el ajeno (ver presenciaVisible).
+  const sellerColsPresencia = db.prepare("PRAGMA table_info('sellers')").all();
+  if (!sellerColsPresencia.some(c => c.name === 'last_active')) {
+    db.exec(`ALTER TABLE sellers ADD COLUMN last_active TEXT`);
+  }
+  if (!sellerColsPresencia.some(c => c.name === 'show_online_status')) {
+    db.exec(`ALTER TABLE sellers ADD COLUMN show_online_status INTEGER NOT NULL DEFAULT 1`);
+  }
+
   console.log('🔄 Migración de schema completada');
+}
+
+// ─── Presencia ───────────────────────────────────────────────
+
+/**
+ * Marca cuándo se desconectó el usuario. Se llama una sola vez por sesión
+ * (al cerrarse su último socket), no periódicamente.
+ */
+function setUltimaActividad(userId, iso) {
+  getDb().prepare('UPDATE sellers SET last_active = ? WHERE id = ?').run(iso, userId);
+}
+
+/** Enciende o apaga "mostrar mi estado en línea" para el usuario. */
+function setMostrarEstadoEnLinea(userId, comparte) {
+  getDb()
+    .prepare('UPDATE sellers SET show_online_status = ? WHERE id = ?')
+    .run(comparte ? 1 : 0, userId);
+}
+
+/**
+ * Datos de presencia persistidos de un usuario.
+ *
+ * Un id desconocido devuelve `comparteEstado: false` en vez de lanzar: la
+ * lista de chats puede traer conversaciones con cuentas ya borradas, y ahí
+ * lo correcto es no mostrar nada, no reventar la pantalla.
+ *
+ * @returns {{lastActive: string|null, comparteEstado: boolean}}
+ */
+function getPresencia(userId) {
+  const fila = getDb()
+    .prepare('SELECT last_active, show_online_status FROM sellers WHERE id = ?')
+    .get(userId);
+  if (!fila) return { lastActive: null, comparteEstado: false };
+  return {
+    lastActive: fila.last_active || null,
+    comparteEstado: fila.show_online_status !== 0,
+  };
 }
 
 /**
@@ -1841,7 +1901,7 @@ function countPriceEditsLastHour(productId) {
 /**
  * Inserta un registro en price_history con el precio anterior.
  */
-function insertPriceHistory(productId, price) { console.log("INSERTING PRICE HISTORY:", productId, price);
+function insertPriceHistory(productId, price) {
   db.prepare(`
     INSERT INTO price_history (product_id, price, changed_at)
     VALUES (?, ?, datetime('now'))
@@ -3486,6 +3546,9 @@ module.exports = {
   createConversation,
   findConversation,
   getConversationsForUser,
+  setUltimaActividad,
+  setMostrarEstadoEnLinea,
+  getPresencia,
   getUnreadMessageCount,
   // Wanted Posts
   createWantedPost,

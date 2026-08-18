@@ -7,7 +7,7 @@
 const { resolverModoEnvio, esProduccion } = require('./envio');
 const { VIGENCIA_MINUTOS } = require('./otp');
 
-const REMITENTE_POR_DEFECTO = 'Mercadito UM <no-reply@um.edu.mx>';
+const REMITENTE_POR_DEFECTO = 'Marketplace UM <no-reply@um.edu.mx>';
 
 // Tope para cada fase del diálogo SMTP (conexión, saludo, socket).
 const TIMEOUT_SMTP_MS = 10000;
@@ -45,7 +45,7 @@ function obtenerTransporte() {
 
 function cuerpoTexto(codigo) {
   return [
-    `Tu código de verificación de Mercadito UM es: ${codigo}`,
+    `Tu código de verificación de Marketplace UM es: ${codigo}`,
     '',
     `El código vence en ${VIGENCIA_MINUTOS} minutos.`,
     'Si no solicitaste verificar tu cuenta, ignora este correo.',
@@ -54,7 +54,7 @@ function cuerpoTexto(codigo) {
 
 function cuerpoTexto(codigo) {
   return [
-    `Tu código de verificación de Mercadito UM es: ${codigo}`,
+    `Tu código de verificación de Marketplace UM es: ${codigo}`,
     '',
     `El código vence en ${VIGENCIA_MINUTOS} minutos.`,
     'Si no solicitaste verificar tu cuenta, ignora este correo.',
@@ -71,7 +71,7 @@ function cuerpoHtml(codigo) {
             <tr>
               <td style="padding-bottom:48px;">
                 <span style="color:#1B1A16;font-size:13px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;">
-                  Mercadito UM
+                  Marketplace UM
                 </span>
               </td>
             </tr>

@@ -5,6 +5,8 @@
 /// sigue viviendo en el backend.
 library;
 
+import 'package:easy_localization/easy_localization.dart';
+
 const socialUrlHosts = <String, Set<String>>{
   'facebook': {'facebook.com', 'www.facebook.com', 'fb.com', 'm.facebook.com'},
   'instagram': {'instagram.com', 'www.instagram.com'},
@@ -48,7 +50,7 @@ String? validateWhatsappNumber(String value) {
   final trimmed = value.trim();
   if (trimmed.isEmpty) return null;
   if (!_whatsappNumberRegex.hasMatch(trimmed)) {
-    return 'El número de WhatsApp debe tener solo dígitos con código de país (10 a 15 dígitos)';
+    return 'social.whatsapp_invalid'.tr();
   }
   return null;
 }

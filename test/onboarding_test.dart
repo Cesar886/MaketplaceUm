@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mercadito_um/screens/onboarding_screen.dart';
 import 'package:mercadito_um/services/onboarding_service.dart';
@@ -43,7 +44,7 @@ void main() {
     testWidgets('opens on the first slide', (tester) async {
       await tester.pumpWidget(_app(alTerminar: () {}));
 
-      expect(find.text(slidesOnboarding.first.titulo), findsOneWidget);
+      expect(find.text(slidesOnboarding.first.titulo.tr()), findsOneWidget);
     });
 
     testWidgets('draws an illustration, not a bare text screen', (
@@ -66,8 +67,8 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      expect(find.text(slidesOnboarding.last.titulo), findsOneWidget);
-      expect(find.text('Empezar'), findsOneWidget);
+      expect(find.text(slidesOnboarding.last.titulo.tr()), findsOneWidget);
+      expect(find.text('onboarding.start'.tr()), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('onboarding-primario')));
       await tester.pumpAndSettle();
@@ -82,7 +83,7 @@ void main() {
       var termino = false;
       await tester.pumpWidget(_app(alTerminar: () => termino = true));
 
-      await tester.tap(find.text('Saltar'));
+      await tester.tap(find.text('onboarding.skip'.tr()));
       await tester.pumpAndSettle();
 
       // Saltar cuenta como visto: si volviera a aparecer, el botón no
@@ -101,7 +102,7 @@ void main() {
 
       // En la última no queda nada que saltar, y dejarlo compite con
       // "Empezar" justo donde el usuario tiene que decidir.
-      expect(find.text('Saltar'), findsNothing);
+      expect(find.text('onboarding.skip'.tr()), findsNothing);
     });
   });
 }

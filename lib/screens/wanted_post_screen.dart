@@ -1,7 +1,9 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
+import '../mock_data.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_error.dart';
@@ -106,7 +108,7 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
       context,
       initialLat: _customLocationLat,
       initialLng: _customLocationLng,
-      title: 'Ubicación de esta búsqueda',
+      title: 'wanted.location_title'.tr(),
     );
     if (picked != null) {
       setState(() {
@@ -138,21 +140,38 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
     try {
       final categories = await ApiService.getCategories();
       if (!mounted) return;
-      setState(() {
-        _categories = categories;
-        final currentIsValid =
-            _selectedCategoryId != null &&
-            categories.any((c) => c.id == _selectedCategoryId);
-        if (!currentIsValid) {
-          _selectedCategoryId = categories.isNotEmpty
-              ? categories.first.id
-              : null;
-        }
-        _loading = false;
-      });
+      setState(() => _aplicarCategorias(categories));
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      // Respaldo local, igual que publish_product_screen.
+      //
+      // Sin él la lista quedaba vacía, y un DropdownButton sin items SE
+      // AUTO-DESHABILITA: el campo se pintaba con su label "Categoría", el
+      // tap no hacía nada y el `catch` mudo no dejaba ni un mensaje. Así se
+      // reportó — "no se puede seleccionar una categoría" — sin forma de
+      // publicar la búsqueda.
+      //
+      // `mockCategories` trae los mismos ocho ids que sirve el backend, así
+      // que la búsqueda que se publique desde aquí queda igual de bien
+      // clasificada que si la lista hubiera llegado por red.
+      if (!mounted) return;
+      setState(() => _aplicarCategorias(mockCategories));
     }
+  }
+
+  /// Fija la lista y deja la selección apuntando a algo que existe en ella.
+  ///
+  /// La validación importa al editar: la búsqueda pudo guardarse con una
+  /// categoría que ya no está en el catálogo, y `DropdownButtonFormField`
+  /// revienta si su `value` no coincide con exactamente un item.
+  void _aplicarCategorias(List<MarketplaceCategory> categorias) {
+    _categories = categorias;
+    final vigente =
+        _selectedCategoryId != null &&
+        categorias.any((c) => c.id == _selectedCategoryId);
+    if (!vigente) {
+      _selectedCategoryId = categorias.isNotEmpty ? categorias.first.id : null;
+    }
+    _loading = false;
   }
 
   void _showError(String msg) {
@@ -162,16 +181,16 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
   Future<void> _publish() async {
     final title = _titleController.text.trim();
     if (title.isEmpty) {
-      _showError('Escribe qué estás buscando');
+      _showError('wanted.error_title_required'.tr());
       return;
     }
     if (_selectedCategoryId == null) {
-      _showError('Selecciona una categoría');
+      _showError('wanted.error_category_required'.tr());
       return;
     }
     if (_customizePaymentMethods && _customPaymentMethods.isEmpty) {
       setState(() => _showPaymentMethodsError = true);
-      _showError('Selecciona al menos un método de pago para esta búsqueda');
+      _showError('wanted.error_payment_required'.tr());
       return;
     }
 
@@ -189,7 +208,7 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
         final auth = context.read<AuthProvider>();
         final synced = await auth.ensureBackendSync();
         if (!synced) {
-          _showError('Error de autenticación. Vuelve a iniciar sesión.');
+          _showError('errors.auth_expired'.tr());
           return;
         }
         await ApiService.editWantedPost(
@@ -206,16 +225,16 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
         );
         if (!mounted) return;
         Navigator.of(context).pop(true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Cambios guardados exitosamente')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('publish.changes_saved'.tr())));
       } else {
         // Publicar también requiere sesión real (JWT): el backend usa
         // requireAuth para que el autor salga del token, no del body.
         final auth = context.read<AuthProvider>();
         final synced = await auth.ensureBackendSync();
         if (!synced) {
-          _showError('Error de autenticación. Vuelve a iniciar sesión.');
+          _showError('errors.auth_expired'.tr());
           return;
         }
         final location = _resolvedLocation;
@@ -234,13 +253,9 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
         );
         if (!mounted) return;
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              '¡Búsqueda publicada! Te avisaremos si alguien responde.',
-            ),
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('wanted.published'.tr())));
       }
     } catch (e, stack) {
       if (!mounted) return;
@@ -249,8 +264,8 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
           e,
           stack: stack,
           fallback: _isEditing
-              ? 'No se pudieron guardar los cambios. Intenta de nuevo.'
-              : 'No se pudo publicar. Intenta de nuevo.',
+              ? 'publish.save_error'.tr()
+              : 'wanted.publish_error'.tr(),
         ),
       );
     } finally {
@@ -278,7 +293,7 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Ubicación (opcional)',
+          'publish.location_optional'.tr(),
           style: AppTypography.heading(15, color: context.colors.ink),
         ),
         const SizedBox(height: 10),
@@ -288,8 +303,8 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
             value: _LocationChoice.useSaved,
             groupValue: _locationChoice,
             onChanged: (v) => setState(() => _locationChoice = v!),
-            title: const Text('Usar la ubicación de mi negocio'),
-            subtitle: const Text('Recomendado — un solo tap'),
+            title: Text('publish.use_business_location'.tr()),
+            subtitle: Text('publish.use_business_location_hint'.tr()),
           ),
           RadioListTile<_LocationChoice>(
             contentPadding: EdgeInsets.zero,
@@ -301,14 +316,14 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
             // (radio en "custom" pero sin coordenadas → se perdería la
             // ubicación silenciosamente al publicar).
             onChanged: (_) => _pickCustomLocation(),
-            title: const Text('Elegir otra ubicación para esta búsqueda'),
+            title: Text('wanted.choose_other_location'.tr()),
           ),
           RadioListTile<_LocationChoice>(
             contentPadding: EdgeInsets.zero,
             value: _LocationChoice.none,
             groupValue: _locationChoice,
             onChanged: (v) => setState(() => _locationChoice = v!),
-            title: const Text('No agregar ubicación'),
+            title: Text('publish.no_location'.tr()),
           ),
         ] else
           OutlinedButton.icon(
@@ -316,8 +331,8 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
             icon: const Icon(Icons.map_outlined),
             label: Text(
               _locationChoice == _LocationChoice.custom
-                  ? 'Cambiar ubicación de esta búsqueda'
-                  : 'Elegir ubicación en el mapa (opcional)',
+                  ? 'wanted.change_location'.tr()
+                  : 'publish.pick_location_map'.tr(),
             ),
           ),
         if (_locationChoice == _LocationChoice.custom &&
@@ -342,15 +357,20 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Métodos de pago (opcional)',
+          'wanted.payment_methods_optional'.tr(),
           style: AppTypography.heading(15, color: context.colors.ink),
         ),
         const SizedBox(height: 4),
         Text(
           _sellerPaymentMethods.isEmpty
-              ? 'Usa los métodos de tu perfil.'
-              : 'Usa: '
-                    '${_sellerPaymentMethods.map((id) => paymentMethodById(id)?.label ?? id).join(', ')}.',
+              ? 'wanted.payment_from_profile'.tr()
+              : 'wanted.payment_using'.tr(
+                  namedArgs: {
+                    'methods': _sellerPaymentMethods
+                        .map((id) => paymentMethodById(id)?.label ?? id)
+                        .join(', '),
+                  },
+                ),
           style: TextStyle(color: context.colors.muted, fontSize: 13),
         ),
         SwitchListTile(
@@ -360,7 +380,7 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
             _customizePaymentMethods = value;
             if (!value) _showPaymentMethodsError = false;
           }),
-          title: const Text('Personalizar métodos de pago para esta búsqueda'),
+          title: Text('wanted.customize_payment_methods'.tr()),
         ),
         if (_customizePaymentMethods) ...[
           const SizedBox(height: 6),
@@ -388,26 +408,33 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
     // ver/responder búsquedas de otros no la requiere.
     if (!context.watch<AuthProvider>().isLoggedIn) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Publicar búsqueda')),
-        body: const PublishAuthGate(
+        appBar: AppBar(title: Text('nav.publish_wanted'.tr())),
+        body: PublishAuthGate(
           icon: Icons.search_rounded,
-          title: 'Crea tu cuenta para publicar tu búsqueda',
-          subtitle:
-              'Regístrate para publicar qué buscas y que te avisemos si alguien responde.',
+          title: 'wanted.auth_gate_title'.tr(),
+          subtitle: 'wanted.auth_gate_subtitle'.tr(),
         ),
       );
     }
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEditing ? 'Editar búsqueda' : 'Publicar búsqueda'),
+        title: Text(
+          _isEditing ? 'wanted.edit_title'.tr() : 'nav.publish_wanted'.tr(),
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'producto', label: Text('Producto')),
-              ButtonSegment(value: 'servicio', label: Text('Servicio')),
+            segments: [
+              ButtonSegment(
+                value: 'producto',
+                label: Text('wanted.type_product'.tr()),
+              ),
+              ButtonSegment(
+                value: 'servicio',
+                label: Text('wanted.type_service'.tr()),
+              ),
             ],
             selected: {_type},
             onSelectionChanged: (s) => setState(() => _type = s.first),
@@ -416,9 +443,9 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
           TextField(
             controller: _titleController,
             textCapitalization: TextCapitalization.sentences,
-            decoration: const InputDecoration(
-              labelText: 'Qué buscas',
-              hintText: 'Ej. Calculadora científica',
+            decoration: InputDecoration(
+              labelText: 'wanted.what_field'.tr(),
+              hintText: 'wanted.what_hint'.tr(),
             ),
           ),
           const SizedBox(height: 12),
@@ -426,14 +453,16 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
             controller: _descriptionController,
             maxLines: 3,
             textCapitalization: TextCapitalization.sentences,
-            decoration: const InputDecoration(
-              labelText: 'Descripción (opcional)',
+            decoration: InputDecoration(
+              labelText: 'wanted.description_optional'.tr(),
             ),
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             value: _selectedCategoryId,
-            decoration: const InputDecoration(labelText: 'Categoría'),
+            decoration: InputDecoration(
+              labelText: 'publish.field_category'.tr(),
+            ),
             items: [
               for (final category in _categories)
                 DropdownMenuItem(
@@ -466,8 +495,8 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
                   decoration: InputDecoration(
                     prefixText: r'$ ',
                     labelText: _type == 'servicio'
-                        ? 'Mínimo (cotización)'
-                        : 'Precio mínimo',
+                        ? 'wanted.min_quote'.tr()
+                        : 'wanted.min_price'.tr(),
                   ),
                 ),
               ),
@@ -479,8 +508,8 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
                   decoration: InputDecoration(
                     prefixText: r'$ ',
                     labelText: _type == 'servicio'
-                        ? 'Máximo (cotización)'
-                        : 'Precio máximo',
+                        ? 'wanted.max_quote'.tr()
+                        : 'wanted.max_price'.tr(),
                   ),
                 ),
               ),
@@ -507,7 +536,11 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
                       color: Colors.white,
                     ),
                   )
-                : Text(_isEditing ? 'Guardar cambios' : 'Publicar búsqueda'),
+                : Text(
+                    _isEditing
+                        ? 'publish.save_changes'.tr()
+                        : 'nav.publish_wanted'.tr(),
+                  ),
           ),
         ],
       ),

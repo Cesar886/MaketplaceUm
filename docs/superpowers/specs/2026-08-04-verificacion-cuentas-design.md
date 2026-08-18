@@ -2,7 +2,7 @@
 
 ## Contexto
 
-Mercadito UM tiene tres tipos de cuenta y hoy un flujo de verificación **manual**
+Marketplace UM tiene tres tipos de cuenta y hoy un flujo de verificación **manual**
 que quedó a medias: `verification_screen.dart` pide una foto de credencial
 (estudiante) o de identificación oficial (particular), guarda un path *mock*
 (`mock_credencial_<timestamp>.jpg`, L277) en el SQLite **local del dispositivo**

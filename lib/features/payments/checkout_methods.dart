@@ -141,10 +141,7 @@ class _TarjetaDeMetodo extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            metodo.icono(
-              context,
-              apagado ? colors.muted : colors.accent,
-            ),
+            metodo.icono(context, apagado ? colors.muted : colors.accent),
             const SizedBox(width: 12),
             Expanded(
               child: Column(

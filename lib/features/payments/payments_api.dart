@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'dart:convert';
 
 import '../../services/api_error.dart';
@@ -36,10 +37,7 @@ class PaymentsApi {
       headers: ApiService.authHeaders,
     );
     return PaymentsConfig.fromJson(
-      await _decodificar(
-        res,
-        fallback: 'No se pudo cargar la configuración de pagos.',
-      ),
+      await _decodificar(res, fallback: 'payments_api.config_error'.tr()),
     );
   }
 
@@ -52,10 +50,7 @@ class PaymentsApi {
       headers: ApiService.authHeaders,
     );
     return VendorAccountStatus.fromJson(
-      await _decodificar(
-        res,
-        fallback: 'No se pudo consultar tu cuenta de pagos.',
-      ),
+      await _decodificar(res, fallback: 'payments_api.account_error'.tr()),
     );
   }
 
@@ -68,12 +63,12 @@ class PaymentsApi {
     );
     final datos = await _decodificar(
       res,
-      fallback: 'No se pudo iniciar la conexión con Mercado Pago.',
+      fallback: 'payments_api.connect_error'.tr(),
     );
     final url = datos['url'] as String?;
     if (url == null || url.isEmpty) {
-      throw const ApiException(
-        'No se pudo iniciar la conexión con Mercado Pago.',
+      throw ApiException(
+        'payments_api.connect_error'.tr(),
         categoria: CategoriaError.servidor,
       );
     }
@@ -86,7 +81,7 @@ class PaymentsApi {
       ApiService.apiUri('/payments/account'),
       headers: ApiService.authHeaders,
     );
-    await _decodificar(res, fallback: 'No se pudo desconectar tu cuenta.');
+    await _decodificar(res, fallback: 'payments_api.disconnect_error'.tr());
   }
 
   // ─── Comprador: tarjetas guardadas ────────────────────────
@@ -105,7 +100,7 @@ class PaymentsApi {
     );
     final datos = await _decodificar(
       res,
-      fallback: 'No se pudo comprobar tu cuenta de pagos.',
+      fallback: 'payments_api.check_error'.tr(),
     );
     return datos['connected'] == true;
   }
@@ -156,10 +151,7 @@ class PaymentsApi {
       headers: ApiService.authHeaders,
     );
     return VendorPaymentMethods.fromJson(
-      await _decodificar(
-        res,
-        fallback: 'No se pudieron cargar los métodos de pago.',
-      ),
+      await _decodificar(res, fallback: 'payments_api.methods_error'.tr()),
     );
   }
 
@@ -179,7 +171,7 @@ class PaymentsApi {
     if (res.statusCode != 200) {
       throw excepcionDeRespuesta(
         res,
-        fallback: 'No se pudieron cargar tus tarjetas.',
+        fallback: 'payments_api.cards_error'.tr(),
       );
     }
     final datos = jsonDecode(res.body) as List<dynamic>;
@@ -209,7 +201,7 @@ class PaymentsApi {
       await _decodificar(
         res,
         esperado: 201,
-        fallback: 'No se pudo guardar la tarjeta.',
+        fallback: 'payments_api.save_card_error'.tr(),
       ),
     );
   }
@@ -220,7 +212,7 @@ class PaymentsApi {
       ApiService.apiUri('/payments/vendors/$vendorId/cards/$cardId'),
       headers: ApiService.authHeaders,
     );
-    await _decodificar(res, fallback: 'No se pudo eliminar la tarjeta.');
+    await _decodificar(res, fallback: 'payments_api.delete_card_error'.tr());
   }
 
   // ─── Órdenes ──────────────────────────────────────────────
@@ -247,7 +239,10 @@ class PaymentsApi {
       body: jsonEncode(body),
     );
     if (res.statusCode != 201) {
-      throw excepcionDeRespuesta(res, fallback: 'No se pudo crear la orden.');
+      throw excepcionDeRespuesta(
+        res,
+        fallback: 'payments_api.create_order_error'.tr(),
+      );
     }
     final datos = jsonDecode(res.body) as List<dynamic>;
     return datos
@@ -266,7 +261,7 @@ class PaymentsApi {
       headers: ApiService.authHeaders,
     );
     return PaymentOrder.fromJson(
-      await _decodificar(res, fallback: 'No se pudo consultar tu compra.'),
+      await _decodificar(res, fallback: 'payments_api.order_error'.tr()),
     );
   }
 
@@ -281,7 +276,7 @@ class PaymentsApi {
     if (res.statusCode != 200) {
       throw excepcionDeRespuesta(
         res,
-        fallback: 'No se pudieron cargar tus compras.',
+        fallback: 'payments_api.orders_error'.tr(),
       );
     }
     final datos = jsonDecode(res.body) as List<dynamic>;
@@ -319,7 +314,7 @@ class PaymentsApi {
       }),
     );
     return CheckoutResult.fromJson(
-      await _decodificar(res, fallback: 'No se pudo procesar el pago.'),
+      await _decodificar(res, fallback: 'payments_api.process_error'.tr()),
     );
   }
 
@@ -341,7 +336,7 @@ class PaymentsApi {
       body: jsonEncode({'order_id': orderId}),
     );
     return WalletCheckout.fromJson(
-      await _decodificar(res, fallback: 'No se pudo iniciar el pago.'),
+      await _decodificar(res, fallback: 'payments_api.start_error'.tr()),
     );
   }
 }

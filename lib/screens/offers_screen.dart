@@ -5,6 +5,7 @@ import '../models.dart';
 import '../services/api_service.dart';
 import '../widgets/auto_refresh.dart';
 import '../widgets/product_card.dart';
+import '../widgets/product_grid_metrics.dart';
 import 'product_detail_screen.dart';
 
 class OffersScreen extends StatefulWidget {
@@ -89,9 +90,7 @@ class _OffersScreenState extends State<OffersScreen> with AutoRefreshMixin {
                     itemBuilder: (context, index) {
                       final product = filtered[index];
                       return SizedBox(
-                        // Ver el comentario en search_screen.dart: 122 dejaba
-                        // el contenido a ~2 px de desbordar.
-                        height: 130,
+                        height: ProductGridMetrics.horizontalCardHeight,
                         child: ProductCard(
                           product: product,
                           horizontal: true,
@@ -174,10 +173,6 @@ class _MaxDiscountHeader extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-            ),
-            Text(
-              '${offers.length} ${offers.length == 1 ? 'oferta' : 'ofertas'}',
-              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
           ],
         ),

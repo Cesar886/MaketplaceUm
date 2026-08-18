@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -171,14 +172,14 @@ class _MenuComentario extends StatelessWidget {
                 Icons.delete_outline_rounded,
                 color: AppColors.danger,
               ),
-              title: const Text(
-                'Eliminar comentario',
-                style: TextStyle(
+              title: Text(
+                'comments.delete'.tr(),
+                style: const TextStyle(
                   color: AppColors.danger,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              subtitle: const Text('No se puede deshacer'),
+              subtitle: Text('comments.delete_warning'.tr()),
               onTap: () => Navigator.of(sheetContext).pop(true),
             ),
             ListTile(
@@ -186,7 +187,7 @@ class _MenuComentario extends StatelessWidget {
                 Icons.close_rounded,
                 color: sheetContext.colors.muted,
               ),
-              title: const Text('Cancelar'),
+              title: Text('common.cancel'.tr()),
               onTap: () => Navigator.of(sheetContext).pop(false),
             ),
           ],
@@ -209,7 +210,7 @@ class _MenuComentario extends StatelessWidget {
         splashRadius: 18,
         color: context.colors.muted,
         icon: const Icon(Icons.more_horiz_rounded),
-        tooltip: 'Opciones del comentario',
+        tooltip: 'comments.options'.tr(),
         onPressed: () => _abrir(context),
       ),
     );

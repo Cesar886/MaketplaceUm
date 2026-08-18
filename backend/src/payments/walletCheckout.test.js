@@ -1142,7 +1142,7 @@ test('registra qué enlace se le devolvió al comprador', async () => {
 test('con un vendedor de prueba no se manda payer.email', async () => {
   // Mercado Pago rechaza pagos de prueba cuyo `payer.email` no corresponde a
   // la cuenta con la que se entra al checkout. Nosotros mandábamos el correo
-  // de la cuenta de Mercadito, que nunca es el del usuario de prueba
+  // de la cuenta de Marketplace, que nunca es el del usuario de prueba
   // comprador: omitirlo deja que MP use el de la sesión.
   const { comprador, orden } = escenario(200, { accessToken: 'APP_USR-1234567890' });
   respuestaValidarToken = async (t) => (

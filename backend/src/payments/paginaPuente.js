@@ -50,7 +50,7 @@ function escapar(texto) {
  * @param {string} [opciones.etiquetaBoton]
  * @returns {string} HTML completo.
  */
-function paginaPuente({ titulo, texto, ok, deepLink, etiquetaBoton = 'Volver a Mercadito UM' }) {
+function paginaPuente({ titulo, texto, ok, deepLink, etiquetaBoton = 'Volver a Marketplace UM' }) {
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

@@ -1,9 +1,10 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../models.dart';
 
 /// Subtítulo de rol que va bajo el nombre de un usuario: la carrera si es
-/// alumno, 'Personal UM' si es personal de la universidad, y la etiqueta de
+/// alumno, 'role.um_staff'.tr() si es personal de la universidad, y la etiqueta de
 /// registro ([Seller.major]) para negocios y particulares.
 ///
 /// Es la ÚNICA fuente del copy: perfil propio, perfil público del vendedor y
@@ -30,7 +31,7 @@ String? subtituloRol(Seller seller) {
   // verificarse. Sin verificar no hay nada comprobado que enseñar.
   if (!seller.verified) return null;
 
-  if (seller.tipoVerificacion == 'empleado') return 'Personal UM';
+  if (seller.tipoVerificacion == 'empleado') return 'role.um_staff'.tr();
 
   final carrera = seller.carrera;
   return (carrera != null && carrera.isNotEmpty) ? carrera : null;

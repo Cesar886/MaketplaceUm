@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +9,8 @@ import '../app_theme.dart';
 import '../providers/auth_provider.dart';
 import '../services/anonymous_id.dart';
 import '../services/api_service.dart';
+import '../services/chat_socket_service.dart';
+import '../services/presence_service.dart';
 import '../services/push_service.dart';
 import 'cart_screen.dart';
 import 'chat_list_screen.dart';
@@ -26,10 +31,13 @@ class MainShell extends StatefulWidget {
   State<MainShell> createState() => MainShellState();
 }
 
-class MainShellState extends State<MainShell> {
+class MainShellState extends State<MainShell> with WidgetsBindingObserver {
   int _currentIndex = 0;
   int _unreadChatCount = 0;
   int _unreadNotifCount = 0;
+
+  StreamSubscription<Map<String, dynamic>>? _presenceSub;
+  StreamSubscription<Map<String, List<String>>>? _snapshotSub;
 
   final _pages = const [
     HomeScreen(),
@@ -43,7 +51,9 @@ class MainShellState extends State<MainShell> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     recargarContadores();
+    _abrirPresencia();
 
     // Manejar taps en notificaciones push
     PushService.instance.onNotificationTap = (data) {
@@ -111,8 +121,8 @@ class MainShellState extends State<MainShell> {
           children: [
             ListTile(
               leading: Icon(Icons.sell_outlined, color: context.colors.primary),
-              title: const Text('Publicar producto'),
-              subtitle: const Text('Vende algo que ya tienes'),
+              title: Text('nav.publish_product'.tr()),
+              subtitle: Text('nav.publish_product_subtitle'.tr()),
               onTap: () {
                 Navigator.of(sheetContext).pop();
                 selectTab(2);
@@ -123,8 +133,8 @@ class MainShellState extends State<MainShell> {
                 Icons.search_rounded,
                 color: context.colors.primary,
               ),
-              title: const Text('Publicar búsqueda'),
-              subtitle: const Text('Di qué estás buscando y te notificamos'),
+              title: Text('nav.publish_wanted'.tr()),
+              subtitle: Text('nav.publish_wanted_subtitle'.tr()),
               onTap: () {
                 Navigator.of(sheetContext).pop();
                 Navigator.of(context).push(
@@ -216,11 +226,66 @@ class MainShellState extends State<MainShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _presenceSub?.cancel();
+    _snapshotSub?.cancel();
     // Limpiar callback para evitar memory leaks
     if (PushService.instance.onNotificationTap != null) {
       PushService.instance.onNotificationTap = null;
     }
     super.dispose();
+  }
+
+  /// Abre la conexión de tiempo real en cuanto hay sesión, no al entrar a la
+  /// lista de chats.
+  ///
+  /// Antes `connect()` + `registerUser()` vivían en ChatListScreen, y con la
+  /// presencia eso significaría aparecer "en línea" solo mientras se mira la
+  /// pantalla de mensajes — que es justo cuando menos falta hace.
+  void _abrirPresencia() {
+    final auth = context.read<AuthProvider>();
+    final sellerId = auth.backendSellerId;
+    if (sellerId == null) return;
+
+    final socket = ChatSocketService.instance;
+    socket.connect();
+    // El token es lo que autoriza a marcar presencia: sin él el servidor
+    // une el socket a la sala pero no enciende el punto (ver register:user).
+    socket.registerUser(sellerId, token: ApiService.token);
+
+    // Los eventos se escuchan UNA vez, aquí y no en cada pantalla: quien
+    // pinta el puntito lee de PresenceService, así que basta con que alguien
+    // lo mantenga al día. El guardia evita duplicar las suscripciones cada
+    // vez que la app vuelve de segundo plano.
+    if (_presenceSub != null) return;
+    final presencia = context.read<PresenceService>();
+    _presenceSub = socket.onPresenceUpdate.listen(presencia.aplicarEvento);
+    _snapshotSub = socket.onPresenceSnapshot.listen((datos) {
+      presencia.aplicarSnapshot(
+        consultados: datos['subscribed'] ?? const [],
+        enLinea: datos['online'] ?? const [],
+      );
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    final socket = ChatSocketService.instance;
+
+    if (state == AppLifecycleState.resumed) {
+      _abrirPresencia();
+      return;
+    }
+    // Al pasar a segundo plano se cierra el transporte a propósito: es lo que
+    // hace que el "desconectado" del otro lado sea verdad en vez de esperar a
+    // que el sistema mate el proceso. Los mensajes que lleguen mientras tanto
+    // siguen avisando por push (FCM), que para eso está.
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      socket.disconnect();
+      if (mounted) context.read<PresenceService>().limpiar();
+    }
   }
 
   void openNotifications() {
@@ -282,7 +347,7 @@ class MainShellState extends State<MainShell> {
                     _NavItem(
                       icon: Icons.home_outlined,
                       selectedIcon: Icons.home_rounded,
-                      label: 'Inicio',
+                      label: 'nav.home'.tr(),
                       index: 0,
                       currentIndex: _currentIndex,
                       onTap: selectTab,
@@ -291,7 +356,7 @@ class MainShellState extends State<MainShell> {
                     _NavItem(
                       icon: Icons.local_offer_outlined,
                       selectedIcon: Icons.local_offer_rounded,
-                      label: 'Ofertas',
+                      label: 'nav.offers'.tr(),
                       index: 1,
                       currentIndex: _currentIndex,
                       onTap: selectTab,
@@ -300,7 +365,7 @@ class MainShellState extends State<MainShell> {
                     _NavItem(
                       icon: Icons.chat_outlined,
                       selectedIcon: Icons.chat_rounded,
-                      label: 'Chat',
+                      label: 'nav.chat'.tr(),
                       index: 4,
                       currentIndex: _currentIndex,
                       onTap: selectTab,
@@ -309,7 +374,7 @@ class MainShellState extends State<MainShell> {
                     _NavItem(
                       icon: Icons.person_outline_rounded,
                       selectedIcon: Icons.person_rounded,
-                      label: 'Perfil',
+                      label: 'nav.profile'.tr(),
                       index: 5,
                       currentIndex: _currentIndex,
                       onTap: selectTab,

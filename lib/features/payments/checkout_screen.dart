@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -147,15 +148,19 @@ class _CheckoutScreenState extends State<CheckoutScreen>
             ? null
             : (metodos.porId('tarjeta')?.unavailableReason ??
                   metodos.walletUnavailableReason ??
-                  '${widget.nombreVendedor ?? 'Este vendedor'} no acepta pagos '
-                      'en la app. Contáctalo por chat para acordar otra forma de pago.');
+                  'checkout.seller_no_payments'.tr(
+                    namedArgs: {
+                      'seller':
+                          widget.nombreVendedor ?? 'checkout.this_seller'.tr(),
+                    },
+                  ));
       });
     } catch (e, s) {
       if (!mounted) return;
       setState(
         () => _error = mensajeDeError(
           e,
-          fallback: 'No se pudo preparar el pago.',
+          fallback: 'checkout.prepare_error'.tr(),
           stack: s,
         ),
       );
@@ -174,27 +179,25 @@ class _CheckoutScreenState extends State<CheckoutScreen>
     return [
       MetodoDePago(
         id: MetodoDePagoId.tarjeta,
-        titulo: 'Tarjeta',
-        subtitulo: 'Débito o crédito. Se paga sin salir de la app.',
+        titulo: 'card.generic'.tr(),
+        subtitulo: 'checkout.card_subtitle'.tr(),
         icono: (context, color) =>
             Icon(Icons.credit_card_rounded, size: 26, color: color),
         motivoNoDisponible: metodos.aceptaTarjeta
             ? null
             : (metodos.porId('tarjeta')?.unavailableReason ??
-                  'Este vendedor no acepta tarjeta en la app.'),
+                  'checkout.card_unavailable'.tr()),
       ),
       MetodoDePago(
         id: MetodoDePagoId.cuentaMp,
-        titulo: 'Mi cuenta de Mercado Pago',
-        subtitulo:
-            'Entra con tu cuenta y paga con tu saldo o tus tarjetas '
-            'guardadas allí. Se abre Mercado Pago y vuelves a la app.',
+        titulo: 'checkout.mp_account'.tr(),
+        subtitulo: 'checkout.mp_account_subtitle'.tr(),
         icono: (context, color) =>
             MarcaMercadoPago(apagado: !metodos.puedeCobrarConCuentaMp),
         motivoNoDisponible: metodos.puedeCobrarConCuentaMp
             ? null
             : (metodos.walletUnavailableReason ??
-                  'Este vendedor no puede cobrar por Mercado Pago.'),
+                  'checkout.mp_unavailable'.tr()),
       ),
     ];
   }
@@ -237,7 +240,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
     if (metodos == null || !metodos.aceptaTarjeta || tarjeta == null) return;
 
     if (_cvv.text.length < 3) {
-      setState(() => _error = 'Escribe el código de seguridad (CVV).');
+      setState(() => _error = 'card.cvv_required'.tr());
       return;
     }
 
@@ -274,7 +277,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
         _pagando = false;
         _error = mensajeDeError(
           e,
-          fallback: 'No se pudo procesar el pago.',
+          fallback: 'payments_api.process_error'.tr(),
           stack: s,
         );
       });
@@ -311,9 +314,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
         if (!mounted) return;
         setState(() {
           _faseMp = _FaseCuentaMp.inicial;
-          _error =
-              'El total de tu compra cambió. Vuelve atrás y ábrela de nuevo '
-              'para revisarlo.';
+          _error = 'checkout.total_changed'.tr();
         });
         return;
       }
@@ -329,7 +330,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
         _volviendoDeMercadoPago = false;
         setState(() {
           _faseMp = _FaseCuentaMp.inicial;
-          _error = 'No se pudo abrir Mercado Pago en tu navegador.';
+          _error = 'mp.browser_error'.tr();
         });
         return;
       }
@@ -341,7 +342,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
         _faseMp = _FaseCuentaMp.inicial;
         _error = mensajeDeError(
           e,
-          fallback: 'No se pudo iniciar el pago con Mercado Pago.',
+          fallback: 'checkout.mp_start_error'.tr(),
           stack: s,
         );
       });
@@ -406,10 +407,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
     if (!mounted || generacion != _generacionDeSondeo) return;
     setState(() {
       _faseMp = _FaseCuentaMp.inicial;
-      _error =
-          'Todavía no recibimos la confirmación de Mercado Pago. Si ya '
-          'pagaste, no vuelvas a pagar: revísalo en "Mis compras" en un '
-          'par de minutos.';
+      _error = 'checkout.mp_no_confirmation'.tr();
     });
   }
 
@@ -479,7 +477,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
         ),
         const SizedBox(height: 24),
         Text(
-          'Cómo quieres pagar',
+          'checkout.how_to_pay'.tr(),
           style: TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w700,
@@ -539,7 +537,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
         TextButton.icon(
           onPressed: _ocupado ? null : _agregarTarjeta,
           icon: const Icon(Icons.add, size: 18),
-          label: const Text('Agregar otra tarjeta'),
+          label: Text('checkout.add_another_card'.tr()),
         ),
       ],
       if (_seleccionada != null) ...[
@@ -555,10 +553,10 @@ class _CheckoutScreenState extends State<CheckoutScreen>
           ],
           style: TextStyle(color: colors.ink),
           decoration: InputDecoration(
-            labelText:
-                'CVV de la tarjeta terminada en '
-                '${_seleccionada!.lastFourDigits}',
-            helperText: 'Se pide en cada compra por seguridad.',
+            labelText: 'checkout.cvv_for_card'.tr(
+              namedArgs: {'last4': _seleccionada!.lastFourDigits},
+            ),
+            helperText: 'checkout.cvv_helper'.tr(),
             helperStyle: TextStyle(fontSize: 11, color: colors.muted),
             filled: true,
             fillColor: colors.surfaceMuted,
@@ -612,10 +610,8 @@ class _CheckoutScreenState extends State<CheckoutScreen>
               Expanded(
                 child: Text(
                   verificando
-                      ? 'Confirmando tu pago con Mercado Pago. Puede tardar '
-                            'unos segundos; no cierres esta pantalla.'
-                      : 'Termina el pago en Mercado Pago y vuelve a la app. '
-                            'En cuanto vuelvas lo confirmamos aquí.',
+                      ? 'checkout.mp_confirming'.tr()
+                      : 'checkout.mp_finish_outside'.tr(),
                   style: TextStyle(
                     fontSize: 13,
                     height: 1.4,
@@ -642,22 +638,17 @@ class _CheckoutScreenState extends State<CheckoutScreen>
           children: [
             _Punto(
               icono: Icons.open_in_new_rounded,
-              texto:
-                  'Se abre Mercado Pago fuera de la app para que entres con '
-                  'tu cuenta.',
+              texto: 'checkout.mp_point_open'.tr(),
             ),
             const SizedBox(height: 10),
             _Punto(
               icono: Icons.account_balance_wallet_outlined,
-              texto:
-                  'Pagas con tu saldo, tus tarjetas guardadas allí o meses '
-                  'sin intereses, según lo que tengas.',
+              texto: 'checkout.mp_point_balance'.tr(),
             ),
             const SizedBox(height: 10),
             _Punto(
               icono: Icons.lock_outline_rounded,
-              texto:
-                  'Escribes tus datos en Mercado Pago, no en Mercadito UM.',
+              texto: 'checkout.mp_point_data'.tr(),
             ),
           ],
         ),
@@ -677,7 +668,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
     switch (_metodoActivo) {
       case MetodoDePagoId.tarjeta:
         return BotonDePago(
-          etiqueta: 'Pagar $total',
+          etiqueta: 'checkout.pay_total'.tr(namedArgs: {'total': total}),
           cargando: _pagando,
           onPressed: (_seleccionada == null || _ocupado) ? null : _pagar,
         );
@@ -690,17 +681,20 @@ class _CheckoutScreenState extends State<CheckoutScreen>
           return OutlinedButton.icon(
             onPressed: _verificarPagoConCuentaMp,
             icon: const Icon(Icons.refresh_rounded, size: 19),
-            label: const Padding(
-              padding: EdgeInsets.symmetric(vertical: 4),
+            label: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
               child: Text(
-                'Ya pagué, verificar',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                'checkout.already_paid'.tr(),
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           );
         }
         return BotonDePago(
-          etiqueta: 'Pagar $total con Mercado Pago',
+          etiqueta: 'checkout.pay_total_mp'.tr(namedArgs: {'total': total}),
           icono: Icons.open_in_new_rounded,
           cargando: _faseMp != _FaseCuentaMp.inicial,
           onPressed: _ocupado ? null : _pagarConCuentaMp,
@@ -768,7 +762,7 @@ class _ResumenOrden extends StatelessWidget {
         children: [
           if (nombreVendedor != null) ...[
             Text(
-              'Le compras a $nombreVendedor',
+              'checkout.buying_from'.tr(namedArgs: {'seller': nombreVendedor!}),
               style: TextStyle(fontSize: 12, color: colors.muted),
             ),
             const SizedBox(height: 10),
@@ -782,8 +776,8 @@ class _ResumenOrden extends StatelessWidget {
                   Expanded(
                     child: Text(
                       item.quantity > 1
-                          ? '${item.quantity}× ${item.title ?? 'Producto'}'
-                          : (item.title ?? 'Producto'),
+                          ? '${item.quantity}× ${item.title ?? 'chat.product_fallback'.tr()}'
+                          : (item.title ?? 'chat.product_fallback'.tr()),
                       style: TextStyle(fontSize: 14, color: colors.ink),
                     ),
                   ),
@@ -877,8 +871,12 @@ class _FilaTarjeta extends StatelessWidget {
                     if (tarjeta.vencimiento.isNotEmpty)
                       Text(
                         vencida
-                            ? 'Vencida (${tarjeta.vencimiento})'
-                            : 'Vence ${tarjeta.vencimiento}',
+                            ? 'checkout.card_expired'.tr(
+                                namedArgs: {'date': tarjeta.vencimiento},
+                              )
+                            : 'checkout.card_expires'.tr(
+                                namedArgs: {'date': tarjeta.vencimiento},
+                              ),
                         style: TextStyle(
                           fontSize: 12,
                           color: vencida ? colors.danger : colors.muted,
@@ -917,14 +915,11 @@ class _SinTarjetas extends StatelessWidget {
           Icon(Icons.credit_card_off_outlined, size: 32, color: colors.muted),
           const SizedBox(height: 10),
           Text(
-            'Todavía no tienes tarjetas guardadas.',
+            'checkout.no_saved_cards'.tr(),
             style: TextStyle(fontSize: 14, color: colors.mutedStrong),
           ),
           const SizedBox(height: 12),
-          FilledButton(
-            onPressed: onAgregar,
-            child: const Text('Agregar tarjeta'),
-          ),
+          FilledButton(onPressed: onAgregar, child: Text('card.add'.tr())),
         ],
       ),
     );
@@ -948,9 +943,9 @@ class PaymentResultScreen extends StatelessWidget {
     };
 
     final titulo = switch (resultado.estado) {
-      EstadoPago.aprobado => 'Pago completado',
-      EstadoPago.pendiente => 'Pago en revisión',
-      EstadoPago.rechazado => 'Pago rechazado',
+      EstadoPago.aprobado => 'checkout.result_approved'.tr(),
+      EstadoPago.pendiente => 'checkout.result_pending'.tr(),
+      EstadoPago.rechazado => 'checkout.result_rejected'.tr(),
     };
 
     return PopScope(
@@ -1011,12 +1006,12 @@ class PaymentResultScreen extends StatelessWidget {
                       // solo otra tarjeta. Prometer "otra tarjeta" a quien
                       // acaba de fallar pagando con su cuenta de Mercado
                       // Pago le esconde justo la salida que sí tiene.
-                      child: Text(
-                        switch (resultado.metodo) {
-                          MetodoDePagoId.tarjeta => 'Intentar con otra tarjeta',
-                          MetodoDePagoId.cuentaMp => 'Intentar de otra forma',
-                        },
-                      ),
+                      child: Text(switch (resultado.metodo) {
+                        MetodoDePagoId.tarjeta =>
+                          'checkout.try_another_card'.tr(),
+                        MetodoDePagoId.cuentaMp =>
+                          'checkout.try_another_way'.tr(),
+                      }),
                     ),
                   ),
                 const SizedBox(height: 10),
@@ -1024,8 +1019,8 @@ class PaymentResultScreen extends StatelessWidget {
                   onPressed: () => Navigator.pop(context, false),
                   child: Text(
                     resultado.estado == EstadoPago.rechazado
-                        ? 'Cancelar'
-                        : 'Listo',
+                        ? 'common.cancel'.tr()
+                        : 'common.done'.tr(),
                     style: TextStyle(color: colors.muted),
                   ),
                 ),

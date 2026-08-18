@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../../app_theme.dart';
@@ -28,14 +29,14 @@ class _HighlightPlansScreenState extends State<HighlightPlansScreen> {
       setState(() => _plans = plans);
     } catch (_) {
       if (!mounted) return;
-      setState(() => _error = 'No se pudieron cargar los planes.');
+      setState(() => _error = 'plans.load_error'.tr());
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Planes para destacar')),
+      appBar: AppBar(title: Text('profile.highlight_plans'.tr())),
       body: SafeArea(child: _buildBody()),
     );
   }
@@ -52,7 +53,7 @@ class _HighlightPlansScreenState extends State<HighlightPlansScreen> {
     if (_plans!.isEmpty) {
       return Center(
         child: Text(
-          'No hay planes disponibles por el momento.',
+          'plans.empty'.tr(),
           style: TextStyle(color: context.colors.muted),
         ),
       );

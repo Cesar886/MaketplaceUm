@@ -12,7 +12,7 @@ export default function NoEncontrado() {
       </p>
       <div style={{ marginTop: 26 }}>
         <Link className="boton-principal" href="/">
-          Conocer Mercadito UM
+          Conocer Marketplace UM
         </Link>
       </div>
     </main>

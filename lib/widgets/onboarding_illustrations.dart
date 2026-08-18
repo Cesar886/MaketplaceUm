@@ -137,7 +137,7 @@ abstract class _EscenaPainter extends CustomPainter {
   bool shouldRepaint(covariant _EscenaPainter old) => old.p != p;
 }
 
-/// Escena 1 — el puesto de mercado: qué es Mercadito UM.
+/// Escena 1 — el puesto de mercado: qué es Marketplace UM.
 class _PuestoPainter extends _EscenaPainter {
   const _PuestoPainter(super.p);
 
@@ -221,12 +221,7 @@ class _DescubrePainter extends _EscenaPainter {
       borde: p.borde,
       radio: 6,
     );
-    caja(
-      canvas,
-      const Rect.fromLTWH(16, 24, 42, 28),
-      fondo: p.tinte,
-      radio: 4,
-    );
+    caja(canvas, const Rect.fromLTWH(16, 24, 42, 28), fondo: p.tinte, radio: 4);
     // Montañita dentro de la "foto": el símbolo universal de imagen.
     final foto = Path()
       ..moveTo(22, 48)
@@ -237,14 +232,17 @@ class _DescubrePainter extends _EscenaPainter {
       ..close();
     canvas.drawPath(foto, lleno(p.tinteBorde));
 
-    canvas.drawLine(const Offset(16, 60), const Offset(50, 60), trazo(p.borde, 3));
-    canvas.drawLine(const Offset(16, 67), const Offset(38, 67), trazo(p.borde, 3));
-    caja(
-      canvas,
-      const Rect.fromLTWH(16, 72, 20, 7),
-      fondo: p.acento,
-      radio: 3,
+    canvas.drawLine(
+      const Offset(16, 60),
+      const Offset(50, 60),
+      trazo(p.borde, 3),
     );
+    canvas.drawLine(
+      const Offset(16, 67),
+      const Offset(38, 67),
+      trazo(p.borde, 3),
+    );
+    caja(canvas, const Rect.fromLTWH(16, 72, 20, 7), fondo: p.acento, radio: 3);
 
     // Burbuja de chat encimada a la tarjeta: el contacto sale del producto,
     // no es una pantalla aparte.
@@ -313,7 +311,11 @@ class _VendePainter extends _EscenaPainter {
     canvas.drawPath(etiqueta, lleno(p.superficie));
     canvas.drawPath(etiqueta, trazo(p.tinta, 1.8));
     canvas.drawCircle(const Offset(9, 7), 2.2, trazo(p.tinta, 1.6));
-    canvas.drawLine(const Offset(13, 13), const Offset(22, 13), trazo(p.acento, 2.4));
+    canvas.drawLine(
+      const Offset(13, 13),
+      const Offset(22, 13),
+      trazo(p.acento, 2.4),
+    );
     canvas.restore();
   }
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -18,6 +19,7 @@ import '../widgets/badges.dart';
 import '../widgets/bounce_on_increase.dart';
 import '../widgets/home_grid_skeleton.dart';
 import '../widgets/product_card.dart';
+import '../widgets/product_grid_metrics.dart';
 import '../widgets/wanted_post_card.dart';
 import 'main_shell.dart';
 import 'product_detail_screen.dart';
@@ -171,9 +173,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _error = mensajeDeError(
           e,
           stack: stack,
-          fallback:
-              'No pudimos cargar el inicio. Revisa tu conexión e '
-              'intenta de nuevo.',
+          fallback: 'home.load_error'.tr(),
         );
       });
     }
@@ -253,7 +253,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ElevatedButton.icon(
                   onPressed: _loadData,
                   icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('Reintentar'),
+                  label: Text('common.retry'.tr()),
                 ),
               ],
             ),
@@ -497,17 +497,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           sliver: SliverLayoutBuilder(
             builder: (context, constraints) {
               final width = constraints.crossAxisExtent;
-              final columns = width >= 720 ? 3 : 2;
+              final columns = ProductGridMetrics.columnsFor(width);
               return AnimatedBuilder(
                 animation: _staggerController,
                 builder: (context, _) {
                   return SliverGrid.builder(
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: columns,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: columns == 3 ? 0.72 : 0.62,
-                    ),
+                    gridDelegate: ProductGridMetrics.delegateFor(columns),
                     itemCount: run.length,
                     itemBuilder: (context, index) {
                       final entry = run[index];
@@ -636,12 +631,21 @@ class _HighlightPlansBanner extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Destaca sin pagar de más',
+                      'home.highlight_cta_title'.tr(),
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      'Desde ${topPlan.price} por ${topPlan.days == 1 ? '24h' : '${topPlan.days} días'}; también hay plan mensual.',
+                      'home.highlight_cta_subtitle'.tr(
+                        namedArgs: {
+                          'price': '${topPlan.price}',
+                          'duration': topPlan.days == 1
+                              ? 'home.duration_24h'.tr()
+                              : 'home.duration_days'.tr(
+                                  namedArgs: {'days': '${topPlan.days}'},
+                                ),
+                        },
+                      ),
                       style: TextStyle(
                         color: context.colors.muted,
                         fontWeight: FontWeight.w600,
@@ -802,7 +806,7 @@ class _FavHeaderButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return _HeaderIconButton(
       icon: Icons.favorite_outline_rounded,
-      tooltip: 'Favoritos',
+      tooltip: 'nav.favorites'.tr(),
       badgeCount: itemCount,
       onTap: onTap,
     );
@@ -852,9 +856,9 @@ class _CategoryFilterChipState extends State<_CategoryFilterChip> {
       setState(() => _isFollowing = !_isFollowing);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error al cambiar seguimiento')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('home.follow_error'.tr())));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -967,8 +971,7 @@ class _SearchBoxState extends State<_SearchBox> {
   }
 
   void _scheduleNextTick() {
-    final term =
-        widget.trendingTerms[_termIndex % widget.trendingTerms.length];
+    final term = widget.trendingTerms[_termIndex % widget.trendingTerms.length];
     final Duration delay;
     if (!_deleting && _charCount >= term.length) {
       delay = _pauseAtFull;
@@ -1018,10 +1021,8 @@ class _SearchBoxState extends State<_SearchBox> {
     // solo se ve sin red o con el catálogo vacío — nunca en operación normal.
     final hasTerms = terms.isNotEmpty;
     final displayText = hasTerms
-        ? _capitalize(
-            terms[_termIndex % terms.length],
-          ).substring(0, _charCount)
-        : 'Buscar en Mercadito UM...';
+        ? _capitalize(terms[_termIndex % terms.length]).substring(0, _charCount)
+        : 'home.search_placeholder'.tr();
 
     return Material(
       color: context.colors.surface,
@@ -1312,7 +1313,7 @@ class _BusinessCard extends StatelessWidget {
                               Text(
                                 seller.reviews > 0
                                     ? '${seller.rating.toStringAsFixed(1)} (${seller.reviews})'
-                                    : 'Sin calificaciones',
+                                    : 'home.no_ratings'.tr(),
                                 style: TextStyle(
                                   color: context.colors.muted,
                                   fontWeight: FontWeight.w600,
@@ -1384,7 +1385,7 @@ class _BusinessCard extends StatelessWidget {
                                           ),
                                           SizedBox(height: 6),
                                           Text(
-                                            'Ver todo',
+                                            'common.see_all'.tr(),
                                             style: TextStyle(
                                               fontWeight: FontWeight.w600,
                                               color: context.colors.muted,
@@ -1449,7 +1450,7 @@ class _NotificationBellState extends State<_NotificationBell> {
 
     return _HeaderIconButton(
       icon: Icons.notifications_outlined,
-      tooltip: 'Notificaciones',
+      tooltip: 'nav.notifications'.tr(),
       badgeCount: _unreadCount,
       onTap: () {
         widget.onTap();
@@ -1470,7 +1471,7 @@ class _ScanQrButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return _HeaderIconButton(
       icon: Icons.qr_code_scanner_rounded,
-      tooltip: 'Escanear QR',
+      tooltip: 'nav.scan_qr'.tr(),
       onTap: onTap,
     );
   }

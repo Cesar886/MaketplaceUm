@@ -956,9 +956,18 @@ function register(app) {
         console.warn(`Omitiendo price_history para ${product.id}: oldPrice no es un número válido (${oldPrice})`);
       }
 
-      // ─── Calcular descuento contra el precio más alto de los últimos 30 días ──
-      const highestIn30d = db.getHighestPriceInLastDays(product.id, 30);
-      const referencePrice = Math.max(oldPrice, highestIn30d || 0);
+      // ─── Calcular descuento contra el precio inmediatamente anterior ──────
+      // La referencia es `oldPrice` y NADA más. Antes se usaba
+      // `Math.max(oldPrice, máximo de los últimos 30 días)`, y ese máximo
+      // actuaba como un techo que nunca bajaba: un producto que llegó a
+      // $11,000, cayó a $5 y se volvió a subir a $7,500 entraba aquí como
+      // "oferta de -32%" — el dueño había SUBIDO el precio. Comparar contra
+      // el precio que el producto tenía justo antes de esta edición es lo
+      // único que hace que "bajó de precio" signifique lo que dice.
+      //
+      // El historial sigue alimentando el cooldown y el rate limit de arriba,
+      // que son sus usos legítimos.
+      const referencePrice = oldPrice;
 
       if (isCooldownPassed && newPrice < referencePrice && referencePrice > 0) {
         const discountPercent = Math.round((1 - newPrice / referencePrice) * 100);

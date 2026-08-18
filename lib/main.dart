@@ -1,9 +1,11 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'app_theme.dart';
+import 'config/locales.dart';
 import 'providers/accent_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
@@ -11,6 +13,7 @@ import 'screens/auth/login_screen.dart';
 import 'screens/splash_screen.dart';
 import 'services/api_service.dart';
 import 'services/deep_link_service.dart';
+import 'services/presence_service.dart';
 import 'services/push_service.dart';
 
 /// Llaves globales: el cierre de sesión por token inválido se dispara desde
@@ -29,7 +32,7 @@ Future<void> _cerrarSesionExpirada() async {
   await contexto.read<AuthProvider>().logout();
 
   scaffoldMessengerKey.currentState?.showSnackBar(
-    const SnackBar(content: Text('Tu sesión expiró, inicia sesión de nuevo')),
+    SnackBar(content: Text('errors.session_expired'.tr())),
   );
 
   // Se vacía la pila entera: cualquier pantalla que quedara abajo pertenece a
@@ -42,6 +45,11 @@ Future<void> _cerrarSesionExpirada() async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // easy_localization guarda el idioma elegido en su propio almacenamiento
+  // local y lo restaura aquí, antes de que se pinte nada: sin esto la app
+  // arrancaría en español y saltaría al idioma guardado a media carga.
+  await EasyLocalization.ensureInitialized();
 
   ApiService.onSesionInvalidada = _cerrarSesionExpirada;
 
@@ -61,13 +69,26 @@ void main() async {
   DeepLinkService.instance.iniciar();
 
   runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        ChangeNotifierProvider(create: (_) => AccentProvider()),
-      ],
-      child: const MyApp(),
+    // EasyLocalization envuelve a los providers, no al revés: al cambiar de
+    // idioma reconstruye a sus hijos, y si quedara por dentro se perdería el
+    // estado de sesión en cada cambio.
+    EasyLocalization(
+      supportedLocales: AppLocales.localesSoportados,
+      path: AppLocales.rutaTraducciones,
+      fallbackLocale: AppLocales.fallback,
+      startLocale: AppLocales.es,
+      child: MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => AuthProvider()),
+          ChangeNotifierProvider(create: (_) => ThemeProvider()),
+          ChangeNotifierProvider(create: (_) => AccentProvider()),
+          // Vive arriba del todo porque el mismo estado se pinta en la lista
+          // de chats y en el perfil del vendedor: con una instancia por
+          // pantalla las dos se contradirían.
+          ChangeNotifierProvider(create: (_) => PresenceService()),
+        ],
+        child: const MyApp(),
+      ),
     ),
   );
 }
@@ -83,10 +104,16 @@ class MyApp extends StatelessWidget {
     // la app entera se repinta por el mismo camino que el modo oscuro.
     final swatch = context.watch<AccentProvider>().swatch;
     return MaterialApp(
-      title: 'Mercadito UM',
+      title: 'Marketplace UM',
       navigatorKey: navigatorKey,
       scaffoldMessengerKey: scaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
+      // Idioma: lo resuelve EasyLocalization a partir del guardado en disco.
+      // `localizationsDelegates` también trae las traducciones de los widgets
+      // de Material (el "OK"/"Cancel" de los date pickers, etc.).
+      locale: context.locale,
+      supportedLocales: context.supportedLocales,
+      localizationsDelegates: context.localizationDelegates,
       theme: AppTheme.light(swatch),
       darkTheme: AppTheme.dark(swatch),
       themeMode: theme.themeMode,

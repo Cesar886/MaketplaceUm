@@ -30,6 +30,7 @@ import 'package:mercadito_um/models.dart';
 import 'package:mercadito_um/widgets/category_attributes_form.dart';
 import 'package:mercadito_um/widgets/product_attributes_section.dart';
 import 'package:mercadito_um/widgets/product_card.dart';
+import 'package:mercadito_um/widgets/product_grid_metrics.dart';
 
 const _dirSalida = 'build/capturas_atributos';
 
@@ -294,7 +295,7 @@ void main() {
 
     Widget celda(Product p) => SizedBox(
       width: 171,
-      height: 171 / 0.64,
+      height: 171 / ProductGridMetrics.aspectRatioFor(2),
       child: ProductCard(product: p, heroEnabled: false),
     );
 
@@ -347,7 +348,9 @@ void main() {
   });
 
   testWidgets('captura · resultados de búsqueda', (tester) async {
-    tester.view.physicalSize = const Size(390 * 2, 300 * 2);
+    // 320 y no 300: dos filas de 130 (la altura real de search_screen) más
+    // el separador de 12 y el padding de 18x2 piden 308.
+    tester.view.physicalSize = const Size(390 * 2, 320 * 2);
     tester.view.devicePixelRatio = 2;
     addTearDown(tester.view.reset);
 
@@ -358,7 +361,7 @@ void main() {
           child: Column(
             children: [
               SizedBox(
-                height: 122,
+                height: ProductGridMetrics.horizontalCardHeight,
                 child: ProductCard(
                   product: producto(
                     categoria: 'clothes',
@@ -378,7 +381,7 @@ void main() {
               ),
               const SizedBox(height: 12),
               SizedBox(
-                height: 122,
+                height: ProductGridMetrics.horizontalCardHeight,
                 child: ProductCard(
                   product: producto(
                     categoria: 'food',

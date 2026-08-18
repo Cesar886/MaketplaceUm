@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -104,7 +105,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 const AppLogo(size: 78, showText: false),
                 const SizedBox(height: 28),
                 Text(
-                  'Mercadito UM',
+                  'app.name'.tr(),
                   style: Theme.of(
                     context,
                   ).textTheme.headlineMedium?.copyWith(fontSize: 34),
@@ -112,7 +113,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Marketplace seguro para estudiantes universitarios',
+                  'app.tagline'.tr(),
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: context.colors.muted,

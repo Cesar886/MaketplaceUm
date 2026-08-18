@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -180,7 +181,14 @@ class _GridProductCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 6),
-            productStatusBadge(product),
+            // El badge también cede ancho, mismo criterio que la fila de la
+            // tarjeta horizontal: con el badge a su tamaño natural, la fila
+            // solo aguantaba mientras el texto del estado no creciera, y
+            // subirle el grosor de w600 a w700 bastó para desbordarla en la
+            // tarjeta angosta del carrusel. Flexible deja que se recorte
+            // (su Text ya es maxLines 1 con ellipsis) en vez de pintar la
+            // barra amarilla.
+            Flexible(child: productStatusBadge(product)),
           ],
         ),
       ],
@@ -233,8 +241,11 @@ class _HorizontalProductCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 2),
-              // Mismo intercambio que en la tarjeta de cuadrícula: los
-              // atributos sustituyen a la descripción.
+              // Aquí SÍ se hace el intercambio atributos↔descripción; la
+              // celda de la cuadrícula ya no lo hace (se quedó con la
+              // descripción a dos renglones). Esta tarjeta es más ancha y la
+              // fila de badges cabe en un solo renglón, que es lo que en la
+              // celda angosta del home no se cumplía.
               if (product.atributosDestacados.isNotEmpty)
                 AtributosDestacadosRow(atributos: product.atributosDestacados)
               else
@@ -361,7 +372,7 @@ class _HeroProductImage extends StatelessWidget {
                     ],
                   ),
                   child: Text(
-                    'Agotado',
+                    'status.sold_out'.tr(),
                     style: AppTypography.label(
                       13,
                       weight: FontWeight.w800,
@@ -405,11 +416,7 @@ class _ViewsPill extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.visibility_rounded,
-              size: 11,
-              color: Colors.white,
-            ),
+            const Icon(Icons.visibility_rounded, size: 11, color: Colors.white),
             const SizedBox(width: 3),
             Text(
               formatCompactNumber(views),

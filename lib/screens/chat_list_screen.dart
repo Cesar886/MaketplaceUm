@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -9,6 +10,8 @@ import '../providers/auth_provider.dart';
 import '../services/anonymous_id.dart';
 import '../services/api_service.dart';
 import '../services/chat_socket_service.dart';
+import '../services/presence_service.dart';
+import '../widgets/online_status_avatar.dart';
 import 'chat_screen.dart';
 import 'main_shell.dart';
 import 'seller_profile_screen.dart';
@@ -29,6 +32,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
   StreamSubscription<String>? _convSub;
   StreamSubscription<Map<String, dynamic>>? _msgSub;
 
+  /// Interlocutores cuya presencia se está siguiendo, para poder soltarlos en
+  /// el `dispose`: la conexión es única y compartida con el resto de la app.
+  List<String> _seguidos = const [];
+
   @override
   void initState() {
     super.initState();
@@ -38,11 +45,15 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Future<void> _initAsync() async {
     _userId = await _getChatUserId();
 
-    // Conectar socket y registrarse para recibir notificaciones
+    // Conectar socket y registrarse para recibir notificaciones.
+    //
+    // Con sesión iniciada MainShell ya hizo esto (y con token, que es lo que
+    // enciende la presencia); aquí se conserva para el caso anónimo, que no
+    // pasa por ese camino pero sí necesita los eventos de mensajes.
     final socket = ChatSocketService.instance;
     socket.connect();
     if (_userId.isNotEmpty) {
-      socket.registerUser(_userId);
+      socket.registerUser(_userId, token: ApiService.token);
     }
 
     // Escuchar actualizaciones de conversaciones
@@ -62,7 +73,33 @@ class _ChatListScreenState extends State<ChatListScreen> {
   void dispose() {
     _convSub?.cancel();
     _msgSub?.cancel();
+    ChatSocketService.instance.unsubscribePresence(_seguidos);
     super.dispose();
+  }
+
+  /// Siembra el estado que trajo el REST y se suscribe a los cambios en vivo.
+  ///
+  /// Se llama en cada [_load] porque la lista de interlocutores cambia sola
+  /// (una conversación nueva llega por socket).
+  void _seguirPresencia(List<Conversation> conversaciones) {
+    final presencia = context.read<PresenceService>();
+    final ids = <String>[];
+    for (final conv in conversaciones) {
+      final otro = conv.otherUser;
+      if (otro == null || otro.id.isEmpty) continue;
+      presencia.sembrar(otro.id, otro.estadoConexion);
+      ids.add(otro.id);
+    }
+
+    final socket = ChatSocketService.instance;
+    final anteriores = _seguidos;
+    _seguidos = ids;
+    // Suscribir ANTES de soltar la tanda anterior, no al revés: las dos
+    // listas se solapan casi entera, y en el otro orden los ids repetidos
+    // bajarían a cero referencias y provocarían un unsubscribe + subscribe
+    // por cada recarga. Así solo viajan las altas y las bajas de verdad.
+    socket.subscribePresence(ids);
+    socket.unsubscribePresence(anteriores);
   }
 
   /// Retorna el userId a usar en las peticiones de chat:
@@ -82,13 +119,15 @@ class _ChatListScreenState extends State<ChatListScreen> {
       _userId = await _getChatUserId();
       final data = await ApiService.getConversations(userId: _userId);
       if (!mounted) return;
+      final conversaciones = (data['conversations'] as List<dynamic>)
+          .map((e) => Conversation.fromJson(e as Map<String, dynamic>))
+          .toList();
       setState(() {
-        _conversations = (data['conversations'] as List<dynamic>)
-            .map((e) => Conversation.fromJson(e as Map<String, dynamic>))
-            .toList();
+        _conversations = conversaciones;
         _unreadCount = data['unreadCount'] as int? ?? 0;
         _loading = false;
       });
+      _seguirPresencia(conversaciones);
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -140,7 +179,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                         ),
                         SizedBox(height: 16),
                         Text(
-                          'Sin conversaciones',
+                          'chat.list_empty_title'.tr(),
                           style: TextStyle(
                             color: context.colors.muted,
                             fontWeight: FontWeight.w600,
@@ -149,7 +188,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                         ),
                         SizedBox(height: 8),
                         Text(
-                          'Envía un mensaje desde cualquier\nproducto para iniciar un chat.',
+                          'chat.list_empty_subtitle'.tr(),
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: context.colors.muted,
@@ -218,7 +257,9 @@ class _ConversationTile extends StatelessWidget {
     final otherUser = conversation.otherUser;
     final product = conversation.product;
     final productName =
-        product?.title ?? conversation.wantedPostTitle ?? 'Producto';
+        product?.title ??
+        conversation.wantedPostTitle ??
+        'chat.product_fallback'.tr();
     final unread =
         conversation.lastMessage != null &&
         conversation.lastMessage!.senderId !=
@@ -256,30 +297,22 @@ class _ConversationTile extends StatelessWidget {
                           ),
                         )
                       : null,
-                  child: CircleAvatar(
+                  // `watch` y no `read`: es lo que hace que el puntito se
+                  // encienda solo cuando llega el evento del socket, sin que
+                  // la persona tenga que recargar la lista.
+                  child: OnlineStatusAvatar(
                     radius: 24,
-                    backgroundColor: context.colors.primary.withValues(
-                      alpha: 0.12,
-                    ),
-                    backgroundImage:
+                    iniciales: otherUser?.avatarInitials,
+                    imageUrl:
                         otherUser?.logoUrl != null &&
                             otherUser!.logoUrl!.isNotEmpty
-                        ? NetworkImage(
-                            '${ApiService.baseUrl}${otherUser.logoUrl}',
-                          )
+                        ? '${ApiService.baseUrl}${otherUser.logoUrl}'
                         : null,
-                    child:
-                        otherUser?.logoUrl == null ||
-                            otherUser!.logoUrl!.isEmpty
-                        ? Text(
-                            otherUser?.avatarInitials ?? '?',
-                            style: TextStyle(
-                              color: context.colors.accent,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 16,
-                            ),
-                          )
-                        : null,
+                    enLinea: otherUser != null &&
+                        context
+                            .watch<PresenceService>()
+                            .estadoDe(otherUser.id)
+                            .enLinea,
                   ),
                 ),
               ),
@@ -317,7 +350,7 @@ class _ConversationTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      'Sobre: $productName',
+                      'chat.about'.tr(namedArgs: {'product': productName}),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -330,7 +363,7 @@ class _ConversationTile extends StatelessWidget {
                     Text(
                       conversation.lastMessagePreview.isNotEmpty
                           ? conversation.lastMessagePreview
-                          : 'Haz clic para ver la conversación',
+                          : 'chat.tap_to_open'.tr(),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(

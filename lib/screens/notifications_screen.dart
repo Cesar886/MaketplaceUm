@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -65,7 +66,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Inicia sesión para ver tus notificaciones',
+                'notifications.login_prompt'.tr(),
                 style: TextStyle(color: context.colors.muted),
               ),
               const SizedBox(height: 20),
@@ -73,7 +74,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
                 ),
-                child: const Text('Iniciar sesión'),
+                child: Text('auth.login_button'.tr()),
               ),
             ],
           ),
@@ -84,7 +85,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return SafeArea(
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Notificaciones'),
+          title: Text('nav.notifications'.tr()),
           actions: [
             if (_notifications.any((n) => !n.read))
               TextButton(
@@ -108,7 +109,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     });
                   } catch (_) {}
                 },
-                child: const Text('Leer todas'),
+                child: Text('notifications.mark_all_read'.tr()),
               ),
           ],
         ),
@@ -130,7 +131,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           ),
                           SizedBox(height: 16),
                           Text(
-                            'Sin notificaciones',
+                            'notifications.empty_title'.tr(),
                             style: TextStyle(
                               color: context.colors.muted,
                               fontWeight: FontWeight.w600,
@@ -139,7 +140,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           ),
                           SizedBox(height: 8),
                           Text(
-                            'Sigue categorías para recibir\navisos de nuevos productos.',
+                            'notifications.empty_subtitle'.tr(),
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: context.colors.muted,

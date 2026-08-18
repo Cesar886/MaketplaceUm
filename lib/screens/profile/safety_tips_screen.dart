@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../../app_theme.dart';
@@ -5,50 +6,29 @@ import '../../app_theme.dart';
 class SafetyTipsScreen extends StatelessWidget {
   const SafetyTipsScreen({super.key});
 
-  static const _tips = <(IconData, String, String)>[
-    (
-      Icons.badge_rounded,
-      'Verifica el perfil antes de reunirte',
-      'Revisa la calificación, las opiniones y si el vendedor tiene el badge '
-          'de verificación antes de coordinar una entrega.',
-    ),
-    (
-      Icons.location_on_rounded,
-      'Reúnete en zonas públicas del campus',
-      'Prefiere lugares concurridos como bibliotecas, cafeterías o entradas '
-          'de edificios. Evita zonas aisladas o fuera del campus.',
-    ),
-    (
-      Icons.inventory_2_rounded,
-      'Revisa el producto antes de pagar',
-      'Comprueba que el artículo coincide con la publicación y que funciona '
-          'correctamente antes de completar el pago.',
-    ),
-    (
-      Icons.payments_rounded,
-      'Desconfía de pagos por adelantado fuera de la app',
-      'No transfieras dinero por adelantado a cuentas externas. Realiza el '
-          'intercambio en persona, producto y pago al mismo tiempo.',
-    ),
-    (
-      Icons.report_rounded,
-      'Reporta cualquier comportamiento sospechoso',
-      'Si un usuario te pide datos personales, presiona para salir de la '
-          'app o parece una estafa, repórtalo desde su perfil o contacta a soporte.',
-    ),
+  /// Icono + clave: el texto se traduce al pintarlo (ver [_faqs] en
+  /// help_screen para el mismo motivo).
+  static const _tips = <(IconData, String)>[
+    (Icons.badge_rounded, 'verify_profile'),
+    (Icons.location_on_rounded, 'public_places'),
+    (Icons.inventory_2_rounded, 'check_product'),
+    (Icons.payments_rounded, 'no_prepayment'),
+    (Icons.report_rounded, 'report_suspicious'),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Confianza y seguridad')),
+      appBar: AppBar(title: Text('profile.safety'.tr())),
       body: SafeArea(
         child: ListView.separated(
           padding: const EdgeInsets.all(18),
           itemCount: _tips.length,
           separatorBuilder: (_, _) => const SizedBox(height: 12),
           itemBuilder: (context, index) {
-            final (icon, title, description) = _tips[index];
+            final (icon, clave) = _tips[index];
+            final title = 'safety.${clave}_t'.tr();
+            final description = 'safety.${clave}_d'.tr();
             return Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(

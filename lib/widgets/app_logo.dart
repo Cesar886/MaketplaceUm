@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 class AppLogo extends StatelessWidget {
@@ -37,7 +38,7 @@ class AppLogo extends StatelessWidget {
         const SizedBox(width: 6),
         Flexible(
           child: Text(
-            'Mercadito UM',
+            'app.name'.tr(),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(

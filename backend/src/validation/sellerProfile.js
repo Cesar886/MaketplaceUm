@@ -204,7 +204,7 @@ const VALID_ACCENT_IDS = [
 function validateColorAcento(colorAcento) {
   if (colorAcento === undefined || colorAcento === null) return null;
   if (typeof colorAcento !== 'string' || !VALID_ACCENT_IDS.includes(colorAcento)) {
-    return 'Color de acento inválido';
+    return 'Theme inválido';
   }
   return null;
 }

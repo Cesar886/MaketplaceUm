@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -105,7 +106,7 @@ class _HoursSummary extends StatelessWidget {
             Row(
               children: [
                 Text(
-                  'Horario de hoy',
+                  'hours.today'.tr(),
                   style: AppTypography.label(12, color: context.colors.muted),
                 ),
                 if (isOpen != null) ...[
@@ -116,7 +117,9 @@ class _HoursSummary extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              range != null ? '${range.open} – ${range.close}' : 'Cerrado hoy',
+              range != null
+                  ? '${range.open} – ${range.close}'
+                  : 'hours.closed_today'.tr(),
               style: AppTypography.heading(16, color: context.colors.ink),
             ),
             const SizedBox(height: 6),
@@ -124,7 +127,7 @@ class _HoursSummary extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  expanded ? 'Ocultar horario semanal' : 'Ver horario semanal',
+                  expanded ? 'hours.hide_week'.tr() : 'hours.show_week'.tr(),
                   style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
@@ -161,7 +164,7 @@ class _LocationOnlyLabel extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          'Ubicación',
+          'map.location'.tr(),
           style: AppTypography.label(12, color: context.colors.muted),
         ),
         const SizedBox(height: 4),
@@ -175,7 +178,7 @@ class _LocationOnlyLabel extends StatelessWidget {
             ),
             SizedBox(width: 4),
             Text(
-              'Ver en Maps',
+              'map.open_in_maps'.tr(),
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,

@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -25,12 +26,19 @@ class AccountCreatedScreen extends StatelessWidget {
               const AppLogo(size: 64, showText: false),
               const SizedBox(height: 20),
               Text(
-                '¡Cuenta creada!',
+                'auth.account_created_title'.tr(),
                 style: Theme.of(context).textTheme.headlineSmall,
               ),
               const SizedBox(height: 8),
               Text(
-                'Bienvenido${user?['name'] != null ? ', ${user!['name']}' : ''}',
+                // Dos claves distintas en vez de concatenar: en inglés el
+                // saludo con nombre no es 'Welcome' + ', Ana', y armarlo
+                // por pedazos deja la coma fuera de la traducción.
+                user?['name'] != null
+                    ? 'auth.welcome_named'.tr(
+                        namedArgs: {'name': '${user!['name']}'},
+                      )
+                    : 'auth.welcome'.tr(),
                 style: TextStyle(
                   color: context.colors.muted,
                   fontWeight: FontWeight.w600,
@@ -51,12 +59,12 @@ class AccountCreatedScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     _SummaryRow(
-                      label: 'Tipo de cuenta',
+                      label: 'auth.account_type'.tr(),
                       value: auth.accountTypeLabel,
                     ),
                     const Divider(height: 20),
                     _SummaryRow(
-                      label: 'Estado de verificación',
+                      label: 'auth.verification_status'.tr(),
                       value: _verificationLabel(auth),
                     ),
                     const SizedBox(height: 12),
@@ -87,7 +95,7 @@ class AccountCreatedScreen extends StatelessWidget {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Puedes completar o modificar tu verificación desde tu perfil en cualquier momento.',
+                        'auth.verification_later_hint'.tr(),
                         style: TextStyle(
                           color: context.colors.accent,
                           fontWeight: FontWeight.w600,
@@ -110,7 +118,7 @@ class AccountCreatedScreen extends StatelessWidget {
                       (_) => false,
                     );
                   },
-                  child: const Text('Ir al inicio'),
+                  child: Text('auth.go_home'.tr()),
                 ),
               ),
               const SizedBox(height: 12),
@@ -126,7 +134,7 @@ class AccountCreatedScreen extends StatelessWidget {
   /// no. Si no lo está, es porque el usuario pospuso el trámite o porque sus
   /// datos fueron rechazados; en ambos casos puede retomarlo desde el perfil.
   String _verificationLabel(AuthProvider auth) =>
-      auth.isVerified ? 'Verificada' : 'Sin verificar';
+      auth.isVerified ? 'auth.verified'.tr() : 'auth.unverified'.tr();
 
   Widget _buildVerificationBadge(BuildContext context, AuthProvider auth) {
     if (auth.isVerified) {
@@ -149,7 +157,7 @@ class AccountCreatedScreen extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           Text(
-            'Sin verificar',
+            'auth.unverified'.tr(),
             style: TextStyle(
               color: context.colors.muted,
               fontWeight: FontWeight.w700,

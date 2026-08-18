@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -146,7 +147,7 @@ class _BloqueRespuesta extends StatelessWidget {
             Flexible(
               child: Text(
                 sellerName == null
-                    ? 'Respuesta del vendedor'
+                    ? 'questions.seller_answer'.tr()
                     : 'Respuesta de $sellerName',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -195,7 +196,7 @@ class _BadgePendiente extends StatelessWidget {
           ),
           const SizedBox(width: 5),
           Text(
-            'Pendiente de respuesta',
+            'questions.pending'.tr(),
             style: TextStyle(fontSize: 12, color: context.colors.muted),
           ),
         ],

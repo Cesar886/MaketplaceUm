@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../../app_theme.dart';
@@ -9,7 +10,7 @@ class RegisterTypeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Crear cuenta')),
+      appBar: AppBar(title: Text('auth.create_account'.tr())),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
@@ -17,12 +18,12 @@ class RegisterTypeScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '¿Cómo quieres registrarte?',
+                'auth.register_type_title'.tr(),
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 8),
               Text(
-                'Elige el tipo de cuenta que mejor describa tu rol.',
+                'auth.register_type_subtitle'.tr(),
                 style: TextStyle(
                   color: context.colors.muted,
                   fontWeight: FontWeight.w600,
@@ -38,21 +39,20 @@ class RegisterTypeScreen extends StatelessWidget {
                       // tipo_cuenta interno ('estudiante'): lo que los
                       // distingue es el dominio de correo que eligen al
                       // verificarse (ver constants/dominios_um.dart).
-                      title: 'Estudiante o personal UM',
-                      subtitle:
-                          'Alumno o empleado de la Universidad de Montemorelos',
-                      features: ['Publica libros, apuntes, electrónicos y más'],
+                      title: 'auth.type_student_title'.tr(),
+                      subtitle: 'auth.type_student_subtitle'.tr(),
+                      features: ['auth.type_student_feature_1'.tr()],
                       color: context.colors.accent,
                       onTap: () => _goToForm(context, 'estudiante'),
                     ),
                     const SizedBox(height: 12),
                     _TypeCard(
                       emoji: '🏪',
-                      title: 'Negocio',
-                      subtitle: 'Puesto dentro o cerca del campus',
+                      title: 'auth.type_vendor_title'.tr(),
+                      subtitle: 'auth.type_vendor_subtitle'.tr(),
                       features: [
-                        'Vende comida, papelería, servicios y más',
-                        'Confirmación manual por administrador',
+                        'auth.type_vendor_feature_1'.tr(),
+                        'auth.type_vendor_feature_2'.tr(),
                       ],
                       color: context.colors.accent,
                       onTap: () => _goToForm(context, 'negocio'),
@@ -60,11 +60,11 @@ class RegisterTypeScreen extends StatelessWidget {
                     const SizedBox(height: 12),
                     _TypeCard(
                       emoji: '🧑',
-                      title: 'Particular',
-                      subtitle: 'Persona externa a la universidad',
+                      title: 'auth.type_external_title'.tr(),
+                      subtitle: 'auth.type_external_subtitle'.tr(),
                       features: [
-                        'Ofrece hospedaje, servicios y productos',
-                        'Verifica tu identidad opcionalmente',
+                        'auth.type_external_feature_1'.tr(),
+                        'auth.type_external_feature_2'.tr(),
                       ],
                       color: context.colors.accent,
                       onTap: () => _goToForm(context, 'particular'),

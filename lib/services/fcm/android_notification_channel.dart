@@ -24,8 +24,9 @@ final FlutterLocalNotificationsPlugin localNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
 const String kNotificationChannelId = 'mercadito_um_default';
-const String kNotificationChannelName = 'Mercadito UM';
-const String kNotificationChannelDescription = 'Notificaciones de Mercadito UM';
+const String kNotificationChannelName = 'Marketplace UM';
+const String kNotificationChannelDescription =
+    'Notificaciones de Marketplace UM';
 
 Future<void> createAndroidNotificationChannel() async {
   if (!Platform.isAndroid) return;

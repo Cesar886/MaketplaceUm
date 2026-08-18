@@ -111,7 +111,10 @@ void main() {
 
   group('depurarRespuestas', () {
     test('descarta las respuestas de otra categoría', () {
-      final limpio = depurarRespuestas({'talla': 'M', 'edicion': 'Original'}, 'books');
+      final limpio = depurarRespuestas({
+        'talla': 'M',
+        'edicion': 'Original',
+      }, 'books');
       expect(limpio, {'edicion': 'Original'});
     });
 
@@ -146,26 +149,26 @@ void main() {
     });
 
     test('descarta el condicional si su padre está apagado', () {
-      final limpio = depurarRespuestas(
-        {'tiene_garantia': false, 'duracion_garantia': '6 meses'},
-        'books',
-      );
+      final limpio = depurarRespuestas({
+        'tiene_garantia': false,
+        'duracion_garantia': '6 meses',
+      }, 'books');
       expect(limpio, {'tiene_garantia': false});
     });
 
     test('conserva el condicional si su padre está encendido', () {
-      final limpio = depurarRespuestas(
-        {'tiene_garantia': true, 'duracion_garantia': '6 meses'},
-        'books',
-      );
+      final limpio = depurarRespuestas({
+        'tiene_garantia': true,
+        'duracion_garantia': '6 meses',
+      }, 'books');
       expect(limpio['duracion_garantia'], '6 meses');
     });
 
     test('descarta textos vacíos y listas vacías', () {
-      final limpio = depurarRespuestas(
-        {'talla': '   ', 'marca': 'Nike'},
-        'clothes',
-      );
+      final limpio = depurarRespuestas({
+        'talla': '   ',
+        'marca': 'Nike',
+      }, 'clothes');
       expect(limpio, {'marca': 'Nike'});
     });
 
@@ -174,10 +177,10 @@ void main() {
     });
 
     test('una categoría desconocida deja solo las generales', () {
-      final limpio = depurarRespuestas(
-        {'precio_negociable': true, 'talla': 'M'},
-        'categoria_retirada',
-      );
+      final limpio = depurarRespuestas({
+        'precio_negociable': true,
+        'talla': 'M',
+      }, 'categoria_retirada');
       expect(limpio, {'precio_negociable': true});
     });
   });
@@ -215,38 +218,43 @@ void main() {
       expect(find.text('Estado de la prenda'), findsNothing);
     });
 
-    testWidgets('responder sí a un booleano lo guarda como true', (tester) async {
+    testWidgets('responder sí a un booleano lo guarda como true', (
+      tester,
+    ) async {
       final leer = await montar(tester, categoria: 'books');
 
       final fila = find.ancestor(
         of: find.text('¿El precio es negociable?'),
         matching: find.byType(Row),
       );
-      await tester.tap(find.descendant(of: fila.first, matching: find.text('Sí')));
+      await tester.tap(
+        find.descendant(of: fila.first, matching: find.text('Sí')),
+      );
       await tester.pump();
 
       expect(leer()['precio_negociable'], isTrue);
     });
 
-    testWidgets('volver a tocar la misma opción deja la pregunta sin responder', (
-      tester,
-    ) async {
-      // Sin esto, tocar por accidente una pregunta opcional la vuelve
-      // irreversible.
-      final leer = await montar(tester, categoria: 'books');
-      final fila = find.ancestor(
-        of: find.text('¿El precio es negociable?'),
-        matching: find.byType(Row),
-      );
-      final si = find.descendant(of: fila.first, matching: find.text('Sí'));
+    testWidgets(
+      'volver a tocar la misma opción deja la pregunta sin responder',
+      (tester) async {
+        // Sin esto, tocar por accidente una pregunta opcional la vuelve
+        // irreversible.
+        final leer = await montar(tester, categoria: 'books');
+        final fila = find.ancestor(
+          of: find.text('¿El precio es negociable?'),
+          matching: find.byType(Row),
+        );
+        final si = find.descendant(of: fila.first, matching: find.text('Sí'));
 
-      await tester.tap(si);
-      await tester.pump();
-      await tester.tap(si);
-      await tester.pump();
+        await tester.tap(si);
+        await tester.pump();
+        await tester.tap(si);
+        await tester.pump();
 
-      expect(leer().containsKey('precio_negociable'), isFalse);
-    });
+        expect(leer().containsKey('precio_negociable'), isFalse);
+      },
+    );
 
     testWidgets('el campo condicional aparece solo al encender su padre', (
       tester,
@@ -258,7 +266,9 @@ void main() {
         of: find.text('¿Tiene garantía?'),
         matching: find.byType(Row),
       );
-      await tester.tap(find.descendant(of: fila.first, matching: find.text('Sí')));
+      await tester.tap(
+        find.descendant(of: fila.first, matching: find.text('Sí')),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('¿Cuánto dura la garantía?'), findsOneWidget);
@@ -278,7 +288,9 @@ void main() {
         of: find.text('¿Tiene garantía?'),
         matching: find.byType(Row),
       );
-      await tester.tap(find.descendant(of: fila.first, matching: find.text('No')));
+      await tester.tap(
+        find.descendant(of: fila.first, matching: find.text('No')),
+      );
       await tester.pumpAndSettle();
 
       expect(leer().containsKey('duracion_garantia'), isFalse);
@@ -303,9 +315,13 @@ void main() {
         matching: find.byType(Row),
       );
 
-      await tester.tap(find.descendant(of: fila.first, matching: find.text('No')));
+      await tester.tap(
+        find.descendant(of: fila.first, matching: find.text('No')),
+      );
       await tester.pumpAndSettle();
-      await tester.tap(find.descendant(of: fila.first, matching: find.text('Sí')));
+      await tester.tap(
+        find.descendant(of: fila.first, matching: find.text('Sí')),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('¿Cuánto dura la garantía?'), findsOneWidget);
@@ -393,7 +409,9 @@ void main() {
       // Hospedaje tiene varios campos de texto; el del chip es el único con
       // este hint.
       final input = find.byWidgetPredicate(
-        (w) => w is TextField && w.decoration?.hintText == 'Escribe y presiona enter',
+        (w) =>
+            w is TextField &&
+            w.decoration?.hintText == 'Escribe y presiona enter',
       );
       await tester.enterText(input.first, texto);
       await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -501,15 +519,14 @@ void main() {
       tester,
     ) async {
       final leer = await montar(tester, categoria: 'clothes');
-      await tester.enterText(
-        find.widgetWithText(TextField, 'Talla'),
-        '  M  ',
-      );
+      await tester.enterText(find.widgetWithText(TextField, 'Talla'), '  M  ');
       await tester.pump();
       expect(leer()['talla'], 'M');
     });
 
-    testWidgets('los valores iniciales precargan el formulario', (tester) async {
+    testWidgets('los valores iniciales precargan el formulario', (
+      tester,
+    ) async {
       // Es el caso de editar una publicación existente.
       await montar(
         tester,
@@ -525,7 +542,9 @@ void main() {
   group('ProductAttributesSection', () {
     testWidgets('no pinta nada si no hay respuestas', (tester) async {
       final producto = Product.fromJson(productoJson());
-      await tester.pumpWidget(envolver(ProductAttributesSection(product: producto)));
+      await tester.pumpWidget(
+        envolver(ProductAttributesSection(product: producto)),
+      );
       expect(find.text('Detalles adicionales'), findsNothing);
     });
 
@@ -533,7 +552,9 @@ void main() {
       final producto = Product.fromJson(
         productoJson(atributos: {'talla': 'M', 'marca': 'Nike'}),
       );
-      await tester.pumpWidget(envolver(ProductAttributesSection(product: producto)));
+      await tester.pumpWidget(
+        envolver(ProductAttributesSection(product: producto)),
+      );
       await expandirDetalles(tester);
 
       expect(find.text('Detalles adicionales'), findsOneWidget);
@@ -544,8 +565,12 @@ void main() {
     });
 
     testWidgets('omite las preguntas sin responder', (tester) async {
-      final producto = Product.fromJson(productoJson(atributos: {'talla': 'M'}));
-      await tester.pumpWidget(envolver(ProductAttributesSection(product: producto)));
+      final producto = Product.fromJson(
+        productoJson(atributos: {'talla': 'M'}),
+      );
+      await tester.pumpWidget(
+        envolver(ProductAttributesSection(product: producto)),
+      );
       expect(find.text('Marca'), findsNothing);
       expect(find.text('Estado de la prenda'), findsNothing);
     });
@@ -559,7 +584,9 @@ void main() {
       final producto = Product.fromJson(
         productoJson(atributos: {'cambio_talla': true}),
       );
-      await tester.pumpWidget(envolver(ProductAttributesSection(product: producto)));
+      await tester.pumpWidget(
+        envolver(ProductAttributesSection(product: producto)),
+      );
       await expandirDetalles(tester);
 
       expect(find.text('Aplica cambio de talla si no queda'), findsOneWidget);
@@ -574,7 +601,9 @@ void main() {
       final producto = Product.fromJson(
         productoJson(atributos: {'acepta_devoluciones': false}),
       );
-      await tester.pumpWidget(envolver(ProductAttributesSection(product: producto)));
+      await tester.pumpWidget(
+        envolver(ProductAttributesSection(product: producto)),
+      );
       await expandirDetalles(tester);
 
       expect(find.text('Aceptas devoluciones/reembolsos'), findsOneWidget);
@@ -592,7 +621,9 @@ void main() {
           },
         ),
       );
-      await tester.pumpWidget(envolver(ProductAttributesSection(product: producto)));
+      await tester.pumpWidget(
+        envolver(ProductAttributesSection(product: producto)),
+      );
       await expandirDetalles(tester);
 
       expect(find.text('Luz'), findsOneWidget);
@@ -610,7 +641,9 @@ void main() {
           atributos: {'tiene_garantia': false, 'duracion_garantia': '6 meses'},
         ),
       );
-      await tester.pumpWidget(envolver(ProductAttributesSection(product: producto)));
+      await tester.pumpWidget(
+        envolver(ProductAttributesSection(product: producto)),
+      );
       expect(find.text('6 meses'), findsNothing);
     });
 
@@ -620,7 +653,9 @@ void main() {
       final producto = Product.fromJson(
         productoJson(atributos: {'talla': 'M', 'pregunta_del_futuro': 'valor'}),
       );
-      await tester.pumpWidget(envolver(ProductAttributesSection(product: producto)));
+      await tester.pumpWidget(
+        envolver(ProductAttributesSection(product: producto)),
+      );
       await expandirDetalles(tester);
       expect(find.text('valor'), findsNothing);
       expect(find.text('M'), findsOneWidget);
@@ -637,10 +672,7 @@ void main() {
       await tester.pumpWidget(
         envolver(ProductAttributesSection(product: producto)),
       );
-      expect(
-        tester.getSize(find.byType(ProductAttributesSection)).height,
-        0,
-      );
+      expect(tester.getSize(find.byType(ProductAttributesSection)).height, 0);
     });
 
     testWidgets('un booleano se muestra como Sí, no con su badgeLabel', (
@@ -660,14 +692,22 @@ void main() {
       expect(find.text('Opción veggie'), findsNothing);
     });
 
-    testWidgets('respeta el orden del catálogo, no el del JSON', (tester) async {
+    testWidgets('respeta el orden del catálogo, no el del JSON', (
+      tester,
+    ) async {
       // Dos productos de la misma categoría tienen que leerse igual.
       final producto = Product.fromJson(
         productoJson(
-          atributos: {'estado_ropa': 'Nueva', 'talla': 'M', 'precio_negociable': true},
+          atributos: {
+            'estado_ropa': 'Nueva',
+            'talla': 'M',
+            'precio_negociable': true,
+          },
         ),
       );
-      await tester.pumpWidget(envolver(ProductAttributesSection(product: producto)));
+      await tester.pumpWidget(
+        envolver(ProductAttributesSection(product: producto)),
+      );
       await expandirDetalles(tester);
 
       double y(String texto) => tester.getTopLeft(find.text(texto)).dy;

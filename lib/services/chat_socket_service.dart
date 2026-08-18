@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../config/app_config.dart';
+import 'presence_subscriptions.dart';
 
 /// Servicio para manejar la conexión Socket.IO en tiempo real.
 ///
@@ -39,6 +40,22 @@ class ChatSocketService {
       StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<Map<String, dynamic>> _commentDeletedController =
       StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _presenceController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, List<String>>>
+  _presenceSnapshotController =
+      StreamController<Map<String, List<String>>>.broadcast();
+
+  /// Credenciales del usuario de esta sesión, guardadas para poder re-emitir
+  /// `register:user` en cada reconexión: el servidor pierde la sala y la
+  /// presencia cuando el transporte se cae, y sin esto la persona aparecería
+  /// desconectada tras el primer bache de red hasta que reabriera el chat.
+  String? _userId;
+  String? _token;
+
+  /// Quién sigue a quién, con contador: dos pantallas pueden estar mirando a
+  /// la misma persona y solo la última en irse debe abandonar la sala.
+  final PresenceSubscriptions _presenceSubs = PresenceSubscriptions();
 
   /// Stream de mensajes nuevos: emite { message, conversationId }
   Stream<Map<String, dynamic>> get onNewMessage => _messageController.stream;
@@ -58,6 +75,17 @@ class ChatSocketService {
 
   /// Stream de conversaciones actualizadas: emite conversationId
   Stream<String> get onConversationUpdated => _convUpdateController.stream;
+
+  /// Stream de cambios de presencia: emite { userId, online, lastActive }
+  Stream<Map<String, dynamic>> get onPresenceUpdate =>
+      _presenceController.stream;
+
+  /// Stream del estado inicial tras suscribirse: emite
+  /// { subscribed: [...], online: [...] }. La primera lista dice por quiénes
+  /// se concedió la suscripción, y es lo que permite apagar a quien ya no
+  /// está en línea en vez de solo encender a quien sí.
+  Stream<Map<String, List<String>>> get onPresenceSnapshot =>
+      _presenceSnapshotController.stream;
 
   bool get isConnected => _connected;
 
@@ -92,6 +120,17 @@ class ChatSocketService {
     _socket!.onConnect((_) {
       _connected = true;
       debugPrint('🟢 ChatSocket conectado');
+      // Re-registrarse en cada conexión, no solo en la primera: socket.io
+      // reconecta solo tras un bache de red, pero el servidor ya olvidó las
+      // salas y la presencia de este socket.
+      if (_userId != null) registerUser(_userId!, token: _token);
+      // Y volver a pedir las salas de presencia: los refcounts del cliente
+      // siguen intactos (las pantallas no se fueron a ningún lado), pero el
+      // servidor ya no sabe nada de este socket.
+      final seguidos = _presenceSubs.activos;
+      if (seguidos.isNotEmpty) {
+        _socket?.emit('presence:subscribe', [seguidos]);
+      }
     });
 
     _socket!.onDisconnect((_) {
@@ -141,6 +180,21 @@ class ChatSocketService {
       }
     });
 
+    _socket!.on('presence:update', (data) {
+      if (data is Map<String, dynamic>) {
+        _presenceController.add(data);
+      }
+    });
+
+    _socket!.on('presence:snapshot', (data) {
+      if (data is Map && data['online'] is List && data['subscribed'] is List) {
+        _presenceSnapshotController.add({
+          'subscribed': (data['subscribed'] as List).whereType<String>().toList(),
+          'online': (data['online'] as List).whereType<String>().toList(),
+        });
+      }
+    });
+
     _socket!.onConnectError((_) {
       debugPrint('⚠️ ChatSocket error de conexión');
     });
@@ -173,8 +227,43 @@ class ChatSocketService {
   }
 
   /// Registrar el userId para recibir notificaciones de nuevas conversaciones
-  void registerUser(String userId) {
-    _socket?.emit('register:user', [userId]);
+  /// y, si se pasa [token], quedar marcado como "en línea".
+  ///
+  /// El token es obligatorio para la presencia y no para las notificaciones a
+  /// propósito: el estado en línea lo ven terceros, así que un userId que
+  /// cualquiera puede escribir no basta para encenderlo. El servidor acepta
+  /// las dos formas (ver register:user en index.js).
+  void registerUser(String userId, {String? token}) {
+    _userId = userId;
+    _token = token;
+    _socket?.emit('register:user', {'userId': userId, 'token': token});
+  }
+
+  /// Olvidar al usuario de esta sesión. Se llama al cerrar sesión para que la
+  /// siguiente reconexión no vuelva a marcar en línea a quien ya salió.
+  void forgetUser() {
+    _userId = null;
+    _token = null;
+  }
+
+  /// Empezar a recibir cambios de estado en línea de [userIds].
+  ///
+  /// El servidor responde con un `presence:snapshot` en la misma vuelta, así
+  /// que la pantalla no tiene que esperar a que alguien cambie de estado para
+  /// enterarse del actual.
+  void subscribePresence(List<String> userIds) {
+    final nuevos = _presenceSubs.agregar(userIds);
+    if (nuevos.isEmpty) return;
+    _socket?.emit('presence:subscribe', [nuevos]);
+  }
+
+  /// Dejar de seguir el estado de [userIds]. Igual que con las salas de
+  /// producto, hay que llamarlo en el `dispose` de la pantalla: la conexión
+  /// es única y compartida.
+  void unsubscribePresence(List<String> userIds) {
+    final sobrantes = _presenceSubs.quitar(userIds);
+    if (sobrantes.isEmpty) return;
+    _socket?.emit('presence:unsubscribe', [sobrantes]);
   }
 
   /// Notificar que el usuario está escribiendo
@@ -214,5 +303,7 @@ class ChatSocketService {
     _convUpdateController.close();
     _commentController.close();
     _commentDeletedController.close();
+    _presenceController.close();
+    _presenceSnapshotController.close();
   }
 }

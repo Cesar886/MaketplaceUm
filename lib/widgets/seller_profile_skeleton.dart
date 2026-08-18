@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app_shimmer.dart';
 import 'product_card_skeleton.dart';
+import 'product_grid_metrics.dart';
 
 /// Skeleton del perfil de vendedor: identidad (avatar + nombre + carrera +
 /// rating), botón de WhatsApp, bloque de horario/ubicación, íconos de
@@ -70,12 +71,12 @@ class SellerProfileSkeleton extends StatelessWidget {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: _productCount,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 0.66,
-            ),
+            // El grid real de seller_profile_screen usa estas mismas
+            // medidas; leerlas de la constante es lo que evita que el
+            // skeleton vuelva a quedarse atrás (se había quedado en 0.66
+            // cuando el grid ya iba en 0.62, y las tarjetas saltaban al
+            // terminar de cargar).
+            gridDelegate: ProductGridMetrics.delegateFor(2),
             itemBuilder: (context, index) => const ProductCardSkeleton(),
           ),
         ],
