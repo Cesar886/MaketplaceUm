@@ -319,26 +319,36 @@ class _PreferenceSwitch extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: context.colors.surfaceElevated,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: context.colors.border),
       ),
-      child: SwitchListTile(
-        secondary: Icon(icon, color: context.colors.primary),
-        title: Text(
-          title,
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: context.colors.ink,
+      // El fondo va en el Material, no en este Container: SwitchListTile
+      // pinta su ripple sobre el Material ancestro más cercano, y un
+      // Container con color de por medio lo tapa (error en debug de
+      // Flutter).
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        color: context.colors.surfaceElevated,
+        child: SwitchListTile(
+          secondary: Icon(icon, color: context.colors.primary),
+          title: Text(
+            title,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: context.colors.ink,
+            ),
           ),
+          subtitle: Text(
+            subtitle,
+            style: TextStyle(color: context.colors.muted),
+          ),
+          value: value,
+          onChanged: onChanged,
+          activeTrackColor: context.colors.primary,
+          activeThumbColor: Colors.white,
+          inactiveTrackColor: context.colors.surfaceMuted,
+          inactiveThumbColor: context.colors.muted,
         ),
-        subtitle: Text(subtitle, style: TextStyle(color: context.colors.muted)),
-        value: value,
-        onChanged: onChanged,
-        activeTrackColor: context.colors.primary,
-        activeThumbColor: Colors.white,
-        inactiveTrackColor: context.colors.surfaceMuted,
-        inactiveThumbColor: context.colors.muted,
       ),
     );
   }
@@ -353,42 +363,51 @@ class _DarkModeToggle extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: context.colors.surfaceElevated,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: context.colors.border),
       ),
-      child: SwitchListTile(
-        secondary: Container(
-          width: 36,
-          height: 36,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: context.colors.primary.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(9),
+      // El fondo va en el Material, no en este Container: SwitchListTile
+      // pinta su ripple sobre el Material ancestro más cercano, y un
+      // Container con color de por medio lo tapa (error en debug de
+      // Flutter).
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        color: context.colors.surfaceElevated,
+        child: SwitchListTile(
+          secondary: Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: context.colors.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(
+              theme.darkMode
+                  ? Icons.dark_mode_rounded
+                  : Icons.light_mode_rounded,
+              color: context.colors.accent,
+              size: 19,
+            ),
           ),
-          child: Icon(
-            theme.darkMode ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-            color: context.colors.accent,
-            size: 19,
+          title: Text(
+            'settings.dark_mode'.tr(),
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: context.colors.ink,
+            ),
           ),
-        ),
-        title: Text(
-          'settings.dark_mode'.tr(),
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: context.colors.ink,
+          subtitle: Text(
+            'settings.dark_mode_subtitle'.tr(),
+            style: TextStyle(color: context.colors.muted),
           ),
+          value: theme.darkMode,
+          onChanged: (_) => theme.toggleDarkMode(),
+          activeTrackColor: context.colors.primary,
+          activeThumbColor: Colors.white,
+          inactiveTrackColor: context.colors.surfaceMuted,
+          inactiveThumbColor: context.colors.muted,
         ),
-        subtitle: Text(
-          'settings.dark_mode_subtitle'.tr(),
-          style: TextStyle(color: context.colors.muted),
-        ),
-        value: theme.darkMode,
-        onChanged: (_) => theme.toggleDarkMode(),
-        activeTrackColor: context.colors.primary,
-        activeThumbColor: Colors.white,
-        inactiveTrackColor: context.colors.surfaceMuted,
-        inactiveThumbColor: context.colors.muted,
       ),
     );
   }

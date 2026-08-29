@@ -1,5 +1,5 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart';
 
 /// Franja de swipe-back nativo (iOS) ligeramente más ancha que el default de
 /// Flutter (~20px, ver `_kBackGestureWidth` en `flutter/cupertino/route.dart`

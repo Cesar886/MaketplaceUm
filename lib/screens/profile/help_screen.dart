@@ -32,27 +32,37 @@ class HelpScreen extends StatelessWidget {
             final answer = 'help.${clave}_a'.tr();
             return Container(
               decoration: BoxDecoration(
-                color: context.colors.surface,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: context.colors.border),
               ),
-              child: ExpansionTile(
-                title: Text(
-                  question,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                expandedCrossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    answer,
+              // El fondo va en el Material, no en este Container:
+              // ExpansionTile pinta el ripple de su ListTile interno sobre
+              // el Material ancestro más cercano, y un Container con color
+              // de por medio lo tapa (error en debug de Flutter).
+              clipBehavior: Clip.antiAlias,
+              child: Material(
+                color: context.colors.surface,
+                child: ExpansionTile(
+                  title: Text(
+                    question,
                     style: TextStyle(
-                      color: context.colors.muted,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: context.colors.ink,
                     ),
                   ),
-                ],
+                  childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      answer,
+                      style: TextStyle(
+                        color: context.colors.muted,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           },

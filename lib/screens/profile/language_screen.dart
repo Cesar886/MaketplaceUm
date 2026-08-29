@@ -96,34 +96,42 @@ class _LanguageOption extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: seleccionado ? colors.accentTint : colors.surfaceElevated,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: seleccionado ? colors.accentTintBorder : colors.border,
           width: seleccionado ? 1.5 : 1,
         ),
       ),
-      child: ListTile(
-        onTap: onTap,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        leading: Icon(
-          Icons.translate_rounded,
-          color: seleccionado ? colors.accent : colors.primary,
+      // El fondo va en el Material, no en este Container: ListTile pinta su
+      // ripple sobre el Material ancestro más cercano, y un Container con
+      // color de por medio lo tapa (error en debug de Flutter).
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        color: seleccionado ? colors.accentTint : colors.surfaceElevated,
+        child: ListTile(
+          onTap: onTap,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          leading: Icon(
+            Icons.translate_rounded,
+            color: seleccionado ? colors.accent : colors.primary,
+          ),
+          // El nombre principal va en su propio idioma ("English", no
+          // "Inglés"): quien viene a esta pantalla puede no entender el
+          // idioma activo, y su lengua debe reconocerla sin traducción.
+          title: Text(
+            AppLocales.nombreNativo(locale),
+            style: TextStyle(fontWeight: FontWeight.w700, color: colors.ink),
+          ),
+          subtitle: Text(
+            AppLocales.claveNombre(locale).tr(),
+            style: TextStyle(fontSize: 12, color: colors.muted),
+          ),
+          trailing: seleccionado
+              ? Icon(Icons.check_circle_rounded, color: colors.accent)
+              : Icon(Icons.circle_outlined, color: colors.border),
         ),
-        // El nombre principal va en su propio idioma ("English", no
-        // "Inglés"): quien viene a esta pantalla puede no entender el idioma
-        // activo, y su lengua debe reconocerla sin traducción.
-        title: Text(
-          AppLocales.nombreNativo(locale),
-          style: TextStyle(fontWeight: FontWeight.w700, color: colors.ink),
-        ),
-        subtitle: Text(
-          AppLocales.claveNombre(locale).tr(),
-          style: TextStyle(fontSize: 12, color: colors.muted),
-        ),
-        trailing: seleccionado
-            ? Icon(Icons.check_circle_rounded, color: colors.accent)
-            : Icon(Icons.circle_outlined, color: colors.border),
       ),
     );
   }

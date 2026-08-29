@@ -38,34 +38,43 @@ class OptionTile extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: context.colors.surfaceElevated,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: context.colors.border),
       ),
-      child: ListTile(
-        leading: Icon(icon, color: color),
-        title: Text(
-          title,
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: destructivo ? AppColors.danger : context.colors.ink,
+      // El fondo va en el Material, no en este Container: ListTile pinta su
+      // ripple sobre el Material ancestro más cercano, y un Container con
+      // color de por medio lo tapa (Flutter lo marca como error en debug).
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        color: context.colors.surfaceElevated,
+        child: ListTile(
+          leading: Icon(icon, color: color),
+          title: Text(
+            title,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: destructivo ? AppColors.danger : context.colors.ink,
+            ),
           ),
-        ),
-        subtitle: Text(subtitle, style: TextStyle(color: context.colors.muted)),
-        trailing:
-            trailing ??
-            Icon(Icons.chevron_right_rounded, color: context.colors.muted),
-        onTap:
-            onTap ??
-            () => ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'common.not_implemented'.tr(namedArgs: {'title': title}),
+          subtitle: Text(
+            subtitle,
+            style: TextStyle(color: context.colors.muted),
+          ),
+          trailing:
+              trailing ??
+              Icon(Icons.chevron_right_rounded, color: context.colors.muted),
+          onTap:
+              onTap ??
+              () => ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'common.not_implemented'.tr(namedArgs: {'title': title}),
+                  ),
                 ),
               ),
-            ),
+        ),
       ),
     );
   }
