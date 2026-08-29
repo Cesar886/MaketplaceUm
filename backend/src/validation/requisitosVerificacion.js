@@ -22,6 +22,7 @@
 
 const db = require('../database');
 const { cuentaDePagosConectada } = require('../payments/methods');
+const { mercadoPagoHabilitado } = require('../payments/config');
 
 /** Métodos que la app cobra de verdad y por tanto exigen cuenta conectada. */
 const METODO_TARJETA = 'tarjeta';
@@ -119,10 +120,23 @@ function requisitosDeVerificacion(usuarioId) {
     {
       id: 'mercadopago',
       titulo: 'Cuenta de cobros',
-      // Solo se exige a quien anuncia tarjeta: es el único método que la app
-      // cobra de verdad. A quien solo acepta efectivo, pedirle una cuenta de
-      // Mercado Pago sería bloquearle algo que no va a usar.
-      cumplido: !aceptaTarjeta || cuentaDePagosConectada(usuarioId),
+      // TODO: Mercado Pago pendiente para próxima actualización - no
+      // eliminar, solo descomentar la línea de abajo (y borrar la que la
+      // reemplaza) cuando MERCADO_PAGO_HABILITADO=true y el frontend
+      // reactive kMercadoPagoHabilitado.
+      //
+      // Validación original: solo se exige a quien anuncia tarjeta —es el
+      // único método que la app cobra de verdad—, y a quien solo acepta
+      // efectivo pedirle una cuenta de Mercado Pago sería bloquearle algo
+      // que no va a usar.
+      // cumplido: !aceptaTarjeta || cuentaDePagosConectada(usuarioId),
+      //
+      // Mientras Mercado Pago esté deshabilitado en el backend, este
+      // requisito se da siempre por cumplido: nadie puede conectar una
+      // cuenta desde una app que tiene la integración oculta, así que
+      // exigirlo dejaría a cualquier cuenta (negocio, estudiante, externo)
+      // atorada en 'pendiente' para siempre.
+      cumplido: !mercadoPagoHabilitado() || !aceptaTarjeta || cuentaDePagosConectada(usuarioId),
       detalle: 'Aceptas pagos con tarjeta, así que necesitas conectar tu cuenta '
         + 'de Mercado Pago para poder cobrarlos.',
       accion: 'conectar_mercadopago',

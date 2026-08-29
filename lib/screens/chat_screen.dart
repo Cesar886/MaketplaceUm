@@ -1061,9 +1061,10 @@ class _ProductBar extends StatelessWidget {
                       product.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 14,
+                        color: context.colors.ink,
                       ),
                     ),
                     Text(

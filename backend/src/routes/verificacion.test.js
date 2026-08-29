@@ -25,6 +25,11 @@ process.env.JWT_SECRET = 'secreto-de-prueba';
 // Verificar un negocio exige cuenta de pagos conectada, y guardarla cifra el
 // token. Sin esta clave, payments/crypto.js revienta al cargarse.
 process.env.PAYMENTS_ENCRYPTION_KEY = require('crypto').randomBytes(32).toString('hex');
+// Este archivo prueba el flujo de verificación con la validación ORIGINAL de
+// Mercado Pago activa (ver payments/config.js#mercadoPagoHabilitado). El
+// caso de "flag apagado" (MERCADO_PAGO_HABILITADO=false, el valor real de
+// producción hoy) tiene sus propios tests más abajo.
+process.env.MERCADO_PAGO_HABILITADO = 'true';
 
 const express = require('express');
 const db = require('../database');
@@ -1153,4 +1158,70 @@ test('conectar Mercado Pago NO verifica si además falta el horario', async () =
 
   assert.strictEqual(completarVerificacionPendientePorPagos(usuario.id), false);
   assert.strictEqual(estaVerificado(usuario.id), false);
+});
+
+// ═══ MERCADO_PAGO_HABILITADO=false (estado real de producción hoy) ═══
+//
+// Con el frontend teniendo la integración comentada/oculta (ver
+// lib/features/payments/mercado_pago_flag.dart), nadie puede conectar una
+// cuenta desde la app. Estos tests prueban que, con el flag apagado, ni una
+// solicitud nueva ni una que ya estaba atorada por 'mercadopago' se quedan
+// bloqueadas.
+
+test('con el flag apagado, una cuenta negocio que acepta tarjeta se verifica SIN conectar Mercado Pago', async () => {
+  const anterior = process.env.MERCADO_PAGO_HABILITADO;
+  process.env.MERCADO_PAGO_HABILITADO = 'false';
+  try {
+    const usuario = crearUsuario('negocio');
+    aceptarTarjeta(usuario.id);
+    linkResponde = { ok: true, motivo: null };
+
+    const res = await pedir('/negocio/solicitar', usuario.token, {
+      nombre_negocio: 'Tacos UM',
+      ubicacion_lat: 19.7,
+      ubicacion_lng: -101.1,
+      link_red_social: 'https://www.instagram.com/tacos_um/',
+    });
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.verificado, true);
+    assert.strictEqual(estaVerificado(usuario.id), true);
+  } finally {
+    process.env.MERCADO_PAGO_HABILITADO = anterior;
+  }
+});
+
+test('reconciliarVerificacionesPendientesPorMercadoPago desatora, con el flag apagado, a quien se quedó esperando SOLO eso', async () => {
+  // Simula una cuenta que quedó 'pendiente' por 'mercadopago' ANTES de
+  // apagar el flag (con la validación original activa), y comprueba que la
+  // reconciliación de arranque (ver index.js) la resuelve sin que nadie
+  // toque nada.
+  const usuario = crearUsuario('estudiante');
+  aceptarTarjeta(usuario.id);
+
+  process.env.MERCADO_PAGO_HABILITADO = 'true';
+  const solicitud = await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: '1990002@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
+  });
+  assert.strictEqual(solicitud.status, 200, `solicitar: ${JSON.stringify(solicitud.body)}`);
+  const confirmacion = await pedir('/estudiante/confirmar', usuario.token, {
+    codigo_otp: enviados.email.at(-1).codigo,
+  });
+  assert.strictEqual(confirmacion.body.campo, 'mercadopago');
+  assert.strictEqual(estaVerificado(usuario.id), false);
+
+  process.env.MERCADO_PAGO_HABILITADO = 'false';
+  try {
+    const {
+      reconciliarVerificacionesPendientesPorMercadoPago,
+    } = require('./verificacion');
+    const resueltas = reconciliarVerificacionesPendientesPorMercadoPago();
+
+    assert.ok(resueltas >= 1);
+    assert.strictEqual(estaVerificado(usuario.id), true);
+  } finally {
+    process.env.MERCADO_PAGO_HABILITADO = 'true';
+  }
 });

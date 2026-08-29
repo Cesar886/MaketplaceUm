@@ -563,3 +563,9 @@ server.headersTimeout = 66000;
 const db = require('./database');
 db.limpiarInteraccionesAntiguas();
 setInterval(() => db.limpiarInteraccionesAntiguas(), 24 * 60 * 60 * 1000);
+
+// Desatora cuentas que quedaron esperando SOLO conectar Mercado Pago antes
+// de apagar MERCADO_PAGO_HABILITADO (ver requisitosVerificacion.js). Solo al
+// arrancar: no hace falta un intervalo porque después de esta pasada ya no
+// quedan filas que reconciliar hasta el próximo despliegue.
+require('./routes/verificacion').reconciliarVerificacionesPendientesPorMercadoPago();

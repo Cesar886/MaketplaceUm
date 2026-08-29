@@ -823,6 +823,44 @@ function completarVerificacionPendientePorPagos(usuarioId) {
   return true;
 }
 
+/**
+ * Reconciliación de arranque: cierra toda verificación que quedó 'pendiente'
+ * ÚNICAMENTE por falta de conectar Mercado Pago.
+ *
+ * Existe por MERCADO_PAGO_HABILITADO=false (ver payments/config.js): las
+ * cuentas que quedaron atoradas en `campo_rechazado = 'mercadopago'` antes de
+ * apagar el flag no tenían forma de resolverlo por su cuenta —la app ya no
+ * ofrece conectar nada— así que sin esto se quedarían en ese estado para
+ * siempre. Se ejecuta al arrancar el servidor (ver index.js) y es idempotente:
+ * una fila ya verificada, o una que de verdad sigue esperando otra cosa
+ * (según [cumpleTodos]), no se toca.
+ *
+ * Reutiliza [completarVerificacionPendientePorPagos], que ya solo verifica
+ * cuando TODOS los requisitos —no solo el de pagos— están cumplidos, así que
+ * esto no abre una puerta trasera a otros requisitos pendientes ni depende de
+ * si el flag está prendido o apagado: si algún día se reactiva Mercado Pago
+ * con cuentas todavía sin conectar, esta misma función simplemente no las
+ * toca.
+ */
+function reconciliarVerificacionesPendientesPorMercadoPago() {
+  const db = require('../database');
+  const filas = db.getDb()
+    .prepare(
+      `SELECT usuario_id FROM verificaciones
+       WHERE estado != 'verificado' AND campo_rechazado = 'mercadopago'`,
+    )
+    .all();
+
+  let resueltas = 0;
+  for (const { usuario_id: usuarioId } of filas) {
+    if (completarVerificacionPendientePorPagos(usuarioId)) resueltas += 1;
+  }
+  if (resueltas > 0) {
+    console.log(`[verificacion] ${resueltas} cuenta(s) desatoradas de 'pendiente por mercadopago' al arrancar`);
+  }
+  return resueltas;
+}
+
 /** Montaje real, con los adaptadores de producción. */
 function register(app) {
   const db = require('../database');
@@ -853,4 +891,5 @@ module.exports = {
   register,
   crearRutasVerificacion,
   completarVerificacionPendientePorPagos,
+  reconciliarVerificacionesPendientesPorMercadoPago,
 };

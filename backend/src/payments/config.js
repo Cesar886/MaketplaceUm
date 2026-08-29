@@ -68,6 +68,32 @@ function comisionHabilitada() {
 }
 
 /**
+ * Interruptor global de Mercado Pago para TODO el backend.
+ *
+ * Espejo del flag `kMercadoPagoHabilitado` del frontend
+ * (lib/features/payments/mercado_pago_flag.dart): mientras la app tenga la
+ * integración comentada/oculta, nadie puede completar el paso de "conectar
+ * cuenta de cobros" desde ningún lado, así que exigirlo en el backend
+ * dejaría a cuentas negocio/estudiante/externo atoradas en 'pendiente' para
+ * siempre sin ninguna forma de resolverlo.
+ *
+ * Por defecto está APAGADO (hace falta 'true' exacto para encenderlo), al
+ * revés que `comisionHabilitada()`: ahí un apagado accidental cuesta dinero,
+ * aquí un ENCENDIDO accidental sin que el frontend tenga la integración lista
+ * es lo que bloquea usuarios — así que el valor por defecto es el lado
+ * seguro para este interruptor en concreto.
+ *
+ * TODO: Mercado Pago pendiente para próxima actualización — cuando el
+ * frontend reactive `kMercadoPagoHabilitado`, poner
+ * `MERCADO_PAGO_HABILITADO=true` en el .env de cada entorno. No hace falta
+ * tocar código: ver requisitosVerificacion.js, que ya usa este flag para
+ * decidir si el requisito de cuenta de cobros aplica.
+ */
+function mercadoPagoHabilitado() {
+  return String(process.env.MERCADO_PAGO_HABILITADO || '').toLowerCase() === 'true';
+}
+
+/**
  * FORZAR el `sandbox_init_point` aunque el entorno no sea de pruebas.
  *
  * Ya NO hace falta en el flujo normal: `elegirInitPoint` (routes.js) decide
@@ -211,6 +237,7 @@ module.exports = {
   MP_AUTH_BASE,
   porcentajeComision,
   comisionHabilitada,
+  mercadoPagoHabilitado,
   forzarSandboxInitPoint,
   depuracionPreferencia,
   depuracionPagos,

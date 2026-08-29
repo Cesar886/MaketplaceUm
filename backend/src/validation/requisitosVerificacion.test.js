@@ -18,6 +18,11 @@ process.env.MERCADITO_DB_PATH = path.join(
 );
 process.env.JWT_SECRET = 'secreto-de-prueba';
 process.env.PAYMENTS_ENCRYPTION_KEY = crypto.randomBytes(32).toString('hex');
+// La mayoría de este archivo prueba la validación ORIGINAL del requisito de
+// Mercado Pago, que solo aplica con el flag encendido (ver
+// payments/config.js#mercadoPagoHabilitado). El caso de "flag apagado" tiene
+// su propio test más abajo, que lo apaga puntualmente.
+process.env.MERCADO_PAGO_HABILITADO = 'true';
 
 const db = require('../database');
 db.initDatabase();
@@ -163,6 +168,22 @@ test('desconectarse vuelve a incumplir el requisito', () => {
   const v = crearVendedor({ metodos: ['tarjeta'], conectarMp: true });
   store.desconectarVendedor(v, { motivo: 'prueba', por: 'user' });
   assert.strictEqual(req('mercadopago', requisitosDeVerificacion(v)).cumplido, false);
+});
+
+test('con MERCADO_PAGO_HABILITADO=false nadie queda bloqueado por no conectar, ni siquiera aceptando tarjeta', () => {
+  const anterior = process.env.MERCADO_PAGO_HABILITADO;
+  process.env.MERCADO_PAGO_HABILITADO = 'false';
+  try {
+    const v = crearVendedor({ metodos: ['efectivo', 'tarjeta'], conectarMp: false });
+    crearProducto(v);
+
+    const r = req('mercadopago', requisitosDeVerificacion(v));
+    assert.strictEqual(r.cumplido, true,
+      'con el flag apagado el requisito de cuenta de cobros se da por cumplido');
+    assert.strictEqual(cumpleTodos(v), true);
+  } finally {
+    process.env.MERCADO_PAGO_HABILITADO = anterior;
+  }
 });
 
 // ─── Stock ──────────────────────────────────────────────────────
