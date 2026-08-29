@@ -1,3 +1,7 @@
+// TODO: Mercado Pago pendiente para próxima actualización - no eliminar,
+// solo descomentar/reactivar cuando esté listo (ver mercado_pago_flag.dart).
+// Todo este archivo queda inactivo e inaccesible desde la UI mientras
+// kMercadoPagoHabilitado sea false.
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
@@ -337,7 +341,7 @@ class _PayWithCardSectionState extends State<PayWithCardSection> {
       children: [
         _PildoraDeSeccion(
           icon: _fallo ? Icons.wifi_off_rounded : Icons.handshake_rounded,
-          label: 'FORMAS DE PAGO',
+          label: 'pay.methods_pill'.tr(),
           color: colors.mutedStrong,
           fondo: colors.surfaceMuted,
           borde: colors.border,

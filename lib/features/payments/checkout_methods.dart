@@ -1,3 +1,7 @@
+// TODO: Mercado Pago pendiente para próxima actualización - no eliminar,
+// solo descomentar/reactivar cuando esté listo (ver mercado_pago_flag.dart).
+// Todo este archivo queda inactivo e inaccesible desde la UI mientras
+// kMercadoPagoHabilitado sea false.
 import 'package:flutter/material.dart';
 
 import '../../app_theme.dart';

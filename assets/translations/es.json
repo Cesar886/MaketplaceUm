@@ -1,6 +1,13 @@
 {
   "common": {
     "save": "Guardar",
+    "not_implemented": "{title} no disponible todavía",
+    "brand_facebook": "Facebook",
+    "brand_instagram": "Instagram",
+    "brand_whatsapp": "WhatsApp",
+    "brand_tiktok": "TikTok",
+    "brand_twitter": "X / Twitter",
+    "brand_mercadopago": "Mercado Pago",
     "cancel": "Cancelar",
     "accept": "Aceptar",
     "close": "Cerrar",
@@ -82,7 +89,16 @@
     "server": "Algo salió mal de nuestro lado, intenta en unos minutos.",
     "unknown": "Algo no salió como esperábamos. Intenta de nuevo.",
     "network_log": "Fallo de red",
-    "unclassified_log": "Error no clasificado"
+    "unclassified_log": "Error no clasificado",
+    "listing_unavailable": "Esta publicación ya no está disponible",
+    "login_failed": "Error al iniciar sesión. Intenta de nuevo.",
+    "verification_failed": "No pudimos completar la verificación.",
+    "server_timeout": "El servidor tardó demasiado en responder. Inténtalo de nuevo.",
+    "edit_listing_failed": "Error al editar la publicación ({code})",
+    "email_already_registered": "Ya existe una cuenta con este correo.",
+    "no_active_session": "No hay sesión activa. Vuelve a iniciar sesión.",
+    "privacy_read_failed": "Error al leer la configuración de privacidad",
+    "update_days_failed": "Error al actualizar días disponibles"
   },
   "auth": {
     "login_title": "Iniciar sesión",
@@ -207,7 +223,11 @@
     "social_link_help": "Un solo link. Comprobamos que la página exista.",
     "verify_business": "Verificar negocio",
     "business_failed": "No pudimos verificar los datos de tu negocio.",
-    "open_profile_error": "No se pudo abrir tu perfil. Intenta de nuevo."
+    "open_profile_error": "No se pudo abrir tu perfil. Intenta de nuevo.",
+    "field_student_id": "Matrícula",
+    "invalid_student_id": "Tu matrícula son 7 dígitos",
+    "field_staff_user": "Usuario institucional",
+    "invalid_staff_user": "Tu usuario va como nombre.apellido"
   },
   "nav": {
     "home": "Inicio",
@@ -230,7 +250,8 @@
     "highlight_cta_title": "Destaca sin pagar de más",
     "highlight_cta_subtitle": "Desde {price} por {duration}; también hay plan mensual.",
     "duration_24h": "24h",
-    "duration_days": "{days} días"
+    "duration_days": "{days} días",
+    "up_to_discount": "Hasta -{percent}% de descuento"
   },
   "search": {
     "hint": "Libro, electronico, servicio...",
@@ -268,6 +289,7 @@
     "sun": "Dom"
   },
   "publish": {
+    "price_placeholder": "+ $0",
     "subtitle": "Completa la información básica para publicar tu producto en el marketplace.",
     "edit_title": "Editar producto",
     "photos": "Fotos",
@@ -384,6 +406,7 @@
     "reject_generic_mp": "El pago no se completó. Puedes intentarlo de nuevo o pagar con tarjeta."
   },
   "chat": {
+    "title": "Mensajes",
     "self_message_error": "No puedes enviarte un mensaje a ti mismo",
     "open_error": "No se pudo abrir el chat. Intenta de nuevo.",
     "original_not_found": "No se encontró el mensaje original",
@@ -452,7 +475,8 @@
     "fast_replies": "Responde rápido",
     "verified": "Verificado",
     "verified_student": "Estudiante verificado",
-    "verified_business": "Negocio verificado"
+    "verified_business": "Negocio verificado",
+    "verified_account": "Cuenta verificada"
   },
   "time": {
     "now": "Ahora",
@@ -471,12 +495,25 @@
     "pin_error": "No se pudo cambiar la publicación fijada.",
     "pin_action": "Fijar en tu perfil",
     "unpin_action": "Quitar de tu perfil",
-    "renew": "Renovar",
-    "renew_mock": "Renovacion simulada",
     "highlight": "Destacar",
     "extend": "Extender",
-    "highlight_mock": "Plan de destacado simulado",
-    "new_mock": "Nueva publicacion mock"
+    "edit_action": "Editar",
+    "new_listing": "Nueva publicación",
+    "empty_title": "Aún no tienes publicaciones",
+    "empty_subtitle": "Publica tu primer producto para que la comunidad lo vea.",
+    "empty_cta": "Publicar ahora",
+    "load_error": "No se pudieron cargar tus publicaciones.",
+    "stat_active": "Activas",
+    "stat_featured": "Destacadas",
+    "stat_expired": "Expiradas",
+    "delete_confirm_title": "¿Eliminar esta publicación?",
+    "delete_confirm_body": "\"{title}\" se eliminará de forma permanente.",
+    "deleted": "Publicación eliminada",
+    "delete_error": "No se pudo eliminar la publicación. Intenta de nuevo.",
+    "count": {
+      "one": "{} publicación",
+      "other": "{} publicaciones"
+    }
   },
   "seller": {
     "load_error": "No se pudo cargar el perfil. Intenta de nuevo.",
@@ -487,6 +524,7 @@
   "recent": {
     "clear_title": "Limpiar historial",
     "clear_confirm": "¿Eliminar todos los productos vistos recientemente?",
+    "clear_action": "Limpiar",
     "cleared": "Historial limpiado",
     "empty": "Aún no has visto ningún producto.\n¡Explora el mercado!"
   },
@@ -567,9 +605,11 @@
     "arrange_by_chat": "Acordar pago por chat",
     "quantity": "Cantidad",
     "remove_unit": "Quitar una unidad",
-    "add_unit": "Agregar una unidad"
+    "add_unit": "Agregar una unidad",
+    "methods_pill": "FORMAS DE PAGO"
   },
   "checkout": {
+    "title": "Pagar",
     "this_seller": "Este vendedor",
     "seller_no_payments": "{seller} no acepta pagos en la app. Contáctalo por chat para acordar otra forma de pago.",
     "prepare_error": "No se pudo preparar el pago.",
@@ -636,6 +676,7 @@
     "load_error": "No se pudieron cargar los comentarios.",
     "load_more_error": "No se pudieron cargar más comentarios.",
     "title_count": "Comentarios ({n})",
+    "my_title": "Comentarios",
     "see_more": "Ver más comentarios",
     "see_more_count": "Ver más comentarios ({n})",
     "be_first": "Sé el primero en comentar",
@@ -657,6 +698,7 @@
   "questions": {
     "title": "Preguntas y respuestas",
     "title_count": "Preguntas y respuestas ({n})",
+    "filter_all": "Todas",
     "login_prompt": "Inicia sesión para hacer una pregunta",
     "sent": "Pregunta enviada. Te avisamos cuando respondan.",
     "send_error": "No se pudo enviar la pregunta.",
@@ -677,7 +719,11 @@
     "post_answer": "Publicar respuesta",
     "seller_answer": "Respuesta del vendedor",
     "answer_from": "Respuesta de {seller}",
-    "pending": "Pendiente de respuesta"
+    "pending": "Pendiente de respuesta",
+    "unanswered_n": {
+      "one": "{} sin responder",
+      "other": "{} sin responder"
+    }
   },
   "help": {
     "title": "Ayuda",
@@ -736,14 +782,17 @@
     "today": "Horario de hoy",
     "closed_today": "Cerrado hoy",
     "show_week": "Ver horario semanal",
-    "hide_week": "Ocultar horario semanal"
+    "hide_week": "Ocultar horario semanal",
+    "open_time_day": "Hora de apertura — {day}",
+    "close_time_day": "Hora de cierre — {day}"
   },
   "map": {
     "pick_location": "Elige una ubicación",
     "tap_to_place": "Toca el mapa para colocar el pin",
     "confirm_location": "Confirmar ubicación",
     "open_in_maps": "Ver en Maps",
-    "location": "Ubicación"
+    "location": "Ubicación",
+    "walking_from_campus": "a {minutes} min caminando del campus"
   },
   "attributes": {
     "product_details": "Detalles del producto",
@@ -753,7 +802,9 @@
     "with_warranty": "Con garantía",
     "warranty_for": "{duration} de garantía",
     "type_and_enter": "Escribe y presiona enter",
-    "missing_answer": "Falta responder"
+    "missing_answer": "Falta responder",
+    "time_of_use": "{time} de uso",
+    "add": "Agregar"
   },
   "social": {
     "twitter": "X / Twitter",
@@ -829,7 +880,7 @@
     "ej_95": "Ej. 95",
     "ej_apple_best_buy_la_tienda_donde_lo_compre": "Ej. Apple, Best Buy, la tienda donde lo compré",
     "ej_calculo_ii_ing_ramirez": "Ej. Cálculo II — Ing. Ramírez",
-    "ej_m_28_712": "Ej. M, 28, 7½",
+    "ej_m_28_7": "Ej. M, 28, 7½",
     "ej_nike_zara_sin_marca": "Ej. Nike, Zara, sin marca",
     "ej_otono_2025": "Ej. Otoño 2025",
     "ej_usado_funciona_bien": "Ej. Usado, funciona bien",
@@ -885,6 +936,51 @@
     "show_online_status": "Mostrar mi estado en línea",
     "show_online_status_subtitle": "Si lo apagas, nadie verá cuándo estás en línea — y tú tampoco verás el estado de los demás.",
     "section_privacy": "Privacidad",
-    "save_error": "No se pudo guardar el cambio. Intenta de nuevo."
+    "save_error": "No se pudo guardar el cambio. Intenta de nuevo.",
+    "online": "En línea"
+  },
+  "profile": {
+    "load_error": "No se pudo cargar tu perfil. Intenta de nuevo.",
+    "login_prompt": "Inicia sesión para ver tu perfil",
+    "rating": "Calificación",
+    "reviews": "Opiniones",
+    "active_listings": "Activas",
+    "my_listings": "Mis publicaciones",
+    "my_listings_subtitle": "Administra lo que estás vendiendo",
+    "comments": "Comentarios",
+    "comments_subtitle": "Lo que otros dijeron de tus publicaciones",
+    "safety": "Seguridad",
+    "safety_subtitle": "Consejos para comprar y vender seguro",
+    "highlight_plans": "Planes de destacado",
+    "highlight_plans_subtitle": "Dale más visibilidad a tus publicaciones",
+    "settings_subtitle": "Idioma, tema y más",
+    "recently_viewed": "Vistos recientemente",
+    "logout": "Cerrar sesión",
+    "badge_visible": "Esta insignia es visible en tus publicaciones",
+    "fix_verification": "Corregir verificación",
+    "verify_account": "Verifica tu cuenta",
+    "verify_hint": "Toca para verificarte y desbloquear todas las funciones",
+    "see_all": "Ver todos"
+  },
+  "edit_profile": {
+    "title": "Editar perfil",
+    "name": "Nombre",
+    "phone": "Teléfono",
+    "business_category": "Categoría del negocio",
+    "business_description": "Descripción del negocio",
+    "pick_location": "Elegir ubicación",
+    "social_links": "Redes sociales",
+    "whatsapp_hint": "Solo dígitos, con código de país",
+    "facebook_hint": "facebook.com/tunegocio",
+    "instagram_hint": "instagram.com/tunegocio",
+    "tiktok_hint": "tiktok.com/@tunegocio",
+    "twitter_hint": "x.com/tunegocio",
+    "business_hours": "Horario de atención",
+    "payment_methods": "Métodos de pago",
+    "card_needs_mp": "Conecta Mercado Pago para aceptar tarjeta",
+    "mp_checking": "Comprobando…",
+    "mp_connected": "Conectado",
+    "mp_unknown": "No pudimos comprobar el estado",
+    "mp_disconnected": "Sin conectar"
   }
 }

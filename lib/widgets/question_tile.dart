@@ -148,7 +148,7 @@ class _BloqueRespuesta extends StatelessWidget {
               child: Text(
                 sellerName == null
                     ? 'questions.seller_answer'.tr()
-                    : 'Respuesta de $sellerName',
+                    : 'questions.answer_from'.tr(namedArgs: {'seller': sellerName!}),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: AppTypography.label(

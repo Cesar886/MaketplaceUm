@@ -14,10 +14,14 @@ import '../services/api_service.dart';
 import '../services/favorite_products_service.dart';
 import '../services/recent_products_service.dart';
 import '../services/view_cooldown.dart';
+// TODO: Mercado Pago pendiente para próxima actualización - no eliminar,
+// solo descomentar cuando esté listo. La sección de pago se mantiene oculta
+// por completo mientras tanto (ver kMercadoPagoHabilitado / _puedeOfrecerseElPago).
 import '../features/payments/checkout_screen.dart';
 import '../features/payments/pay_with_card_section.dart';
 import '../features/payments/payment_models.dart';
 import '../features/payments/payments_api.dart';
+import '../features/payments/mercado_pago_flag.dart';
 import '../widgets/badges.dart';
 import '../widgets/bounce_on_increase.dart';
 import '../widgets/payment_methods.dart';
@@ -856,6 +860,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   /// la pantalla y el comprador toca el botón, el vendedor pudo revocar la
   /// autorización desde su panel de Mercado Pago.
   bool get _puedeOfrecerseElPago {
+    // TODO: Mercado Pago pendiente para próxima actualización - no eliminar,
+    // solo descomentar/quitar este corte cuando esté listo. Mientras tanto
+    // el pago dentro de la app queda oculto por completo (ver
+    // kMercadoPagoHabilitado).
+    if (!kMercadoPagoHabilitado) return false;
     if (product.isWantedPost || !product.isAvailable) return false;
     // No puedes comprarte a ti mismo (el backend también lo corta).
     return context.read<AuthProvider>().backendSellerId != product.seller.id;

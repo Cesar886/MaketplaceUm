@@ -24,7 +24,11 @@ class PaymentMethodOption {
 /// Mercado Pago conectada. Ver [PaymentMethodsSelector.metodosBloqueados].
 const List<PaymentMethodOption> kPaymentMethodCatalog = [
   PaymentMethodOption('efectivo', 'Efectivo', Icons.payments_rounded),
-  PaymentMethodOption('tarjeta', 'Tarjeta', Icons.credit_card_rounded),
+  // TODO: Mercado Pago pendiente para próxima actualización - no eliminar,
+  // solo descomentar cuando esté listo. 'tarjeta' es el método que la app
+  // cobra de verdad vía Mercado Pago (ver mercado_pago_flag.dart), así que
+  // se retira del catálogo mientras esa integración esté deshabilitada.
+  // PaymentMethodOption('tarjeta', 'Tarjeta', Icons.credit_card_rounded),
   PaymentMethodOption('paypal', 'PayPal', Icons.account_balance_wallet_rounded),
   PaymentMethodOption('cripto', 'Cripto', Icons.currency_bitcoin_rounded),
 ];

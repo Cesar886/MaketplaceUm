@@ -1295,7 +1295,7 @@ class _BusinessCard extends StatelessWidget {
                             children: [
                               Expanded(
                                 child: Text(
-                                  '${products.length} publicación${products.length == 1 ? '' : 'es'}',
+                                  'listings.count'.plural(products.length),
                                   style: TextStyle(
                                     color: context.colors.muted,
                                     fontWeight: FontWeight.w500,

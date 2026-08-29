@@ -20,6 +20,7 @@ import '../../widgets/static_mini_map.dart';
 import '../../features/payments/connect_mp_screen.dart';
 import '../../features/payments/payment_models.dart';
 import '../../features/payments/payments_api.dart';
+import '../../features/payments/mercado_pago_flag.dart';
 
 const _kMaxBusinessDescriptionLength = 280;
 
@@ -75,6 +76,12 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   /// un 503 de una plataforma a medio configurar, o una red que se cayó un
   /// segundo, no pueden leerse como "este vendedor no tiene cuenta".
   Future<void> _cargarEstadoMp() async {
+    // TODO: Mercado Pago pendiente para próxima actualización - no eliminar,
+    // solo quitar este corte cuando esté listo.
+    if (!kMercadoPagoHabilitado) {
+      if (mounted) setState(() => _cargandoMp = false);
+      return;
+    }
     final anterior = _estadoMp;
     final estado = await PaymentsApi.estadoDeCobros();
     if (!mounted) return;
@@ -454,10 +461,13 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                     TextFormField(
                       controller: _facebookController,
                       keyboardType: TextInputType.url,
-                      decoration: const InputDecoration(
-                        labelText: 'Facebook',
-                        hintText: 'facebook.com/tunegocio',
-                        prefixIcon: FaIcon(FontAwesomeIcons.facebook, size: 20),
+                      decoration: InputDecoration(
+                        labelText: 'common.brand_facebook'.tr(),
+                        hintText: 'edit_profile.facebook_hint'.tr(),
+                        prefixIcon: const FaIcon(
+                          FontAwesomeIcons.facebook,
+                          size: 20,
+                        ),
                       ),
                       validator: (v) => validateSocialUrl('facebook', v ?? ''),
                     ),
@@ -465,10 +475,10 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                     TextFormField(
                       controller: _instagramController,
                       keyboardType: TextInputType.url,
-                      decoration: const InputDecoration(
-                        labelText: 'Instagram',
-                        hintText: 'instagram.com/tunegocio',
-                        prefixIcon: FaIcon(
+                      decoration: InputDecoration(
+                        labelText: 'common.brand_instagram'.tr(),
+                        hintText: 'edit_profile.instagram_hint'.tr(),
+                        prefixIcon: const FaIcon(
                           FontAwesomeIcons.instagram,
                           size: 20,
                         ),
@@ -480,7 +490,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                       controller: _whatsappController,
                       keyboardType: TextInputType.phone,
                       decoration: InputDecoration(
-                        labelText: 'WhatsApp',
+                        labelText: 'common.brand_whatsapp'.tr(),
                         hintText: 'edit_profile.whatsapp_hint'.tr(),
                         prefixIcon: FaIcon(FontAwesomeIcons.whatsapp, size: 20),
                       ),
@@ -490,10 +500,13 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                     TextFormField(
                       controller: _tiktokController,
                       keyboardType: TextInputType.url,
-                      decoration: const InputDecoration(
-                        labelText: 'TikTok',
-                        hintText: 'tiktok.com/@tunegocio',
-                        prefixIcon: FaIcon(FontAwesomeIcons.tiktok, size: 20),
+                      decoration: InputDecoration(
+                        labelText: 'common.brand_tiktok'.tr(),
+                        hintText: 'edit_profile.tiktok_hint'.tr(),
+                        prefixIcon: const FaIcon(
+                          FontAwesomeIcons.tiktok,
+                          size: 20,
+                        ),
                       ),
                       validator: (v) => validateSocialUrl('tiktok', v ?? ''),
                     ),
@@ -501,10 +514,13 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                     TextFormField(
                       controller: _twitterController,
                       keyboardType: TextInputType.url,
-                      decoration: const InputDecoration(
-                        labelText: 'X / Twitter',
-                        hintText: 'x.com/tunegocio',
-                        prefixIcon: FaIcon(FontAwesomeIcons.xTwitter, size: 20),
+                      decoration: InputDecoration(
+                        labelText: 'common.brand_twitter'.tr(),
+                        hintText: 'edit_profile.twitter_hint'.tr(),
+                        prefixIcon: const FaIcon(
+                          FontAwesomeIcons.xTwitter,
+                          size: 20,
+                        ),
                       ),
                       validator: (v) => validateSocialUrl('twitter', v ?? ''),
                     ),
@@ -559,16 +575,20 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                       if (methods.isNotEmpty) _showPaymentMethodsError = false;
                     }),
                   ),
-                  const SizedBox(height: 12),
-                  _FilaConexionMercadoPago(
-                    estado: _estadoMp,
-                    cargando: _cargandoMp,
-                    onTap: _abrirConexionMp,
-                    onReintentar: () {
-                      setState(() => _cargandoMp = true);
-                      _cargarEstadoMp();
-                    },
-                  ),
+                  // TODO: Mercado Pago pendiente para próxima actualización -
+                  // no eliminar, solo quitar este `if` cuando esté listo.
+                  if (kMercadoPagoHabilitado) ...[
+                    const SizedBox(height: 12),
+                    _FilaConexionMercadoPago(
+                      estado: _estadoMp,
+                      cargando: _cargandoMp,
+                      onTap: _abrirConexionMp,
+                      onReintentar: () {
+                        setState(() => _cargandoMp = true);
+                        _cargarEstadoMp();
+                      },
+                    ),
+                  ],
                   const SizedBox(height: 28),
                   SizedBox(
                     width: double.infinity,
@@ -673,7 +693,7 @@ class _FilaConexionMercadoPago extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Mercado Pago',
+                    'common.brand_mercadopago'.tr(),
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 14,

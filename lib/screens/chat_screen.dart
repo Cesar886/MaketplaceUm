@@ -9,7 +9,7 @@ import 'package:provider/provider.dart';
 import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
-import '../services/anonymous_id.dart';
+import '../services/anon_session.dart';
 import '../services/api_error.dart';
 import '../services/api_service.dart';
 import '../services/chat_socket_service.dart';
@@ -231,14 +231,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  /// Retorna el userId actual: si hay sesión usa el ID del backend,
-  /// si no, usa el ID anónimo de SharedPreferences.
+  /// Retorna el userId actual, solo para decidir qué burbujas son propias.
+  ///
+  /// Ya NO se manda al backend: la identidad de cada petición sale del token.
+  /// Para un invitado es el id que emitió el servidor al crear su sesión, no
+  /// un UUID que se generase el dispositivo.
   Future<String> _getUserId() async {
     final auth = context.read<AuthProvider>();
     if (auth.isLoggedIn && auth.backendSellerId != null) {
       return auth.backendSellerId!;
     }
-    return AnonymousId.get();
+    await AnonSession.ensure();
+    return AnonSession.anonId ?? '';
   }
 
   Future<void> _loadMessages() async {
@@ -256,10 +260,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _loadError = false;
       });
     try {
-      final messages = await ApiService.getMessages(
-        _currentConvId!,
-        userId: _userId,
-      );
+      final messages = await ApiService.getMessages(_currentConvId!);
       if (!mounted) return;
       setState(() {
         _messages = messages;
@@ -395,14 +396,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               productId: widget.productId ?? '',
               sellerId: widget.sellerId!,
               text: text,
-              senderId: _userId,
               replyToMessageId: replyToId,
             )
           : await ApiService.sendMessage(
               productId: widget.productId ?? '',
               sellerId: widget.sellerId ?? '',
               text: text,
-              senderId: _userId,
               conversationId: _currentConvId,
               replyToMessageId: replyToId,
             );
@@ -441,7 +440,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           widget.sellerId != null && _currentConvId == widget.conversationId;
       final result = await ApiService.sendChatImage(
         imagePath: picked.path,
-        senderId: _userId,
         productId: widget.productId,
         sellerId: widget.sellerId,
         conversationId: isNewConversation ? null : _currentConvId,
@@ -509,7 +507,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (confirmed != true || !mounted) return;
 
     try {
-      await ApiService.deleteMessage(msg.id, senderId: _userId);
+      await ApiService.deleteMessage(msg.id);
       if (!mounted) return;
       setState(() {
         final idx = _messages.indexOf(msg);

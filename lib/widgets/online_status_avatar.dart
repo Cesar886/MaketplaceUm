@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -79,7 +80,7 @@ class OnlineStatusAvatar extends StatelessWidget {
               right: radius * 0.06,
               bottom: radius * 0.06,
               child: Semantics(
-                label: 'En línea',
+                label: 'presence.online'.tr(),
                 child: SizedBox(
                   key: puntoKey,
                   width: diametroPunto,

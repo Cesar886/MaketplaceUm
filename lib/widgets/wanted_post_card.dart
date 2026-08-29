@@ -130,7 +130,9 @@ class _SeBuscaTag extends StatelessWidget {
       label =
           '${Product.formatPrice(priceMin)} - ${Product.formatPrice(priceMax)}';
     } else if (priceMax != null) {
-      label = 'Hasta ${Product.formatPrice(priceMax)}';
+      label = 'wanted.up_to'.tr(
+        namedArgs: {'price': Product.formatPrice(priceMax)},
+      );
     }
 
     return Container(

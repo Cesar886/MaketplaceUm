@@ -113,7 +113,7 @@ class ProductAttributesSection extends StatelessWidget {
     if (tieneGarantia) {
       final duracion = atributos['duracion_garantia'];
       final texto = (duracion is String && duracion.trim().isNotEmpty)
-          ? '$duracion de garantía'
+          ? 'attributes.warranty_for'.tr(namedArgs: {'duration': duracion})
           : 'attributes.with_warranty'.tr();
       chips.add(_ChipDato(icon: Icons.verified_outlined, texto: texto));
     }
@@ -121,7 +121,10 @@ class ProductAttributesSection extends StatelessWidget {
     final tiempoUso = atributos['tiempo_uso'];
     if (tiempoUso is String && tiempoUso.trim().isNotEmpty) {
       chips.add(
-        _ChipDato(icon: Icons.schedule_outlined, texto: '$tiempoUso de uso'),
+        _ChipDato(
+          icon: Icons.schedule_outlined,
+          texto: 'attributes.time_of_use'.tr(namedArgs: {'time': tiempoUso}),
+        ),
       );
     }
 

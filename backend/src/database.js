@@ -1654,6 +1654,24 @@ function rowToSeller(row) {
   };
 }
 
+/**
+ * ¿`userId` participa en `conversationId`?
+ *
+ * Es la comprobación que decide quién puede LEER una conversación, y por eso
+ * vive aquí y no repetida en cada llamador: la usan la ruta REST de mensajes,
+ * el borrado y la sala de Socket.IO, y si las tres divergieran bastaría con
+ * que una se quedara corta para reabrir la fuga.
+ */
+function esParticipanteDeConversacion(conversationId, userId) {
+  if (!conversationId || !userId) return false;
+  const fila = db
+    .prepare(
+      'SELECT 1 FROM conversations WHERE id = ? AND (buyer_id = ? OR seller_id = ?)',
+    )
+    .get(conversationId, userId, userId);
+  return !!fila;
+}
+
 function getSellers() {
   const rows = db.prepare('SELECT * FROM sellers ORDER BY id').all();
   return rows.map(rowToSeller);
@@ -3465,6 +3483,7 @@ module.exports = {
   getDb,
   getCategories,
   getSellers,
+  esParticipanteDeConversacion,
   rowToSeller,
   insertSeller,
   getHighlightPlans,

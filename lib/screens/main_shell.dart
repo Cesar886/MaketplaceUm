@@ -7,7 +7,6 @@ import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
 import '../providers/auth_provider.dart';
-import '../services/anonymous_id.dart';
 import '../services/api_service.dart';
 import '../services/chat_socket_service.dart';
 import '../services/presence_service.dart';
@@ -198,15 +197,10 @@ class MainShellState extends State<MainShell> with WidgetsBindingObserver {
   /// igual que hace HomeScreen para cambiar de pestaña.
   Future<void> recargarContadores() async {
     try {
-      String userId;
-      final auth = context.read<AuthProvider>();
-      if (auth.isLoggedIn && auth.backendSellerId != null) {
-        userId = auth.backendSellerId!;
-      } else {
-        userId = await AnonymousId.get();
-      }
+      // Ya no hace falta resolver el userId: el contador de chats sale de la
+      // bandeja del token, que el backend determina por sí mismo.
       final results = await Future.wait([
-        ApiService.getConversations(userId: userId),
+        ApiService.getConversations(),
         ApiService.getUnreadNotificationCount(),
       ]);
       if (!mounted) return;

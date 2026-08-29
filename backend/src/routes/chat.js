@@ -5,6 +5,7 @@ const multer = require('multer');
 const db = require('../database');
 const { sendPush } = require('../push');
 const { presenciaDe } = require('./presenciaHttp');
+const { requireAuth } = require('../auth');
 
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
 
@@ -144,9 +145,10 @@ function notifyNewMessage(app, conversation, senderId, previewText) {
 
 function register(app) {
   // GET /api/chat/conversations - listar conversaciones de un usuario (anónimo o no)
-  app.get('/api/chat/conversations', (req, res) => {
-    const userId = req.query.userId;
-    if (!userId) return res.status(400).json({ error: 'userId (query param) es requerido' });
+  app.get('/api/chat/conversations', requireAuth, (req, res) => {
+    // La bandeja es la del token, punto. Antes el `userId` venía en la query,
+    // así que pedir la de cualquier otra persona era cambiar un parámetro.
+    const userId = req.user.id;
     const conversations = db.getConversationsForUser(userId);
     const unreadCount = db.getUnreadMessageCount(userId);
 
@@ -201,28 +203,33 @@ function register(app) {
   });
 
   // GET /api/chat/conversations/:id/messages - obtener mensajes de una conversación
-  app.get('/api/chat/conversations/:id/messages', (req, res) => {
+  app.get('/api/chat/conversations/:id/messages', requireAuth, (req, res) => {
+    const userId = req.user.id;
     const conv = db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(req.params.id);
     if (!conv) return res.status(404).json({ error: 'Conversación no encontrada' });
 
-    const messages = db.getMessages(req.params.id);
-    // Marcar mensajes como leídos si el sender es distinto al que pide
-    const userId = req.query.userId;
-    if (userId && (conv.buyer_id === userId || conv.seller_id === userId)) {
-      db.markConversationMessagesRead(req.params.id, userId);
+    // Este era el agujero más directo de todos: la comprobación de
+    // pertenencia existía, pero solo decidía si marcar como leído — los
+    // mensajes se devolvían igual a quien preguntara. Con los ids de
+    // conversación siendo `conv_<timestamp>_<6 chars>`, enumerar y leer
+    // conversaciones ajenas era cuestión de un bucle (hallazgo C-01).
+    if (conv.buyer_id !== userId && conv.seller_id !== userId) {
+      return res.status(403).json({ error: 'No tienes acceso a esta conversación' });
     }
+
+    const messages = db.getMessages(req.params.id);
+    db.markConversationMessagesRead(req.params.id, userId);
 
     res.json({ messages });
   });
 
   // POST /api/chat/send - enviar un mensaje de texto (anónimo, no requiere auth)
-  app.post('/api/chat/send', (req, res) => {
+  app.post('/api/chat/send', requireAuth, (req, res) => {
     const { productId, sellerId, text, conversationId, replyToMessageId } = req.body;
-    const userId = req.body.senderId;
+    // `senderId` ya no se lee del cuerpo: era lo que permitía enviar mensajes
+    // firmados con el nombre de otra persona.
+    const userId = req.user.id;
 
-    if (!userId) {
-      return res.status(400).json({ error: 'senderId es requerido' });
-    }
     if (!text || !text.trim()) {
       return res.status(400).json({ error: 'El mensaje no puede estar vacío' });
     }
@@ -244,7 +251,7 @@ function register(app) {
   // POST /api/chat/send-image - enviar un mensaje con una imagen (multipart).
   // La imagen se convierte a WebP antes de guardarse para que pese menos,
   // igual que se hace con las fotos de producto y el logo de negocio.
-  app.post('/api/chat/send-image', (req, res) => {
+  app.post('/api/chat/send-image', requireAuth, (req, res) => {
     upload.single('image')(req, res, async (err) => {
       if (err) {
         return res.status(400).json({ error: 'Error al procesar la imagen: ' + err.message });
@@ -254,12 +261,7 @@ function register(app) {
       }
 
       const { productId, sellerId, conversationId, replyToMessageId } = req.body;
-      const userId = req.body.senderId;
-
-      if (!userId) {
-        fs.unlink(req.file.path, () => {});
-        return res.status(400).json({ error: 'senderId es requerido' });
-      }
+      const userId = req.user.id;
 
       const { conversation, error } = resolveConversation({ conversationId, productId, sellerId, userId });
       if (error) {
@@ -291,9 +293,11 @@ function register(app) {
   });
 
   // DELETE /api/chat/messages/:id - eliminar un mensaje propio (el senderId debe coincidir)
-  app.delete('/api/chat/messages/:id', (req, res) => {
-    const senderId = req.query.senderId;
-    if (!senderId) return res.status(400).json({ error: 'senderId (query param) requerido' });
+  app.delete('/api/chat/messages/:id', requireAuth, (req, res) => {
+    // `db.deleteMessage` ya exigía que el mensaje fuera del `senderId` que se
+    // le pasara; el problema era que ese senderId lo elegía quien llamaba, así
+    // que la comprobación se cumplía siempre. Ahora es el del token.
+    const senderId = req.user.id;
     const msg = db.getDb().prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id);
     const deleted = db.deleteMessage(req.params.id, senderId);
     if (!deleted) {

@@ -972,14 +972,14 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                 flex: 1,
                 child: TextField(
                   controller: _extraPriceController,
-                  decoration: const InputDecoration(
-                    hintText: '+ \$0',
+                  decoration: InputDecoration(
+                    hintText: 'publish.price_placeholder'.tr(),
                     isDense: true,
-                    contentPadding: EdgeInsets.symmetric(
+                    contentPadding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 10,
                     ),
-                    border: OutlineInputBorder(),
+                    border: const OutlineInputBorder(),
                   ),
                   keyboardType: TextInputType.number,
                 ),

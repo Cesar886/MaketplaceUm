@@ -32,7 +32,8 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
 const bcrypt = require('bcryptjs');
-const { generateToken, requireAuth, verificarToken } = require('./auth');
+const { generateToken, generateAnonToken, requireAuth, verificarToken } = require('./auth');
+const rateLimit = require('express-rate-limit');
 const { crearRegistroPresencia } = require('./presence');
 const { sellers, saveData, registerSeller, updateSellerField } = require('./data');
 const { validateName, validateEmail, validatePassword, validatePhone, validateBusinessHours, validatePaymentMethods } = require('./validation/sellerProfile');
@@ -127,11 +128,49 @@ const presencia = crearRegistroPresencia({
 });
 app.set('presencia', presencia);
 
-io.on('connection', (socket) => {
-  console.log(`🟢 Cliente Socket.IO conectado: ${socket.id}`);
+// El handshake es lo que autentica al socket, igual que el Bearer autentica
+// una petición REST. Antes no había nada: `join:conversation` aceptaba
+// cualquier id de cualquier socket anónimo, y a esa sala se emite el texto
+// íntegro de cada mensaje (routes/chat.js). Bastaba con enumerar ids de
+// conversación para leer el marketplace entero en vivo (hallazgo C-02).
+//
+// El token va en `auth` del handshake y no en la query: la query se escribe
+// en los logs de acceso de cualquier proxy que haya delante.
+//
+// Se exige a TODO socket, incluidos los invitados — que desde ahora también
+// tienen token (POST /api/auth/anon). Sin credencial no hay conexión, así
+// que ninguna sala tiene que preguntarse si su socket tiene identidad.
+io.use((socket, next) => {
+  const token = socket.handshake.auth && socket.handshake.auth.token;
+  const userId = verificarToken(token);
+  if (!userId) {
+    return next(new Error('UNAUTHORIZED'));
+  }
+  socket.data.userId = userId;
+  next();
+});
 
-  // Unirse a una sala de conversación
+io.on('connection', (socket) => {
+  console.log(`🟢 Cliente Socket.IO conectado: ${socket.id} (${socket.data.userId})`);
+
+  // La presencia se enciende con la conexión: el token ya se validó en el
+  // handshake, así que no hace falta un `register:user` que la reafirme.
+  presencia.conectar(socket.data.userId, socket.id);
+  socket.join(`user:${socket.data.userId}`);
+
+  // Unirse a una sala de conversación, solo si se participa en ella.
+  //
+  // La pertenencia se consulta a la BD en cada intento y no se cachea: una
+  // conversación cambia de participantes cuando se crea, y un socket puede
+  // vivir horas.
   socket.on('join:conversation', (conversationId) => {
+    if (typeof conversationId !== 'string' || !conversationId) return;
+    if (!db.esParticipanteDeConversacion(conversationId, socket.data.userId)) {
+      console.warn(
+        `[socket] ${socket.data.userId} intentó unirse a conv:${conversationId} sin participar en ella`,
+      );
+      return;
+    }
     socket.join(`conv:${conversationId}`);
     console.log(`  → ${socket.id} se unió a conv:${conversationId}`);
   });
@@ -142,13 +181,18 @@ io.on('connection', (socket) => {
     console.log(`  → ${socket.id} salió de conv:${conversationId}`);
   });
 
-  // Indicador de escritura
-  socket.on('typing:start', ({ conversationId, userId }) => {
-    socket.to(`conv:${conversationId}`).emit('typing:start', { userId });
+  // Indicador de escritura. El `userId` que se reemite es el del socket
+  // autenticado y no el que venga en el payload: si no, cualquiera podría
+  // hacer aparecer "Fulano está escribiendo…" en un chat ajeno.
+  //
+  // No hace falta comprobar pertenencia aquí porque `socket.to(sala)` solo
+  // alcanza a una sala en la que este socket ya está, y entrar exige serlo.
+  socket.on('typing:start', ({ conversationId }) => {
+    socket.to(`conv:${conversationId}`).emit('typing:start', { userId: socket.data.userId });
   });
 
-  socket.on('typing:stop', ({ conversationId, userId }) => {
-    socket.to(`conv:${conversationId}`).emit('typing:stop', { userId });
+  socket.on('typing:stop', ({ conversationId }) => {
+    socket.to(`conv:${conversationId}`).emit('typing:stop', { userId: socket.data.userId });
   });
 
   // Unirse a la sala de un producto: quien tenga abierto ese detalle recibe
@@ -165,27 +209,15 @@ io.on('connection', (socket) => {
     console.log(`  → ${socket.id} salió de product:${productId}`);
   });
 
-  // Unirse a una sala personal para recibir notificaciones de nuevas
-  // conversaciones y, si viene token, quedar marcado como "en línea".
+  // Compatibilidad con clientes ya instalados, que siguen emitiendo esto
+  // tras conectar. Ya no hace nada: la sala personal y la presencia se
+  // resuelven en la conexión, a partir del token del handshake.
   //
-  // El argumento acepta las dos formas a propósito: `userId` suelto (lo que
-  // mandan los clientes ya instalados) y `{ userId, token }` (lo que manda
-  // la app desde que existe la presencia). Sin token la sala funciona igual
-  // que siempre pero NO se marca presencia: el estado en línea es visible
-  // para terceros, así que un `userId` que cualquiera puede escribir no
-  // basta para encenderlo.
-  socket.on('register:user', (payload) => {
-    const userId = typeof payload === 'string' ? payload : payload && payload.userId;
-    const token = typeof payload === 'object' && payload ? payload.token : null;
-    if (!userId) return;
-
-    socket.join(`user:${userId}`);
-    console.log(`  → ${socket.id} registrado como user:${userId}`);
-
-    if (!token || verificarToken(token) !== userId) return;
-    socket.data.userId = userId;
-    presencia.conectar(userId, socket.id);
-  });
+  // Antes este handler hacía `socket.join('user:' + userId)` ANTES de validar
+  // el token y solo usaba la validación para decidir la presencia — de modo
+  // que cualquiera podía entrar en la sala personal de otro y recibir sus
+  // avisos de conversación con solo escribir su id (hallazgo C-02).
+  socket.on('register:user', () => {});
 
   // Seguir el estado en línea de otro usuario (su fila en la lista de chats,
   // o su perfil abierto). La privacidad se resuelve aquí: si cualquiera de
@@ -480,6 +512,30 @@ app.post('/api/auth/register', (req, res) => {
     created: true,
   });
 });
+
+// Sesión de invitado: permite chatear sin cuenta (ver generateAnonToken).
+//
+// Sustituye al UUID que la app se generaba sola y mandaba como `senderId`.
+// Aquel identificador lo elegía el cliente, así que el backend no tenía forma
+// de distinguir al invitado legítimo de quien copiaba su id de un mensaje;
+// éste lo emite y lo firma el servidor.
+//
+// Con límite por IP porque es el único endpoint que crea sesiones sin
+// credencial alguna: sin freno, es una fuente gratuita de tokens válidos.
+app.post(
+  '/api/auth/anon',
+  rateLimit({
+    windowMs: 60 * 60 * 1000,
+    limit: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Demasiadas sesiones de invitado desde esta red. Intenta más tarde.' },
+  }),
+  (_req, res) => {
+    const { token, anonId } = generateAnonToken();
+    res.status(201).json({ token, anonId });
+  },
+);
 
 // Health check
 app.get('/api/health', (_req, res) => {

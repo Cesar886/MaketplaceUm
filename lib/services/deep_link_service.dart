@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app_links/app_links.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../main.dart' show navigatorKey, scaffoldMessengerKey;
@@ -85,7 +86,7 @@ class DeepLinkService {
       // app se abrió sin llevarlo a ningún lado. El silencio se leería como
       // que la app está rota.
       scaffoldMessengerKey.currentState?.showSnackBar(
-        const SnackBar(content: Text('Esta publicación ya no está disponible')),
+        SnackBar(content: Text('errors.listing_unavailable'.tr())),
       );
       return;
     }

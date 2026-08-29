@@ -66,14 +66,18 @@ class _BusinessHoursEditorState extends State<BusinessHoursEditor> {
     final openResult = await showTimePicker(
       context: context,
       initialTime: _parseTime(current.open),
-      helpText: 'Hora de apertura — ${_dayNames[day].tr()}',
+      helpText: 'hours.open_time_day'.tr(
+        namedArgs: {'day': _dayNames[day].tr()},
+      ),
     );
     if (openResult == null || !mounted) return;
 
     final closeResult = await showTimePicker(
       context: context,
       initialTime: _parseTime(current.close),
-      helpText: 'Hora de cierre — ${_dayNames[day].tr()}',
+      helpText: 'hours.close_time_day'.tr(
+        namedArgs: {'day': _dayNames[day].tr()},
+      ),
     );
     if (closeResult == null || !mounted) return;
 

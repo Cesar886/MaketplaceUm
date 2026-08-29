@@ -353,14 +353,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Expanded(
                         child: _ProfileMetric(
                           value: '$_sellerReviews',
-                          label: 'Opiniones',
+                          label: 'profile.reviews'.tr(),
                           icon: Icons.reviews_rounded,
                         ),
                       ),
                       Expanded(
                         child: _ProfileMetric(
                           value: '$activeCount',
-                          label: 'Activas',
+                          label: 'profile.active_listings'.tr(),
                           icon: Icons.store_rounded,
                         ),
                       ),

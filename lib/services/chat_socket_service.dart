@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
+import 'api_service.dart';
+
 import '../config/app_config.dart';
 import 'presence_subscriptions.dart';
 
@@ -109,13 +111,25 @@ class ChatSocketService {
     }
 
     final uri = Uri.parse(AppConfig.socketUrl);
+    // El token va en `auth` del handshake: es lo que autentica al socket.
+    // El servidor rechaza la conexión sin él (io.use en index.js), porque
+    // antes cualquier socket anónimo podía unirse a la sala de cualquier
+    // conversación y recibir sus mensajes en vivo.
+    //
+    // En `auth` y no en `query`: la query acaba escrita en los logs de
+    // acceso de cualquier proxy que haya delante.
     _socket = io.io(
       '${uri.scheme}://${uri.host}:${uri.port}',
       <String, dynamic>{
         'transports': ['websocket'],
         'autoConnect': false,
+        'auth': (Function(dynamic) cb) => cb({'token': ApiService.token}),
       },
     );
+
+    _socket!.onConnectError((error) {
+      debugPrint('🔴 ChatSocket rechazado en el handshake: $error');
+    });
 
     _socket!.onConnect((_) {
       _connected = true;
@@ -195,8 +209,12 @@ class ChatSocketService {
       }
     });
 
-    _socket!.onConnectError((_) {
-      debugPrint('⚠️ ChatSocket error de conexión');
+    _socket!.onConnectError((error) {
+      // Desde que el handshake exige token, este error ya no es solo de red:
+      // 'UNAUTHORIZED' significa que se intentó conectar sin sesión (ni de
+      // cuenta ni de invitado), y se arregla llamando a AnonSession.ensure()
+      // antes de connect(), no reintentando.
+      debugPrint('⚠️ ChatSocket error de conexión: $error');
     });
 
     _socket!.connect();

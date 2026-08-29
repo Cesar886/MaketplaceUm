@@ -267,7 +267,7 @@ class _ChipPendientes extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
           child: Text(
-            cantidad == 1 ? '1 sin responder' : '$cantidad sin responder',
+            'questions.unanswered_n'.plural(cantidad),
             style: TextStyle(
               fontSize: 11.5,
               fontWeight: FontWeight.w600,

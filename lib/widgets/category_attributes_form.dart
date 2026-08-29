@@ -582,7 +582,7 @@ class _ChipAgregar extends StatelessWidget {
             Icon(Icons.add_rounded, size: 15, color: context.colors.muted),
             const SizedBox(width: 4),
             Text(
-              'Agregar',
+              'attributes.add'.tr(),
               style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
@@ -684,7 +684,7 @@ class _CustomChipInput extends StatelessWidget {
             visualDensity: VisualDensity.compact,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-            tooltip: 'Agregar',
+            tooltip: 'attributes.add'.tr(),
           ),
         ],
       ),

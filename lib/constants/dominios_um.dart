@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 /// Los dos dominios institucionales que puede elegir el usuario al verificar
@@ -12,23 +13,23 @@ enum DominioUM {
     dominio: 'alumno.um.edu.mx',
     tipo: 'estudiante',
     emoji: '🎓',
-    etiquetaCampo: 'Matrícula',
-    mensajeInvalido: 'Tu matrícula son 7 dígitos',
+    claveEtiquetaCampo: 'verification.field_student_id',
+    claveMensajeInvalido: 'verification.invalid_student_id',
   ),
   personal(
     dominio: 'um.edu.mx',
     tipo: 'empleado',
     emoji: '🏢',
-    etiquetaCampo: 'Usuario institucional',
-    mensajeInvalido: 'Tu usuario va como nombre.apellido',
+    claveEtiquetaCampo: 'verification.field_staff_user',
+    claveMensajeInvalido: 'verification.invalid_staff_user',
   );
 
   const DominioUM({
     required this.dominio,
     required this.tipo,
     required this.emoji,
-    required this.etiquetaCampo,
-    required this.mensajeInvalido,
+    required this.claveEtiquetaCampo,
+    required this.claveMensajeInvalido,
   });
 
   /// Dominio sin arroba. Debe coincidir con `VERIFICATION_STUDENT_DOMAINS` /
@@ -40,11 +41,19 @@ enum DominioUM {
 
   final String emoji;
 
-  /// Etiqueta del campo de texto una vez elegido el dominio.
-  final String etiquetaCampo;
+  /// Clave de traducción de la etiqueta del campo. Se guarda la clave y no el
+  /// texto porque el enum es `const`: `.tr()` no se puede evaluar aquí, y el
+  /// idioma puede cambiar sin reiniciar la app.
+  final String claveEtiquetaCampo;
 
-  /// Aviso cuando lo tecleado no cumple el formato de este dominio.
-  final String mensajeInvalido;
+  /// Clave del aviso cuando lo tecleado no cumple el formato de este dominio.
+  final String claveMensajeInvalido;
+
+  /// Etiqueta del campo de texto una vez elegido el dominio, ya traducida.
+  String get etiquetaCampo => claveEtiquetaCampo.tr();
+
+  /// Aviso, ya traducido, cuando lo tecleado no cumple el formato.
+  String get mensajeInvalido => claveMensajeInvalido.tr();
 
   /// Lo que se ve en el desplegable y pegado al campo: '@alumno.um.edu.mx'.
   String get sufijo => '@$dominio';

@@ -117,7 +117,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     try {
       // Refrescar userId por si cambió
       _userId = await _getChatUserId();
-      final data = await ApiService.getConversations(userId: _userId);
+      final data = await ApiService.getConversations();
       if (!mounted) return;
       final conversaciones = (data['conversations'] as List<dynamic>)
           .map((e) => Conversation.fromJson(e as Map<String, dynamic>))
@@ -140,7 +140,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            const Text('Mensajes'),
+            Text('chat.title'.tr()),
             if (_unreadCount > 0)
               Container(
                 margin: const EdgeInsets.only(left: 8),

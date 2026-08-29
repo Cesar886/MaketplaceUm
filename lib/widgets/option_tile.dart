@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -58,7 +59,13 @@ class OptionTile extends StatelessWidget {
             onTap ??
             () => ScaffoldMessenger.of(
               context,
-            ).showSnackBar(SnackBar(content: Text('$title mock'))),
+            ).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'common.not_implemented'.tr(namedArgs: {'title': title}),
+                ),
+              ),
+            ),
       ),
     );
   }

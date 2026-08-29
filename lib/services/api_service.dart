@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:easy_localization/easy_localization.dart';
 import 'package:http/http.dart' as http;
 
 import '../models.dart';
@@ -298,7 +299,7 @@ class ApiService {
     );
     if (res.statusCode == 401) return null;
     if (res.statusCode != 200) {
-      throw Exception('Error al iniciar sesión. Intenta de nuevo.');
+      throw Exception('errors.login_failed'.tr());
     }
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -324,7 +325,7 @@ class ApiService {
       throw VerificacionException(
         body['message'] as String? ??
             codigo ??
-            'No pudimos completar la verificación.',
+            'errors.verification_failed'.tr(),
         campo: body['campo'] as String?,
         statusCode: res.statusCode,
         puedeReintentarEn: (body['puede_reintentar_en'] as num?)?.toInt(),
@@ -356,9 +357,7 @@ class ApiService {
           )
           .timeout(_timeoutVerificacion);
     } on TimeoutException {
-      throw const VerificacionException(
-        'El servidor tardó demasiado en responder. Inténtalo de nuevo.',
-      );
+      throw VerificacionException('errors.server_timeout'.tr());
     }
     return _decodeVerificacion(res);
   }
@@ -427,9 +426,7 @@ class ApiService {
           .get(_uri('/verificacion/estado'), headers: _authHeaders)
           .timeout(_timeoutVerificacion);
     } on TimeoutException {
-      throw const VerificacionException(
-        'El servidor tardó demasiado en responder. Inténtalo de nuevo.',
-      );
+      throw VerificacionException('errors.server_timeout'.tr());
     }
     return _decodeVerificacion(res);
   }
@@ -683,7 +680,10 @@ class ApiService {
     if (res.statusCode != 200) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       throw Exception(
-        body['error'] ?? 'Error al editar la publicación (${res.statusCode})',
+        body['error'] ??
+            'errors.edit_listing_failed'.tr(
+              namedArgs: {'code': '${res.statusCode}'},
+            ),
       );
     }
     return WantedPost.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
@@ -801,9 +801,7 @@ class ApiService {
       }
       // El seller se obtiene del JWT en el backend (requireAuth)
       if (_token == null) {
-        throw Exception(
-          'No hay sesión activa en el backend. Vuelve a iniciar sesión.',
-        );
+        throw Exception('errors.no_active_session'.tr());
       }
       request.headers['Authorization'] = 'Bearer $_token';
 
@@ -857,7 +855,7 @@ class ApiService {
         decoded = jsonDecode(res.body) as Map<String, dynamic>;
       } catch (_) {}
       if (decoded?['error'] == 'SESSION_INVALIDATED') {
-        throw Exception('Tu sesión expiró, inicia sesión de nuevo.');
+        throw Exception('errors.session_expired'.tr());
       }
     }
     throw Exception('${res.statusCode}: ${res.body}');
@@ -884,9 +882,7 @@ class ApiService {
     Map<String, dynamic> atributos = const {},
   }) async {
     if (_token == null) {
-      throw Exception(
-        'No hay sesión activa en el backend. Vuelve a iniciar sesión.',
-      );
+      throw Exception('errors.no_active_session'.tr());
     }
 
     final request = http.MultipartRequest('PUT', _uri('/products/$productId'));
@@ -1008,7 +1004,7 @@ class ApiService {
   static Future<bool> getShowOnlineStatus() async {
     final res = await _client.get(_uri('/me/privacy'), headers: _authHeaders);
     if (res.statusCode != 200) {
-      throw Exception('Error al leer la configuración de privacidad');
+      throw Exception('errors.privacy_read_failed'.tr());
     }
     return (jsonDecode(res.body) as Map<String, dynamic>)['showOnlineStatus']
         as bool;
@@ -1063,7 +1059,7 @@ class ApiService {
     );
     if (res.statusCode != 200) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
-      throw Exception(body['error'] ?? 'Error al actualizar días disponibles');
+      throw Exception(body['error'] ?? 'errors.update_days_failed'.tr());
     }
     return Product.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
@@ -1363,25 +1359,36 @@ class ApiService {
     return (data['interests'] as List<dynamic>?)?.cast<String>() ?? [];
   }
 
-  // ─── Chat ────────────────────────────────────────────────
+  /// Pide una sesión de invitado al backend. Ver [AnonSession], que es quien
+  /// la persiste y decide cuándo hace falta.
+  static Future<Map<String, dynamic>> crearSesionInvitado() async {
+    final res = await _client.post(
+      _uri('/auth/anon'),
+      headers: {'Content-Type': 'application/json'},
+    );
+    if (res.statusCode != 201) {
+      throw Exception('No se pudo iniciar la sesión de invitado');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
 
-  /// Obtiene conversaciones — no requiere auth, usa [userId] (anónimo o real).
-  static Future<Map<String, dynamic>> getConversations({String? userId}) async {
-    final query = <String, String>{};
-    if (userId != null) query['userId'] = userId;
-    final res = await _getWithRetry(_uri('/chat/conversations', query));
+  // ─── Chat ────────────────────────────────────────────────
+  //
+  // Ninguna de estas llamadas manda ya `senderId`/`userId`: la identidad va
+  // en el Bearer y la resuelve el servidor. Mandarla en el cuerpo era lo que
+  // permitía leer la bandeja de cualquiera y escribir en su nombre.
+
+  /// Obtiene las conversaciones del usuario del token (cuenta o invitado).
+  static Future<Map<String, dynamic>> getConversations() async {
+    final res = await _getWithRetry(_uri('/chat/conversations'), headers: _authHeaders);
     if (res.statusCode != 200) throw Exception('Error fetching conversations');
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
-  static Future<List<ChatMessage>> getMessages(
-    String conversationId, {
-    String? userId,
-  }) async {
-    final query = <String, String>{};
-    if (userId != null) query['userId'] = userId;
+  static Future<List<ChatMessage>> getMessages(String conversationId) async {
     final res = await _getWithRetry(
-      _uri('/chat/conversations/$conversationId/messages', query),
+      _uri('/chat/conversations/$conversationId/messages'),
+      headers: _authHeaders,
     );
     if (res.statusCode != 200) throw Exception('Error fetching messages');
     final data = jsonDecode(res.body) as Map<String, dynamic>;
@@ -1392,13 +1399,11 @@ class ApiService {
 
   /// Envía un mensaje. Si no existe conversación, la crea.
   /// Si se provee [conversationId], lo envía a la conversación existente.
-  /// [senderId] es requerido (puede ser anónimo o el backendSellerId).
-  /// Devuelve { messages, conversationId }
+  /// El autor lo determina el token. Devuelve { messages, conversationId }.
   static Future<Map<String, dynamic>> sendMessage({
     required String productId,
     required String sellerId,
     required String text,
-    required String senderId,
     String? conversationId,
     String? replyToMessageId,
   }) async {
@@ -1406,7 +1411,6 @@ class ApiService {
       'productId': productId,
       'sellerId': sellerId,
       'text': text,
-      'senderId': senderId,
     };
     if (conversationId != null && conversationId.isNotEmpty) {
       body['conversationId'] = conversationId;
@@ -1416,7 +1420,7 @@ class ApiService {
     }
     final res = await _client.post(
       _uri('/chat/send'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _authHeaders,
       body: jsonEncode(body),
     );
     if (res.statusCode != 201) throw Exception('Error sending message');
@@ -1424,13 +1428,11 @@ class ApiService {
   }
 
   /// Elimina un mensaje propio (soft-delete: reemplaza el texto).
-  /// [senderId] debe coincidir con el dueño del mensaje.
-  static Future<void> deleteMessage(
-    String messageId, {
-    required String senderId,
-  }) async {
+  /// El servidor solo lo permite si el autor es el dueño del token.
+  static Future<void> deleteMessage(String messageId) async {
     final res = await _client.delete(
-      _uri('/chat/messages/$messageId', {'senderId': senderId}),
+      _uri('/chat/messages/$messageId'),
+      headers: _authHeaders,
     );
     if (res.statusCode != 200) throw Exception('Error deleting message');
   }
@@ -1441,14 +1443,13 @@ class ApiService {
   /// usa. Devuelve { messages, conversationId }.
   static Future<Map<String, dynamic>> sendChatImage({
     required String imagePath,
-    required String senderId,
     String? productId,
     String? sellerId,
     String? conversationId,
     String? replyToMessageId,
   }) async {
     final request = http.MultipartRequest('POST', _uri('/chat/send-image'));
-    request.fields['senderId'] = senderId;
+    if (_token != null) request.headers['Authorization'] = 'Bearer $_token';
     if (productId != null) request.fields['productId'] = productId;
     if (sellerId != null) request.fields['sellerId'] = sellerId;
     if (conversationId != null && conversationId.isNotEmpty) {

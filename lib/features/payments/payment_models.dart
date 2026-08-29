@@ -1,3 +1,8 @@
+// TODO: Mercado Pago pendiente para próxima actualización - no eliminar,
+// solo descomentar/reactivar cuando esté listo (ver mercado_pago_flag.dart).
+// Todo este archivo queda inactivo e inaccesible desde la UI mientras
+// kMercadoPagoHabilitado sea false.
+///
 /// Modelos del módulo de pagos.
 ///
 /// Nota importante sobre qué NO existe aquí: no hay ningún campo para el

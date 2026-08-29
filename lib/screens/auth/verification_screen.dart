@@ -18,6 +18,7 @@ import '../../widgets/otp_input.dart';
 import '../../widgets/static_mini_map.dart';
 import '../../widgets/verification_checklist.dart';
 import '../../features/payments/connect_mp_screen.dart';
+import '../../features/payments/mercado_pago_flag.dart';
 import '../profile/edit_profile_screen.dart';
 import 'account_created_screen.dart';
 
@@ -85,9 +86,15 @@ class _VerificationScreenState extends State<VerificationScreen> {
   final _matriculaController = TextEditingController();
   final _focoMatricula = FocusNode();
 
-  /// Dominio elegido en el desplegable. Null = todavía sin elegir, que es lo
-  /// que mantiene el campo de texto bloqueado: hasta saber el dominio no se
-  /// sabe qué formato exigirle a lo que se teclee.
+  /// Dominio detectado automáticamente a partir de lo tecleado (ver
+  /// [_detectarDominio]). Null = todavía ambiguo (menos de 3 caracteres, o
+  /// ninguno decisivo aún), que es lo que impide validar o enviar: hasta
+  /// saber el dominio no se sabe qué formato exigirle a lo que se teclee.
+  ///
+  /// El dominio NUNCA se muestra en la UI (ni en el input ni en un
+  /// desplegable): solo se usa internamente para armar el correo completo al
+  /// enviar, por seguridad (no revelar el formato de los correos
+  /// institucionales).
   DominioUM? _dominio;
 
   /// Solo se llena cuando el usuario elige una opción exacta de [carrerasUM]
@@ -113,6 +120,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
       // el setState de _validarCorreo reventaría sobre un State ya desmontado.
       if (mounted && !_focoMatricula.hasFocus) _validarCorreo();
     });
+    // El dominio se re-evalúa en cada tecla, no solo al perder el foco: es lo
+    // que permite que el formato exigido (y el campo de carrera) cambien en
+    // vivo mientras la persona escribe.
+    _matriculaController.addListener(_actualizarDominioDetectado);
     _retomarDondeQuedo();
   }
 
@@ -129,6 +140,11 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
     await _auth.refrescarEstadoVerificacion();
     if (!mounted) return;
+    // TODO: Mercado Pago pendiente para próxima actualización - no eliminar,
+    // solo quitar este corte cuando esté listo. Mientras tanto el paso de
+    // "conectar cuenta de cobros" nunca se activa desde el frontend (ver
+    // kMercadoPagoHabilitado).
+    if (!kMercadoPagoHabilitado) return;
     if (!_auth.soloFaltaConectarCobros) return;
     setState(() {
       _faltaMercadoPago = true;
@@ -140,6 +156,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
   @override
   void dispose() {
     _timerReenvio?.cancel();
+    _matriculaController.removeListener(_actualizarDominioDetectado);
     _matriculaController.dispose();
     _focoMatricula.dispose();
     _nombreNegocioController.dispose();
@@ -269,30 +286,55 @@ class _VerificationScreenState extends State<VerificationScreen> {
     return valido ? correo : null;
   }
 
-  /// Reinicia lo que dependía del dominio anterior. Cambiar de alumno a
-  /// personal (o al revés) cambia el formato exigido y si aplica la carrera,
-  /// así que lo ya tecleado deja de tener sentido.
-  void _cambiarDominio(DominioUM? nuevo) {
+  /// Detecta el dominio (alumno/personal) a partir de lo tecleado, sin
+  /// mostrarlo nunca en la UI.
+  ///
+  /// Los primeros 2 caracteres (posiciones 0 y 1) no son determinantes y se
+  /// ignoran. A partir de la posición 2 en adelante se evalúa cada carácter:
+  /// el primero que sea un dígito asigna alumno; el primero que sea una letra
+  /// asigna personal. Un carácter que no sea ni dígito ni letra (p. ej. un
+  /// punto) no decide nada y se sigue evaluando el siguiente.
+  ///
+  /// Devuelve null mientras la información siga siendo ambigua (menos de 3
+  /// caracteres, o ningún carácter decisivo todavía).
+  DominioUM? _detectarDominio(String texto) {
+    for (var i = 2; i < texto.length; i++) {
+      final c = texto[i];
+      if (RegExp(r'[0-9]').hasMatch(c)) return DominioUM.alumno;
+      if (RegExp(r'[a-zA-Z]').hasMatch(c)) return DominioUM.personal;
+    }
+    return null;
+  }
+
+  /// Reevalúa el dominio en cada cambio del campo de texto. Se puede
+  /// reevaluar en cualquier momento: si el usuario borra y reescribe, el
+  /// dominio detectado puede cambiar (o volver a quedar ambiguo).
+  void _actualizarDominioDetectado() {
+    final nuevo = _detectarDominio(_matriculaController.text);
     if (nuevo == _dominio) return;
     setState(() {
       _dominio = nuevo;
-      _matriculaController.clear();
       // La carrera no aplica al personal; y si vuelve a alumno, la que
       // hubiera elegido antes ya no está a la vista, así que se vuelve a
       // pedir en vez de mandar una selección invisible.
       _carreraSeleccionada = null;
-      _error = null;
-      _campoConError = null;
+      if (_campoConError == 'correo_institucional' ||
+          _campoConError == 'tipo') {
+        _error = null;
+        _campoConError = null;
+      }
     });
   }
 
   Future<void> _solicitarCodigoEstudiante() {
-    // Sin dominio no hay correo que armar: es el primer aviso que toca.
+    // Sin dominio detectado no hay correo que armar: con menos de 3
+    // caracteres (o ninguno decisivo aún) el aviso es simplemente que falta
+    // completar el campo, sin insinuar que hay un dominio por detectar.
     final dominio = _dominio;
     if (dominio == null) {
       setState(() {
-        _campoConError = 'tipo';
-        _error = 'validation.domain_required'.tr();
+        _campoConError = 'correo_institucional';
+        _error = 'validation.email_required'.tr();
       });
       return Future.value();
     }
@@ -364,8 +406,11 @@ class _VerificationScreenState extends State<VerificationScreen> {
         _terminar(verificado: true);
         return;
       }
+      // TODO: Mercado Pago pendiente para próxima actualización - no
+      // eliminar, solo descomentar `_faltaMercadoPago = true` cuando esté
+      // listo. Mientras tanto no se ofrece el paso de conectar cobros.
       setState(() {
-        _faltaMercadoPago = true;
+        // _faltaMercadoPago = true;
         _error =
             _auth.motivoRechazo ?? 'verification.connect_mp_to_finish'.tr();
         _campoConError = _auth.campoRechazado;
@@ -434,6 +479,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
   Future<void> _irAResolverRequisito(VerificationRequirement requisito) async {
     switch (requisito.accion) {
       case 'conectar_mercadopago':
+        // TODO: Mercado Pago pendiente para próxima actualización - no
+        // eliminar, solo descomentar la navegación cuando esté listo.
+        if (!kMercadoPagoHabilitado) break;
         await Navigator.of(context).push(
           MaterialPageRoute<void>(builder: (_) => const ConnectMpScreen()),
         );
@@ -666,14 +714,12 @@ class _VerificationScreenState extends State<VerificationScreen> {
         // al formulario, que es lo que invalida el paso.
         _CampoTexto(
           controller: esEstudiante ? _matriculaController : _telefonoController,
+          // Etiqueta neutra siempre: el dominio detectado no se muestra en
+          // ningún lado de la UI, ni siquiera aquí.
           etiqueta: esEstudiante
-              ? (_dominio?.etiquetaCampo ??
-                    'verification.institutional_email'.tr())
+              ? 'verification.institutional_email'.tr()
               : 'verification.phone_number'.tr(),
           icono: esEstudiante ? Icons.badge_rounded : Icons.phone_rounded,
-          // Bloqueado pero con el sufijo puesto: se sigue leyendo como el
-          // correo completo al que se mandó el código.
-          sufijo: esEstudiante ? _dominio?.sufijo : null,
           habilitado: false,
         ),
         const SizedBox(height: 22),
@@ -737,13 +783,19 @@ class _VerificationScreenState extends State<VerificationScreen> {
   Widget _buildFormEstudiante() {
     return Column(
       children: [
-        _CampoCorreoInstitucional(
+        _CampoTexto(
           controller: _matriculaController,
           focusNode: _focoMatricula,
-          dominio: _dominio,
-          onDominioCambiado: _cambiarDominio,
+          etiqueta: 'verification.institutional_email'.tr(),
+          icono: Icons.badge_rounded,
           conError: _campoConError == 'correo_institucional',
-          conErrorDominio: _campoConError == 'tipo',
+          // Sin inputFormatters de por medio: el dominio (y por lo tanto el
+          // formato esperado) se decide con lo que la persona ya escribió,
+          // así que no se puede filtrar por adelantado sin arriesgarse a
+          // bloquear el carácter que resuelve la ambigüedad.
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9.]')),
+          ],
           // Al corregir lo tecleado se limpia el aviso en el momento, sin
           // esperar a que el campo pierda el foco.
           onChanged: (_) {
@@ -859,16 +911,21 @@ class _VerificationScreenState extends State<VerificationScreen> {
         // verificado es uno que puede cobrar en la app. Se ofrece desde aquí
         // para que no haya que salir al perfil a buscarlo, y se destaca
         // cuando el backend dice que es justo lo que falta.
-        _FilaConectarMercadoPago(
-          destacado: _campoConError == 'mercadopago',
-          habilitado: !_enviando,
-          onConectado: () {
-            // Al volver de conectar, se reintenta solo: el usuario ya tiene
-            // el formulario lleno y repetirlo a mano sería absurdo.
-            if (mounted) _verificarNegocio();
-          },
-        ),
-        const SizedBox(height: 18),
+        //
+        // TODO: Mercado Pago pendiente para próxima actualización - no
+        // eliminar, solo quitar este `if` cuando esté listo.
+        if (kMercadoPagoHabilitado) ...[
+          _FilaConectarMercadoPago(
+            destacado: _campoConError == 'mercadopago',
+            habilitado: !_enviando,
+            onConectado: () {
+              // Al volver de conectar, se reintenta solo: el usuario ya tiene
+              // el formulario lleno y repetirlo a mano sería absurdo.
+              if (mounted) _verificarNegocio();
+            },
+          ),
+          const SizedBox(height: 18),
+        ],
 
         _BotonPrincipal(
           etiqueta: 'verification.verify_business'.tr(),
@@ -961,22 +1018,21 @@ class _CampoTexto extends StatelessWidget {
     required this.controller,
     required this.etiqueta,
     required this.icono,
+    this.focusNode,
     this.tipoTeclado,
     this.ayuda,
-    this.sufijo,
     this.conError = false,
     this.habilitado = true,
+    this.inputFormatters,
+    this.onChanged,
   });
 
   final TextEditingController controller;
+  final FocusNode? focusNode;
   final String etiqueta;
   final IconData icono;
   final TextInputType? tipoTeclado;
   final String? ayuda;
-
-  /// Texto fijo pegado al final del campo (ej. el dominio institucional).
-  /// No forma parte del valor del controller ni es editable.
-  final String? sufijo;
 
   /// Resalta el campo que el backend señaló como causa del rechazo.
   final bool conError;
@@ -984,220 +1040,27 @@ class _CampoTexto extends StatelessWidget {
   /// En false el campo queda a la vista pero de solo lectura y atenuado.
   final bool habilitado;
 
+  final List<TextInputFormatter>? inputFormatters;
+  final ValueChanged<String>? onChanged;
+
   @override
   Widget build(BuildContext context) {
     return TextFormField(
       controller: controller,
+      focusNode: focusNode,
       enabled: habilitado,
       keyboardType: tipoTeclado,
+      inputFormatters: inputFormatters,
+      onChanged: onChanged,
       decoration: InputDecoration(
         labelText: etiqueta,
         helperText: ayuda,
         prefixIcon: Icon(icono),
-        suffixText: sufijo,
-        // Sin esto Flutter oculta el sufijo mientras el campo está vacío y sin
-        // foco (lo tapa la etiqueta en línea), justo cuando más falta hace
-        // ver que el dominio ya viene puesto.
-        floatingLabelBehavior: sufijo == null
-            ? null
-            : FloatingLabelBehavior.always,
         enabledBorder: conError
             ? const OutlineInputBorder(
                 borderSide: BorderSide(color: AppColors.danger, width: 1.6),
               )
             : null,
-      ),
-    );
-  }
-}
-
-/// Campo de correo institucional: usuario + selector de dominio dentro de un
-/// MISMO recuadro, con un divisor sutil entre las dos mitades.
-///
-/// El desplegable ocupa el lugar exacto donde antes iba el sufijo fijo, así
-/// que se sigue leyendo como un solo correo. Mientras no haya dominio elegido
-/// el campo de texto está bloqueado: hasta saber si es alumno o personal no se
-/// sabe qué formato exigirle (7 dígitos vs. nombre.apellido).
-class _CampoCorreoInstitucional extends StatefulWidget {
-  const _CampoCorreoInstitucional({
-    required this.controller,
-    required this.focusNode,
-    required this.dominio,
-    required this.onDominioCambiado,
-    required this.conError,
-    required this.conErrorDominio,
-    this.onChanged,
-  });
-
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final DominioUM? dominio;
-  final ValueChanged<DominioUM?> onDominioCambiado;
-
-  /// Resalta la mitad del texto (formato inválido).
-  final bool conError;
-
-  /// Resalta el recuadro por no haber elegido dominio todavía.
-  final bool conErrorDominio;
-
-  final ValueChanged<String>? onChanged;
-
-  @override
-  State<_CampoCorreoInstitucional> createState() =>
-      _CampoCorreoInstitucionalState();
-}
-
-class _CampoCorreoInstitucionalState extends State<_CampoCorreoInstitucional> {
-  @override
-  void initState() {
-    super.initState();
-    // InputDecorator no sabe solo cuándo el TextField de adentro tiene el
-    // foco: se le pasa a mano, y para eso hay que repintar en cada cambio.
-    widget.focusNode.addListener(_repintar);
-  }
-
-  @override
-  void dispose() {
-    widget.focusNode.removeListener(_repintar);
-    super.dispose();
-  }
-
-  void _repintar() {
-    if (mounted) setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final dominio = widget.dominio;
-    final habilitado = dominio != null;
-    final resaltado = widget.conError || widget.conErrorDominio;
-
-    final bordeError = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: AppColors.danger, width: 1.6),
-    );
-
-    return InputDecorator(
-      isFocused: widget.focusNode.hasFocus,
-      decoration: InputDecoration(
-        labelText:
-            '${dominio?.etiquetaCampo ?? 'verification.institutional_email'.tr()} *',
-        prefixIcon: const Icon(Icons.badge_rounded),
-        // El sufijo/desplegable ya está a la vista aunque el campo esté
-        // vacío, así que la etiqueta no debe taparlo bajando a la línea.
-        floatingLabelBehavior: FloatingLabelBehavior.always,
-        // El contenido lo compone la Row de abajo; sin esto el padding por
-        // defecto descuadra el divisor respecto al borde.
-        contentPadding: const EdgeInsets.only(right: 6),
-        enabledBorder: resaltado ? bordeError : null,
-        focusedBorder: resaltado ? bordeError : null,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: widget.controller,
-              focusNode: widget.focusNode,
-              enabled: habilitado,
-              keyboardType: dominio?.tipoTeclado,
-              onChanged: widget.onChanged,
-              // El formato se filtra al teclear según el dominio: así el
-              // usuario no llega siquiera a formar un correo inválido.
-              inputFormatters: [
-                if (dominio == DominioUM.alumno) ...[
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(dominio!.largoMaximo),
-                ] else if (dominio == DominioUM.personal)
-                  // Los dígitos entran a propósito: tanto [formatoCorreo]
-                  // como el backend aceptan nombre.apellido2, y filtrarlos
-                  // aquí dejaba a ese empleado sin poder teclear su usuario.
-                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9.]')),
-              ],
-              decoration: InputDecoration.collapsed(
-                hintText: habilitado ? null : 'verification.pick_domain'.tr(),
-                hintStyle: TextStyle(
-                  color: context.colors.muted,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ),
-          Container(
-            width: 1,
-            height: 24,
-            margin: const EdgeInsets.symmetric(horizontal: 8),
-            color: context.colors.muted.withValues(alpha: 0.28),
-          ),
-          _SelectorDominio(
-            valor: dominio,
-            onCambiado: widget.onDominioCambiado,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Desplegable del dominio, sin subrayado ni caja propia: hereda el recuadro
-/// del campo que lo contiene para que las dos mitades se lean como una sola.
-class _SelectorDominio extends StatelessWidget {
-  const _SelectorDominio({required this.valor, required this.onCambiado});
-
-  final DominioUM? valor;
-  final ValueChanged<DominioUM?> onCambiado;
-
-  @override
-  Widget build(BuildContext context) {
-    return DropdownButtonHideUnderline(
-      child: DropdownButton<DominioUM>(
-        value: valor,
-        isDense: true,
-        borderRadius: BorderRadius.circular(12),
-        icon: Icon(
-          Icons.keyboard_arrow_down_rounded,
-          size: 20,
-          color: context.colors.muted,
-        ),
-        hint: Text(
-          'Seleccionar',
-          style: TextStyle(
-            color: context.colors.muted,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        // Cerrado se muestra el dominio literal completo, que es el punto:
-        // el usuario tiene que poder leer el correo tal cual quedará.
-        selectedItemBuilder: (_) => [
-          for (final d in DominioUM.values)
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                d.sufijo,
-                style: TextStyle(
-                  color: context.colors.ink,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-        ],
-        items: [
-          for (final d in DominioUM.values)
-            DropdownMenuItem(
-              value: d,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(d.emoji, style: const TextStyle(fontSize: 15)),
-                  const SizedBox(width: 8),
-                  Text(
-                    d.sufijo,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ),
-            ),
-        ],
-        onChanged: onCambiado,
       ),
     );
   }

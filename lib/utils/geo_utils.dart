@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:easy_localization/easy_localization.dart';
+
 /// Coordenadas de referencia de la Universidad de Montemorelos (N.L.).
 /// Aproximadas — reemplazar por el valor exacto del pin si se necesita
 /// mayor precisión.
@@ -34,5 +36,5 @@ double distanceToCampusKm(double lat, double lng) {
 String campusDistanceLabel(double lat, double lng) {
   final km = distanceToCampusKm(lat, lng);
   final minutes = (km / _walkingSpeedKmh * 60).round().clamp(1, 999);
-  return 'a $minutes min caminando del campus';
+  return 'map.walking_from_campus'.tr(namedArgs: {'minutes': '$minutes'});
 }

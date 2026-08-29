@@ -1,6 +1,13 @@
 {
   "common": {
     "save": "Save",
+    "not_implemented": "{title} not available yet",
+    "brand_facebook": "Facebook",
+    "brand_instagram": "Instagram",
+    "brand_whatsapp": "WhatsApp",
+    "brand_tiktok": "TikTok",
+    "brand_twitter": "X / Twitter",
+    "brand_mercadopago": "Mercado Pago",
     "cancel": "Cancel",
     "accept": "Accept",
     "close": "Close",
@@ -82,7 +89,16 @@
     "server": "Something went wrong on our side, try again in a few minutes.",
     "unknown": "Something didn't go as expected. Please try again.",
     "network_log": "Network failure",
-    "unclassified_log": "Unclassified error"
+    "unclassified_log": "Unclassified error",
+    "listing_unavailable": "This listing is no longer available",
+    "login_failed": "Sign-in failed. Please try again.",
+    "verification_failed": "We could not complete the verification.",
+    "server_timeout": "The server took too long to respond. Please try again.",
+    "edit_listing_failed": "Could not edit the listing ({code})",
+    "email_already_registered": "An account with this email already exists.",
+    "no_active_session": "No active session. Please sign in again.",
+    "privacy_read_failed": "Could not read your privacy settings",
+    "update_days_failed": "Could not update the available days"
   },
   "auth": {
     "login_title": "Sign in",
@@ -207,7 +223,11 @@
     "social_link_help": "A single link. We check that the page exists.",
     "verify_business": "Verify business",
     "business_failed": "We couldn't verify your business details.",
-    "open_profile_error": "Couldn't open your profile. Please try again."
+    "open_profile_error": "Couldn't open your profile. Please try again.",
+    "field_student_id": "Student ID",
+    "invalid_student_id": "Your student ID is 7 digits",
+    "field_staff_user": "Institutional username",
+    "invalid_staff_user": "Your username goes as first.last"
   },
   "nav": {
     "home": "Home",
@@ -230,7 +250,8 @@
     "highlight_cta_title": "Stand out without overpaying",
     "highlight_cta_subtitle": "From {price} for {duration}; a monthly plan is also available.",
     "duration_24h": "24h",
-    "duration_days": "{days} days"
+    "duration_days": "{days} days",
+    "up_to_discount": "Up to -{percent}% off"
   },
   "search": {
     "hint": "Book, electronics, service...",
@@ -268,6 +289,7 @@
     "sun": "Sun"
   },
   "publish": {
+    "price_placeholder": "+ $0",
     "subtitle": "Fill in the basic information to post your product on the marketplace.",
     "edit_title": "Edit product",
     "photos": "Photos",
@@ -384,6 +406,7 @@
     "reject_generic_mp": "The payment didn't go through. You can try again or pay by card."
   },
   "chat": {
+    "title": "Messages",
     "self_message_error": "You can't message yourself",
     "open_error": "Couldn't open the chat. Please try again.",
     "original_not_found": "Original message not found",
@@ -452,7 +475,8 @@
     "fast_replies": "Replies fast",
     "verified": "Verified",
     "verified_student": "Verified student",
-    "verified_business": "Verified business"
+    "verified_business": "Verified business",
+    "verified_account": "Verified account"
   },
   "time": {
     "now": "Now",
@@ -471,12 +495,25 @@
     "pin_error": "Couldn't change the pinned listing.",
     "pin_action": "Pin to your profile",
     "unpin_action": "Unpin from your profile",
-    "renew": "Renew",
-    "renew_mock": "Renewal simulated",
     "highlight": "Highlight",
     "extend": "Extend",
-    "highlight_mock": "Highlight plan simulated",
-    "new_mock": "New listing mock"
+    "edit_action": "Edit",
+    "new_listing": "New listing",
+    "empty_title": "You don't have any listings yet",
+    "empty_subtitle": "Post your first product so the community can see it.",
+    "empty_cta": "Post now",
+    "load_error": "Couldn't load your listings.",
+    "stat_active": "Active",
+    "stat_featured": "Featured",
+    "stat_expired": "Expired",
+    "delete_confirm_title": "Delete this listing?",
+    "delete_confirm_body": "\"{title}\" will be permanently deleted.",
+    "deleted": "Listing deleted",
+    "delete_error": "Couldn't delete the listing. Please try again.",
+    "count": {
+      "one": "{} listing",
+      "other": "{} listings"
+    }
   },
   "seller": {
     "load_error": "Couldn't load the profile. Please try again.",
@@ -487,6 +524,7 @@
   "recent": {
     "clear_title": "Clear history",
     "clear_confirm": "Delete all recently viewed products?",
+    "clear_action": "Clear",
     "cleared": "History cleared",
     "empty": "You haven't viewed any products yet.\nExplore the marketplace!"
   },
@@ -567,9 +605,11 @@
     "arrange_by_chat": "Arrange payment by chat",
     "quantity": "Quantity",
     "remove_unit": "Remove one unit",
-    "add_unit": "Add one unit"
+    "add_unit": "Add one unit",
+    "methods_pill": "PAYMENT METHODS"
   },
   "checkout": {
+    "title": "Checkout",
     "this_seller": "This seller",
     "seller_no_payments": "{seller} doesn't accept in-app payments. Contact them by chat to arrange another payment method.",
     "prepare_error": "Couldn't prepare the payment.",
@@ -636,6 +676,7 @@
     "load_error": "Couldn't load the comments.",
     "load_more_error": "Couldn't load more comments.",
     "title_count": "Comments ({n})",
+    "my_title": "Comments",
     "see_more": "See more comments",
     "see_more_count": "See more comments ({n})",
     "be_first": "Be the first to comment",
@@ -657,6 +698,7 @@
   "questions": {
     "title": "Questions and answers",
     "title_count": "Questions and answers ({n})",
+    "filter_all": "All",
     "login_prompt": "Sign in to ask a question",
     "sent": "Question sent. We'll let you know when they reply.",
     "send_error": "Couldn't send the question.",
@@ -677,7 +719,11 @@
     "post_answer": "Post answer",
     "seller_answer": "Seller's answer",
     "answer_from": "Answer from {seller}",
-    "pending": "Awaiting answer"
+    "pending": "Awaiting answer",
+    "unanswered_n": {
+      "one": "{} unanswered",
+      "other": "{} unanswered"
+    }
   },
   "help": {
     "title": "Help",
@@ -736,14 +782,17 @@
     "today": "Today's hours",
     "closed_today": "Closed today",
     "show_week": "See weekly hours",
-    "hide_week": "Hide weekly hours"
+    "hide_week": "Hide weekly hours",
+    "open_time_day": "Opening time — {day}",
+    "close_time_day": "Closing time — {day}"
   },
   "map": {
     "pick_location": "Choose a location",
     "tap_to_place": "Tap the map to place the pin",
     "confirm_location": "Confirm location",
     "open_in_maps": "Open in Maps",
-    "location": "Location"
+    "location": "Location",
+    "walking_from_campus": "{minutes} min walk from campus"
   },
   "attributes": {
     "product_details": "Product details",
@@ -753,7 +802,9 @@
     "with_warranty": "With warranty",
     "warranty_for": "{duration} warranty",
     "type_and_enter": "Type and press enter",
-    "missing_answer": "Still to answer"
+    "missing_answer": "Still to answer",
+    "time_of_use": "{time} of use",
+    "add": "Add"
   },
   "social": {
     "twitter": "X / Twitter",
@@ -829,7 +880,7 @@
     "ej_95": "E.g. 95",
     "ej_apple_best_buy_la_tienda_donde_lo_compre": "E.g. Apple, Best Buy, the store where I bought it",
     "ej_calculo_ii_ing_ramirez": "E.g. Calculus II — Prof. Ramírez",
-    "ej_m_28_712": "E.g. M, 28, 7½",
+    "ej_m_28_7": "E.g. M, 28, 7½",
     "ej_nike_zara_sin_marca": "E.g. Nike, Zara, unbranded",
     "ej_otono_2025": "E.g. Fall 2025",
     "ej_usado_funciona_bien": "E.g. Used, works well",
@@ -885,6 +936,51 @@
     "show_online_status": "Show my online status",
     "show_online_status_subtitle": "If you turn this off, nobody sees when you're online — and you won't see anyone else's status either.",
     "section_privacy": "Privacy",
-    "save_error": "Couldn't save the change. Try again."
+    "save_error": "Couldn't save the change. Try again.",
+    "online": "Online"
+  },
+  "profile": {
+    "load_error": "We couldn't load your profile. Try again.",
+    "login_prompt": "Sign in to see your profile",
+    "rating": "Rating",
+    "reviews": "Reviews",
+    "active_listings": "Active",
+    "my_listings": "My listings",
+    "my_listings_subtitle": "Manage what you're selling",
+    "comments": "Comments",
+    "comments_subtitle": "What others said about your listings",
+    "safety": "Safety",
+    "safety_subtitle": "Tips for buying and selling safely",
+    "highlight_plans": "Highlight plans",
+    "highlight_plans_subtitle": "Give your listings more visibility",
+    "settings_subtitle": "Language, theme, and more",
+    "recently_viewed": "Recently viewed",
+    "logout": "Log out",
+    "badge_visible": "This badge is visible on your listings",
+    "fix_verification": "Fix verification",
+    "verify_account": "Verify your account",
+    "verify_hint": "Tap to verify and unlock all features",
+    "see_all": "See all"
+  },
+  "edit_profile": {
+    "title": "Edit profile",
+    "name": "Name",
+    "phone": "Phone",
+    "business_category": "Business category",
+    "business_description": "Business description",
+    "pick_location": "Pick location",
+    "social_links": "Social links",
+    "whatsapp_hint": "Digits only, with country code",
+    "facebook_hint": "facebook.com/yourbusiness",
+    "instagram_hint": "instagram.com/yourbusiness",
+    "tiktok_hint": "tiktok.com/@yourbusiness",
+    "twitter_hint": "x.com/yourbusiness",
+    "business_hours": "Business hours",
+    "payment_methods": "Payment methods",
+    "card_needs_mp": "Connect Mercado Pago to accept card payments",
+    "mp_checking": "Checking…",
+    "mp_connected": "Connected",
+    "mp_unknown": "We couldn't check the status",
+    "mp_disconnected": "Not connected"
   }
 }

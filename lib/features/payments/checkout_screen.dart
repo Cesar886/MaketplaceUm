@@ -1,3 +1,7 @@
+// TODO: Mercado Pago pendiente para próxima actualización - no eliminar,
+// solo descomentar/reactivar cuando esté listo (ver mercado_pago_flag.dart).
+// Todo este archivo queda inactivo e inaccesible desde la UI mientras
+// kMercadoPagoHabilitado sea false.
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -441,7 +445,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Pagar')),
+      appBar: AppBar(title: Text('checkout.title'.tr())),
       body: SafeArea(child: _cuerpo()),
     );
   }

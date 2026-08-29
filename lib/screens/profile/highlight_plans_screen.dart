@@ -92,7 +92,12 @@ class _HighlightPlansScreenState extends State<HighlightPlansScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${plan.days} días · ${plan.description}',
+                      'plans.days_description'.tr(
+                        namedArgs: {
+                          'days': '${plan.days}',
+                          'description': plan.description,
+                        },
+                      ),
                       style: TextStyle(
                         color: context.colors.muted,
                         fontWeight: FontWeight.w600,

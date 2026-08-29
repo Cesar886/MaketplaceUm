@@ -88,7 +88,11 @@ class SocialLinksRow extends StatelessWidget {
     final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No se pudo abrir ${entry.label}')),
+        SnackBar(
+          content: Text(
+            'social.open_error'.tr(namedArgs: {'network': entry.label}),
+          ),
+        ),
       );
     }
   }

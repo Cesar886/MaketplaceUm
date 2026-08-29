@@ -30,17 +30,19 @@ String? validateSocialUrl(String platform, String value) {
   if (trimmed.isEmpty) return null;
   final label = socialUrlLabels[platform]!;
   if (trimmed.length > _maxSocialUrlLength) {
-    return 'El link de $label no puede superar $_maxSocialUrlLength caracteres';
+    return 'social.too_long'.tr(
+      namedArgs: {'network': label, 'max': '$_maxSocialUrlLength'},
+    );
   }
   final uri = Uri.tryParse(trimmed);
   if (uri == null || !uri.hasScheme) {
-    return 'El link de $label no es una dirección web válida';
+    return 'social.invalid_url'.tr(namedArgs: {'network': label});
   }
   if (uri.scheme != 'https') {
-    return 'El link de $label debe empezar con https://';
+    return 'social.needs_https'.tr(namedArgs: {'network': label});
   }
   if (!socialUrlHosts[platform]!.contains(uri.host.toLowerCase())) {
-    return 'El link debe ser de $label';
+    return 'social.wrong_network'.tr(namedArgs: {'network': label});
   }
   return null;
 }

@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../models/verification_requirement.dart';
 import '../services/anonymous_id.dart';
+import '../services/anon_session.dart';
 import '../services/api_service.dart';
 import '../services/chat_socket_service.dart';
 import '../services/db_helper.dart';
@@ -513,7 +514,15 @@ class AuthProvider extends ChangeNotifier {
     _motivoRechazo = null;
     _campoRechazado = null;
     _puedeReintentarEn = 0;
-    ApiService.clearToken();
+    // Volver a ser invitado, no quedarse sin identidad: si no, el chat
+    // dejaría de funcionar tras cerrar sesión hasta reiniciar la app.
+    // Sustituye al `clearToken()` a secas — `restaurarTrasLogout` lo hace y
+    // acto seguido deja puesto el token de invitado.
+    try {
+      await AnonSession.restaurarTrasLogout();
+    } catch (_) {
+      ApiService.clearToken();
+    }
     // Cerrar el socket marca al usuario como desconectado del lado del
     // servidor en el acto, y `forgetUser` evita que una reconexión lo vuelva
     // a encender con las credenciales de la sesión que acaba de terminar.

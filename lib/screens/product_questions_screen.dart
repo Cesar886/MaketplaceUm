@@ -404,14 +404,14 @@ class _FiltroPendientes extends StatelessWidget {
           spacing: 8,
           children: [
             ChoiceChip(
-              label: const Text('Todas'),
+              label: Text('questions.filter_all'.tr()),
               selected: !soloPendientes,
               onSelected: (_) => onCambiar(false),
             ),
             ChoiceChip(
               label: Text(
                 pendientes > 0
-                    ? 'Sin responder ($pendientes)'
+                    ? 'questions.unanswered_count'.tr(namedArgs: {'n': '$pendientes'})
                     : 'questions.unanswered'.tr(),
               ),
               selected: soloPendientes,

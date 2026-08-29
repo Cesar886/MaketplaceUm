@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../../widgets/comments_received_list.dart';
@@ -21,7 +22,7 @@ class MyCommentsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Comentarios')),
+      appBar: AppBar(title: Text('comments.my_title'.tr())),
       body: SafeArea(
         child: CommentsReceivedList(
           userId: userId,

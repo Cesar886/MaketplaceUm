@@ -77,7 +77,7 @@ class _RecentProductsScreenState extends State<RecentProductsScreen> {
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: TextButton.styleFrom(foregroundColor: AppColors.danger),
-            child: const Text('Limpiar'),
+            child: Text('recent.clear_action'.tr()),
           ),
         ],
       ),

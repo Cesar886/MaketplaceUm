@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -166,7 +167,7 @@ class _MaxDiscountHeader extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Hasta -$maxDiscount% de descuento',
+                'home.up_to_discount'.tr(namedArgs: {'percent': '$maxDiscount'}),
                 style: TextStyle(
                   color: context.colors.accent,
                   fontSize: 16,

@@ -7,6 +7,7 @@ import '../app_theme.dart';
 import '../providers/accent_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/anonymous_id.dart';
+import '../services/anon_session.dart';
 import '../services/deep_link_service.dart';
 import '../services/onboarding_service.dart';
 import '../widgets/app_logo.dart';
@@ -36,6 +37,15 @@ class _SplashScreenState extends State<SplashScreen> {
     // de productos/"se busca" y el contacto por WhatsApp funcionan sin
     // cuenta. El registro solo se pide más adelante, al intentar publicar.
     await AnonymousId.get();
+
+    // Sesión de invitado: el chat exige token desde que la identidad dejó de
+    // viajar en el cuerpo de cada petición. Se pide aquí para que quien entre
+    // sin cuenta pueda escribirle a un vendedor sin un rodeo por el login.
+    // Si falla (sin red), no se bloquea el arranque: el resto de la app
+    // funciona sin sesión y el chat lo reintenta al abrirse.
+    try {
+      await AnonSession.ensure();
+    } catch (_) {}
 
     if (!mounted) return;
 

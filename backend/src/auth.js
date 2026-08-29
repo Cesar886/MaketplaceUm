@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { randomUUID } = require('crypto');
 
 // Sin fallback: un valor por defecto silencioso (`|| 'algo-fijo'`) es
 // exactamente lo que enmascaró el incidente de 2026-08 — cuando el .env no
@@ -12,7 +13,20 @@ if (!JWT_SECRET) {
     'y que PM2 lo esté cargando (pm2 restart mercadito-backend --update-env).',
   );
 }
-const JWT_EXPIRES_IN = '7d';
+// Mitigación temporal (auditoría 2026-08, hallazgo M-04) mientras el
+// tráfico siga viajando en HTTP plano (C-03): un token capturado en la red
+// del campus vale 24 h en vez de una semana. NO sustituye a la revocación en
+// logout ni a los refresh tokens — sin ellos, este TTL es lo único que acota
+// la ventana de un token robado, y por eso no puede volver a subir hasta que
+// exista una lista de revocación.
+const JWT_EXPIRES_IN = '24h';
+
+// Se fija el algoritmo en la VERIFICACIÓN, no solo al firmar. `jwt.verify`
+// sin esta opción acepta cualquier algoritmo compatible con la clave, y deja
+// la elección en manos de la cabecera del token — que la escribe quien lo
+// manda. Con un secreto HMAC el riesgo real es acotado, pero fijarlo cuesta
+// una línea y elimina la categoría entera (hallazgo M-04).
+const ALGORITMO = 'HS256';
 
 /**
  * Genera un token JWT para un usuario dado.
@@ -20,7 +34,41 @@ const JWT_EXPIRES_IN = '7d';
  * @returns {string} token JWT
  */
 function generateToken(userId) {
-  return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+  return jwt.sign({ sub: userId }, JWT_SECRET, {
+    expiresIn: JWT_EXPIRES_IN,
+    algorithm: ALGORITMO,
+  });
+}
+
+// Los invitados conservan sus conversaciones entre sesiones (era justo lo que
+// hacía el UUID en SharedPreferences que este token sustituye), así que un
+// TTL de 24 h les borraría el chat cada día. El riesgo que asume este plazo
+// más largo está acotado: un token anónimo no da acceso a ninguna cuenta, solo
+// a las conversaciones de ese mismo invitado.
+const JWT_ANON_EXPIRES_IN = '30d';
+
+/**
+ * Token de invitado: permite chatear sin cuenta.
+ *
+ * El identificador lo genera el SERVIDOR y nunca se acepta del cliente. Es la
+ * diferencia entre probar una identidad y afirmarla: el id anónimo viaja
+ * dentro de cada mensaje (`senderId`), así que cualquiera que haya leído un
+ * chat conoce ids ajenos. Si este endpoint firmara el id que le pasen,
+ * suplantar a un invitado sería tan fácil como copiar el suyo de un mensaje.
+ *
+ * El claim `anon` marca la sesión como invitada para que las rutas que exigen
+ * cuenta real (pagos, verificación, perfil) puedan rechazarla; hoy solo el
+ * chat acepta invitados.
+ */
+function generateAnonToken() {
+  const anonId = `anon_${randomUUID()}`;
+  return {
+    anonId,
+    token: jwt.sign({ sub: anonId, anon: true }, JWT_SECRET, {
+      expiresIn: JWT_ANON_EXPIRES_IN,
+      algorithm: ALGORITMO,
+    }),
+  };
 }
 
 /**
@@ -44,8 +92,8 @@ function requireAuth(req, res, next) {
   const token = parts[1];
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = { id: decoded.sub };
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: [ALGORITMO] });
+    req.user = { id: decoded.sub, anon: decoded.anon === true };
     next();
   } catch (err) {
     if (err.name === 'TokenExpiredError') {
@@ -77,8 +125,8 @@ function optionalAuth(req, _res, next) {
   if (parts.length !== 2 || parts[0] !== 'Bearer') return next();
 
   try {
-    const decoded = jwt.verify(parts[1], JWT_SECRET);
-    req.user = { id: decoded.sub };
+    const decoded = jwt.verify(parts[1], JWT_SECRET, { algorithms: [ALGORITMO] });
+    req.user = { id: decoded.sub, anon: decoded.anon === true };
   } catch (err) {
     // Token ausente/expirado/inválido: se ignora, el request sigue como anónimo.
   }
@@ -95,10 +143,17 @@ function optionalAuth(req, _res, next) {
 function verificarToken(token) {
   if (!token || typeof token !== 'string') return null;
   try {
-    return jwt.verify(token, JWT_SECRET).sub || null;
+    return jwt.verify(token, JWT_SECRET, { algorithms: [ALGORITMO] }).sub || null;
   } catch (err) {
     return null;
   }
 }
 
-module.exports = { generateToken, requireAuth, optionalAuth, verificarToken, JWT_SECRET };
+module.exports = {
+  generateToken,
+  generateAnonToken,
+  requireAuth,
+  optionalAuth,
+  verificarToken,
+  JWT_SECRET,
+};

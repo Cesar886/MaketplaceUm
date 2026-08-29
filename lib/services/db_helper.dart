@@ -7,6 +7,7 @@
 //   bcrypt: ^1.2.0     // para hashear contraseñas
 
 import 'package:bcrypt/bcrypt.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -123,7 +124,7 @@ class DBHelper {
       whereArgs: [email],
     );
     if (existing.isNotEmpty) {
-      throw Exception('Ya existe una cuenta con este correo.');
+      throw Exception('errors.email_already_registered'.tr());
     }
 
     return await db.insert('users', {
