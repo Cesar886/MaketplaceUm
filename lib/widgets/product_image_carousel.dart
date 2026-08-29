@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
+import '../features/highlight/destacar_flag.dart';
 import '../models.dart';
 import '../services/api_service.dart';
 import 'badges.dart';
@@ -58,7 +59,12 @@ class _ProductImageCarouselState extends State<ProductImageCarousel> {
             );
           },
         ),
-        if (widget.product.isOffer || widget.product.isFeatured)
+        // TODO: Destacar publicaciones pendiente para próxima actualización
+        // - no eliminar. El badge "Destacado" del carrusel queda oculto
+        // mientras kDestacarHabilitado sea false; el de oferta sigue igual.
+        // Ver features/highlight/destacar_flag.dart.
+        if (widget.product.isOffer ||
+            (kDestacarHabilitado && widget.product.isFeatured))
           Positioned(
             right: 8,
             top: 8,
@@ -70,9 +76,11 @@ class _ProductImageCarouselState extends State<ProductImageCarousel> {
                     label: widget.product.discountLabel,
                     compact: true,
                   ),
-                if (widget.product.isOffer && widget.product.isFeatured)
+                if (kDestacarHabilitado &&
+                    widget.product.isOffer &&
+                    widget.product.isFeatured)
                   const SizedBox(height: 6),
-                if (widget.product.isFeatured)
+                if (kDestacarHabilitado && widget.product.isFeatured)
                   const FeaturedBadge(compact: true),
               ],
             ),

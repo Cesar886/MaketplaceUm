@@ -5,6 +5,11 @@ import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 
+// TODO: Destacar publicaciones pendiente para próxima actualización - no
+// eliminar. Este badge ya no se pinta en ninguna parte mientras
+// kDestacarHabilitado sea false: todos sus puntos de uso (carrusel, foto de
+// la tarjeta, título del detalle) están detrás de esa bandera. Se reactiva
+// al ponerla en true (ver features/highlight/destacar_flag.dart).
 class FeaturedBadge extends StatelessWidget {
   const FeaturedBadge({super.key, this.compact = false});
 
@@ -92,6 +97,10 @@ class StatusBadge extends StatelessWidget {
     final c = context.colors;
     final (Color color, Color background) = switch (status) {
       ListingStatus.active => (c.success, c.successBg),
+      // TODO: Destacar publicaciones pendiente para próxima actualización -
+      // no eliminar. Este caso queda inalcanzable en la práctica (nadie puede
+      // dejar una publicación en estado 'featured' con la feature apagada),
+      // pero el enum debe seguir siendo exhaustivo.
       ListingStatus.featured => (c.accent, c.accentTint),
       ListingStatus.expired => (c.danger, c.neutralBg),
     };

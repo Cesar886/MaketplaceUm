@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
+import '../features/highlight/destacar_flag.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/anonymous_id.dart';
@@ -104,11 +105,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       // Highlight plans (banners de "destacar publicación") son contenido
       // secundario del home: si el request falla, no debe tapar el feed
       // principal que sí cargó bien — simplemente no se muestran.
+      //
+      // TODO: Destacar publicaciones pendiente para próxima actualización -
+      // no eliminar. Mientras kDestacarHabilitado sea false no se piden los
+      // planes, porque el banner que los muestra está oculto y sería un
+      // request de más en cada carga del home; la lista queda vacía. Al poner
+      // la bandera en true el fetch vuelve solo, sin tocar nada más.
+      // Ver features/highlight/destacar_flag.dart.
       List<HighlightPlan> loadedHighlightPlans = [];
-      try {
-        loadedHighlightPlans = await ApiService.getHighlightPlans();
-      } catch (_) {
-        // Si falla, seguimos con lista vacía
+      if (kDestacarHabilitado) {
+        try {
+          loadedHighlightPlans = await ApiService.getHighlightPlans();
+        } catch (_) {
+          // Si falla, seguimos con lista vacía
+        }
       }
 
       // Cargar sellers por separado (no debe bloquear el resto)
@@ -136,9 +146,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         // Si falla, seguimos con lista vacía
       }
 
-      // Verificar si el usuario ha publicado artículos
+      // Verificar si el usuario ha publicado artículos.
+      //
+      // TODO: Destacar publicaciones pendiente para próxima actualización -
+      // no eliminar. Este dato existe SOLO para decidir si se muestra el
+      // banner de planes, así que mientras kDestacarHabilitado sea false se
+      // evita el request extra. Descomentar junto con la bandera.
+      // Ver features/highlight/destacar_flag.dart.
       bool hasPublished = false;
-      if (auth.isLoggedIn) {
+      if (kDestacarHabilitado && auth.isLoggedIn) {
         try {
           final listings = await ApiService.getListings();
           hasPublished = listings.isNotEmpty;
@@ -265,7 +281,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final filtered = _selectedCategoryId == null
         ? _products
         : _products.where((p) => p.category.id == _selectedCategoryId).toList();
-    final recent = filtered.where((p) => !p.isFeatured).toList();
+    // TODO: Destacar publicaciones pendiente para próxima actualización -
+    // no eliminar. El home excluye del feed a los productos destacados
+    // (porque irían en su propio bloque), pero con la feature apagada ya no
+    // hay forma de quitarle el destacado a una publicación desde la app: si
+    // se siguiera filtrando, las que quedaron con isFeatured = true en la
+    // base se volverían invisibles de forma permanente. Por eso, mientras
+    // kDestacarHabilitado sea false, se muestran como publicaciones normales
+    // (sin badge). Ver features/highlight/destacar_flag.dart.
+    final recent = kDestacarHabilitado
+        ? filtered.where((p) => !p.isFeatured).toList()
+        : filtered;
 
     // El header navy se dibuja HASTA el borde superior (top: false) y se
     // come el inset de la barra de estado él mismo. Es lo que hace que la
@@ -361,7 +387,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ),
             ),
-            if (_highlightPlans.isNotEmpty && _hasPublished)
+            // TODO: Destacar publicaciones pendiente para próxima
+            // actualización - no eliminar. El banner CTA de planes queda
+            // oculto mientras kDestacarHabilitado sea false; vuelve solo al
+            // poner la bandera en true
+            // (ver features/highlight/destacar_flag.dart).
+            if (kDestacarHabilitado &&
+                _highlightPlans.isNotEmpty &&
+                _hasPublished)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
@@ -592,6 +625,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 }
 
+// TODO: Destacar publicaciones pendiente para próxima actualización - no
+// eliminar. Este banner y sus chips no se renderizan mientras
+// kDestacarHabilitado sea false; se reactivan al poner la bandera en true
+// (ver features/highlight/destacar_flag.dart).
 class _HighlightPlansBanner extends StatelessWidget {
   const _HighlightPlansBanner({required this.plans});
 

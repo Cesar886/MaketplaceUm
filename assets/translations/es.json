@@ -210,6 +210,7 @@
     "pick_domain": "Elige tu dominio →",
     "major": "Carrera *",
     "send_code": "Enviar código",
+    "complete_requirements_first": "Completa los requisitos de arriba para poder verificarte.",
     "send_code_sms": "Enviar código por SMS",
     "verify_code": "Verificar código",
     "resend": "¿No te llegó? Reenviar código",

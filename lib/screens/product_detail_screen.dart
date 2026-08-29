@@ -22,6 +22,10 @@ import '../features/payments/pay_with_card_section.dart';
 import '../features/payments/payment_models.dart';
 import '../features/payments/payments_api.dart';
 import '../features/payments/mercado_pago_flag.dart';
+// TODO: Destacar publicaciones pendiente para próxima actualización - no
+// eliminar, solo reactivar cuando esté listo
+// (ver features/highlight/destacar_flag.dart).
+import '../features/highlight/destacar_flag.dart';
 import '../widgets/badges.dart';
 import '../widgets/bounce_on_increase.dart';
 import '../widgets/payment_methods.dart';
@@ -351,7 +355,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                           ),
                         ),
                       ),
-                      if (product.isFeatured)
+                      // TODO: Destacar publicaciones pendiente para próxima
+                      // actualización - no eliminar. El badge junto al título
+                      // queda oculto mientras kDestacarHabilitado sea false.
+                      if (kDestacarHabilitado && product.isFeatured)
                         const Padding(
                           padding: EdgeInsets.only(left: 10, top: 2),
                           child: FeaturedBadge(),

@@ -210,6 +210,7 @@
     "pick_domain": "Choose your domain →",
     "major": "Major *",
     "send_code": "Send code",
+    "complete_requirements_first": "Complete the requirements above to verify your account.",
     "send_code_sms": "Send code by SMS",
     "verify_code": "Verify code",
     "resend": "Didn't get it? Resend code",

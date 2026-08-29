@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
+import '../features/highlight/destacar_flag.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
@@ -113,6 +114,11 @@ class _MyListingsScreenState extends State<MyListingsScreen>
     if (mounted) _loadListings();
   }
 
+  // TODO: Destacar publicaciones pendiente para próxima actualización - no
+  // eliminar. Este navegador queda sin disparador visible mientras
+  // kDestacarHabilitado sea false (el botón que lo llama está oculto); se
+  // reactiva solo al poner la bandera en true
+  // (ver features/highlight/destacar_flag.dart).
   Future<void> _openHighlightPlans() async {
     await Navigator.of(
       context,
@@ -369,15 +375,21 @@ class _StatsRow extends StatelessWidget {
             color: AppColors.success,
           ),
         ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _StatCard(
-            label: 'listings.stat_featured'.tr(),
-            value: '$featured',
-            icon: Icons.star_rounded,
-            color: context.colors.accent,
+        // TODO: Destacar publicaciones pendiente para próxima actualización
+        // - no eliminar. El contador "Destacadas" queda oculto mientras
+        // kDestacarHabilitado sea false; vuelve solo al poner la bandera en
+        // true (ver features/highlight/destacar_flag.dart).
+        if (kDestacarHabilitado) ...[
+          const SizedBox(width: 10),
+          Expanded(
+            child: _StatCard(
+              label: 'listings.stat_featured'.tr(),
+              value: '$featured',
+              icon: Icons.star_rounded,
+              color: context.colors.accent,
+            ),
           ),
-        ),
+        ],
         const SizedBox(width: 10),
         Expanded(
           child: _StatCard(
@@ -660,22 +672,30 @@ class _MyListingTile extends StatelessWidget {
                         label: Text('listings.edit_action'.tr()),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: onHighlight,
-                        icon: const Icon(Icons.star_rounded, size: 18),
-                        label: Text(
-                          status == ListingStatus.featured
-                              ? 'listings.extend'.tr()
-                              : 'listings.highlight'.tr(),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: context.colors.accent,
-                          foregroundColor: Colors.white,
+                    // TODO: Destacar publicaciones pendiente para próxima
+                    // actualización - no eliminar. El botón
+                    // "Destacar/Extender" (única entrada a los planes desde
+                    // Mis publicaciones) queda oculto mientras
+                    // kDestacarHabilitado sea false; vuelve solo al poner la
+                    // bandera en true (ver features/highlight/destacar_flag.dart).
+                    if (kDestacarHabilitado) ...[
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: onHighlight,
+                          icon: const Icon(Icons.star_rounded, size: 18),
+                          label: Text(
+                            status == ListingStatus.featured
+                                ? 'listings.extend'.tr()
+                                : 'listings.highlight'.tr(),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: context.colors.accent,
+                            foregroundColor: Colors.white,
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ],

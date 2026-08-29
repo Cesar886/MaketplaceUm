@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
 import '../constants/atributos_categoria.dart';
+import '../features/highlight/destacar_flag.dart';
 import '../mock_data.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
@@ -183,14 +184,23 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       final auth = context.read<AuthProvider>();
       final results = await Future.wait([
         ApiService.getCategories(),
-        ApiService.getHighlightPlans(),
         if (!_isEditing && auth.backendSellerId != null)
           ApiService.getSeller(auth.backendSellerId!),
       ]);
+      // TODO: Destacar publicaciones pendiente para próxima actualización -
+      // no eliminar. Los planes salieron del Future.wait de arriba (donde
+      // eran results[1]) para poder no pedirlos mientras kDestacarHabilitado
+      // sea false: ninguna parte del formulario los muestra, así que sería un
+      // request de más en cada apertura de "Publicar". Al poner la bandera
+      // en true el fetch vuelve solo, sin tocar nada más.
+      // Ver features/highlight/destacar_flag.dart.
+      final planes = kDestacarHabilitado
+          ? await ApiService.getHighlightPlans()
+          : const <HighlightPlan>[];
       if (!mounted) return;
       setState(() {
         _categories = results[0] as List<MarketplaceCategory>;
-        _plans = results[1] as List<HighlightPlan>;
+        _plans = planes;
         final editingCategoryId = widget.editingProduct?.category.id;
         if (editingCategoryId != null &&
             _categories.any((c) => c.id == editingCategoryId)) {
@@ -198,8 +208,8 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
         } else if (_categories.isNotEmpty) {
           _selectedCategoryId = _categories.first.id;
         }
-        if (results.length > 2) {
-          final seller = results[2] as Seller;
+        if (results.length > 1) {
+          final seller = results[1] as Seller;
           _seller = seller;
           _savedSellerLat = seller.locationLat;
           _savedSellerLng = seller.locationLng;
@@ -215,7 +225,9 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       // Fallback a datos mock si el API falla
       setState(() {
         _categories = mockCategories;
-        _plans = highlightPlans;
+        // TODO: Destacar pendiente para próxima actualización - el fallback
+        // a planes mock vuelve solo al poner kDestacarHabilitado en true.
+        if (kDestacarHabilitado) _plans = highlightPlans;
         if (_categories.isNotEmpty) {
           _selectedCategoryId = _categories.first.id;
         }
@@ -1520,7 +1532,12 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           const SizedBox(height: 16),
           _buildLocationSection(),
         ],
-        if (_plans.isNotEmpty) ...[
+        // TODO: Destacar publicaciones pendiente para próxima actualización
+        // - no eliminar. La sección de planes del formulario (publicar Y
+        // editar) queda oculta mientras kDestacarHabilitado sea false; vuelve
+        // sola al poner la bandera en true
+        // (ver features/highlight/destacar_flag.dart).
+        if (kDestacarHabilitado && _plans.isNotEmpty) ...[
           const SizedBox(height: 24),
           _HighlightSection(
             plans: _plans,
@@ -1742,6 +1759,11 @@ class _ExistingImageThumbnail extends StatelessWidget {
 }
 
 // ─── Highlight Section ───────────────────────────────────────
+//
+// TODO: Destacar publicaciones pendiente para próxima actualización - no
+// eliminar. Toda esta sección (_HighlightSection, sus chips y _PlanDetail)
+// queda sin renderizarse mientras kDestacarHabilitado sea false; se reactiva
+// al poner la bandera en true (ver features/highlight/destacar_flag.dart).
 //
 // Los planes se eligen con una fila de chips y solo se despliega el detalle
 // del elegido. Apilar las cuatro tarjetas obligaba a leer cuatro precios y

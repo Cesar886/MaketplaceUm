@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
+import '../features/highlight/destacar_flag.dart';
 import '../models.dart';
 import '../providers/accent_provider.dart';
 import '../providers/auth_provider.dart';
@@ -412,16 +413,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
             ),
-            OptionTile(
-              icon: Icons.payments_rounded,
-              title: 'profile.highlight_plans'.tr(),
-              subtitle: 'profile.highlight_plans_subtitle'.tr(),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const HighlightPlansScreen(),
+            // TODO: Destacar publicaciones pendiente para próxima
+            // actualización - no eliminar. La entrada a los planes de
+            // destacado queda oculta mientras kDestacarHabilitado sea false;
+            // vuelve sola al poner la bandera en true
+            // (ver features/highlight/destacar_flag.dart).
+            if (kDestacarHabilitado)
+              OptionTile(
+                icon: Icons.payments_rounded,
+                title: 'profile.highlight_plans'.tr(),
+                subtitle: 'profile.highlight_plans_subtitle'.tr(),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const HighlightPlansScreen(),
+                  ),
                 ),
               ),
-            ),
             OptionTile(
               icon: Icons.settings_rounded,
               title: 'settings.title'.tr(),

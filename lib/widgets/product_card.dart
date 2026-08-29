@@ -2,6 +2,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
+import '../features/highlight/destacar_flag.dart';
 import '../models.dart';
 import '../utils/number_format.dart';
 import 'badges.dart';
@@ -65,10 +66,15 @@ class ProductCard extends StatelessWidget {
   }
 
   Widget _buildCard(BuildContext context) {
-    final hasAccent = product.isOffer || product.isFeatured;
+    // TODO: Destacar publicaciones pendiente para próxima actualización - no
+    // eliminar. El realce visual de "destacado" (borde dorado + sombra
+    // elevada) queda apagado mientras kDestacarHabilitado sea false; el de
+    // oferta no cambia. Ver features/highlight/destacar_flag.dart.
+    final destacado = kDestacarHabilitado && product.isFeatured;
+    final hasAccent = product.isOffer || destacado;
     final borderColor = product.isOffer
         ? context.colors.primary
-        : product.isFeatured
+        : destacado
         ? context.colors.accentTintBorder
         : Colors.transparent;
 

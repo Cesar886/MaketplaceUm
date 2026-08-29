@@ -310,6 +310,10 @@ function register(app) {
     let filtered = [...products];
 
     if (category) filtered = filtered.filter(p => p.category === category);
+    // TODO: Destacar publicaciones pendiente para próxima actualización - no
+    // eliminar. La app ya no manda ?featured=true (ver kDestacarHabilitado en
+    // lib/features/highlight/destacar_flag.dart); el filtro se mantiene para
+    // clientes viejos.
     if (featured === 'true') filtered = filtered.filter(p => p.isFeatured);
     if (offer === 'true') filtered = filtered.filter(p => p.isOffer);
     if (seller) filtered = filtered.filter(p => p.seller === seller);
@@ -861,6 +865,12 @@ function register(app) {
   });
 
   // PATCH /api/products/:id/featured – toggle destacado (solo el dueño)
+  //
+  // TODO: Destacar publicaciones pendiente para próxima actualización - no
+  // eliminar. Ningún cliente actual lo llama (el botón "Destacar" está oculto
+  // tras kDestacarHabilitado, ver lib/features/highlight/destacar_flag.dart).
+  // Se deja activo porque sigue siendo la única forma de QUITAR el destacado
+  // a las publicaciones que ya lo tienen en la base.
   app.patch('/api/products/:id/featured', requireAuth, (req, res) => {
     const product = products.find(p => p.id === req.params.id);
     if (!product) return res.status(404).json({ error: 'Producto no encontrado' });

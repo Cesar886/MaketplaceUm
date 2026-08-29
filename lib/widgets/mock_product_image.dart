@@ -4,6 +4,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
+import '../features/highlight/destacar_flag.dart';
 import '../models.dart';
 import '../services/api_service.dart';
 import 'badges.dart';
@@ -53,7 +54,12 @@ class MockProductImage extends StatelessWidget {
                   label: product.discountLabel ?? 'badge.offer'.tr(),
                 ),
               ),
-            if (showFeaturedBadge && product.isFeatured)
+            // TODO: Destacar publicaciones pendiente para próxima
+            // actualización - no eliminar. El badge "Destacado" sobre la
+            // foto queda oculto mientras kDestacarHabilitado sea false; la
+            // etiqueta de oferta de arriba no se toca.
+            // Ver features/highlight/destacar_flag.dart.
+            if (kDestacarHabilitado && showFeaturedBadge && product.isFeatured)
               const Positioned(
                 right: 8,
                 top: 8,
@@ -262,7 +268,12 @@ class CategoryImagePlaceholder extends StatelessWidget {
                   label: product.discountLabel ?? 'badge.offer'.tr(),
                 ),
               ),
-            if (showFeaturedBadge && product.isFeatured)
+            // TODO: Destacar publicaciones pendiente para próxima
+            // actualización - no eliminar. El badge "Destacado" sobre la
+            // foto queda oculto mientras kDestacarHabilitado sea false; la
+            // etiqueta de oferta de arriba no se toca.
+            // Ver features/highlight/destacar_flag.dart.
+            if (kDestacarHabilitado && showFeaturedBadge && product.isFeatured)
               const Positioned(
                 right: 8,
                 top: 8,

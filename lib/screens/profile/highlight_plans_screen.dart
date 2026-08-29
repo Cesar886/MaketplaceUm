@@ -1,3 +1,9 @@
+// TODO: Destacar publicaciones pendiente para próxima actualización - no
+// eliminar, solo reactivar cuando esté listo
+// (ver features/highlight/destacar_flag.dart).
+// Toda esta pantalla queda inactiva e inaccesible desde la UI mientras
+// kDestacarHabilitado sea false: sus dos entradas (perfil > "Planes de
+// destacado" y el botón "Destacar" de Mis publicaciones) están ocultas.
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 

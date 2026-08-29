@@ -335,6 +335,10 @@ class Seller {
   }
 }
 
+// TODO: Destacar publicaciones pendiente para próxima actualización - no
+// eliminar `featured`: el backend sigue pudiendo devolver ese estado y
+// `Product.isFeatured` para publicaciones ya destacadas. Lo que está apagado
+// es su presentación (ver features/highlight/destacar_flag.dart).
 enum ListingStatus { active, featured, expired }
 
 extension ListingStatusCopy on ListingStatus {
@@ -867,6 +871,10 @@ class CartItem {
   final String meetingPoint;
 }
 
+// TODO: Destacar publicaciones pendiente para próxima actualización - no
+// eliminar. El modelo se mantiene intacto (lo sigue usando la pantalla de
+// planes, hoy inaccesible) aunque la feature esté apagada
+// (ver features/highlight/destacar_flag.dart).
 class HighlightPlan {
   const HighlightPlan({
     required this.id,

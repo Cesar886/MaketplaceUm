@@ -512,6 +512,9 @@ class ApiService {
   // ─── Products ───────────────────────────────────────────
   static Future<List<Product>> getProducts({
     String? category,
+    // TODO: Destacar publicaciones pendiente para próxima actualización -
+    // no eliminar. Ninguna pantalla pasa `featured: true` mientras la feature
+    // esté apagada (ver features/highlight/destacar_flag.dart).
     bool? featured,
     bool? offer,
     String? search,
@@ -1221,6 +1224,13 @@ class ApiService {
   }
 
   // ─── Highlight Plans ────────────────────────────────────
+  //
+  // TODO: Destacar publicaciones pendiente para próxima actualización - no
+  // eliminar. Con kDestacarHabilitado en false nadie llama a este endpoint:
+  // el home y el formulario de publicar dejaron de pedirlo y la pantalla de
+  // planes (único consumidor que queda) es inaccesible desde la UI. El
+  // backend sigue sirviendo /api/highlight-plans para clientes viejos.
+  // Ver features/highlight/destacar_flag.dart.
   static Future<List<HighlightPlan>> getHighlightPlans() async {
     final res = await _getWithRetry(_uri('/highlight-plans'));
     if (res.statusCode != 200) throw Exception('Error fetching plans');

@@ -19,6 +19,7 @@ import '../../widgets/static_mini_map.dart';
 import '../../widgets/verification_checklist.dart';
 import '../../features/payments/connect_mp_screen.dart';
 import '../../features/payments/mercado_pago_flag.dart';
+import '../my_listings_screen.dart';
 import '../profile/edit_profile_screen.dart';
 import 'account_created_screen.dart';
 
@@ -134,12 +135,17 @@ class _VerificationScreenState extends State<VerificationScreen> {
   /// de pedir un correo y un código que ya confirmó — y como el backend ya no
   /// se lo va a volver a pedir, se queda dando vueltas sin entender qué pasa.
   Future<void> _retomarDondeQuedo() async {
+    // El refresco va ANTES de cualquier corte por tipo de cuenta: el checklist
+    // se pinta en los tres flujos, y si el negocio saliera de aquí sin releer
+    // el estado vería la última lista conocida (o ninguna, recién instalada la
+    // app) en vez de sus requisitos reales.
+    await _auth.refrescarEstadoVerificacion();
+    if (!mounted) return;
+
     // El flujo de negocio ya pinta su fila de conectar dentro del formulario,
     // con los datos del negocio que hay que conservar a la vista.
     if (widget.tipo == AccountType.negocio) return;
 
-    await _auth.refrescarEstadoVerificacion();
-    if (!mounted) return;
     // TODO: Mercado Pago pendiente para próxima actualización - no eliminar,
     // solo quitar este corte cuando esté listo. Mientras tanto el paso de
     // "conectar cuenta de cobros" nunca se activa desde el frontend (ver
@@ -166,6 +172,25 @@ class _VerificationScreenState extends State<VerificationScreen> {
   }
 
   AuthProvider get _auth => context.read<AuthProvider>();
+
+  /// Los requisitos que tiene sentido enseñarle a la persona ahora mismo.
+  ///
+  /// Con Mercado Pago deshabilitado, el backend da por cumplida la "Cuenta de
+  /// cobros" (ver `validation/requisitosVerificacion.js`) porque nadie puede
+  /// conectar una cuenta desde una app que tiene la integración oculta. Aquí
+  /// se quita de la lista en vez de pintarla con ✓: una palomita en algo que
+  /// la persona nunca hizo —y que no puede hacer— es una mentira pequeña que
+  /// sale cara cuando Mercado Pago vuelva y el requisito reaparezca sin
+  /// explicación.
+  ///
+  /// TODO: Mercado Pago pendiente para próxima actualización - no eliminar,
+  /// solo quitar este filtro cuando kMercadoPagoHabilitado sea true.
+  List<VerificationRequirement> _requisitosVisibles(
+    List<VerificationRequirement> todos,
+  ) {
+    if (kMercadoPagoHabilitado) return todos;
+    return todos.where((r) => r.accion != 'conectar_mercadopago').toList();
+  }
 
   // ─── Acciones ──────────────────────────────────────────────
 
@@ -494,12 +519,17 @@ class _VerificationScreenState extends State<VerificationScreen> {
           ),
         );
       case 'revisar_productos':
-        // Sin pantalla propia a la que mandar: los productos se editan uno
-        // por uno desde el perfil, y el detalle del requisito ya los nombra.
+        // A "Mis publicaciones", que es donde se abre cada producto para
+        // editarlo. El detalle del requisito (que nombra los productos sin
+        // cantidad) se deja en un aviso ANTES de navegar: en la lista de
+        // publicaciones nada distingue a los que hay que arreglar.
         if (!mounted) break;
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(requisito.detalle)));
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const MyListingsScreen()),
+        );
     }
     if (mounted) await _auth.refrescarEstadoVerificacion();
   }
@@ -557,6 +587,19 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // `watch` y no `read`: al volver de "Editar perfil" el provider notifica
+    // con la lista nueva y esta pantalla se repinta sola — es lo que hace que
+    // la ✗ pase a ✓ y que el botón se habilite sin tocar nada más.
+    final requisitos = _requisitosVisibles(
+      context.watch<AuthProvider>().requisitos,
+    );
+    // Bloquea el envío mientras falte algo. Si la lista todavía no llegó
+    // (arranque sin conexión) no se bloquea: el backend vuelve a validar al
+    // cerrar la verificación, así que dejar pasar aquí como mucho cuesta un
+    // rechazo con motivo, mientras que bloquear dejaría la pantalla muerta
+    // sin decir por qué.
+    final faltanRequisitos = requisitos.any((r) => !r.cumplido);
+
     return Scaffold(
       appBar: AppBar(title: Text('verification.title'.tr())),
       body: SafeArea(
@@ -621,7 +664,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
               // tecleando seis dígitos y no puede resolver nada de esto.
               if (!_esperandoCodigo && !_faltaMercadoPago) ...[
                 VerificationChecklist(
-                  requisitos: context.watch<AuthProvider>().requisitos,
+                  requisitos: requisitos,
                   onAccion: _irAResolverRequisito,
                 ),
                 const SizedBox(height: 20),
@@ -632,7 +675,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
               else if (_esperandoCodigo)
                 _buildIngresoCodigo()
               else
-                _buildFormulario(),
+                _buildFormulario(bloqueado: faltanRequisitos),
 
               const SizedBox(height: 28),
 
@@ -666,10 +709,14 @@ class _VerificationScreenState extends State<VerificationScreen> {
     AccountType.particular => 'verification.desc_phone'.tr(),
   };
 
-  Widget _buildFormulario() => switch (widget.tipo) {
-    AccountType.estudiante => _buildFormEstudiante(),
-    AccountType.negocio => _buildFormNegocio(),
-    AccountType.particular => _buildFormExterno(),
+  /// [bloqueado] = queda algún requisito del checklist sin cumplir, así que el
+  /// botón de enviar/verificar va deshabilitado. No se oculta ni se sustituye
+  /// por un aviso: dejarlo a la vista, apagado y con la lista justo encima, es
+  /// lo que conecta "no puedo pulsar esto" con "porque me falta esto".
+  Widget _buildFormulario({required bool bloqueado}) => switch (widget.tipo) {
+    AccountType.estudiante => _buildFormEstudiante(bloqueado: bloqueado),
+    AccountType.negocio => _buildFormNegocio(bloqueado: bloqueado),
+    AccountType.particular => _buildFormExterno(bloqueado: bloqueado),
   };
 
   // ─── Conectar la cuenta de cobros (estudiante y externo) ───
@@ -780,7 +827,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
   // ─── Formularios ───────────────────────────────────────────
 
-  Widget _buildFormEstudiante() {
+  Widget _buildFormEstudiante({required bool bloqueado}) {
     return Column(
       children: [
         _CampoTexto(
@@ -830,13 +877,14 @@ class _VerificationScreenState extends State<VerificationScreen> {
         _BotonPrincipal(
           etiqueta: 'verification.send_code'.tr(),
           cargando: _enviando,
-          onPressed: _solicitarCodigoEstudiante,
+          onPressed: bloqueado ? null : _solicitarCodigoEstudiante,
         ),
+        if (bloqueado) const _AvisoRequisitosPendientes(),
       ],
     );
   }
 
-  Widget _buildFormExterno() {
+  Widget _buildFormExterno({required bool bloqueado}) {
     return Column(
       children: [
         _CampoTexto(
@@ -850,13 +898,14 @@ class _VerificationScreenState extends State<VerificationScreen> {
         _BotonPrincipal(
           etiqueta: 'verification.send_code_sms'.tr(),
           cargando: _enviando,
-          onPressed: _solicitarCodigoExterno,
+          onPressed: bloqueado ? null : _solicitarCodigoExterno,
         ),
+        if (bloqueado) const _AvisoRequisitosPendientes(),
       ],
     );
   }
 
-  Widget _buildFormNegocio() {
+  Widget _buildFormNegocio({required bool bloqueado}) {
     final conErrorUbicacion = _campoConError == 'ubicacion';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -930,9 +979,36 @@ class _VerificationScreenState extends State<VerificationScreen> {
         _BotonPrincipal(
           etiqueta: 'verification.verify_business'.tr(),
           cargando: _enviando,
-          onPressed: _verificarNegocio,
+          onPressed: bloqueado ? null : _verificarNegocio,
         ),
+        if (bloqueado) const _AvisoRequisitosPendientes(),
       ],
+    );
+  }
+}
+
+/// Explica por qué el botón principal está apagado.
+///
+/// El botón deshabilitado por sí solo no dice nada —y el checklist queda
+/// arriba, fuera de la mirada de quien acaba de intentar pulsarlo—, así que la
+/// razón se repite justo debajo, donde se produjo la frustración.
+class _AvisoRequisitosPendientes extends StatelessWidget {
+  const _AvisoRequisitosPendientes();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Text(
+        'verification.complete_requirements_first'.tr(),
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 12.5,
+          height: 1.35,
+          color: context.colors.muted,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 }
