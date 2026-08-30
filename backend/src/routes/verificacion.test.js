@@ -102,17 +102,18 @@ function crearUsuario(tipoCuenta, {
   verificado = false,
   horario = JSON.stringify({ '0': { open: '09:00', close: '18:00' } }),
   metodos = ['efectivo'],
+  logoUrl = '/uploads/foto-test.webp',
 } = {}) {
   const id = `u_test_${tipoCuenta}_${++contador}`;
   db.getDb()
     .prepare(
       `INSERT INTO sellers (id, name, email, avatarInitials, major, isBusiness,
-         verified, tipo_cuenta, businessHours, paymentMethods)
-       VALUES (?, ?, ?, 'TT', '', ?, ?, ?, ?, ?)`,
+         verified, tipo_cuenta, businessHours, paymentMethods, logoUrl)
+       VALUES (?, ?, ?, 'TT', '', ?, ?, ?, ?, ?, ?)`,
     )
     .run(id, `Test ${id}`, `${id}@ejemplo.com`, tipoCuenta === 'negocio' ? 1 : 0,
       verificado ? 1 : 0, tipoCuenta, horario,
-      metodos === null ? null : JSON.stringify(metodos));
+      metodos === null ? null : JSON.stringify(metodos), logoUrl);
   return { id, token: generateToken(id) };
 }
 
