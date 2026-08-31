@@ -17,6 +17,7 @@ import '../services/notification_cleaner.dart';
 import '../services/presence_service.dart';
 import '../utils/estado_conexion.dart';
 import '../utils/fecha_monterrey.dart';
+import '../widgets/badges.dart';
 import '../widgets/online_status_avatar.dart';
 import 'product_detail_screen.dart';
 
@@ -1094,15 +1095,30 @@ class _ChatAppBarTitle extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                otro.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.2,
-                ),
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      otro.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                  ),
+                  if (otro.verified || otro.socioFundador) ...[
+                    const SizedBox(width: 5),
+                    InsigniaCuenta(
+                      verified: otro.verified,
+                      socioFundador: otro.socioFundador,
+                      tipoCuenta: otro.tipoCuenta,
+                      size: 15,
+                    ),
+                  ],
+                ],
               ),
               // Altura fija y no condicional: si el texto entra y sale del
               // árbol, el nombre salta un par de píxeles cada vez que la

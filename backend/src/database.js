@@ -2429,7 +2429,8 @@ const SELECT_COMENTARIO = `
     s.verified            AS autorVerificado,
     s.tipo_cuenta         AS autorTipoCuenta,
     s.carrera             AS autorCarrera,
-    s.tipo_verificacion   AS autorTipoVerificacion
+    s.tipo_verificacion   AS autorTipoVerificacion,
+    s.socio_fundador      AS autorSocioFundador
   FROM product_comments c
   LEFT JOIN sellers s ON s.id = c.user_id
 `;
@@ -2456,6 +2457,7 @@ function rowToProductComment(row) {
       major: row.autorMajor || '',
       isBusiness: !!row.autorEsNegocio,
       verified: !!row.autorVerificado,
+      socioFundador: !!row.autorSocioFundador,
       tipoCuenta: row.autorTipoCuenta || 'particular',
       carrera: row.autorCarrera || null,
       tipoVerificacion: row.autorTipoVerificacion || null,
@@ -2577,6 +2579,7 @@ function getCommentsReceivedBySeller(sellerId, { limit, cursor } = {}) {
       s.tipo_cuenta         AS autorTipoCuenta,
       s.carrera             AS autorCarrera,
       s.tipo_verificacion   AS autorTipoVerificacion,
+      s.socio_fundador      AS autorSocioFundador,
       p.title               AS productoTitulo,
       p.images              AS productoImagenes
     FROM product_comments c
@@ -2750,7 +2753,8 @@ const SELECT_PREGUNTA = `
     s.verified          AS autorVerificado,
     s.tipo_cuenta       AS autorTipoCuenta,
     s.carrera           AS autorCarrera,
-    s.tipo_verificacion AS autorTipoVerificacion
+    s.tipo_verificacion AS autorTipoVerificacion,
+    s.socio_fundador    AS autorSocioFundador
   FROM product_questions q
   LEFT JOIN sellers s ON s.id = q.asked_by
 `;
@@ -2784,6 +2788,7 @@ function rowToProductQuestion(row) {
       major: row.autorMajor || '',
       isBusiness: !!row.autorEsNegocio,
       verified: !!row.autorVerificado,
+      socioFundador: !!row.autorSocioFundador,
       tipoCuenta: row.autorTipoCuenta || 'particular',
       carrera: row.autorCarrera || null,
       tipoVerificacion: row.autorTipoVerificacion || null,

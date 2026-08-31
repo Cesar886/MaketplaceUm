@@ -181,3 +181,24 @@ test('leer comentarios sigue siendo abierto: no exige sesión ni verificación',
   assert.strictEqual(res.status, 200);
   assert.strictEqual(body.total, 1);
 });
+
+test('el autor de un comentario trae socioFundador, para la palomita verde', async () => {
+  const usuario = crearUsuario('estudiante', { verificado: true });
+  db.getDb()
+    .prepare('UPDATE sellers SET socio_fundador = 1 WHERE id = ?')
+    .run(usuario.id);
+  const producto = crearProducto(usuario.id);
+
+  const res = await comentar(producto.id, usuario.token);
+
+  assert.strictEqual(res.body.comment.author.socioFundador, true);
+});
+
+test('el autor de un comentario sin la insignia trae socioFundador en false', async () => {
+  const usuario = crearUsuario('estudiante', { verificado: true });
+  const producto = crearProducto(usuario.id);
+
+  const res = await comentar(producto.id, usuario.token);
+
+  assert.strictEqual(res.body.comment.author.socioFundador, false);
+});

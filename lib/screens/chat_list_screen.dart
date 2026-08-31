@@ -11,6 +11,7 @@ import '../services/anonymous_id.dart';
 import '../services/api_service.dart';
 import '../services/chat_socket_service.dart';
 import '../services/presence_service.dart';
+import '../widgets/badges.dart';
 import '../widgets/online_status_avatar.dart';
 import 'chat_screen.dart';
 import 'main_shell.dart';
@@ -309,7 +310,8 @@ class _ConversationTile extends StatelessWidget {
                             otherUser!.logoUrl!.isNotEmpty
                         ? '${ApiService.baseUrl}${otherUser.logoUrl}'
                         : null,
-                    enLinea: otherUser != null &&
+                    enLinea:
+                        otherUser != null &&
                         context
                             .watch<PresenceService>()
                             .estadoDe(otherUser.id)
@@ -338,7 +340,19 @@ class _ConversationTile extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (unread)
+                        if (otherUser != null &&
+                            (otherUser.verified ||
+                                otherUser.socioFundador)) ...[
+                          const SizedBox(width: 5),
+                          InsigniaCuenta(
+                            verified: otherUser.verified,
+                            socioFundador: otherUser.socioFundador,
+                            tipoCuenta: otherUser.tipoCuenta,
+                            size: 14,
+                          ),
+                        ],
+                        if (unread) ...[
+                          const SizedBox(width: 6),
                           Container(
                             width: 8,
                             height: 8,
@@ -347,6 +361,7 @@ class _ConversationTile extends StatelessWidget {
                               shape: BoxShape.circle,
                             ),
                           ),
+                        ],
                       ],
                     ),
                     const SizedBox(height: 3),

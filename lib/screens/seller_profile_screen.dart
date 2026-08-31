@@ -274,18 +274,9 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                           color: context.colors.ink,
                         ),
                       ),
-                      // Socio Fundador reemplaza la palomita azul por la
-                      // verde: son la misma palomita, nunca las dos juntas.
-                      if (seller.socioFundador) ...[
+                      if (seller.verified || seller.socioFundador) ...[
                         const SizedBox(width: 6),
-                        const InsigniaSocioFundador(compact: true, size: 20),
-                      ] else if (seller.verified) ...[
-                        const SizedBox(width: 6),
-                        InsigniaVerificada.desdeTipo(
-                          seller.tipoCuenta,
-                          compact: true,
-                          size: 20,
-                        ),
+                        InsigniaCuenta.deSeller(seller, size: 20),
                       ],
                     ],
                   ),

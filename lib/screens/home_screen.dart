@@ -1391,12 +1391,11 @@ class _BusinessCard extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                              if (seller.verified)
+                              if (seller.verified || seller.socioFundador)
                                 Padding(
                                   padding: const EdgeInsets.only(left: 6),
-                                  child: InsigniaVerificada.desdeTipo(
-                                    seller.tipoCuenta,
-                                    compact: true,
+                                  child: InsigniaCuenta.deSeller(
+                                    seller,
                                     size: 18,
                                   ),
                                 ),

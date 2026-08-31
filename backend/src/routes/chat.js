@@ -183,6 +183,11 @@ function register(app) {
           // /api/sellers/:id. Hoy la UI del chat aún no lo pinta.
           carrera: otherUser.carrera || null,
           tipoVerificacion: otherUser.tipo_verificacion || null,
+          // Para la palomita junto al nombre en el AppBar del chat y en la
+          // lista de conversaciones (InsigniaCuenta en el cliente).
+          verified: !!otherUser.verified,
+          socioFundador: !!otherUser.socio_fundador,
+          tipoCuenta: otherUser.tipo_cuenta || 'particular',
           // Presencia ya filtrada por privacidad: quien no tiene permiso
           // recibe exactamente lo mismo que si el otro estuviera offline.
           // El "visor" es el dueño del inbox que se está leyendo, así que

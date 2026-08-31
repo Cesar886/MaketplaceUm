@@ -285,3 +285,21 @@ test('un id anónimo copiado de un mensaje no sirve para suplantar al invitado',
   const res = await pedir('/api/chat/conversations', { token: otro.token });
   assert.deepStrictEqual(res.body.conversations, []);
 });
+
+test('otherUser trae socioFundador y verified, para la palomita del chat', async () => {
+  const comprador = crearUsuario();
+  const vendedor = crearUsuario();
+  db.getDb()
+    .prepare('UPDATE sellers SET socio_fundador = 1 WHERE id = ?')
+    .run(vendedor.id);
+  const producto = crearProducto(vendedor.id);
+  crearConversacion(comprador.id, vendedor.id, producto.id);
+
+  const res = await pedir('/api/chat/conversations', { token: comprador.token });
+
+  assert.strictEqual(res.status, 200);
+  const conv = res.body.conversations.find(c => c.sellerId === vendedor.id);
+  assert.ok(conv, 'la conversación debe aparecer en el listado');
+  assert.strictEqual(conv.otherUser.socioFundador, true);
+  assert.strictEqual(conv.otherUser.verified, true);
+});

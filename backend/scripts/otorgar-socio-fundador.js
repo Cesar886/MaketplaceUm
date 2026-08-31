@@ -21,15 +21,19 @@
  * Uso:
  *   node scripts/otorgar-socio-fundador.js <id-o-correo>
  *   node scripts/otorgar-socio-fundador.js <id-o-correo> --quitar
+ *   node scripts/otorgar-socio-fundador.js <id-o-correo> --sin-reiniciar
  *
  * Importante: el servidor mantiene a los vendedores cacheados en memoria
  * (ver data.js) y solo los refresca cuando ÉL MISMO escribe en la tabla.
  * Este script corre en un proceso aparte, así que el cambio queda en
- * SQLite pero el servidor que está corriendo no se entera — hace falta
- * reiniciarlo (`pm2 restart <app>`) para que la insignia se vea en la API.
+ * SQLite pero el servidor que está corriendo no se entera — por eso, tras
+ * escribir el cambio, corre él mismo `pm2 restart all --update-env`. Con
+ * `--sin-reiniciar` se salta ese paso (para correrlo en una base sin PM2
+ * detrás, como al probar el script en una máquina de desarrollo).
  */
 
 const path = require('node:path');
+const { execSync } = require('node:child_process');
 
 // El .env trae MERCADITO_DB_PATH si el servidor no usa la ruta por default;
 // sin cargarlo, el script escribiría en una base de prueba en vez de en la
@@ -69,12 +73,34 @@ function buscarSeller(identificador, conexion) {
     .get(identificador);
 }
 
+/**
+ * Reinicia PM2 para que el servidor recargue a los vendedores desde SQLite.
+ *
+ * No revierte el UPDATE si falla: la insignia ya quedó bien escrita en la
+ * base, lo único que falta es que el proceso corriendo se entere, y eso el
+ * admin lo puede hacer a mano con el mensaje que se imprime.
+ */
+function reiniciarServidor() {
+  try {
+    const salida = execSync('pm2 restart all --update-env', {
+      encoding: 'utf8',
+    });
+    console.log(salida.trim());
+  } catch (err) {
+    console.error(
+      'No se pudo reiniciar PM2 automáticamente '
+        + `(${err.message.split('\n')[0]}). Corre a mano: pm2 restart all --update-env`,
+    );
+  }
+}
+
 function main() {
   const identificador = process.argv[2];
   const quitar = process.argv.includes('--quitar');
+  const sinReiniciar = process.argv.includes('--sin-reiniciar');
 
   if (!identificador) {
-    salir('Uso: node scripts/otorgar-socio-fundador.js <id-o-correo> [--quitar]');
+    salir('Uso: node scripts/otorgar-socio-fundador.js <id-o-correo> [--quitar] [--sin-reiniciar]');
   }
 
   db.initDatabase();
@@ -104,7 +130,14 @@ function main() {
   console.log(
     `${quitar ? 'Quitada' : 'Otorgada'} la insignia Socio Fundador a ${seller.name} (${seller.id}).`,
   );
-  console.log('Si el servidor está corriendo, reinícialo (pm2 restart) para que se vea.');
+
+  if (sinReiniciar) {
+    console.log('--sin-reiniciar: no se tocó PM2. Corre a mano si hace falta: pm2 restart all --update-env');
+    return;
+  }
+
+  console.log('Reiniciando PM2 para que el cambio se vea...');
+  reiniciarServidor();
 }
 
 main();

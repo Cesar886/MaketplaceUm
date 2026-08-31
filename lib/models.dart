@@ -1149,6 +1149,9 @@ class ChatUser {
     this.avatarInitials = '',
     this.logoUrl,
     this.estadoConexion = EstadoConexion.desconocido,
+    this.verified = false,
+    this.socioFundador = false,
+    this.tipoCuenta = 'particular',
   });
 
   factory ChatUser.fromJson(Map<String, dynamic> json) {
@@ -1158,6 +1161,9 @@ class ChatUser {
       avatarInitials: json['avatarInitials'] as String? ?? '',
       logoUrl: json['logoUrl'] as String?,
       estadoConexion: EstadoConexion.desdeJson(json),
+      verified: json['verified'] as bool? ?? false,
+      socioFundador: json['socioFundador'] as bool? ?? false,
+      tipoCuenta: json['tipoCuenta'] as String? ?? 'particular',
     );
   }
 
@@ -1170,6 +1176,13 @@ class ChatUser {
   /// se pinta sale de PresenceService, que además recibe los cambios en vivo.
   final EstadoConexion estadoConexion;
 
+  /// La palomita junto al nombre en el chat sale de estos tres, con
+  /// [InsigniaCuenta] — misma decisión (verde > azul > nada) que en
+  /// comentarios, preguntas y el resto de la app.
+  final bool verified;
+  final bool socioFundador;
+  final String tipoCuenta;
+
   /// Para abrir el chat desde la ficha de un producto, donde lo que se tiene
   /// a mano es el [Seller] y no un [ChatUser] (ese solo viaja dentro de una
   /// [Conversation] ya existente). Mismos campos, otro origen.
@@ -1179,6 +1192,9 @@ class ChatUser {
     avatarInitials: seller.avatarInitials,
     logoUrl: seller.logoUrl,
     estadoConexion: seller.estadoConexion,
+    verified: seller.verified,
+    socioFundador: seller.socioFundador,
+    tipoCuenta: seller.tipoCuenta,
   );
 }
 

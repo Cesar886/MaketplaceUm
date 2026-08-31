@@ -1570,14 +1570,10 @@ class _SellerCard extends StatelessWidget {
                               ),
                             ),
                           ),
-                          if (seller.verified)
+                          if (seller.verified || seller.socioFundador)
                             Padding(
                               padding: const EdgeInsets.only(left: 6),
-                              child: InsigniaVerificada.desdeTipo(
-                                seller.tipoCuenta,
-                                compact: true,
-                                size: 17,
-                              ),
+                              child: InsigniaCuenta.deSeller(seller, size: 17),
                             ),
                         ],
                       ),

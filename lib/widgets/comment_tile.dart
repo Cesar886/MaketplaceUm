@@ -103,15 +103,11 @@ class CommentTile extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (autor.verified) ...[
+                  if (autor.verified || autor.socioFundador) ...[
                     const SizedBox(width: 5),
                     Padding(
                       padding: const EdgeInsets.only(top: 1),
-                      child: InsigniaVerificada.desdeTipo(
-                        autor.tipoCuenta,
-                        compact: true,
-                        size: 15,
-                      ),
+                      child: InsigniaCuenta.deSeller(autor, size: 15),
                     ),
                   ],
                   const SizedBox(width: 8),

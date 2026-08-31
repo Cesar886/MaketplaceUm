@@ -235,6 +235,67 @@ class InsigniaSocioFundador extends StatelessWidget {
   }
 }
 
+/// La palomita junto a un nombre, decidida en un solo lugar: verde de Socio
+/// Fundador si la tiene, azul de verificación si no pero está verificado, o
+/// nada si ninguna de las dos aplica.
+///
+/// Existe para que esta decisión no se repita (y diverja) en cada sitio que
+/// pinta un nombre — comentarios, preguntas, tarjetas de producto, el feed,
+/// el chat, los dos perfiles. Antes de esto cada call site tenía su propio
+/// `if (verified) ... InsigniaVerificada` copiado y pegado; agregar Socio
+/// Fundador habría significado tocar todos uno por uno, y el próximo cambio
+/// de esta regla habría vuelto a tener el mismo problema.
+class InsigniaCuenta extends StatelessWidget {
+  const InsigniaCuenta({
+    super.key,
+    required this.verified,
+    required this.socioFundador,
+    this.tipoCuenta = 'particular',
+    this.compact = true,
+    this.size = 16,
+  });
+
+  /// Atajo para el caso más común: ya se tiene un [Seller] completo a mano.
+  factory InsigniaCuenta.deSeller(
+    Seller seller, {
+    Key? key,
+    bool compact = true,
+    double size = 16,
+  }) => InsigniaCuenta(
+    key: key,
+    verified: seller.verified,
+    socioFundador: seller.socioFundador,
+    tipoCuenta: seller.tipoCuenta,
+    compact: compact,
+    size: size,
+  );
+
+  final bool verified;
+  final bool socioFundador;
+  final String tipoCuenta;
+  final bool compact;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    if (socioFundador) {
+      return InsigniaSocioFundador(compact: compact, size: size);
+    }
+    if (verified) {
+      return InsigniaVerificada.desdeTipo(
+        tipoCuenta,
+        compact: compact,
+        size: size,
+      );
+    }
+    // Ningún widget de tamaño cero: los call sites ya condicionan su
+    // `Padding`/`SizedBox` de separación a `verified || socioFundador`, así
+    // que este caso no debería pintarse, pero un `shrink()` es la salida
+    // segura si alguno se queda desactualizado.
+    return const SizedBox.shrink();
+  }
+}
+
 /// Badge de solo-lectura para compradores: renderiza directamente el
 /// [ComputedStatus] que ya llegó calculado desde el backend
 /// (`computeProductStatus` en `products.js`, jerarquía de 5 niveles:

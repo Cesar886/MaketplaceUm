@@ -132,6 +132,17 @@ test('cualquier cuenta con sesión puede preguntar, sin estar verificada', () =>
   });
 });
 
+test('el autor de una pregunta trae socioFundador, para la palomita verde', () => {
+  const { producto, curioso } = escenario();
+  db.getDb()
+    .prepare('UPDATE sellers SET socio_fundador = 1 WHERE id = ?')
+    .run(curioso.id);
+
+  return preguntar(producto, curioso).then(res => {
+    assert.strictEqual(res.body.question.author.socioFundador, true);
+  });
+});
+
 test('sin sesión no se puede preguntar', async () => {
   const { producto } = escenario();
 

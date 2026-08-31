@@ -106,13 +106,9 @@ class _LineaPregunta extends StatelessWidget {
             style: AppTypography.heading(14, color: context.colors.ink),
           ),
         ),
-        if (autor.verified) ...[
+        if (autor.verified || autor.socioFundador) ...[
           const SizedBox(width: 5),
-          InsigniaVerificada.desdeTipo(
-            autor.tipoCuenta,
-            compact: true,
-            size: 14,
-          ),
+          InsigniaCuenta.deSeller(autor, size: 14),
         ],
         const SizedBox(width: 8),
         Text(
@@ -148,7 +144,9 @@ class _BloqueRespuesta extends StatelessWidget {
               child: Text(
                 sellerName == null
                     ? 'questions.seller_answer'.tr()
-                    : 'questions.answer_from'.tr(namedArgs: {'seller': sellerName!}),
+                    : 'questions.answer_from'.tr(
+                        namedArgs: {'seller': sellerName!},
+                      ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: AppTypography.label(
