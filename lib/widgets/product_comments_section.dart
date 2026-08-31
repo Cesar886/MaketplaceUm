@@ -9,6 +9,7 @@ import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../screens/auth/verification_screen.dart';
 import '../screens/secreto/enigma_screen.dart';
+import '../screens/seller_profile_screen.dart';
 import '../services/api_service.dart';
 import '../services/chat_socket_service.dart';
 import 'comment_tile.dart';
@@ -230,10 +231,14 @@ class _ProductCommentsSectionState extends State<ProductCommentsSection> {
         transitionDuration: const Duration(milliseconds: 1100),
         reverseTransitionDuration: const Duration(milliseconds: 500),
         pageBuilder: (context, animacion, secundaria) => const EnigmaScreen(),
-        transitionsBuilder: (context, animacion, secundaria, hijo) => FadeTransition(
-          opacity: CurvedAnimation(parent: animacion, curve: Curves.easeInOut),
-          child: hijo,
-        ),
+        transitionsBuilder: (context, animacion, secundaria, hijo) =>
+            FadeTransition(
+              opacity: CurvedAnimation(
+                parent: animacion,
+                curve: Curves.easeInOut,
+              ),
+              child: hijo,
+            ),
       ),
     );
   }
@@ -280,6 +285,15 @@ class _ProductCommentsSectionState extends State<ProductCommentsSection> {
         widget.productOwnerId == usuarioId;
   }
 
+  void _abrirPerfil(String sellerId) {
+    if (sellerId.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SellerProfileScreen(sellerId: sellerId),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -302,6 +316,7 @@ class _ProductCommentsSectionState extends State<ProductCommentsSection> {
             recienLlegados: _recienLlegados,
             puedeBorrar: (c) => _puedeBorrar(c, usuarioId),
             onBorrar: _borrar,
+            onAuthorTap: _abrirPerfil,
           ),
         if (!_cargandoInicial && _error == null && _cursor != null) ...[
           const SizedBox(height: 4),
@@ -385,12 +400,14 @@ class _ListaComentarios extends StatelessWidget {
     required this.recienLlegados,
     required this.puedeBorrar,
     required this.onBorrar,
+    required this.onAuthorTap,
   });
 
   final List<ProductComment> comentarios;
   final Set<String> recienLlegados;
   final bool Function(ProductComment) puedeBorrar;
   final void Function(ProductComment) onBorrar;
+  final ValueChanged<String> onAuthorTap;
 
   @override
   Widget build(BuildContext context) {
@@ -412,6 +429,9 @@ class _ListaComentarios extends StatelessWidget {
             animar: recienLlegados.contains(comentarios[i].id),
             child: CommentTile(
               comment: comentarios[i],
+              onAuthorTap: comentarios[i].author.id.isEmpty
+                  ? null
+                  : () => onAuthorTap(comentarios[i].author.id),
               onDelete: puedeBorrar(comentarios[i])
                   ? () => onBorrar(comentarios[i])
                   : null,

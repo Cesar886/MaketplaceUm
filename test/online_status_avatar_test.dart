@@ -9,6 +9,7 @@ void main() {
     required double radius,
     required bool enLinea,
     String? iniciales,
+    bool mostrarIconoPorDefecto = false,
     Brightness brillo = Brightness.light,
   }) {
     return tester.pumpWidget(
@@ -21,6 +22,7 @@ void main() {
             child: OnlineStatusAvatar(
               radius: radius,
               iniciales: iniciales ?? 'DP',
+              mostrarIconoPorDefecto: mostrarIconoPorDefecto,
               enLinea: enLinea,
             ),
           ),
@@ -51,7 +53,9 @@ void main() {
     expect(tamano.height, closeTo(48 * 0.26, 0.01));
   });
 
-  testWidgets('el punto escala con el avatar grande del perfil', (tester) async {
+  testWidgets('el punto escala con el avatar grande del perfil', (
+    tester,
+  ) async {
     await montar(tester, radius: 40, enLinea: true);
 
     final tamano = tester.getSize(find.byKey(OnlineStatusAvatar.puntoKey));
@@ -77,6 +81,21 @@ void main() {
     await montar(tester, radius: 24, enLinea: false, iniciales: 'MG');
 
     expect(find.text('MG'), findsOneWidget);
+  });
+
+  testWidgets('puede mostrar el avatar por defecto cuando no hay foto', (
+    tester,
+  ) async {
+    await montar(
+      tester,
+      radius: 18,
+      enLinea: false,
+      iniciales: 'MG',
+      mostrarIconoPorDefecto: true,
+    );
+
+    expect(find.byIcon(Icons.person_rounded), findsOneWidget);
+    expect(find.text('MG'), findsNothing);
   });
 
   testWidgets('el punto se anuncia a lectores de pantalla', (tester) async {

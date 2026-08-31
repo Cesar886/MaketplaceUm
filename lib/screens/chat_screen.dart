@@ -20,6 +20,7 @@ import '../utils/fecha_monterrey.dart';
 import '../widgets/badges.dart';
 import '../widgets/online_status_avatar.dart';
 import 'product_detail_screen.dart';
+import 'seller_profile_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
@@ -557,6 +558,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
+  void _abrirPerfilInterlocutor() {
+    final sellerId = widget.otherUser?.id;
+    if (sellerId == null || sellerId.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SellerProfileScreen(sellerId: sellerId),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // _userId es el mismo identificador con el que se envían y cargan los
@@ -569,7 +580,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     return Scaffold(
       appBar: AppBar(
-        title: _ChatAppBarTitle(otherUser: widget.otherUser),
+        title: InkWell(
+          onTap: widget.otherUser?.id.isNotEmpty == true
+              ? _abrirPerfilInterlocutor
+              : null,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: _ChatAppBarTitle(otherUser: widget.otherUser),
+          ),
+        ),
         actions: [
           if (_displayProduct != null)
             IconButton(
@@ -1084,6 +1104,7 @@ class _ChatAppBarTitle extends StatelessWidget {
         OnlineStatusAvatar(
           radius: 18,
           iniciales: otro.avatarInitials,
+          mostrarIconoPorDefecto: true,
           imageUrl: otro.logoUrl != null && otro.logoUrl!.isNotEmpty
               ? '${ApiService.baseUrl}${otro.logoUrl}'
               : null,

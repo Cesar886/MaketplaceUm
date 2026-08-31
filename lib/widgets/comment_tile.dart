@@ -68,9 +68,18 @@ class CommentAvatar extends StatelessWidget {
 /// Sin tarjeta ni borde: lo que separa un comentario del siguiente es el
 /// aire y un divisor de un pixel, siguiendo la línea del resto de la app.
 class CommentTile extends StatelessWidget {
-  const CommentTile({super.key, required this.comment, this.onDelete});
+  const CommentTile({
+    super.key,
+    required this.comment,
+    this.onAuthorTap,
+    this.onDelete,
+  });
 
   final ProductComment comment;
+
+  /// Abre el perfil del autor. En comentarios se ofrece desde los dos puntos
+  /// de identidad visibles: avatar y nombre.
+  final VoidCallback? onAuthorTap;
 
   /// Null cuando el usuario actual no puede borrar este comentario: sin
   /// permiso, el botón "..." ni siquiera se pinta.
@@ -83,7 +92,11 @@ class CommentTile extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        CommentAvatar(author: autor),
+        InkWell(
+          onTap: onAuthorTap,
+          customBorder: const CircleBorder(),
+          child: CommentAvatar(author: autor),
+        ),
         const SizedBox(width: _kAvatarGap),
         Expanded(
           child: Column(
@@ -93,13 +106,17 @@ class CommentTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Flexible(
-                    child: Text(
-                      autor.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.heading(
-                        14.5,
-                        color: context.colors.ink,
+                    child: InkWell(
+                      onTap: onAuthorTap,
+                      borderRadius: BorderRadius.circular(4),
+                      child: Text(
+                        autor.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.heading(
+                          14.5,
+                          color: context.colors.ink,
+                        ),
                       ),
                     ),
                   ),

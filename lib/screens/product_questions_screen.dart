@@ -8,6 +8,7 @@ import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../widgets/product_questions_section.dart';
 import '../widgets/question_tile.dart';
+import 'seller_profile_screen.dart';
 
 /// Cuántas preguntas trae cada página.
 const int _kPorPagina = 20;
@@ -280,6 +281,15 @@ class _ProductQuestionsScreenState extends State<ProductQuestionsScreen> {
         widget.productOwnerId == usuarioId;
   }
 
+  void _abrirPerfil(String sellerId) {
+    if (sellerId.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SellerProfileScreen(sellerId: sellerId),
+      ),
+    );
+  }
+
   GlobalKey _anclaDe(String id) => _anclas.putIfAbsent(id, () => GlobalKey());
 
   @override
@@ -395,6 +405,9 @@ class _ProductQuestionsScreenState extends State<ProductQuestionsScreen> {
             question: pregunta,
             sellerName: widget.sellerName,
             destacada: _resaltada == pregunta.id,
+            onAuthorTap: pregunta.author.id.isEmpty
+                ? null
+                : () => _abrirPerfil(pregunta.author.id),
             respuestaInline: esDueno
                 ? _AccionesDelVendedor(
                     pregunta: pregunta,

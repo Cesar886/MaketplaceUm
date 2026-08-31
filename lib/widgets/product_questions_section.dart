@@ -7,6 +7,7 @@ import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/product_questions_screen.dart';
+import '../screens/seller_profile_screen.dart';
 import '../services/api_service.dart';
 import 'question_tile.dart';
 
@@ -112,6 +113,15 @@ class _ProductQuestionsSectionState extends State<ProductQuestionsSection> {
     if (usuarioId == null) return false;
     return pregunta.author.id == usuarioId ||
         widget.productOwnerId == usuarioId;
+  }
+
+  void _abrirPerfil(String sellerId) {
+    if (sellerId.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SellerProfileScreen(sellerId: sellerId),
+      ),
+    );
   }
 
   Future<void> _abrirTodas({bool soloPendientes = false}) async {
@@ -221,6 +231,9 @@ class _ProductQuestionsSectionState extends State<ProductQuestionsSection> {
           QuestionTile(
             question: pregunta,
             sellerName: widget.sellerName,
+            onAuthorTap: pregunta.author.id.isEmpty
+                ? null
+                : () => _abrirPerfil(pregunta.author.id),
             onDelete: _puedeBorrar(pregunta, usuarioId)
                 ? () => _borrar(pregunta)
                 : null,

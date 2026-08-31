@@ -90,6 +90,23 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('avatar y nombre abren el perfil del autor', (tester) async {
+      var aperturas = 0;
+      await montar(
+        tester,
+        CommentTile(comment: comentario(), onAuthorTap: () => aperturas++),
+      );
+
+      await tester.tap(find.byType(CommentAvatar));
+      expect(aperturas, 1);
+
+      await tester.tap(find.text('Mariana Peña'));
+      expect(aperturas, 2);
+
+      await tester.tap(find.text('¿Todavía lo tienes? Me interesa.'));
+      expect(aperturas, 2);
+    });
+
     testWidgets('no desborda a 320 px con nombre y carrera largos', (
       tester,
     ) async {

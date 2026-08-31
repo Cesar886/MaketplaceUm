@@ -84,6 +84,20 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('solo el nombre del autor abre su perfil', (tester) async {
+    var aperturas = 0;
+    await montar(
+      tester,
+      QuestionTile(question: pregunta(), onAuthorTap: () => aperturas++),
+    );
+
+    await tester.tap(find.text('Mariana Peña'));
+    expect(aperturas, 1);
+
+    await tester.tap(find.text('¿Sigue disponible en color negro?'));
+    expect(aperturas, 1);
+  });
+
   testWidgets('una respondida muestra la respuesta firmada por el vendedor', (
     tester,
   ) async {

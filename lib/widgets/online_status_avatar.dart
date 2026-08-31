@@ -15,6 +15,7 @@ class OnlineStatusAvatar extends StatelessWidget {
     required this.enLinea,
     this.imageUrl,
     this.iniciales,
+    this.mostrarIconoPorDefecto = false,
   });
 
   /// Radio del avatar, igual que en [CircleAvatar].
@@ -24,9 +25,15 @@ class OnlineStatusAvatar extends StatelessWidget {
   /// el backend lo entrega como desconectado, ver EstadoConexion).
   final bool enLinea;
 
-  /// URL completa de la foto. Sin ella se pintan las [iniciales].
+  /// URL completa de la foto. Sin ella se pintan las [iniciales] o el icono
+  /// predeterminado.
   final String? imageUrl;
   final String? iniciales;
+
+  /// Usa el avatar genérico de persona cuando no hay foto, en vez de las
+  /// iniciales. Se activa solo donde la UI necesita comunicar "foto de
+  /// perfil" de forma explícita.
+  final bool mostrarIconoPorDefecto;
 
   /// Para encontrar el punto en los tests sin depender del árbol interno.
   static const puntoKey = Key('online-status-dot');
@@ -62,6 +69,12 @@ class OnlineStatusAvatar extends StatelessWidget {
             backgroundImage: tieneFoto ? NetworkImage(imageUrl!) : null,
             child: tieneFoto
                 ? null
+                : mostrarIconoPorDefecto
+                ? Icon(
+                    Icons.person_rounded,
+                    size: radius * 1.15,
+                    color: colores.accent,
+                  )
                 : Text(
                     iniciales?.isNotEmpty == true ? iniciales! : '?',
                     style: TextStyle(

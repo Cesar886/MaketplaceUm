@@ -26,6 +26,7 @@ class QuestionTile extends StatelessWidget {
     this.sellerName,
     this.destacada = false,
     this.respuestaInline,
+    this.onAuthorTap,
     this.onDelete,
   });
 
@@ -43,6 +44,10 @@ class QuestionTile extends StatelessWidget {
   /// callback para que esta pieza no sepa nada de estado ni de red.
   final Widget? respuestaInline;
 
+  /// Abre el perfil de quien preguntó. Solo el nombre funciona como enlace;
+  /// la insignia, la fecha y el texto de la pregunta conservan sus acciones.
+  final VoidCallback? onAuthorTap;
+
   /// Null cuando el usuario actual no puede borrar esta pregunta.
   final VoidCallback? onDelete;
 
@@ -59,7 +64,11 @@ class QuestionTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _LineaPregunta(question: question, onDelete: onDelete),
+          _LineaPregunta(
+            question: question,
+            onAuthorTap: onAuthorTap,
+            onDelete: onDelete,
+          ),
           const SizedBox(height: 6),
           Text(
             question.questionText,
@@ -93,9 +102,14 @@ class QuestionTile extends StatelessWidget {
 
 /// Nombre de quien preguntó, su insignia si la tiene, y cuándo.
 class _LineaPregunta extends StatelessWidget {
-  const _LineaPregunta({required this.question, this.onDelete});
+  const _LineaPregunta({
+    required this.question,
+    this.onAuthorTap,
+    this.onDelete,
+  });
 
   final ProductQuestion question;
+  final VoidCallback? onAuthorTap;
   final VoidCallback? onDelete;
 
   @override
@@ -104,11 +118,15 @@ class _LineaPregunta extends StatelessWidget {
     return Row(
       children: [
         Flexible(
-          child: Text(
-            autor.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTypography.heading(14, color: context.colors.ink),
+          child: InkWell(
+            onTap: onAuthorTap,
+            borderRadius: BorderRadius.circular(4),
+            child: Text(
+              autor.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.heading(14, color: context.colors.ink),
+            ),
           ),
         ),
         if (autor.verified || autor.socioFundador) ...[
