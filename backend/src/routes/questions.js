@@ -179,6 +179,41 @@ function register(app) {
     }
   });
 
+  // ─── DELETE /api/products/:id/questions/:questionId ───────────
+  // Puede borrar quien preguntó o el vendedor que recibió la pregunta.
+  app.delete('/api/products/:id/questions/:questionId', requireAuth, (req, res) => {
+    try {
+      const producto = products.find(p => p.id === req.params.id);
+      if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
+
+      const fila = db.getProductQuestionRow(req.params.questionId);
+      if (!fila || fila.product_id !== producto.id) {
+        return res.status(404).json({ error: 'Pregunta no encontrada' });
+      }
+
+      const actorId = req.user.id;
+      const esAutor = fila.asked_by === actorId;
+      const esVendedor = fila.seller_id === actorId;
+      if (!esAutor && !esVendedor) {
+        return res.status(403).json({
+          error: 'No puedes eliminar esta pregunta.',
+          code: 'NO_PUEDES_ELIMINAR_PREGUNTA',
+        });
+      }
+
+      db.deleteProductQuestion(fila.id);
+
+      res.json({
+        success: true,
+        total: db.countProductQuestions(producto.id),
+        pendingCount: db.countPendingProductQuestions(producto.id),
+      });
+    } catch (err) {
+      console.error('Error en DELETE /api/products/:id/questions/:questionId:', err);
+      res.status(500).json({ error: 'No se pudo eliminar la pregunta.' });
+    }
+  });
+
   // ─── POST /api/questions/:id/answer ─────────────────────────────
   // Solo el dueño de la publicación. Si ya había respuesta, la corrige.
   app.post('/api/questions/:id/answer', requireAuth, (req, res) => {

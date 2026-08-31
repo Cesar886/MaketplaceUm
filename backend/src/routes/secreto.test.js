@@ -56,7 +56,7 @@ const FRASE = descubrir(
 );
 
 const RESPUESTA = descubrir(
-  ['oticadrem', 'mercadito', 'espejo'],
+  ['marketplaceum', 'mercadito', 'espejo'],
   enigma.esRespuestaCorrecta,
   'la respuesta del acertijo',
 );

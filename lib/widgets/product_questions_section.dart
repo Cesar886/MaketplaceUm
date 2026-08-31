@@ -76,10 +76,42 @@ class _ProductQuestionsSectionState extends State<ProductQuestionsSection> {
     }
   }
 
-  bool get _esDueno {
-    final auth = context.read<AuthProvider>();
-    return auth.backendSellerId != null &&
-        auth.backendSellerId == widget.productOwnerId;
+  Future<void> _borrar(ProductQuestion pregunta) async {
+    final anteriores = _preguntas;
+    final totalAnterior = _total;
+    final pendientesAnterior = _pendientes;
+    final indice = _preguntas.indexWhere((q) => q.id == pregunta.id);
+    if (indice == -1) return;
+
+    setState(() {
+      _preguntas = [
+        for (final q in _preguntas)
+          if (q.id != pregunta.id) q,
+      ];
+      if (_total > 0) _total -= 1;
+      if (!pregunta.isAnswered && _pendientes > 0) _pendientes -= 1;
+    });
+
+    try {
+      await ApiService.deleteProductQuestion(widget.productId, pregunta.id);
+      if (mounted) await _cargar();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _preguntas = anteriores;
+        _total = totalAnterior;
+        _pendientes = pendientesAnterior;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_mensajeDeError(e))));
+    }
+  }
+
+  bool _puedeBorrar(ProductQuestion pregunta, String? usuarioId) {
+    if (usuarioId == null) return false;
+    return pregunta.author.id == usuarioId ||
+        widget.productOwnerId == usuarioId;
   }
 
   Future<void> _abrirTodas({bool soloPendientes = false}) async {
@@ -148,7 +180,9 @@ class _ProductQuestionsSectionState extends State<ProductQuestionsSection> {
 
   @override
   Widget build(BuildContext context) {
-    final esDueno = _esDueno;
+    final auth = context.watch<AuthProvider>();
+    final usuarioId = auth.backendSellerId;
+    final esDueno = usuarioId != null && usuarioId == widget.productOwnerId;
 
     // Mientras carga no se pinta nada: el caso más común de una publicación
     // nueva es "sin preguntas", y un esqueleto que después se desvanece
@@ -184,7 +218,13 @@ class _ProductQuestionsSectionState extends State<ProductQuestionsSection> {
         ),
         const SizedBox(height: 10),
         for (final pregunta in _preguntas)
-          QuestionTile(question: pregunta, sellerName: widget.sellerName),
+          QuestionTile(
+            question: pregunta,
+            sellerName: widget.sellerName,
+            onDelete: _puedeBorrar(pregunta, usuarioId)
+                ? () => _borrar(pregunta)
+                : null,
+          ),
         const SizedBox(height: 4),
         Row(
           children: [

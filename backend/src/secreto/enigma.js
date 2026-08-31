@@ -32,7 +32,7 @@ const HASH_FRASE = '6d028ccae1cfaf9c1b8b87ba3fb05e26d9bd3692a34fe962cd378749e4ba
  * español entero; aquí, cada intento cuesta una petición y pasa por
  * [SEGUNDOS_ENTRE_INTENTOS].
  */
-const HASH_RESPUESTA = '7b917e4f3e0150aee5b79c48557cc3f3438c9bdb96870521c1a6ef8e58530f70';
+const HASH_RESPUESTA = '386be7196ffddb162a13e3c1cafc7c32f866c369d3601d847b29368456c07792';
 
 /** Espera mínima entre dos intentos de respuesta del MISMO usuario. */
 const SEGUNDOS_ENTRE_INTENTOS = 3;

@@ -217,7 +217,7 @@ class _EnigmaScreenState extends State<EnigmaScreen>
                                 const SecretoFilete(),
                                 const SizedBox(height: 26),
                                 Text(
-                                  'Di mi nombre.\nPero dilo como lo diría un espejo.',
+                                  'Di mi nombre.\nSin espacios, sin mayúsculas, todo junto.',
                                   textAlign: TextAlign.center,
                                   style: p.verso(16.5, color: p.latonClaro),
                                 ),

@@ -1891,6 +1891,22 @@ class ApiService {
     return ProductQuestion.fromJson(body['question'] as Map<String, dynamic>);
   }
 
+  /// Elimina una pregunta. El backend solo lo permite al autor de esa
+  /// pregunta o al vendedor de la publicación.
+  static Future<void> deleteProductQuestion(
+    String productId,
+    String questionId,
+  ) async {
+    final res = await _client.delete(
+      _uri('/products/$productId/questions/$questionId'),
+      headers: _authHeaders,
+    );
+    if (res.statusCode != 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['error'] ?? 'No se pudo eliminar la pregunta');
+    }
+  }
+
   /// Comentarios que OTROS dejaron en las publicaciones de [userId] — la
   /// pestaña "Comentarios" del perfil. Ojo: recibidos, no escritos; es
   /// prueba social del vendedor, no su historial de actividad.

@@ -2842,6 +2842,19 @@ function answerProductQuestion(id, texto) {
 }
 
 /**
+ * Elimina una pregunta completa del hilo.
+ *
+ * A diferencia de comentarios, las preguntas no tienen columna de borrado
+ * lógico ni se muestran como prueba social en otro perfil. Si se borra una
+ * pregunta, desaparece junto con su respuesta y los contadores se recalculan
+ * sobre las filas vivas.
+ */
+function deleteProductQuestion(id) {
+  const result = db.prepare('DELETE FROM product_questions WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
+/**
  * Página del listado completo, de la más reciente a la más antigua.
  *
  * Keyset y no OFFSET por lo mismo que en comentarios: llegan preguntas
@@ -4012,6 +4025,7 @@ module.exports = {
   PREGUNTAS_PREVIEW,
   createProductQuestion,
   answerProductQuestion,
+  deleteProductQuestion,
   getProductQuestions,
   getProductQuestionsPreview,
   getProductQuestionById,

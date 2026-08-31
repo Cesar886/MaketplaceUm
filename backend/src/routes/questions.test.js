@@ -119,6 +119,13 @@ function responder(questionId, usuario, texto = 'Sí, todavía lo tengo.') {
   });
 }
 
+function eliminarPregunta(producto, questionId, usuario) {
+  return pedir('/api/products/' + producto.id + '/questions/' + questionId, {
+    metodo: 'DELETE',
+    token: usuario.token,
+  });
+}
+
 // ═══ Preguntar ═══════════════════════════════════════════════
 
 test('cualquier cuenta con sesión puede preguntar, sin estar verificada', () => {
@@ -319,6 +326,60 @@ test('responder una pregunta inexistente da 404', async () => {
   const res = await responder('q_no_existe', dueno);
 
   assert.strictEqual(res.status, 404);
+});
+
+// ═══ Eliminar ════════════════════════════════════════════════
+
+test('quien hizo la pregunta puede eliminar solo la suya', async () => {
+  const { producto, curioso } = escenario();
+  const otroCurioso = crearUsuario();
+  const { body: propia } = await preguntar(producto, curioso, 'Mía');
+  await preguntar(producto, otroCurioso, 'De otra persona');
+
+  const res = await eliminarPregunta(producto, propia.question.id, curioso);
+
+  assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+  assert.strictEqual(res.body.success, true);
+  assert.strictEqual(res.body.total, 1);
+  assert.strictEqual(db.getProductQuestionRow(propia.question.id), undefined);
+});
+
+test('quien preguntó no puede eliminar preguntas de otras personas', async () => {
+  const { producto, curioso } = escenario();
+  const otroCurioso = crearUsuario();
+  const { body: ajena } = await preguntar(producto, otroCurioso, 'Ajena');
+
+  const res = await eliminarPregunta(producto, ajena.question.id, curioso);
+
+  assert.strictEqual(res.status, 403);
+  assert.strictEqual(res.body.code, 'NO_PUEDES_ELIMINAR_PREGUNTA');
+  assert.ok(db.getProductQuestionRow(ajena.question.id));
+});
+
+test('el vendedor puede eliminar cualquier pregunta de su publicación', async () => {
+  const { producto, dueno, curioso } = escenario();
+  const otroCurioso = crearUsuario();
+  const { body: primera } = await preguntar(producto, curioso, 'Primera');
+  await preguntar(producto, otroCurioso, 'Segunda');
+
+  const res = await eliminarPregunta(producto, primera.question.id, dueno);
+
+  assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+  assert.strictEqual(res.body.total, 1);
+  assert.strictEqual(res.body.pendingCount, 1);
+  assert.strictEqual(db.getProductQuestionRow(primera.question.id), undefined);
+});
+
+test('sin sesión no se puede eliminar una pregunta', async () => {
+  const { producto, curioso } = escenario();
+  const { body: creada } = await preguntar(producto, curioso);
+
+  const res = await pedir('/api/products/' + producto.id + '/questions/' + creada.question.id, {
+    metodo: 'DELETE',
+  });
+
+  assert.strictEqual(res.status, 401);
+  assert.ok(db.getProductQuestionRow(creada.question.id));
 });
 
 // ═══ Listados ════════════════════════════════════════════════

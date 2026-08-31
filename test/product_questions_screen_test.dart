@@ -44,11 +44,13 @@ class _AuthFalso extends AuthProvider {
 void main() {
   late List<Map<String, dynamic>> preguntas;
   late List<String> respuestasEnviadas;
+  late List<String> preguntasEliminadas;
 
   Map<String, dynamic> pregunta(
     String id, {
     String texto = '¿Sigue disponible?',
     String? respuesta,
+    String authorId = 'u_1',
   }) {
     return {
       'id': id,
@@ -59,7 +61,7 @@ void main() {
       'createdAt': '2026-08-08T18:00:00Z',
       'answeredAt': respuesta == null ? null : '2026-08-08T19:00:00Z',
       'author': {
-        'id': 'u_1',
+        'id': authorId,
         'name': 'Mariana Peña',
         'avatarInitials': 'MP',
         'major': 'Estudiante',
@@ -93,6 +95,23 @@ void main() {
       );
     }
 
+    if (request.method == 'DELETE' && ruta.contains('/questions/')) {
+      final id = ruta.split('/').last;
+      preguntasEliminadas.add(id);
+      preguntas.removeWhere((q) => q['id'] == id);
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'total': preguntas.length,
+          'pendingCount': preguntas
+              .where((q) => q['status'] == 'pending')
+              .length,
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    }
+
     if (request.method == 'POST' && ruta.endsWith('/answer')) {
       final cuerpo = jsonDecode(request.body) as Map<String, dynamic>;
       final texto = cuerpo['texto'] as String;
@@ -115,6 +134,7 @@ void main() {
   setUp(() {
     preguntas = [];
     respuestasEnviadas = [];
+    preguntasEliminadas = [];
     ApiService.clienteDePrueba = MockClient((req) async => responder(req));
   });
 
@@ -203,6 +223,41 @@ void main() {
       expect(find.text('Hacer una pregunta'), findsNothing);
     },
   );
+
+  testWidgets('quien preguntó puede eliminar su propia pregunta', (
+    tester,
+  ) async {
+    preguntas = [
+      pregunta('q_1', texto: 'La mía', authorId: 'u_9'),
+      pregunta('q_2', texto: 'La de alguien más', authorId: 'u_2'),
+    ];
+
+    await montar(tester, sesionDe: 'u_9');
+
+    expect(find.byIcon(Icons.more_horiz_rounded), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.more_horiz_rounded));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Eliminar pregunta'));
+    await tester.pumpAndSettle();
+
+    expect(preguntasEliminadas, ['q_1']);
+    expect(find.text('La mía'), findsNothing);
+    expect(find.text('La de alguien más'), findsOneWidget);
+  });
+
+  testWidgets('el vendedor puede eliminar todas las preguntas recibidas', (
+    tester,
+  ) async {
+    preguntas = [
+      pregunta('q_1', texto: 'Primera', authorId: 'u_1'),
+      pregunta('q_2', texto: 'Segunda', authorId: 'u_2'),
+    ];
+
+    await montar(tester, sesionDe: 'v_1');
+
+    expect(find.byIcon(Icons.more_horiz_rounded), findsNWidgets(2));
+  });
 
   testWidgets('el dueño responde en línea y la pregunta se actualiza sola', (
     tester,

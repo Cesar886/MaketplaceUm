@@ -90,12 +90,6 @@ class _ProductQuestionsScreenState extends State<ProductQuestionsScreen> {
     super.dispose();
   }
 
-  bool get _esDueno {
-    final auth = context.read<AuthProvider>();
-    return auth.backendSellerId != null &&
-        auth.backendSellerId == widget.productOwnerId;
-  }
-
   void _alDesplazar() {
     if (!_scroll.hasClients || _cargandoMas || _cursor == null) return;
     final falta = _scroll.position.maxScrollExtent - _scroll.position.pixels;
@@ -252,11 +246,47 @@ class _ProductQuestionsScreenState extends State<ProductQuestionsScreen> {
     }
   }
 
+  Future<void> _borrar(ProductQuestion pregunta) async {
+    final indice = _preguntas.indexWhere((q) => q.id == pregunta.id);
+    if (indice == -1) return;
+
+    final totalAnterior = _total;
+    final pendientesAnterior = _pendientes;
+    setState(() {
+      _preguntas.removeAt(indice);
+      if (_respondiendo == pregunta.id) _respondiendo = null;
+      if (_total > 0) _total -= 1;
+      if (!pregunta.isAnswered && _pendientes > 0) _pendientes -= 1;
+    });
+
+    try {
+      await ApiService.deleteProductQuestion(widget.productId, pregunta.id);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _preguntas.insert(indice, pregunta);
+        _total = totalAnterior;
+        _pendientes = pendientesAnterior;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
+  bool _puedeBorrar(ProductQuestion pregunta, String? usuarioId) {
+    if (usuarioId == null) return false;
+    return pregunta.author.id == usuarioId ||
+        widget.productOwnerId == usuarioId;
+  }
+
   GlobalKey _anclaDe(String id) => _anclas.putIfAbsent(id, () => GlobalKey());
 
   @override
   Widget build(BuildContext context) {
-    final esDueno = _esDueno;
+    final auth = context.watch<AuthProvider>();
+    final usuarioId = auth.backendSellerId;
+    final esDueno = usuarioId != null && usuarioId == widget.productOwnerId;
 
     return Scaffold(
       appBar: AppBar(
@@ -264,7 +294,7 @@ class _ProductQuestionsScreenState extends State<ProductQuestionsScreen> {
         // dice de un vistazo si el hilo tiene una pregunta o cuarenta.
         title: Text(
           _total > 0
-              ? 'questions.title_count'.tr(namedArgs: {'n': '\$_total'})
+              ? 'questions.title_count'.tr(namedArgs: {'n': '$_total'})
               : 'questions.title'.tr(),
         ),
         bottom: esDueno && (_pendientes > 0 || _soloPendientes)
@@ -280,7 +310,7 @@ class _ProductQuestionsScreenState extends State<ProductQuestionsScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: _cargarInicial,
-        child: _cuerpo(esDueno),
+        child: _cuerpo(esDueno, usuarioId),
       ),
       // El dueño no pregunta en lo suyo: para él no hay barra de acción.
       bottomNavigationBar: esDueno
@@ -299,7 +329,7 @@ class _ProductQuestionsScreenState extends State<ProductQuestionsScreen> {
     );
   }
 
-  Widget _cuerpo(bool esDueno) {
+  Widget _cuerpo(bool esDueno, String? usuarioId) {
     if (_cargandoInicial) {
       return ListView(
         padding: const EdgeInsets.fromLTRB(8, 12, 8, 24),
@@ -374,6 +404,9 @@ class _ProductQuestionsScreenState extends State<ProductQuestionsScreen> {
                     onEnviar: (texto) => _responder(pregunta, texto),
                   )
                 : null,
+            onDelete: _puedeBorrar(pregunta, usuarioId)
+                ? () => _borrar(pregunta)
+                : null,
           ),
         );
       },
@@ -411,7 +444,9 @@ class _FiltroPendientes extends StatelessWidget {
             ChoiceChip(
               label: Text(
                 pendientes > 0
-                    ? 'questions.unanswered_count'.tr(namedArgs: {'n': '$pendientes'})
+                    ? 'questions.unanswered_count'.tr(
+                        namedArgs: {'n': '$pendientes'},
+                      )
                     : 'questions.unanswered'.tr(),
               ),
               selected: soloPendientes,

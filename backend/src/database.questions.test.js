@@ -320,6 +320,24 @@ test('el límite pedido se acota al máximo permitido', () => {
   assert.ok(questions.length <= db.PREGUNTAS_MAX_POR_PAGINA);
 });
 
+// ═══ Eliminación ═════════════════════════════════════════════
+
+test('eliminar una pregunta la saca del hilo y recalcula contadores', () => {
+  sembrarVendedor('v_21');
+  sembrarVendedor('u_21');
+  sembrarProducto('p_21', 'v_21');
+  const respondida = preguntar('p_21', 'v_21', 'u_21', 'Respondida');
+  preguntar('p_21', 'v_21', 'u_21', 'Pendiente');
+  responder(respondida.id, 'Sí');
+
+  assert.strictEqual(db.deleteProductQuestion(respondida.id), true);
+
+  assert.strictEqual(db.getProductQuestionRow(respondida.id), undefined);
+  assert.strictEqual(db.countProductQuestions('p_21'), 1);
+  assert.strictEqual(db.countPendingProductQuestions('p_21'), 1);
+  assert.strictEqual(db.deleteProductQuestion(respondida.id), false);
+});
+
 // ═══ Anti-spam ═══════════════════════════════════════════════
 
 test('cuenta las preguntas recientes de un usuario en un producto', () => {

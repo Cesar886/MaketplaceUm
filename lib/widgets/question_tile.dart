@@ -26,6 +26,7 @@ class QuestionTile extends StatelessWidget {
     this.sellerName,
     this.destacada = false,
     this.respuestaInline,
+    this.onDelete,
   });
 
   final ProductQuestion question;
@@ -42,6 +43,9 @@ class QuestionTile extends StatelessWidget {
   /// callback para que esta pieza no sepa nada de estado ni de red.
   final Widget? respuestaInline;
 
+  /// Null cuando el usuario actual no puede borrar esta pregunta.
+  final VoidCallback? onDelete;
+
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
@@ -55,7 +59,7 @@ class QuestionTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _LineaPregunta(question: question),
+          _LineaPregunta(question: question, onDelete: onDelete),
           const SizedBox(height: 6),
           Text(
             question.questionText,
@@ -89,9 +93,10 @@ class QuestionTile extends StatelessWidget {
 
 /// Nombre de quien preguntó, su insignia si la tiene, y cuándo.
 class _LineaPregunta extends StatelessWidget {
-  const _LineaPregunta({required this.question});
+  const _LineaPregunta({required this.question, this.onDelete});
 
   final ProductQuestion question;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -115,7 +120,73 @@ class _LineaPregunta extends StatelessWidget {
           tiempoRelativo(question.createdAt),
           style: TextStyle(fontSize: 12, color: context.colors.muted),
         ),
+        if (onDelete != null)
+          _MenuPregunta(onDelete: onDelete!)
+        else
+          const SizedBox(width: 8),
       ],
+    );
+  }
+}
+
+class _MenuPregunta extends StatelessWidget {
+  const _MenuPregunta({required this.onDelete});
+
+  final VoidCallback onDelete;
+
+  Future<void> _abrir(BuildContext context) async {
+    final confirmado = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(
+                Icons.delete_outline_rounded,
+                color: AppColors.danger,
+              ),
+              title: Text(
+                'questions.delete'.tr(),
+                style: const TextStyle(
+                  color: AppColors.danger,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              subtitle: Text('questions.delete_warning'.tr()),
+              onTap: () => Navigator.of(sheetContext).pop(true),
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.close_rounded,
+                color: sheetContext.colors.muted,
+              ),
+              title: Text('common.cancel'.tr()),
+              onTap: () => Navigator.of(sheetContext).pop(false),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmado == true) onDelete();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 28,
+      height: 22,
+      child: IconButton(
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(),
+        iconSize: 18,
+        splashRadius: 18,
+        color: context.colors.muted,
+        icon: const Icon(Icons.more_horiz_rounded),
+        tooltip: 'questions.options'.tr(),
+        onPressed: () => _abrir(context),
+      ),
     );
   }
 }
