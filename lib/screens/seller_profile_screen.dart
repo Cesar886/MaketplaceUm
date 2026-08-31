@@ -343,7 +343,9 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                       style: TextStyle(color: context.colors.muted),
                     ),
                   ],
-                  if (seller.respondeRapido || seller.rachaSemanas > 1) ...[
+                  if (seller.respondeRapido ||
+                      seller.rachaSemanas > 1 ||
+                      seller.resolvioElEnigma) ...[
                     const SizedBox(height: 10),
                     Wrap(
                       spacing: 8,
@@ -356,6 +358,11 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                         // dejaría de significar constancia.
                         if (seller.rachaSemanas > 1)
                           RachaBadge(semanas: seller.rachaSemanas),
+                        // Va al final de la fila: es la más rara de todas y
+                        // se descubre después de leer las que sí se explican
+                        // solas.
+                        if (seller.enigmaPosicion != null)
+                          InsigniaEnigma(posicion: seller.enigmaPosicion!),
                       ],
                     ),
                   ],

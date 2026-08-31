@@ -337,8 +337,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                             ],
                             const SizedBox(height: 8),
-                            if (auth.isVerified)
-                              InsigniaVerificada(tipo: auth.accountType),
+                            // En Wrap y no en Column: en una cuenta que
+                            // tiene las dos, la insignia del enigma cabe al
+                            // lado de la de verificación, y si no cabe baja
+                            // sola sin desbordar la tarjeta.
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                if (auth.isVerified)
+                                  InsigniaVerificada(tipo: auth.accountType),
+                                if (_seller?.enigmaPosicion != null)
+                                  InsigniaEnigma(
+                                    posicion: _seller!.enigmaPosicion!,
+                                  ),
+                              ],
+                            ),
                           ],
                         ),
                       ),

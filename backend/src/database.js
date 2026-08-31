@@ -409,6 +409,23 @@ function initDatabase() {
 
     CREATE INDEX IF NOT EXISTS idx_interest_queue_pendientes
       ON interest_notification_queue(processed_at, created_at);
+
+    -- Quién resolvió el enigma escondido (secreto/enigma.js) y en qué orden.
+    --
+    -- La gracia del juego es llegar primero, así que la posición se congela
+    -- al resolver: se calcula una vez al insertar y no se vuelve a tocar.
+    -- Derivarla al vuelo (contar filas anteriores por fecha) daría el mismo
+    -- número hoy, pero cambiaría si alguna vez se borra una fila, y el "eres
+    -- el #3" que alguien ya vio no debe convertirse en otro número después.
+    --
+    -- user_id como PRIMARY KEY: resolverlo dos veces es la misma hazaña una
+    -- vez, y así el INSERT OR IGNORE de registrarResolucionEnigma es la
+    -- protección contra el doble tap, sin transacción de por medio.
+    CREATE TABLE IF NOT EXISTS secret_solves (
+      user_id   TEXT PRIMARY KEY,
+      posicion  INTEGER NOT NULL,
+      solved_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // ─── Migración desde schema legacy ─────────────────────────
@@ -2636,6 +2653,53 @@ function softDeleteProductComment(commentId, actorId) {
   return info.changes > 0;
 }
 
+// ─── Enigma escondido ───────────────────────────────────────────
+
+/** Fila de `secret_solves` de un usuario, o undefined si no lo ha resuelto. */
+function getResolucionEnigma(userId) {
+  return db
+    .prepare('SELECT user_id, posicion, solved_at FROM secret_solves WHERE user_id = ?')
+    .get(userId);
+}
+
+/** Cuánta gente lo ha resuelto ya. */
+function contarResolucionesEnigma() {
+  return db.prepare('SELECT COUNT(*) AS c FROM secret_solves').get().c;
+}
+
+/**
+ * Registra que [userId] resolvió el enigma y devuelve su posición.
+ *
+ * Idempotente: quien vuelva a acertar conserva la posición y la fecha de la
+ * primera vez (`repetida: true`), no se le adelanta ni se le atrasa.
+ *
+ * El cálculo de la posición y el INSERT van en una transacción porque son
+ * un solo hecho: sin ella, dos aciertos simultáneos leerían el mismo COUNT
+ * y se declararían ambos "el #1". better-sqlite3 es síncrono y el servidor
+ * de un solo hilo, así que hoy no puede pasar; la transacción está para que
+ * siga sin poder pasar el día que esto corra en más de un proceso.
+ *
+ * @returns {{posicion: number, solvedAt: string, repetida: boolean}}
+ */
+function registrarResolucionEnigma(userId) {
+  // La transacción se arma aquí y no en una constante de módulo porque `db`
+  // no existe hasta initDatabase(): envolverla al cargar el archivo
+  // reventaría el require.
+  return db.transaction(() => {
+    const previa = getResolucionEnigma(userId);
+    if (previa) {
+      return { posicion: previa.posicion, solvedAt: previa.solved_at, repetida: true };
+    }
+
+    const posicion = contarResolucionesEnigma() + 1;
+    db.prepare('INSERT INTO secret_solves (user_id, posicion) VALUES (?, ?)').run(
+      userId,
+      posicion,
+    );
+    return { posicion, solvedAt: getResolucionEnigma(userId).solved_at, repetida: false };
+  })();
+}
+
 // ─── Preguntas y respuestas de producto ─────────────────────────
 
 /** Tamaño de página del listado completo y tope que puede pedir el cliente. */
@@ -3914,6 +3978,10 @@ module.exports = {
   countCommentsReceivedBySeller,
   segundosDesdeUltimoComentario,
   softDeleteProductComment,
+  // Enigma escondido
+  getResolucionEnigma,
+  contarResolucionesEnigma,
+  registrarResolucionEnigma,
   // Preguntas y respuestas
   PREGUNTAS_POR_PAGINA,
   PREGUNTAS_MAX_POR_PAGINA,

@@ -8,6 +8,7 @@ import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../screens/auth/verification_screen.dart';
+import '../screens/secreto/enigma_screen.dart';
 import '../services/api_service.dart';
 import '../services/chat_socket_service.dart';
 import 'comment_tile.dart';
@@ -195,6 +196,17 @@ class _ProductCommentsSectionState extends State<ProductCommentsSection> {
         _enviando = false;
       });
       _focus.unfocus();
+    } on SecretoEncontradoException {
+      // No era un comentario: era la frase. El servidor no guardó nada y el
+      // hilo se queda exactamente como estaba — el campo se limpia y se abre
+      // la puerta, sin snackbar, sin error y sin rastro para nadie más.
+      if (!mounted) return;
+      setState(() {
+        _controller.clear();
+        _enviando = false;
+      });
+      _focus.unfocus();
+      await _abrirPuerta();
     } on ComentarioNoVerificadoException catch (e) {
       // La cuenta perdió la verificación entre que se pintó el input y el
       // envío. Se rebota el estado para que aparezca la tarjeta correcta.
@@ -207,6 +219,23 @@ class _ProductCommentsSectionState extends State<ProductCommentsSection> {
       setState(() => _enviando = false);
       _avisar(_mensajeDeError(e));
     }
+  }
+
+  /// Abre el enigma escondido con un fundido largo desde negro, no con la
+  /// transición normal de la app: lo que tiene que sentirse es que la
+  /// pantalla de producto se apaga, no que se navegó a otra sección.
+  Future<void> _abrirPuerta() async {
+    await Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        transitionDuration: const Duration(milliseconds: 1100),
+        reverseTransitionDuration: const Duration(milliseconds: 500),
+        pageBuilder: (context, animacion, secundaria) => const EnigmaScreen(),
+        transitionsBuilder: (context, animacion, secundaria, hijo) => FadeTransition(
+          opacity: CurvedAnimation(parent: animacion, curve: Curves.easeInOut),
+          child: hijo,
+        ),
+      ),
+    );
   }
 
   Future<void> _borrar(ProductComment comentario) async {

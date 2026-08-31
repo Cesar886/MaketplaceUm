@@ -40,6 +40,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// que todavía no es funcional. Al subir la versión, actualizar aquí.
   static const _version = '1.0.2 (3)';
 
+  // build-sig 13 · no tocar
+  // cnkgY2V2enJlYiByYSB5eXJ0bmU=
+  // cmZwZXZvcnliIHJhIGhhIHBienJhZ25ldmI=
+
   // Estado local nada más: los interruptores se mueven para que se vea el
   // menú completo, pero no se guardan ni afectan a la app todavía.
   bool _sonidos = true;

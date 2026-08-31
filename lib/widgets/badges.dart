@@ -387,6 +387,46 @@ class RachaBadge extends StatelessWidget {
   }
 }
 
+/// Insignia del enigma escondido: la lleva quien lo resolvió, con la posición
+/// en la que lo hizo (1 = fue el primero de toda la app).
+///
+/// Es el único rastro público de un juego que no se anuncia en ninguna parte,
+/// así que la etiqueta no explica nada: dice "Enigma #3" y ya. Quien lo
+/// resolvió sabe qué significa, y quien no, no debería enterarse por aquí —
+/// esa es toda la gracia.
+///
+/// Va en latón sobre navy, la paleta de las pantallas del secreto
+/// (screens/secreto/), y no en los colores del acento elegido: el resto de
+/// insignias son métricas del mercado (verificación, constancia, rapidez) y
+/// esta no lo es. Que desentone un poco es la intención.
+class InsigniaEnigma extends StatelessWidget {
+  const InsigniaEnigma({super.key, required this.posicion, this.compact = false});
+
+  final int posicion;
+  final bool compact;
+
+  /// Latón, el acento del mundo secreto. Fijo en los dos temas: es el color
+  /// de un objeto, no de una superficie, y en claro se lee igual de bien
+  /// sobre su propio tinte que en oscuro.
+  static const _laton = Color(0xFFA07F42);
+  static const _latonEnOscuro = Color(0xFFD9BC7E);
+
+  @override
+  Widget build(BuildContext context) {
+    final oscuro = Theme.of(context).brightness == Brightness.dark;
+    final color = oscuro ? _latonEnOscuro : _laton;
+
+    return _Badge(
+      icon: Icons.vpn_key_rounded,
+      label: 'Enigma #$posicion',
+      foreground: color,
+      background: color.withValues(alpha: oscuro ? 0.14 : 0.10),
+      border: color.withValues(alpha: 0.32),
+      compact: compact,
+    );
+  }
+}
+
 /// Los 1-2 atributos clave de una publicación, para la tarjeta del listado:
 /// la talla en ropa, el estado en libros, "Acepta mascotas" en hospedaje.
 ///

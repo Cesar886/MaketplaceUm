@@ -56,6 +56,7 @@ const routes = [
   require('./routes/search'),
   require('./routes/clientErrors'),
   require('./routes/privacy'),
+  require('./routes/secreto'),
   // Iniciar sesión / registrarse con Google. Responde 503 mientras falten
   // los Client ID en .env; el login con correo y contraseña no depende de él.
   require('./routes/authGoogle'),

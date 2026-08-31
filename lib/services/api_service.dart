@@ -1745,7 +1745,42 @@ class ApiService {
     }
 
     final body = jsonDecode(res.body) as Map<String, dynamic>;
+
+    // El servidor aceptó el envío pero no creó un comentario: lo que se
+    // escribió era la frase del enigma escondido. No hay nada que insertar
+    // en el hilo — hay una puerta que abrir. Ver [SecretoEncontradoException]
+    // y backend/src/secreto/enigma.js.
+    if (body['secreto'] == true) throw const SecretoEncontradoException();
+
     return ProductComment.fromJson(body['comment'] as Map<String, dynamic>);
+  }
+
+  /// Somete una respuesta del acertijo escondido.
+  ///
+  /// Quién juzga es el servidor: la respuesta correcta no está en la app ni
+  /// en claro ni hasheada, para que no se pueda sacar del APK. Aquí solo se
+  /// pregunta, y se recibe un sí o un no.
+  ///
+  /// Devuelve null si la respuesta no era. Si era, devuelve la posición en el
+  /// marcador de quienes lo han resuelto.
+  static Future<EnigmaResuelto?> resolverEnigma(String respuesta) async {
+    final res = await _client.post(
+      _uri('/secreto/resolver'),
+      headers: _authHeaders,
+      body: jsonEncode({'respuesta': respuesta}),
+    );
+
+    if (res.statusCode == 429) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['error'] ?? 'Espera un momento antes de intentar de nuevo.');
+    }
+    if (res.statusCode != 200) {
+      throw Exception('No se pudo validar la respuesta');
+    }
+
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    if (body['correcto'] != true) return null;
+    return EnigmaResuelto.fromJson(body);
   }
 
   /// Borra un comentario. El backend solo lo permite al autor o al dueño de
@@ -1888,6 +1923,53 @@ class ComentarioNoVerificadoException implements Exception {
 
   @override
   String toString() => message;
+}
+
+/// Lo que se escribió en el campo de comentarios era la frase que abre el
+/// enigma escondido.
+///
+/// No es un fallo, aunque viaje como excepción: es la única forma de
+/// devolver "pasó otra cosa" desde un método cuyo tipo de retorno es un
+/// comentario, y deja el camino feliz (`postProductComment` devuelve el
+/// comentario recién creado) exactamente como estaba.
+class SecretoEncontradoException implements Exception {
+  const SecretoEncontradoException();
+
+  @override
+  String toString() => 'SecretoEncontrado';
+}
+
+/// Resultado de acertar el acertijo escondido.
+class EnigmaResuelto {
+  const EnigmaResuelto({
+    required this.posicion,
+    required this.total,
+    required this.repetida,
+    this.resueltoEn,
+  });
+
+  factory EnigmaResuelto.fromJson(Map<String, dynamic> json) => EnigmaResuelto(
+    posicion: json['posicion'] as int? ?? 0,
+    total: json['total'] as int? ?? 0,
+    // Quien ya lo había resuelto y vuelve a entrar: conserva su posición,
+    // pero la pantalla no debe volver a felicitarlo como si fuera la
+    // primera vez.
+    repetida: json['repetida'] == true,
+    resueltoEn: DateTime.tryParse(json['resueltoEn'] as String? ?? ''),
+  );
+
+  /// 1 es quien lo resolvió primero en toda la app.
+  final int posicion;
+
+  /// Cuánta gente lo ha resuelto en total.
+  final int total;
+
+  final bool repetida;
+
+  /// UTC: el backend guarda con datetime('now').
+  final DateTime? resueltoEn;
+
+  bool get esElPrimero => posicion == 1;
 }
 
 /// El backend rechazó el inicio de sesión con Google.

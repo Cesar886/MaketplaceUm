@@ -181,6 +181,7 @@ class Seller {
     this.estadoConexion = EstadoConexion.desconocido,
     this.respondeRapido = false,
     this.rachaSemanas = 0,
+    this.enigmaPosicion,
     this.facebookUrl,
     this.instagramUrl,
     this.whatsappNumber,
@@ -223,6 +224,7 @@ class Seller {
       // simplemente no muestre los badges, en vez de reventar.
       respondeRapido: json['respondeRapido'] as bool? ?? false,
       rachaSemanas: (json['rachaSemanas'] as num?)?.toInt() ?? 0,
+      enigmaPosicion: (json['enigmaPosicion'] as num?)?.toInt(),
       facebookUrl: json['facebookUrl'] as String?,
       instagramUrl: json['instagramUrl'] as String?,
       whatsappNumber: json['whatsappNumber'] as String?,
@@ -304,6 +306,17 @@ class Seller {
   /// Ventanas consecutivas de 7 días en las que publicó algo. Solo cuenta
   /// publicar: vender no la mueve.
   final int rachaSemanas;
+
+  /// Posición con la que resolvió el enigma escondido (1 = fue el primero de
+  /// toda la app), o null si no lo ha resuelto.
+  ///
+  /// Es la única huella pública de algo que por lo demás no se anuncia en
+  /// ninguna parte: la insignia aparece en el perfil sin explicar de dónde
+  /// salió. Ver [InsigniaEnigma] y backend/src/secreto/enigma.js.
+  final int? enigmaPosicion;
+
+  /// Atajo para los call sites que solo preguntan si lleva la insignia.
+  bool get resolvioElEnigma => enigmaPosicion != null;
 
   bool get hasLocation => locationLat != null && locationLng != null;
 

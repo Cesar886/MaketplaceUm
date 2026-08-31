@@ -140,3 +140,31 @@ test('una cuenta que no es negocio no puede guardar redes sociales', async () =>
   const row = db.getDb().prepare('SELECT facebook_url FROM sellers WHERE id = ?').get(noNegocio.id);
   assert.strictEqual(row.facebook_url, null);
 });
+
+// ─── Insignia del enigma escondido ───────────────────────────
+//
+// Lo que se protege: que la posición aparezca en el perfil de quien lo
+// resolvió (es lo único que la insignia necesita para pintarse) y que en el
+// de todos los demás sea null — un `0` o un campo ausente harían que la app
+// pintara "Enigma #0" o reventara al leerlo.
+
+test('el perfil de quien no ha resuelto el enigma trae enigmaPosicion en null', async () => {
+  const vendedor = crearVendedor({ isBusiness: false });
+
+  const res = await get(vendedor.id);
+
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.body.enigmaPosicion, null);
+});
+
+test('el perfil público muestra la posición de quien sí lo resolvió', async () => {
+  const vendedor = crearVendedor({ isBusiness: false });
+  const { posicion } = db.registrarResolucionEnigma(vendedor.id);
+
+  // Sin token: es el perfil como lo ve cualquiera, que es donde tiene que
+  // lucirse la insignia.
+  const res = await get(vendedor.id);
+
+  assert.strictEqual(res.body.enigmaPosicion, posicion);
+  assert.ok(posicion >= 1);
+});

@@ -11,6 +11,7 @@ const db = require('../database');
 const { requireAuth } = require('../auth');
 const { sendPush } = require('../push');
 const { sanitizarComentario, LARGO_MAXIMO } = require('../validation/comentarios');
+const { esFraseDeEntrada } = require('../secreto/enigma');
 
 /**
  * Espera mínima entre dos comentarios del MISMO usuario.
@@ -106,6 +107,21 @@ function register(app) {
 
       const saneado = sanitizarComentario(req.body ? req.body.texto : undefined);
       if (saneado.error) return res.status(400).json({ error: saneado.error });
+
+      // Puerta del enigma escondido. Va ANTES del rate limit y antes de
+      // tocar la base porque esto no es un comentario: no se guarda, no se
+      // emite por socket, no notifica al vendedor y no cuenta para el hilo.
+      // Nadie más que quien lo escribió sabrá nunca que pasó por aquí.
+      //
+      // Y va DESPUÉS de la verificación a propósito: quien no puede comentar
+      // tampoco puede tantear frases en este campo, así que el gatillo no
+      // abre una vía de escritura que la cuenta no tuviera ya.
+      if (esFraseDeEntrada(saneado.value)) {
+        // 201 con una forma distinta, no 200: para el cliente esto sigue
+        // siendo "tu envío se aceptó", solo que lo que se creó fue una
+        // puerta y no un comentario. Ver ApiService.postProductComment.
+        return res.status(201).json({ secreto: true });
+      }
 
       const desdeUltimo = db.segundosDesdeUltimoComentario(autorId);
       if (desdeUltimo !== null && desdeUltimo < SEGUNDOS_ENTRE_COMENTARIOS) {

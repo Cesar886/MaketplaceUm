@@ -52,6 +52,12 @@ function register(app) {
     return {
       ...seller,
       rachaSemanas: db.computeRachaPublicaciones(seller.id),
+      // Posición en el enigma escondido, o null si no lo ha resuelto. Es lo
+      // ÚNICO que el mundo secreto asoma a una respuesta pública, y a
+      // propósito no dice nada de cómo se consigue: un número suelto en el
+      // perfil de quien lo tiene, que es justo lo que hace que el resto
+      // pregunte. Ver secreto/enigma.js.
+      enigmaPosicion: (db.getResolucionEnigma(seller.id) || {}).posicion ?? null,
       respondeRapido:
         seller.medianResponseMinutes !== null &&
         seller.medianResponseMinutes <= db.FEED_WEIGHTS.FAST_REPLY_MAX_MINUTES,
