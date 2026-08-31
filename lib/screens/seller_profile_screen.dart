@@ -282,6 +282,10 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                           size: 20,
                         ),
                       ],
+                      if (seller.socioFundador) ...[
+                        const SizedBox(width: 6),
+                        const InsigniaSocioFundador(compact: true, size: 20),
+                      ],
                     ],
                   ),
                   SubtituloRol(

@@ -40,7 +40,14 @@ function initDatabase() {
       verified INTEGER DEFAULT 0,
       businessDescription TEXT,
       businessCategory TEXT,
-      businessHours TEXT
+      businessHours TEXT,
+      -- Insignia verde "Socio Fundador": no la gana ninguna cuenta sola con
+      -- datos ni acciones propias, la otorga a mano el admin (ver
+      -- scripts/otorgar-socio-fundador.js). Va aparte de 'verified' a
+      -- propósito: verificar es un trámite (comprobar un dato real de
+      -- contacto) y esto es una distinción, no tienen la misma puerta ni el
+      -- mismo significado.
+      socio_fundador INTEGER DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS products (
@@ -1595,6 +1602,13 @@ function runMigrations() {
     `);
   }
 
+  // Insignia verde "Socio Fundador": columna nueva en `sellers`, para bases
+  // que ya existían antes de agregarla al CREATE TABLE de arriba.
+  const sellerColsSocio = db.prepare("PRAGMA table_info('sellers')").all();
+  if (!sellerColsSocio.some(c => c.name === 'socio_fundador')) {
+    db.exec(`ALTER TABLE sellers ADD COLUMN socio_fundador INTEGER DEFAULT 0`);
+  }
+
   console.log('🔄 Migración de schema completada');
 }
 
@@ -1854,6 +1868,11 @@ function rowToSeller(row) {
     rating: row.rating ?? 0,
     reviews: row.reviews ?? 0,
     verified: !!row.verified,
+    // Insignia verde otorgada a mano por el admin. Separada de `verified` a
+    // propósito: no la gana ningún dato ni trámite de la cuenta, así que no
+    // comparte puerta con la verificación. Ver
+    // scripts/otorgar-socio-fundador.js.
+    socioFundador: !!row.socio_fundador,
     // Determina el color/etiqueta de la insignia de verificación en la app.
     // 'particular' es lo que la UI llama "externo".
     tipoCuenta: row.tipo_cuenta || 'particular',

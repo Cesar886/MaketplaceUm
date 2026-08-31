@@ -167,6 +167,7 @@ class Seller {
     required this.rating,
     required this.reviews,
     required this.verified,
+    this.socioFundador = false,
     this.tipoCuenta = 'particular',
     this.businessDescription,
     this.businessCategory,
@@ -201,6 +202,7 @@ class Seller {
       rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
       reviews: (json['reviews'] as num?)?.toInt() ?? 0,
       verified: json['verified'] as bool? ?? false,
+      socioFundador: json['socioFundador'] as bool? ?? false,
       // Backends viejos no mandan tipoCuenta: 'particular' es el tipo menos
       // privilegiado, así que es el default seguro.
       tipoCuenta: json['tipoCuenta'] as String? ?? 'particular',
@@ -243,6 +245,11 @@ class Seller {
   final double rating;
   final int reviews;
   final bool verified;
+
+  /// Insignia verde otorgada a mano por el admin. No la gana ningún dato de
+  /// la cuenta ni ningún trámite — a diferencia de [verified], que sí. Ver
+  /// [InsigniaSocioFundador] en widgets/badges.dart.
+  final bool socioFundador;
 
   /// Carrera elegida al verificar como estudiante (lista fija, ver
   /// `constants/carreras_um.dart`). Null si no es estudiante o si se

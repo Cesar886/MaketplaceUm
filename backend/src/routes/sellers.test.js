@@ -17,7 +17,7 @@ process.env.JWT_SECRET = 'secreto-de-prueba';
 const express = require('express');
 const db = require('../database');
 const { generateToken } = require('../auth');
-const { registerSeller } = require('../data');
+const { registerSeller, updateSellerField } = require('../data');
 const sellersRoute = require('./sellers');
 
 db.initDatabase();
@@ -167,4 +167,34 @@ test('el perfil público muestra la posición de quien sí lo resolvió', async 
 
   assert.strictEqual(res.body.enigmaPosicion, posicion);
   assert.ok(posicion >= 1);
+});
+
+// ─── Insignia "Socio Fundador" ───────────────────────────────
+//
+// La otorga el admin a mano (scripts/otorgar-socio-fundador.js) escribiendo
+// directo en `sellers.socio_fundador`; lo que se protege aquí es que ese bit
+// llegue al perfil público como `socioFundador`, y que por default sea false
+// para no regalar la insignia a nadie.
+
+test('una cuenta normal no trae la insignia Socio Fundador', async () => {
+  const vendedor = crearVendedor({ isBusiness: false });
+
+  const res = await get(vendedor.id);
+
+  assert.strictEqual(res.body.socioFundador, false);
+});
+
+test('el perfil público refleja la insignia otorgada a mano', async () => {
+  const vendedor = crearVendedor({ isBusiness: false });
+  // `updateSellerField` y no un UPDATE crudo: la ruta lee del array en
+  // memoria de data.js (igual que `verified`, `tipoCuenta`, etc.), y solo
+  // esa función lo refresca tras escribir en SQLite. Es el mismo motivo por
+  // el que el script real (otorgar-socio-fundador.js) necesita un reinicio
+  // del proceso del servidor para que su cambio se vea sin tener que
+  // esperar a este test.
+  updateSellerField(vendedor.id, 'socio_fundador', 1);
+
+  const res = await get(vendedor.id);
+
+  assert.strictEqual(res.body.socioFundador, true);
 });

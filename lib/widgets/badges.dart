@@ -190,6 +190,42 @@ class InsigniaVerificada extends StatelessWidget {
   }
 }
 
+/// Insignia verde "Socio Fundador": la otorga a mano el admin
+/// (`scripts/otorgar-socio-fundador.js`), no la gana ninguna cuenta con datos
+/// o trámites propios — a diferencia de [InsigniaVerificada]. Por eso tiene
+/// su propio color e ícono en vez de compartir el azul de verificación: son
+/// dos cosas distintas y no deben leerse como el mismo sello con otro tinte.
+class InsigniaSocioFundador extends StatelessWidget {
+  const InsigniaSocioFundador({super.key, this.compact = false, this.size = 16});
+
+  final bool compact;
+
+  /// Tamaño del ícono en la variante compacta. Mismo propósito que en
+  /// [InsigniaVerificada.size]: que los call sites junto al nombre puedan
+  /// igualarlo al tamaño de esa otra insignia.
+  final double size;
+
+  /// Verde fijo en los dos temas, igual que [AppColors.verifiedBlue]: es el
+  /// color de la distinción en sí, no una superficie que deba adaptarse al
+  /// swatch elegido.
+  static const _verde = Color(0xFF1F8A55);
+
+  @override
+  Widget build(BuildContext context) {
+    if (compact) {
+      return Icon(Icons.workspace_premium_rounded, size: size, color: _verde);
+    }
+
+    return _Badge(
+      icon: Icons.workspace_premium_rounded,
+      label: 'Socio Fundador',
+      foreground: _verde,
+      background: _verde.withValues(alpha: 0.10),
+      compact: false,
+    );
+  }
+}
+
 /// Badge de solo-lectura para compradores: renderiza directamente el
 /// [ComputedStatus] que ya llegó calculado desde el backend
 /// (`computeProductStatus` en `products.js`, jerarquía de 5 niveles:

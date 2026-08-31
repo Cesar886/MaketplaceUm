@@ -347,6 +347,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               children: [
                                 if (auth.isVerified)
                                   InsigniaVerificada(tipo: auth.accountType),
+                                if (_seller?.socioFundador ?? false)
+                                  const InsigniaSocioFundador(),
                                 if (_seller?.enigmaPosicion != null)
                                   InsigniaEnigma(
                                     posicion: _seller!.enigmaPosicion!,
