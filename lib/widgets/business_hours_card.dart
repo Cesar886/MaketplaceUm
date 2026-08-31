@@ -2,6 +2,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
+import '../constants/dias_semana.dart';
 import '../models.dart';
 import 'badges.dart';
 
@@ -22,16 +23,6 @@ class BusinessHoursCard extends StatelessWidget {
   /// [SellerScheduleAndLocationRow]; se omite aquí para no duplicarlo
   /// cuando esta lista se usa dentro del panel expandido.
   final bool showStatusBadge;
-
-  static const _dayNames = [
-    'weekday_full.mon',
-    'weekday_full.tue',
-    'weekday_full.wed',
-    'weekday_full.thu',
-    'weekday_full.fri',
-    'weekday_full.sat',
-    'weekday_full.sun',
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +55,7 @@ class BusinessHoursCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  _dayNames[day],
+                  nombreLargoDia(day),
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,

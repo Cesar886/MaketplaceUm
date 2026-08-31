@@ -15,9 +15,9 @@ import '../services/api_error.dart';
 import '../services/api_service.dart';
 import '../services/favorite_products_service.dart';
 import '../services/feed_mixer.dart';
-import '../widgets/app_logo.dart';
 import '../widgets/badges.dart';
 import '../widgets/bounce_on_increase.dart';
+import '../widgets/category_logo_menu.dart';
 import '../widgets/home_grid_skeleton.dart';
 import '../widgets/product_card.dart';
 import '../widgets/product_grid_metrics.dart';
@@ -27,6 +27,13 @@ import 'product_detail_screen.dart';
 import 'qr_scanner_screen.dart';
 import 'search_screen.dart';
 import 'seller_profile_screen.dart';
+
+/// Qué despliega el logo del home. Las dos opciones están implementadas y
+/// comparten datos y callbacks; cambiar de una a otra es cambiar esta línea.
+///
+/// - [CategoryMenuStyle.dropdown]: overlay compacto que nace en la esquina.
+/// - [CategoryMenuStyle.sidebar]: panel lateral con íconos grandes y conteos.
+const kEstiloMenuCategorias = CategoryMenuStyle.sidebar;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -311,8 +318,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   children: [
                     Row(
                       children: [
-                        const Expanded(
-                          child: AppLogo(size: 44, textColor: Colors.white),
+                        // El logo es el acceso a todas las categorías. Va
+                        // dentro de un Expanded para que los botones de la
+                        // derecha no se muevan, pero alineado a la izquierda:
+                        // el menú se ancla a su borde, no al centro del hueco.
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: CategoryLogoMenu(
+                              categories: _categories,
+                              selectedCategoryId: _selectedCategoryId,
+                              onCategorySelected: _filtrarPorCategoria,
+                              onClearCategory: _quitarFiltroDeCategoria,
+                              style: kEstiloMenuCategorias,
+                              countFor: _publicacionesPorCategoria,
+                            ),
+                          ),
                         ),
                         _ScanQrButton(
                           onTap: () => Navigator.of(context).push(
@@ -362,12 +383,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       categories: _categories,
                       selectedCategoryId: _selectedCategoryId,
                       onCategoryTap: (id) {
-                        ApiService.registerCategoryTap(id);
+                        // Tap en la categoría ya filtrada → limpiar filtro.
+                        // Ese "des-seleccionar" solo existe en la fila: en el
+                        // menú del logo la salida es explícita ("Ver todo"),
+                        // porque ahí el ítem seleccionado no está a la vista
+                        // cuando se abre y volver a tocarlo no se leería como
+                        // apagar nada.
                         if (_selectedCategoryId == id) {
-                          // Tap en la misma categoría → limpiar filtro
-                          setState(() => _selectedCategoryId = null);
+                          ApiService.registerCategoryTap(id);
+                          _quitarFiltroDeCategoria();
                         } else {
-                          setState(() => _selectedCategoryId = id);
+                          _filtrarPorCategoria(id);
                         }
                       },
                     ),
@@ -567,6 +593,32 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
 
     return widgets;
+  }
+
+  /// Cuántas publicaciones del feed ya cargado caen en una categoría.
+  ///
+  /// Se cuenta sobre `_products` —lo que el usuario realmente puede ver ahora
+  /// mismo— y no sobre un total del backend: el número al lado del nombre
+  /// promete "esto es lo que vas a encontrar si entras", y un total remoto
+  /// mayor que el feed rompería esa promesa. Mientras el feed esté vacío
+  /// (primera carga) no se pinta nada en vez de mostrar ceros.
+  int? _publicacionesPorCategoria(String categoryId) {
+    if (_products.isEmpty) return null;
+    return _products.where((p) => p.category.id == categoryId).length;
+  }
+
+  /// Filtra el feed por una categoría.
+  ///
+  /// Único camino para entrar al filtro, lo dispare la fila horizontal o el
+  /// menú del logo: los dos tienen que registrar el tap para el ranking de
+  /// `getCategoriesRanked()`, no solo uno.
+  void _filtrarPorCategoria(String categoryId) {
+    ApiService.registerCategoryTap(categoryId);
+    setState(() => _selectedCategoryId = categoryId);
+  }
+
+  void _quitarFiltroDeCategoria() {
+    setState(() => _selectedCategoryId = null);
   }
 
   MarketplaceCategory? _categoryById(String id) {

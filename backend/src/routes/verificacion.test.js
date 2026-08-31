@@ -732,13 +732,16 @@ test('reporta el estado inicial de una cuenta que nunca inició verificación', 
   // falta sin tener que intentar verificarse y fallar.
   assert.deepStrictEqual(
     requisitos.map(r => r.id),
-    ['horario', 'metodos_pago', 'mercadopago', 'stock_productos'],
+    ['horario', 'metodos_pago', 'mercadopago', 'stock_productos', 'foto_perfil'],
   );
   assert.ok(requisitos.every(r => typeof r.cumplido === 'boolean'));
 });
 
 test('/estado marca como incumplido el requisito que de verdad falta', async () => {
-  const usuario = crearUsuario('estudiante', { horario: null });
+  // Negocio y no estudiante: el horario solo se le exige al negocio (ver
+  // requisitosVerificacion.js), así que es la única cuenta a la que dejarlo
+  // sin configurar le marca ✗.
+  const usuario = crearUsuario('negocio', { horario: null });
   const res = await pedir('/estado', usuario.token);
 
   const porId = Object.fromEntries(res.body.requisitos.map(r => [r.id, r]));
@@ -1042,8 +1045,8 @@ function crearProducto(sellerId, { stock = 5 } = {}) {
   return id;
 }
 
-test('sin horario configurado la verificación queda pendiente', async () => {
-  const usuario = crearUsuario('estudiante', { horario: null });
+test('sin métodos de pago la verificación queda pendiente', async () => {
+  const usuario = crearUsuario('estudiante', { metodos: null });
   await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1550001@alumno.um.edu.mx',
     tipo: 'estudiante',
@@ -1056,14 +1059,34 @@ test('sin horario configurado la verificación queda pendiente', async () => {
 
   assert.strictEqual(res.status, 200);
   assert.strictEqual(res.body.verificado, false);
-  assert.strictEqual(res.body.campo, 'horario');
-  assert.match(res.body.motivo, /horario|Editar perfil/i,
+  assert.strictEqual(res.body.campo, 'metodos_pago');
+  assert.match(res.body.motivo, /pago|Editar perfil/i,
     'tiene que decir exactamente qué configurar y dónde');
   assert.strictEqual(estaVerificado(usuario.id), false);
 });
 
+test('un alumno sin horario SÍ se verifica: el horario es cosa del negocio', async () => {
+  // El perfil de vendedor solo persiste el horario de los negocios (ver
+  // routes/sellers.js), así que exigírselo al alumno lo dejaba con un
+  // requisito imposible y la verificación bloqueada para siempre.
+  const usuario = crearUsuario('estudiante', { horario: null });
+  await pedir('/estudiante/solicitar', usuario.token, {
+    correo_institucional: '1550007@alumno.um.edu.mx',
+    tipo: 'estudiante',
+    carrera: CARRERA_VALIDA,
+  });
+
+  const res = await pedir('/estudiante/confirmar', usuario.token, {
+    codigo_otp: enviados.email.at(-1).codigo,
+  });
+
+  assert.strictEqual(res.body.verificado, true);
+  assert.strictEqual(estaVerificado(usuario.id), true);
+});
+
 test('la respuesta trae el checklist entero, no solo lo primero que falla', async () => {
-  const usuario = crearUsuario('estudiante', { horario: null, metodos: null });
+  const usuario = crearUsuario('estudiante', { metodos: null });
+  crearProducto(usuario.id, { stock: null });
   await pedir('/estudiante/solicitar', usuario.token, {
     correo_institucional: '1550002@alumno.um.edu.mx',
     tipo: 'estudiante',
@@ -1077,8 +1100,8 @@ test('la respuesta trae el checklist entero, no solo lo primero que falla', asyn
   // Con la lista completa, quien arregla una cosa ve de una vez qué le
   // queda, en vez de descubrirlo de uno en uno a base de reintentos.
   const porId = Object.fromEntries(res.body.requisitos.map(r => [r.id, r]));
-  assert.strictEqual(porId.horario.cumplido, false);
   assert.strictEqual(porId.metodos_pago.cumplido, false);
+  assert.strictEqual(porId.stock_productos.cumplido, false);
 });
 
 test('un producto sin stock definido deja la verificación pendiente', async () => {
@@ -1139,11 +1162,12 @@ test('al arreglar el stock se completa la verificación sin código nuevo', asyn
   assert.strictEqual(estaVerificado(usuario.id), true);
 });
 
-test('conectar Mercado Pago NO verifica si además falta el horario', async () => {
+test('conectar Mercado Pago NO verifica si además falta el inventario', async () => {
   // El cierre automático del callback de OAuth tiene que mirar la lista
   // completa. Si solo mirara la cuenta de cobros, conectarla sería una
   // puerta trasera que se salta todos los demás requisitos.
-  const usuario = crearUsuario('estudiante', { horario: null });
+  const usuario = crearUsuario('estudiante');
+  crearProducto(usuario.id, { stock: null });
   aceptarTarjeta(usuario.id);
 
   await pedir('/estudiante/solicitar', usuario.token, {

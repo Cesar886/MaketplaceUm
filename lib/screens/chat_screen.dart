@@ -14,7 +14,10 @@ import '../services/api_error.dart';
 import '../services/api_service.dart';
 import '../services/chat_socket_service.dart';
 import '../services/notification_cleaner.dart';
+import '../services/presence_service.dart';
+import '../utils/estado_conexion.dart';
 import '../utils/fecha_monterrey.dart';
+import '../widgets/online_status_avatar.dart';
 import 'product_detail_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -24,12 +27,19 @@ class ChatScreen extends StatefulWidget {
     this.productId,
     this.sellerId,
     this.product,
+    this.otherUser,
   });
 
   final String conversationId;
   final String? productId;
   final String? sellerId;
   final Product? product;
+
+  /// Con quién se está chateando, para pintar su nombre y su punto de "en
+  /// línea" en el AppBar. Puede faltar (deep link desde una notificación, por
+  /// ejemplo): en ese caso el AppBar cae al título genérico, sin inventar un
+  /// interlocutor.
+  final ChatUser? otherUser;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -74,6 +84,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _currentConvId = widget.conversationId;
     _displayProduct = widget.product;
+    // Semilla + suscripción, igual que en la lista de chats y en el perfil
+    // del vendedor: el REST ya trajo el estado en widget.otherUser y el
+    // socket se encarga de los cambios mientras el chat siga abierto.
+    final otro = widget.otherUser;
+    if (otro != null && otro.id.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        context.read<PresenceService>().sembrar(otro.id, otro.estadoConexion);
+      });
+      _socket.subscribePresence([otro.id]);
+    }
     _initAsync();
   }
 
@@ -225,6 +246,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     // Salir de la sala
     if (_currentConvId != null && _currentConvId!.isNotEmpty) {
       _socket.leaveConversation(_currentConvId!);
+    }
+    final otro = widget.otherUser;
+    if (otro != null && otro.id.isNotEmpty) {
+      _socket.unsubscribePresence([otro.id]);
     }
     _textController.dispose();
     _scrollController.dispose();
@@ -543,7 +568,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('nav.chat'.tr()),
+        title: _ChatAppBarTitle(otherUser: widget.otherUser),
         actions: [
           if (_displayProduct != null)
             IconButton(
@@ -711,12 +736,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     IconButton.filled(
                       onPressed: _sending ? null : _sendMessage,
                       icon: _sending
-                          ? const SizedBox(
+                          ? SizedBox(
                               width: 20,
                               height: 20,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: Colors.white,
+                                // El botón se pinta con `primary`: en los
+                                // swatches pastel eso es un relleno CLARO, y
+                                // un spinner blanco fijo se perdía encima.
+                                color: context.colors.onPrimary,
                               ),
                             )
                           : const Icon(Icons.send_rounded),
@@ -857,14 +885,19 @@ class _QuotedMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // "Blanco fijo" se leía bien con navy/wine (su onPrimary ES blanco) pero
+    // se perdía en los seis swatches pastel, donde el relleno de la burbuja
+    // propia es CLARO y onPrimary es tinta oscura. `onPrimary` es
+    // precisamente el color pensado para leerse sobre `primary`, sea cual
+    // sea el swatch.
     final colorTexto = sobreBurbujaPropia
-        ? Colors.white.withValues(alpha: 0.85)
+        ? context.colors.onPrimary.withValues(alpha: 0.85)
         : context.colors.muted;
     final colorAutor = sobreBurbujaPropia
-        ? Colors.white
+        ? context.colors.onPrimary
         : context.colors.accent;
     final fondo = sobreBurbujaPropia
-        ? Colors.white.withValues(alpha: 0.15)
+        ? context.colors.onPrimary.withValues(alpha: 0.15)
         : context.colors.muted.withValues(alpha: 0.10);
 
     return InkWell(
@@ -1018,6 +1051,88 @@ void _navigateToListing(BuildContext context, Product product) {
       builder: (_) => ProductDetailScreen(product: product),
     ),
   );
+}
+
+/// Título del AppBar del chat: sin interlocutor conocido cae al genérico
+/// "Chat"; con él, muestra su foto (con el punto de "en línea" encima) y su
+/// nombre, con "En línea" o "Activo hace X" debajo — igual que en el perfil
+/// del vendedor, para que el mismo dato se lea igual en toda la app.
+class _ChatAppBarTitle extends StatelessWidget {
+  const _ChatAppBarTitle({required this.otherUser});
+
+  final ChatUser? otherUser;
+
+  @override
+  Widget build(BuildContext context) {
+    final otro = otherUser;
+    if (otro == null || otro.id.isEmpty) return Text('nav.chat'.tr());
+
+    // `watch`: el punto y la etiqueta tienen que encenderse y apagarse solos
+    // mientras el chat sigue abierto, sin que la persona reabra la pantalla.
+    final estadoConexion = context.watch<PresenceService>().estadoDe(otro.id);
+    // En línea el punto verde ya lo dice todo — repetirlo en texto ("En
+    // línea" debajo Y el punto encima) es ruido, no información. El texto
+    // solo entra cuando el punto se apaga y hay algo más preciso que contar:
+    // mismo criterio que ya usa el perfil del vendedor.
+    final subtitulo = estadoConexion.enLinea
+        ? null
+        : etiquetaUltimaActividad(estadoConexion.ultimaActividad);
+
+    return Row(
+      children: [
+        OnlineStatusAvatar(
+          radius: 18,
+          iniciales: otro.avatarInitials,
+          imageUrl: otro.logoUrl != null && otro.logoUrl!.isNotEmpty
+              ? '${ApiService.baseUrl}${otro.logoUrl}'
+              : null,
+          enLinea: estadoConexion.enLinea,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                otro.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.2,
+                ),
+              ),
+              // Altura fija y no condicional: si el texto entra y sale del
+              // árbol, el nombre salta un par de píxeles cada vez que la
+              // persona se conecta o desconecta. Con la caja siempre puesta,
+              // solo cambia lo que hay dentro.
+              SizedBox(
+                height: 15,
+                child: subtitulo == null
+                    ? null
+                    : AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        child: Text(
+                          subtitulo,
+                          key: ValueKey(subtitulo),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: context.colors.muted,
+                          ),
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _ProductBar extends StatelessWidget {
@@ -1243,8 +1358,18 @@ class _MessageBubble extends StatelessWidget {
                     Text(
                       isDeleted ? '[Mensaje eliminado]' : message.text,
                       style: TextStyle(
+                        // El fondo eliminado es siempre neutro (ver
+                        // `decoration` arriba), así que su texto va en
+                        // `muted` sin importar de quién sea. El resto SÍ
+                        // depende del fondo: `ink` solo se lee sobre
+                        // `surface` (burbuja ajena); la propia va en
+                        // `primary`, y lo único legible ahí es `onPrimary`
+                        // — blanco en navy/wine, tinta oscura en los
+                        // pasteles.
                         color: isDeleted
                             ? context.colors.muted
+                            : isMine
+                            ? context.colors.onPrimary
                             : context.colors.ink,
                         fontSize: 15,
                         height: 1.3,
@@ -1262,7 +1387,9 @@ class _MessageBubble extends StatelessWidget {
                           horaMonterrey(message.createdAt),
                           style: TextStyle(
                             color: isMine
-                                ? Colors.white.withValues(alpha: 0.7)
+                                ? context.colors.onPrimary.withValues(
+                                    alpha: 0.7,
+                                  )
                                 : context.colors.muted,
                             fontSize: 11,
                           ),
@@ -1274,7 +1401,9 @@ class _MessageBubble extends StatelessWidget {
                                 ? Icons.done_all_rounded
                                 : Icons.done_rounded,
                             size: 14,
-                            color: Colors.white.withValues(alpha: 0.7),
+                            color: context.colors.onPrimary.withValues(
+                              alpha: 0.7,
+                            ),
                           ),
                         ],
                       ],

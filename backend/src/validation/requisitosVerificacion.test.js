@@ -46,14 +46,18 @@ function crearVendedor({
   horario = HORARIO_VALIDO,
   metodos = ['efectivo'],
   conectarMp = false,
+  esNegocio = true,
+  logoUrl = '/uploads/logo-test.webp',
+  avatarUrl = null,
 } = {}) {
   const id = `u_req_${++n}`;
   db.getDb().prepare(
     `INSERT INTO sellers (id, name, email, avatarInitials, major, isBusiness,
-       verified, tipo_cuenta, businessHours, paymentMethods)
-     VALUES (?, ?, ?, 'TT', '', 1, 0, 'negocio', ?, ?)`,
-  ).run(id, `Test ${id}`, `${id}@x.com`, horario,
-    metodos === null ? null : JSON.stringify(metodos));
+       verified, tipo_cuenta, businessHours, paymentMethods, logoUrl, avatarUrl)
+     VALUES (?, ?, ?, 'TT', '', ?, 0, ?, ?, ?, ?, ?)`,
+  ).run(id, `Test ${id}`, `${id}@x.com`, esNegocio ? 1 : 0,
+    esNegocio ? 'negocio' : 'estudiante', horario,
+    metodos === null ? null : JSON.stringify(metodos), logoUrl, avatarUrl);
 
   if (conectarMp) {
     store.guardarCuentaVendedor(id, {
@@ -86,7 +90,7 @@ test('un vendedor que cumple todo pasa los cuatro requisitos', () => {
 
   const lista = requisitosDeVerificacion(v);
 
-  assert.strictEqual(lista.length, 4, 'son cuatro requisitos, ni más ni menos');
+  assert.strictEqual(lista.length, 5, 'son cinco requisitos, ni más ni menos');
   assert.ok(lista.every(r => r.cumplido), JSON.stringify(lista, null, 2));
   assert.strictEqual(cumpleTodos(v), true);
   assert.strictEqual(primerFaltante(v), null);
@@ -125,6 +129,83 @@ test('basta un solo día configurado', () => {
     horario: JSON.stringify({ '2': { open: '08:00', close: '14:00' } }),
   });
   assert.strictEqual(req('horario', requisitosDeVerificacion(v)).cumplido, true);
+});
+
+test('a quien no es negocio no se le exige horario: no puede guardarlo', () => {
+  // routes/sellers.js solo persiste `businessHours` cuando el vendedor es
+  // negocio. Exigírselo a un alumno o a una cuenta externa era pedirles algo
+  // imposible: el requisito quedaba en ✗ para siempre y el botón de enviar
+  // el código, apagado para siempre.
+  const v = crearVendedor({ esNegocio: false, horario: null });
+
+  assert.strictEqual(req('horario', requisitosDeVerificacion(v)).cumplido, true);
+  assert.strictEqual(cumpleTodos(v), true, 'un alumno sin horario sí se verifica');
+});
+
+test('el horario sigue siendo obligatorio para el negocio', () => {
+  const v = crearVendedor({ esNegocio: true, horario: null });
+  assert.strictEqual(req('horario', requisitosDeVerificacion(v)).cumplido, false);
+  assert.strictEqual(cumpleTodos(v), false);
+});
+
+test('quien no es negocio y sí configuró horario también cumple', () => {
+  const v = crearVendedor({ esNegocio: false });
+  assert.strictEqual(req('horario', requisitosDeVerificacion(v)).cumplido, true);
+});
+
+test('basta con que UNA de las dos columnas diga negocio para exigir horario', () => {
+  // tipo_cuenta es la canónica y isBusiness la anterior. Si divergen (filas
+  // viejas, migraciones a medias), el requisito se queda del lado estricto:
+  // pedir el horario de más es barato; dejar verificar a un negocio sin
+  // horario publicado, no.
+  const id = 'u_req_divergente';
+  db.getDb().prepare(
+    `INSERT INTO sellers (id, name, email, avatarInitials, major, isBusiness,
+       verified, tipo_cuenta, businessHours, paymentMethods)
+     VALUES (?, 'Divergente', 'div@x.com', 'TT', '', 0, 0, 'negocio', NULL, ?)`,
+  ).run(id, JSON.stringify(['efectivo']));
+
+  assert.strictEqual(req('horario', requisitosDeVerificacion(id)).cumplido, false);
+});
+
+test('el requisito de horario se sigue listando para todos, cumplido o no', () => {
+  // No se oculta: el checklist tiene el mismo largo para las tres cuentas,
+  // así nadie ve aparecer un requisito nuevo al cambiar de tipo.
+  const alumno = crearVendedor({ esNegocio: false, horario: null });
+  assert.strictEqual(requisitosDeVerificacion(alumno).length, 5);
+  assert.ok(req('horario', requisitosDeVerificacion(alumno)));
+});
+
+// ─── Foto de perfil ─────────────────────────────────────────────
+
+test('sin foto de perfil ni de Google no se puede verificar', () => {
+  const v = crearVendedor({ logoUrl: null, avatarUrl: null });
+  const r = req('foto_perfil', requisitosDeVerificacion(v));
+
+  assert.strictEqual(r.cumplido, false);
+  assert.ok(r.detalle, 'tiene que decir qué falta');
+  assert.strictEqual(r.accion, 'editar_perfil', 'la app usa esto para navegar');
+  assert.strictEqual(cumpleTodos(v), false);
+});
+
+test('una foto subida a mano cumple el requisito', () => {
+  const v = crearVendedor({ logoUrl: '/uploads/mi-foto.webp', avatarUrl: null });
+  assert.strictEqual(req('foto_perfil', requisitosDeVerificacion(v)).cumplido, true);
+});
+
+test('la foto de la cuenta de Google también cumple el requisito: no hace falta subir otra', () => {
+  const v = crearVendedor({ logoUrl: null, avatarUrl: 'https://lh3.googleusercontent.com/a/foo' });
+  assert.strictEqual(req('foto_perfil', requisitosDeVerificacion(v)).cumplido, true);
+});
+
+test('aplica a todos los tipos de cuenta, no solo a negocio', () => {
+  const v = crearVendedor({ esNegocio: false, logoUrl: null, avatarUrl: null });
+  assert.strictEqual(req('foto_perfil', requisitosDeVerificacion(v)).cumplido, false);
+});
+
+test('una cadena vacía no cuenta como foto', () => {
+  const v = crearVendedor({ logoUrl: '', avatarUrl: '' });
+  assert.strictEqual(req('foto_perfil', requisitosDeVerificacion(v)).cumplido, false);
 });
 
 // ─── Métodos de pago ────────────────────────────────────────────
@@ -241,13 +322,13 @@ test('el orden es estable: siempre se pide lo mismo primero', () => {
   const v = crearVendedor({ horario: null, metodos: null });
   assert.deepStrictEqual(
     requisitosDeVerificacion(v).map(r => r.id),
-    ['horario', 'metodos_pago', 'mercadopago', 'stock_productos'],
+    ['horario', 'metodos_pago', 'mercadopago', 'stock_productos', 'foto_perfil'],
   );
 });
 
 test('un vendedor que no existe no cumple nada y no revienta', () => {
   const lista = requisitosDeVerificacion('u_fantasma');
-  assert.strictEqual(lista.length, 4);
+  assert.strictEqual(lista.length, 5);
   assert.ok(lista.some(r => !r.cumplido));
   assert.strictEqual(cumpleTodos('u_fantasma'), false);
 });

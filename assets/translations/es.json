@@ -135,7 +135,14 @@
     "account": "Cuenta",
     "type_student_short": "Estudiante",
     "login_required": "Inicia sesión para realizar esta acción",
-    "have_account_action": "Ya tengo cuenta"
+    "have_account_action": "Ya tengo cuenta",
+    "or": "o",
+    "google_continue": "Continuar con Google",
+    "google_signup": "Registrarse con Google",
+    "google_unavailable": "El inicio de sesión con Google todavía no está disponible.",
+    "google_failed": "No se pudo continuar con Google. Intenta de nuevo.",
+    "google_registering_as": "Te estás registrando con {email}",
+    "google_email_locked": "Correo de tu cuenta de Google"
   },
   "validation": {
     "email_required": "Ingresa tu correo",
@@ -252,7 +259,18 @@
     "highlight_cta_subtitle": "Desde {price} por {duration}; también hay plan mensual.",
     "duration_24h": "24h",
     "duration_days": "{days} días",
-    "up_to_discount": "Hasta -{percent}% de descuento"
+    "up_to_discount": "Hasta -{percent}% de descuento",
+    "categories_menu_subtitle": "Explora el mercadito por categoría",
+    "categories_menu_title": "Todas las categorías",
+    "categories_menu_clear": "Ver todo el mercadito",
+    "sidebar_account_section": "Cuenta y ajustes",
+    "sidebar_categories_section": "Categorías",
+    "sidebar_verify": "Verifica tu cuenta",
+    "sidebar_verify_subtitle": "Desbloquea la insignia de verificado",
+    "sidebar_theme": "Tema",
+    "sidebar_theme_dark": "Oscuro",
+    "sidebar_theme_light": "Claro",
+    "sidebar_language": "Idioma"
   },
   "search": {
     "hint": "Libro, electronico, servicio...",

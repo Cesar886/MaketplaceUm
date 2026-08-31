@@ -59,6 +59,10 @@ dependencies:
   # lib/services/deep_link_service.dart.
   app_links: ^6.3.2
   easy_localization: ^3.0.8
+  # "Continuar con Google" en login y registro. La app solo obtiene el
+  # idToken; quien decide si vale es el backend (POST /api/auth/google).
+  # Los Client ID viven en lib/config/google_auth_config.dart.
+  google_sign_in: ^7.2.0
 
 dev_dependencies:
   flutter_test:

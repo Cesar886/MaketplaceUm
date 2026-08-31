@@ -36,7 +36,7 @@ const ESTADOS_FUERA_DE_VENTA = new Set(['sold', 'paused']);
 
 function obtenerSeller(usuarioId) {
   return db.getDb()
-    .prepare('SELECT id, businessHours, paymentMethods FROM sellers WHERE id = ?')
+    .prepare('SELECT id, isBusiness, tipo_cuenta, businessHours, paymentMethods, logoUrl, avatarUrl FROM sellers WHERE id = ?')
     .get(usuarioId) || null;
 }
 
@@ -97,6 +97,15 @@ function productosSinStock(usuarioId) {
  */
 function requisitosDeVerificacion(usuarioId) {
   const seller = obtenerSeller(usuarioId);
+  // Las dos columnas que dicen "esto es un negocio", no una sola:
+  // `tipo_cuenta` es la canónica (la que mira exigirTipo en
+  // routes/verificacion.js) pero puede venir NULL en filas antiguas, e
+  // `isBusiness` es la que existía antes de ella. Si alguna vez divergen,
+  // esto se queda del lado estricto —pedir el horario de más, nunca de
+  // menos—, que es el error barato de los dos.
+  const esNegocio = Boolean(
+    seller && (seller.tipo_cuenta === 'negocio' || seller.isBusiness),
+  );
   const metodos = metodosDe(seller);
   const aceptaTarjeta = metodos.includes(METODO_TARJETA);
   const sinStock = seller ? productosSinStock(usuarioId) : [];
@@ -105,7 +114,13 @@ function requisitosDeVerificacion(usuarioId) {
     {
       id: 'horario',
       titulo: 'Horario de atención',
-      cumplido: Boolean(seller) && tieneHorario(seller),
+      // Solo se le exige al NEGOCIO. Un alumno o una cuenta externa no
+      // atienden en un horario publicado —venden coordinando por chat—, y
+      // además el perfil de vendedor solo persiste `businessHours` para
+      // negocios (ver routes/sellers.js): pedírselo a los demás los dejaba
+      // con un requisito imposible de cumplir y la verificación bloqueada
+      // para siempre. El vendedor inexistente sigue incumpliendo.
+      cumplido: Boolean(seller) && (!esNegocio || tieneHorario(seller)),
       detalle: 'Configura al menos un día con su horario en "Editar perfil". '
         + 'Es lo que le dice al comprador si estás abierto cuando te compra.',
       accion: 'editar_perfil',
@@ -150,6 +165,21 @@ function requisitosDeVerificacion(usuarioId) {
         : `Define la cantidad disponible de: ${sinStock.map(p => p.title).join(', ')}.`,
       accion: 'revisar_productos',
       productos: sinStock,
+    },
+    {
+      id: 'foto_perfil',
+      titulo: 'Foto de perfil',
+      // Cuenta cualquier foto real: la que se sube a mano (`logoUrl`, mismo
+      // campo que usa el logo de negocio) o la de la cuenta de Google
+      // (`avatarUrl`) con la que alguien inició sesión. Exigir una segunda
+      // foto a quien ya entró con Google sería pedirle algo que no aporta
+      // nada nuevo. Aplica a los tres tipos de cuenta por igual: a diferencia
+      // del horario, no hay ningún tipo para el que subir una foto sea
+      // imposible.
+      cumplido: Boolean(seller?.logoUrl || seller?.avatarUrl),
+      detalle: 'Sube una foto de perfil en "Editar perfil". '
+        + 'Ayuda al comprador a confiar en con quién está tratando.',
+      accion: 'editar_perfil',
     },
   ];
 }

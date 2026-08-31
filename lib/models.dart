@@ -1149,6 +1149,17 @@ class ChatUser {
   /// Presencia tal y como venía en la respuesta. Es solo la SEMILLA: lo que
   /// se pinta sale de PresenceService, que además recibe los cambios en vivo.
   final EstadoConexion estadoConexion;
+
+  /// Para abrir el chat desde la ficha de un producto, donde lo que se tiene
+  /// a mano es el [Seller] y no un [ChatUser] (ese solo viaja dentro de una
+  /// [Conversation] ya existente). Mismos campos, otro origen.
+  factory ChatUser.deSeller(Seller seller) => ChatUser(
+    id: seller.id,
+    name: seller.name,
+    avatarInitials: seller.avatarInitials,
+    logoUrl: seller.logoUrl,
+    estadoConexion: seller.estadoConexion,
+  );
 }
 
 /// El mensaje al que responde otro, resumido para pintar la cita.

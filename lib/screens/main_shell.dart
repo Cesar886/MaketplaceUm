@@ -296,84 +296,97 @@ class MainShellState extends State<MainShell> with WidgetsBindingObserver {
     // tienen su propio AppBar) → íconos oscuros en la barra de estado.
     // Explícito porque, sin AppBar propio, Flutter no lo recalcula solo
     // al volver aquí desde una pantalla con header oscuro.
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      // Arriba, fondo claro → íconos oscuros. Abajo, la barra de navegación
-      // navy se extiende por debajo de la barra del sistema, así que ahí los
-      // íconos tienen que ser claros: un solo preset no cubre los dos lados.
-      value: SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-        statusBarBrightness: Brightness.light,
-        systemNavigationBarColor: context.colors.primary,
-        systemNavigationBarIconBrightness: Brightness.light,
-      ),
-      child: Scaffold(
-        body: IndexedStack(
-          index: _currentIndex,
-          children: [
-            for (var i = 0; i < _pages.length; i++)
-              HeroMode(enabled: i == _currentIndex, child: _pages[i]),
-          ],
+    // El botón "atrás" del sistema nunca cierra la app desde una pestaña que
+    // no sea Inicio: primero vuelve a Inicio, y recién ahí un segundo "atrás"
+    // sale. Sin esto, estando en Chats o Perfil el gesto salía de la app de
+    // golpe, porque el IndexedStack no es una pila de rutas y el Navigator no
+    // tenía nada que desapilar. Las pantallas apiladas (detalle, chat, etc.)
+    // no pasan por aquí: siguen volviendo paso a paso hasta caer en el shell.
+    return PopScope(
+      canPop: _currentIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        selectTab(0);
+      },
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        // Arriba, fondo claro → íconos oscuros. Abajo, la barra de navegación
+        // navy se extiende por debajo de la barra del sistema, así que ahí los
+        // íconos tienen que ser claros: un solo preset no cubre los dos lados.
+        value: SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
+          systemNavigationBarColor: context.colors.primary,
+          systemNavigationBarIconBrightness: Brightness.light,
         ),
-        // Barra navy sólida: es el marco frío contra el que el "+" de oro se
-        // vuelve el único punto cálido de la pantalla, e imposible de no ver
-        // (6:1 contra el navy). Sobre una barra blanca ese mismo botón
-        // compite con las tarjetas; sobre navy no compite con nada.
-        bottomNavigationBar: Container(
-          color: context.colors.primary,
-          child: SafeArea(
-            top: false,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: context.colors.primary,
-                border: Border(
-                  top: BorderSide(
-                    color: context.colors.accentTintBorder,
-                    width: 0.8,
+        child: Scaffold(
+          body: IndexedStack(
+            index: _currentIndex,
+            children: [
+              for (var i = 0; i < _pages.length; i++)
+                HeroMode(enabled: i == _currentIndex, child: _pages[i]),
+            ],
+          ),
+          // Barra navy sólida: es el marco frío contra el que el "+" de oro se
+          // vuelve el único punto cálido de la pantalla, e imposible de no ver
+          // (6:1 contra el navy). Sobre una barra blanca ese mismo botón
+          // compite con las tarjetas; sobre navy no compite con nada.
+          bottomNavigationBar: Container(
+            color: context.colors.primary,
+            child: SafeArea(
+              top: false,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: context.colors.primary,
+                  border: Border(
+                    top: BorderSide(
+                      color: context.colors.accentTintBorder,
+                      width: 0.8,
+                    ),
                   ),
                 ),
-              ),
-              child: SizedBox(
-                height: 66,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _NavItem(
-                      icon: Icons.home_outlined,
-                      selectedIcon: Icons.home_rounded,
-                      label: 'nav.home'.tr(),
-                      index: 0,
-                      currentIndex: _currentIndex,
-                      onTap: selectTab,
-                      badge: _unreadNotifCount > 0 ? _unreadNotifCount : null,
-                    ),
-                    _NavItem(
-                      icon: Icons.local_offer_outlined,
-                      selectedIcon: Icons.local_offer_rounded,
-                      label: 'nav.offers'.tr(),
-                      index: 1,
-                      currentIndex: _currentIndex,
-                      onTap: selectTab,
-                    ),
-                    _PublishFab(onTap: () => _showPublishMenu(context)),
-                    _NavItem(
-                      icon: Icons.chat_outlined,
-                      selectedIcon: Icons.chat_rounded,
-                      label: 'nav.chat'.tr(),
-                      index: 4,
-                      currentIndex: _currentIndex,
-                      onTap: selectTab,
-                      badge: _unreadChatCount > 0 ? _unreadChatCount : null,
-                    ),
-                    _NavItem(
-                      icon: Icons.person_outline_rounded,
-                      selectedIcon: Icons.person_rounded,
-                      label: 'nav.profile'.tr(),
-                      index: 5,
-                      currentIndex: _currentIndex,
-                      onTap: selectTab,
-                    ),
-                  ],
+                child: SizedBox(
+                  height: 66,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _NavItem(
+                        icon: Icons.home_outlined,
+                        selectedIcon: Icons.home_rounded,
+                        label: 'nav.home'.tr(),
+                        index: 0,
+                        currentIndex: _currentIndex,
+                        onTap: selectTab,
+                        badge: _unreadNotifCount > 0 ? _unreadNotifCount : null,
+                      ),
+                      _NavItem(
+                        icon: Icons.local_offer_outlined,
+                        selectedIcon: Icons.local_offer_rounded,
+                        label: 'nav.offers'.tr(),
+                        index: 1,
+                        currentIndex: _currentIndex,
+                        onTap: selectTab,
+                      ),
+                      _PublishFab(onTap: () => _showPublishMenu(context)),
+                      _NavItem(
+                        icon: Icons.chat_outlined,
+                        selectedIcon: Icons.chat_rounded,
+                        label: 'nav.chat'.tr(),
+                        index: 4,
+                        currentIndex: _currentIndex,
+                        onTap: selectTab,
+                        badge: _unreadChatCount > 0 ? _unreadChatCount : null,
+                      ),
+                      _NavItem(
+                        icon: Icons.person_outline_rounded,
+                        selectedIcon: Icons.person_rounded,
+                        label: 'nav.profile'.tr(),
+                        index: 5,
+                        currentIndex: _currentIndex,
+                        onTap: selectTab,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

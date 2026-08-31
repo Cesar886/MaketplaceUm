@@ -82,20 +82,23 @@ class _VerificationScreenState extends State<VerificationScreen> {
   final _llaveOtp = GlobalKey<OtpInputState>();
 
   // Estudiante / personal
-  /// Guarda SOLO lo que va antes del arroba (matrícula o usuario). El correo
-  /// completo se arma en [_validarCorreo] concatenando el dominio elegido.
+  /// Guarda el correo tal como se ve en el campo: la parte local que teclea
+  /// el usuario y, en cuanto deja de ser ambigua, el dominio autocompletado
+  /// por [DominioSufijoFormatter]. La parte local se recupera con
+  /// [DominioSufijoFormatter.parteLocal].
   final _matriculaController = TextEditingController();
   final _focoMatricula = FocusNode();
 
   /// Dominio detectado automáticamente a partir de lo tecleado (ver
-  /// [_detectarDominio]). Null = todavía ambiguo (menos de 3 caracteres, o
+  /// [DominioUM.detectarDesde]). Null = todavía ambiguo (menos de 3
+  /// caracteres, o
   /// ninguno decisivo aún), que es lo que impide validar o enviar: hasta
   /// saber el dominio no se sabe qué formato exigirle a lo que se teclee.
   ///
-  /// El dominio NUNCA se muestra en la UI (ni en el input ni en un
-  /// desplegable): solo se usa internamente para armar el correo completo al
-  /// enviar, por seguridad (no revelar el formato de los correos
-  /// institucionales).
+  /// No hay desplegable ni ningún otro selector: el dominio solo aparece
+  /// escrito dentro del propio campo, y únicamente una vez que la detección
+  /// lo resolvió, para no revelar por adelantado el formato de los correos
+  /// institucionales.
   DominioUM? _dominio;
 
   /// Solo se llena cuando el usuario elige una opción exacta de [carrerasUM]
@@ -125,6 +128,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
     // que permite que el formato exigido (y el campo de carrera) cambien en
     // vivo mientras la persona escribe.
     _matriculaController.addListener(_actualizarDominioDetectado);
+    // Un toque (o las flechas) puede dejar el cursor dentro del dominio sin
+    // pasar por el formatter, que solo ve ediciones de texto. Este listener
+    // lo devuelve a la parte local para que el dominio sea inalcanzable.
+    _matriculaController.addListener(_mantenerCursorEnParteLocal);
     _retomarDondeQuedo();
   }
 
@@ -163,6 +170,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
   void dispose() {
     _timerReenvio?.cancel();
     _matriculaController.removeListener(_actualizarDominioDetectado);
+    _matriculaController.removeListener(_mantenerCursorEnParteLocal);
     _matriculaController.dispose();
     _focoMatricula.dispose();
     _nombreNegocioController.dispose();
@@ -288,7 +296,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
     final dominio = _dominio;
     if (dominio == null) return null;
 
-    final usuario = _matriculaController.text.trim().toLowerCase();
+    final usuario = DominioSufijoFormatter.parteLocal(
+      _matriculaController.text,
+    ).trim().toLowerCase();
     final correo = '$usuario${dominio.sufijo}';
     final valido = dominio.formatoCorreo.hasMatch(correo);
 
@@ -311,31 +321,13 @@ class _VerificationScreenState extends State<VerificationScreen> {
     return valido ? correo : null;
   }
 
-  /// Detecta el dominio (alumno/personal) a partir de lo tecleado, sin
-  /// mostrarlo nunca en la UI.
-  ///
-  /// Los primeros 2 caracteres (posiciones 0 y 1) no son determinantes y se
-  /// ignoran. A partir de la posición 2 en adelante se evalúa cada carácter:
-  /// el primero que sea un dígito asigna alumno; el primero que sea una letra
-  /// asigna personal. Un carácter que no sea ni dígito ni letra (p. ej. un
-  /// punto) no decide nada y se sigue evaluando el siguiente.
-  ///
-  /// Devuelve null mientras la información siga siendo ambigua (menos de 3
-  /// caracteres, o ningún carácter decisivo todavía).
-  DominioUM? _detectarDominio(String texto) {
-    for (var i = 2; i < texto.length; i++) {
-      final c = texto[i];
-      if (RegExp(r'[0-9]').hasMatch(c)) return DominioUM.alumno;
-      if (RegExp(r'[a-zA-Z]').hasMatch(c)) return DominioUM.personal;
-    }
-    return null;
-  }
-
   /// Reevalúa el dominio en cada cambio del campo de texto. Se puede
   /// reevaluar en cualquier momento: si el usuario borra y reescribe, el
   /// dominio detectado puede cambiar (o volver a quedar ambiguo).
   void _actualizarDominioDetectado() {
-    final nuevo = _detectarDominio(_matriculaController.text);
+    final nuevo = DominioUM.detectarDesde(
+      DominioSufijoFormatter.parteLocal(_matriculaController.text),
+    );
     if (nuevo == _dominio) return;
     setState(() {
       _dominio = nuevo;
@@ -349,6 +341,28 @@ class _VerificationScreenState extends State<VerificationScreen> {
         _campoConError = null;
       }
     });
+  }
+
+  /// Mantiene la selección dentro de la parte local: el dominio
+  /// autocompletado no se puede seleccionar ni colocar el cursor dentro, así
+  /// que tampoco se puede borrar a mano.
+  ///
+  /// Sale sin tocar nada cuando la selección ya está donde debe — si no, el
+  /// setter volvería a notificar a los listeners en bucle.
+  void _mantenerCursorEnParteLocal() {
+    final limite = DominioSufijoFormatter.parteLocal(
+      _matriculaController.text,
+    ).length;
+    final seleccion = _matriculaController.selection;
+    if (!seleccion.isValid) return;
+    if (seleccion.baseOffset <= limite && seleccion.extentOffset <= limite) {
+      return;
+    }
+    _matriculaController.selection = TextSelection(
+      baseOffset: seleccion.baseOffset.clamp(0, limite),
+      extentOffset: seleccion.extentOffset.clamp(0, limite),
+      affinity: seleccion.affinity,
+    );
   }
 
   Future<void> _solicitarCodigoEstudiante() {
@@ -761,8 +775,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
         // al formulario, que es lo que invalida el paso.
         _CampoTexto(
           controller: esEstudiante ? _matriculaController : _telefonoController,
-          // Etiqueta neutra siempre: el dominio detectado no se muestra en
-          // ningún lado de la UI, ni siquiera aquí.
+          // Etiqueta neutra: el campo ya trae el correo completo, con el
+          // dominio que se autocompletó al escribir, y sirve de comprobante
+          // de a dónde se mandó el código.
           etiqueta: esEstudiante
               ? 'verification.institutional_email'.tr()
               : 'verification.phone_number'.tr(),
@@ -836,12 +851,15 @@ class _VerificationScreenState extends State<VerificationScreen> {
           etiqueta: 'verification.institutional_email'.tr(),
           icono: Icons.badge_rounded,
           conError: _campoConError == 'correo_institucional',
-          // Sin inputFormatters de por medio: el dominio (y por lo tanto el
-          // formato esperado) se decide con lo que la persona ya escribió,
-          // así que no se puede filtrar por adelantado sin arriesgarse a
-          // bloquear el carácter que resuelve la ambigüedad.
+          // El filtro no puede ceñirse al formato de un dominio concreto: el
+          // carácter que resuelve la ambigüedad sería justo el bloqueado.
+          // Solo deja pasar lo que cabe en un correo institucional, arroba
+          // incluida — el arroba que teclee el usuario lo absorbe después
+          // [DominioSufijoFormatter], que es quien decide dónde empieza el
+          // dominio y lo mantiene fijo.
           inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9.]')),
+            FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9.@]')),
+            const DominioSufijoFormatter(),
           ],
           // Al corregir lo tecleado se limpia el aviso en el momento, sin
           // esperar a que el campo pierda el foco.

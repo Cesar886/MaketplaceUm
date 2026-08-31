@@ -1365,6 +1365,42 @@ function runMigrations() {
     db.exec(`ALTER TABLE sellers ADD COLUMN show_online_status INTEGER NOT NULL DEFAULT 1`);
   }
 
+  // 38. Iniciar sesión con Google.
+  //
+  //     `auth_provider` dice CÓMO entra esa cuenta: 'password' (correo y
+  //     contraseña, lo de siempre) o 'google'. No se deduce de que
+  //     `password_hash` esté vacío, y esa distinción es justamente lo que
+  //     cierra un agujero real: /api/auth/register trata una fila sin
+  //     password_hash como "cuenta legacy" y le rellena la contraseña que le
+  //     manden (migración 21). Sin esta columna, saber el correo de alguien
+  //     que entró con Google bastaría para ponerle contraseña y quedarse con
+  //     su cuenta. El DEFAULT 'password' deja a todas las filas existentes
+  //     exactamente como estaban.
+  //
+  //     `google_sub` es el identificador estable que Google da a una cuenta.
+  //     Se guarda además del correo porque el correo SÍ puede cambiar: quien
+  //     cambia su dirección en Google debe seguir entrando a la misma cuenta
+  //     de aquí. El índice es UNIQUE parcial (WHERE NOT NULL) para que las
+  //     miles de filas sin `sub` no choquen entre sí.
+  //
+  //     `avatarUrl` es la foto de perfil que devuelve Google. Es distinta de
+  //     `logoUrl`, que es el logo que un negocio sube a este servidor: aquí
+  //     se guarda una URL remota de Google, no un archivo nuestro.
+  const sellerColsGoogle = db.prepare("PRAGMA table_info('sellers')").all();
+  if (!sellerColsGoogle.some(c => c.name === 'auth_provider')) {
+    db.exec(`ALTER TABLE sellers ADD COLUMN auth_provider TEXT NOT NULL DEFAULT 'password'`);
+  }
+  if (!sellerColsGoogle.some(c => c.name === 'google_sub')) {
+    db.exec(`ALTER TABLE sellers ADD COLUMN google_sub TEXT`);
+  }
+  if (!sellerColsGoogle.some(c => c.name === 'avatarUrl')) {
+    db.exec(`ALTER TABLE sellers ADD COLUMN avatarUrl TEXT`);
+  }
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sellers_google_sub
+      ON sellers(google_sub) WHERE google_sub IS NOT NULL;
+  `);
+
   console.log('🔄 Migración de schema completada');
 }
 

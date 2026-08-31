@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
 import '../constants/atributos_categoria.dart';
+import '../constants/dias_semana.dart';
 import '../features/highlight/destacar_flag.dart';
 import '../mock_data.dart';
 import '../models.dart';
@@ -37,32 +38,6 @@ class PublishProductScreen extends StatefulWidget {
 }
 
 class _PublishProductScreenState extends State<PublishProductScreen> {
-  /// Claves, no textos: se traducen en el `build` (ver más abajo) porque el
-  /// idioma puede cambiar con la pantalla ya montada, y una lista `const`
-  /// de textos se quedaría congelada en el idioma de arranque.
-  static const List<String> _dayNames = [
-    'weekday.mon',
-    'weekday.tue',
-    'weekday.wed',
-    'weekday.thu',
-    'weekday.fri',
-    'weekday.sat',
-    'weekday.sun',
-  ];
-
-  // Mismos índices que _dayNames (0=lunes..6=domingo), en minúscula y
-  // completos para el texto del badge calculado ("Disponible el miércoles").
-  // Mismas claves-no-textos que [_dayNames], por el mismo motivo.
-  static const List<String> _dayFullNames = [
-    'weekday_full.mon',
-    'weekday_full.tue',
-    'weekday_full.wed',
-    'weekday_full.thu',
-    'weekday_full.fri',
-    'weekday_full.sat',
-    'weekday_full.sun',
-  ];
-
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _priceController = TextEditingController();
@@ -642,7 +617,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       }
       return (
         ComputedStatus.availableOtherDay,
-        nextDay != null ? _dayFullNames[nextDay].tr() : null,
+        nextDay != null ? nombreDiaEnFrase(nextDay) : null,
         null,
       );
     }
@@ -758,7 +733,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
               final selected = _selectedDays.contains(i);
               return FilterChip(
                 label: Text(
-                  _dayNames[i].tr(),
+                  nombreCortoDia(i),
                   style: const TextStyle(fontSize: 12),
                 ),
                 selected: selected,

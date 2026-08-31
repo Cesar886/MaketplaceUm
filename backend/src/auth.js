@@ -149,8 +149,21 @@ function verificarToken(token) {
   }
 }
 
+/**
+ * ¿Esta fila de `sellers` es una cuenta que entra con Google?
+ *
+ * Se pregunta por `auth_provider`, NUNCA por "no tiene password_hash": las
+ * cuentas legacy anteriores a la migración 21 tampoco lo tienen y sí deben
+ * poder ponerse una contraseña. Confundir ambos casos es exactamente lo que
+ * permitiría apropiarse de una cuenta de Google sabiendo solo su correo.
+ */
+function esCuentaDeGoogle(row) {
+  return !!row && row.auth_provider === 'google';
+}
+
 module.exports = {
   generateToken,
+  esCuentaDeGoogle,
   generateAnonToken,
   requireAuth,
   optionalAuth,

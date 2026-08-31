@@ -6,8 +6,11 @@ import 'package:provider/provider.dart';
 import '../../app_theme.dart';
 import '../../providers/accent_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../config/google_auth_config.dart';
 import '../../widgets/app_logo.dart';
+import '../../widgets/google_sign_in_button.dart';
 import '../main_shell.dart';
+import 'google_auth_flow.dart';
 import 'register_type_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -146,6 +149,36 @@ class _LoginScreenState extends State<LoginScreen> {
                           : Text('auth.login_button'.tr()),
                     ),
                   ),
+                  const SizedBox(height: 20),
+                  // ─── Continuar con Google ───────────────────
+                  //
+                  // Va DEBAJO del formulario de correo, que sigue siendo el
+                  // camino principal. Mientras no haya Client ID pegado el
+                  // botón se muestra deshabilitado y con una nota, en vez de
+                  // esconderse: así se ve que la función existe y que solo
+                  // falta configurarla.
+                  const SeparadorODivider(),
+                  const SizedBox(height: 16),
+                  GoogleSignInButton(
+                    cargando: auth.isLoading,
+                    onPressed: GoogleAuthConfig.estaConfigurado
+                        ? () => continuarConGoogle(context)
+                        : null,
+                  ),
+                  if (!GoogleAuthConfig.estaConfigurado) ...[
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: Text(
+                        'auth.google_unavailable'.tr(),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: context.colors.muted,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,

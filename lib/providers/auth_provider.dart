@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
@@ -7,9 +10,49 @@ import '../services/anon_session.dart';
 import '../services/api_service.dart';
 import '../services/chat_socket_service.dart';
 import '../services/db_helper.dart';
+import '../services/google_sign_in_service.dart';
 import '../services/push_service.dart';
 
 enum AccountType { estudiante, particular, negocio }
+
+/// Desenlace de pulsar "Continuar con Google".
+///
+/// Es un tipo cerrado (y no un bool o un enum suelto) porque los tres casos
+/// llevan a pantallas distintas y uno de ellos arrastra datos: la pantalla
+/// que llama tiene que tratarlos todos, y el compilador se lo recuerda.
+sealed class ResultadoGoogle {
+  const ResultadoGoogle();
+}
+
+/// El usuario ya tenía cuenta: la sesión quedó iniciada, igual que con
+/// correo y contraseña. Toca navegar al shell principal.
+class GoogleSesionIniciada extends ResultadoGoogle {
+  const GoogleSesionIniciada();
+}
+
+/// El usuario cerró la ventana de Google. No hay nada que hacer ni nada
+/// que mostrar — no es un error.
+class GoogleCancelado extends ResultadoGoogle {
+  const GoogleCancelado();
+}
+
+/// La cuenta de Google es válida pero no existe en el marketplace: hay que
+/// completar el registro. Lleva lo que Google sí sabe (para prellenar el
+/// formulario) y el [idToken], que es lo que prueba ante el backend que ese
+/// correo es de quien dice.
+class GoogleRegistroPendiente extends ResultadoGoogle {
+  const GoogleRegistroPendiente({
+    required this.idToken,
+    required this.email,
+    required this.nombre,
+    this.foto,
+  });
+
+  final String idToken;
+  final String email;
+  final String nombre;
+  final String? foto;
+}
 
 /// Tipos de negocio permitidos
 const businessTypes = [
@@ -152,16 +195,25 @@ class AuthProvider extends ChangeNotifier {
   /// password para que el login local siga funcionando en este mismo
   /// dispositivo. Deja `_currentUser` listo con los campos que solo viven
   /// localmente (accountType, verificationStatus).
+  ///
+  /// [password] llega en null cuando la sesión la abrió Google: esas cuentas
+  /// no tienen contraseña. Entonces NO se toca el hash de una fila que ya
+  /// existía — sería borrarle la contraseña real a quien sí la tenga — y una
+  /// fila nueva se crea con un secreto aleatorio que nadie conoce ni
+  /// necesita: la tabla local exige un hash, pero desde hace tiempo el login
+  /// se valida siempre contra el backend, nunca contra este hash.
   Future<void> _mirrorLocalUser({
     required String name,
     required String email,
     required String phone,
-    required String password,
+    required String? password,
     required String dbType,
   }) async {
     final existing = await _db.getUserByEmail(email);
     if (existing != null) {
-      await _db.updatePasswordHash(existing['id'] as int, password);
+      if (password != null) {
+        await _db.updatePasswordHash(existing['id'] as int, password);
+      }
       if (phone.isNotEmpty && phone != existing['phone']) {
         await _db.updateUserFields(existing['id'] as int, phone: phone);
       }
@@ -171,10 +223,198 @@ class AuthProvider extends ChangeNotifier {
         name: name,
         email: email,
         phone: phone,
-        password: password,
+        password: password ?? _secretoLocalAleatorio(),
         userType: dbType,
       );
       _currentUser = await _db.getUserById(userId);
+    }
+  }
+
+  /// Contraseña de relleno para la fila local de una cuenta de Google.
+  /// `Random.secure()` y no `Random()`: no hace falta que nadie la adivine,
+  /// pero tampoco cuesta nada que sea imposible.
+  static String _secretoLocalAleatorio() {
+    final bytes = List<int>.generate(24, (_) => Random.secure().nextInt(256));
+    return base64Url.encode(bytes);
+  }
+
+  // ─── Google Sign-In ────────────────────────────────────────
+  //
+  // El flujo tiene dos pasos porque un idToken de Google trae correo, nombre
+  // y foto, y el registro de este marketplace exige además tipo de cuenta,
+  // teléfono y método de pago. Así que:
+  //
+  //   1. [signInWithGoogle] consigue el idToken y se lo manda al backend.
+  //      Si la cuenta ya existe, la sesión queda abierta y aquí se acaba.
+  //   2. Si no existe, devuelve [GoogleRegistroPendiente] y la pantalla
+  //      lleva al formulario de registro normal, prellenado. Al enviarlo se
+  //      llama a [registrarConGoogle] con el mismo idToken.
+  //
+  // Lo que pasa DESPUÉS de autenticarse (guardar token, espejo local,
+  // sesión, estado de verificación) es exactamente el mismo código que usa
+  // el login por correo: [_aplicarSesionBackend].
+
+  /// Pasos comunes a login y registro, con o sin Google: guarda el JWT,
+  /// refleja la cuenta en la caché local, persiste la sesión y lee el estado
+  /// de verificación.
+  ///
+  /// [email] existe para el login por correo, que ya lo tiene tecleado; sin
+  /// él se usa el que devuelve el backend.
+  Future<void> _aplicarSesionBackend(
+    Map<String, dynamic> result, {
+    required String? password,
+    String? email,
+  }) async {
+    await _applyBackendAuthResult(result);
+
+    final seller = result['seller'] as Map<String, dynamic>;
+    final dbType = (seller['isBusiness'] as bool? ?? false)
+        ? 'negocio'
+        : (seller['major'] == 'Estudiante' ? 'estudiante' : 'particular');
+    await _mirrorLocalUser(
+      name: seller['name'] as String? ?? '',
+      email: email ?? seller['email'] as String? ?? '',
+      phone: seller['phone'] as String? ?? '',
+      password: password,
+      dbType: dbType,
+    );
+    await _saveSession(_currentUser!['id'] as int);
+    await refrescarEstadoVerificacion();
+  }
+
+  /// Abre el flujo de Google y, según lo que conteste el backend, deja la
+  /// sesión iniciada o pide completar el registro. Ver [ResultadoGoogle].
+  ///
+  /// Lanza [GoogleSignInFallo] (problema del SDK de Google) o
+  /// [GoogleAuthException] (rechazo del backend) — la pantalla los pinta
+  /// como mensaje; una cancelación NO es ninguna de las dos cosas y llega
+  /// como [GoogleCancelado].
+  Future<ResultadoGoogle> signInWithGoogle() async {
+    _loading = true;
+    notifyListeners();
+
+    try {
+      final idToken = await GoogleSignInService.obtenerIdToken();
+      if (idToken == null) return const GoogleCancelado();
+
+      final deviceId = await AnonymousId.get();
+      try {
+        final result = await ApiService.authGoogle(
+          idToken: idToken,
+          deviceId: deviceId,
+        );
+        await _aplicarSesionBackend(result, password: null);
+        return const GoogleSesionIniciada();
+      } on GoogleRegistroRequeridoException catch (e) {
+        return GoogleRegistroPendiente(
+          idToken: idToken,
+          email: e.email,
+          nombre: e.nombre,
+          foto: e.foto,
+        );
+      }
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Segundo paso: crea la cuenta con los datos del formulario + el idToken.
+  ///
+  /// El correo NO viaja: el backend lo saca del idToken, que es la única
+  /// fuente en la que puede confiar. Devuelve el id local, igual que
+  /// [registerUser].
+  Future<int> registrarConGoogle({
+    required String idToken,
+    required String name,
+    required String phone,
+    required AccountType userType,
+    required List<String> paymentMethods,
+    String? businessName,
+    String? businessType,
+    String? responsibleName,
+    String? businessDescription,
+    String? logoPath,
+    Map<int, BusinessHoursRange>? businessHours,
+  }) async {
+    _loading = true;
+    notifyListeners();
+
+    try {
+      final dbType = switch (userType) {
+        AccountType.estudiante => 'estudiante',
+        AccountType.particular => 'particular',
+        AccountType.negocio => 'negocio',
+      };
+      final effectiveName = businessName ?? name;
+
+      final registro = <String, dynamic>{
+        'name': effectiveName,
+        'userType': dbType,
+        'phone': phone,
+        'paymentMethods': paymentMethods,
+        if (businessHours != null)
+          'businessHours': businessHoursToJson(businessHours),
+      };
+
+      final deviceId = await AnonymousId.get();
+      Map<String, dynamic> result;
+      try {
+        result = await ApiService.authGoogle(
+          idToken: idToken,
+          deviceId: deviceId,
+          registro: registro,
+        );
+      } on GoogleAuthException catch (e) {
+        // Los idToken de Google duran ~1 hora. Si el usuario tardó más en
+        // llenar el formulario que lo que vivió el token, se pide otro en
+        // silencio en vez de tirarle el registro a la basura. Solo se
+        // reintenta una vez, y solo por token caducado.
+        if (!e.tokenInvalido) rethrow;
+        final nuevo = await GoogleSignInService.obtenerIdToken();
+        if (nuevo == null) rethrow;
+        result = await ApiService.authGoogle(
+          idToken: nuevo,
+          deviceId: deviceId,
+          registro: registro,
+        );
+      }
+
+      await _aplicarSesionBackend(result, password: null);
+
+      // Mismos remates que el registro por correo: rubro/descripción viven
+      // en el backend (los lee "Editar perfil") y el perfil de negocio local
+      // guarda el logo y el responsable.
+      if (userType == AccountType.negocio &&
+          (businessDescription != null || businessType != null)) {
+        try {
+          await ApiService.updateSellerProfile(
+            sellerId: _backendSellerId!,
+            businessDescription: businessDescription,
+            businessCategory: businessType,
+          );
+        } catch (_) {
+          // No bloquea el registro: se puede completar desde el perfil.
+        }
+      }
+
+      final userId = _currentUser!['id'] as int;
+      if (userType == AccountType.negocio && businessType != null) {
+        await _db.createBusinessProfile(
+          userId: userId,
+          businessName: effectiveName,
+          businessType: businessType,
+          responsibleName: responsibleName,
+          businessDescription: businessDescription,
+          logoPath: logoPath,
+        );
+        _currentUser = await _db.getUserById(userId);
+      }
+
+      return userId;
+    } finally {
+      _loading = false;
+      notifyListeners();
     }
   }
 
@@ -474,21 +714,9 @@ class AuthProvider extends ChangeNotifier {
         return false;
       }
 
-      await _applyBackendAuthResult(result);
-
-      final seller = result['seller'] as Map<String, dynamic>;
-      final dbType = (seller['isBusiness'] as bool? ?? false)
-          ? 'negocio'
-          : (seller['major'] == 'Estudiante' ? 'estudiante' : 'particular');
-      await _mirrorLocalUser(
-        name: seller['name'] as String? ?? '',
-        email: email,
-        phone: seller['phone'] as String? ?? '',
-        password: password,
-        dbType: dbType,
-      );
-      await _saveSession(_currentUser!['id'] as int);
-      await refrescarEstadoVerificacion();
+      // Los mismos pasos que corre el inicio de sesión con Google — una sola
+      // definición de "qué pasa después de autenticarse".
+      await _aplicarSesionBackend(result, password: password, email: email);
 
       return true;
     } finally {
@@ -503,6 +731,13 @@ class AuthProvider extends ChangeNotifier {
     //  donde el usuario tenga sesión activa)
     try {
       await PushService.instance.unregisterDevice();
+    } catch (_) {}
+
+    // Sin esto, el siguiente "Continuar con Google" reentraría solo con la
+    // última cuenta usada, sin preguntar — que es justo lo que alguien no
+    // espera después de cerrar sesión (p. ej. en un teléfono prestado).
+    try {
+      await GoogleSignInService.cerrarSesion();
     } catch (_) {}
 
     _currentUser = null;

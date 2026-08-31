@@ -12,6 +12,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_error.dart';
 import '../../services/api_service.dart';
 import '../../widgets/business_hours_editor.dart';
+import '../../widgets/google_sign_in_button.dart';
 import '../../widgets/location_picker.dart';
 import '../../widgets/payment_methods.dart';
 import '../../widgets/static_mini_map.dart';
@@ -21,9 +22,14 @@ import 'login_screen.dart';
 import 'verification_screen.dart';
 
 class RegisterFormScreen extends StatefulWidget {
-  const RegisterFormScreen({super.key, required this.userType});
+  const RegisterFormScreen({super.key, required this.userType, this.google});
 
   final String userType;
+
+  /// Registro que viene de "Continuar con Google": trae el idToken ya
+  /// verificado y el perfil para prellenar. Cuando es null, esta pantalla se
+  /// comporta EXACTAMENTE como siempre (correo + contraseña).
+  final GoogleRegistroPendiente? google;
 
   @override
   State<RegisterFormScreen> createState() => _RegisterFormScreenState();
@@ -72,9 +78,23 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
 
   bool get _isBusiness => widget.userType == 'negocio';
 
+  /// La cuenta la va a crear Google: no se pide contraseña y el correo no se
+  /// puede editar (el backend lo saca del idToken, no de este campo).
+  bool get _conGoogle => widget.google != null;
+
   @override
   void initState() {
     super.initState();
+    final google = widget.google;
+    if (google != null) {
+      _emailController.text = google.email;
+      // El nombre de Google es solo un punto de partida: quien registra un
+      // negocio normalmente quiere otro nombre, y puede cambiarlo.
+      if (google.nombre.isNotEmpty) {
+        _nameController.text = google.nombre;
+        _responsibleNameController.text = google.nombre;
+      }
+    }
     if (_isBusiness) {
       _loadCategories();
     }
@@ -164,9 +184,46 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
     }
 
     final auth = context.read<AuthProvider>();
+    final google = widget.google;
 
     try {
-      if (_isBusiness) {
+      if (google != null) {
+        // Registro con Google: mismos datos, misma pantalla, mismo
+        // resultado. Lo único que cambia es que la identidad la respalda el
+        // idToken en vez de una contraseña, y que el correo lo pone el
+        // servidor a partir de ese token.
+        String displayName = _isBusiness
+            ? _businessNameController.text.trim()
+            : _nameController.text.trim();
+        if (displayName.isEmpty) {
+          displayName = _responsibleNameController.text.trim();
+        }
+
+        await auth.registrarConGoogle(
+          idToken: google.idToken,
+          name: displayName,
+          phone: _phoneController.text.trim(),
+          userType: switch (widget.userType) {
+            'negocio' => AccountType.negocio,
+            'estudiante' => AccountType.estudiante,
+            _ => AccountType.particular,
+          },
+          paymentMethods: _selectedPaymentMethods.toList(),
+          businessName: _isBusiness ? displayName : null,
+          businessType: _isBusiness ? _selectedBusinessCategory : null,
+          responsibleName:
+              _isBusiness && _responsibleNameController.text.trim().isNotEmpty
+              ? _responsibleNameController.text.trim()
+              : null,
+          businessDescription:
+              _isBusiness &&
+                  _businessDescriptionController.text.trim().isNotEmpty
+              ? _businessDescriptionController.text.trim()
+              : null,
+          logoPath: _isBusiness ? _logoFile?.path : null,
+          businessHours: _isBusiness ? _businessHours : null,
+        );
+      } else if (_isBusiness) {
         String displayName = _businessNameController.text.trim();
         if (displayName.isEmpty)
           displayName = _responsibleNameController.text.trim();
@@ -417,10 +474,12 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
       _buildEmailField(),
       const SizedBox(height: 14),
       _buildPhoneField(),
-      const SizedBox(height: 14),
-      _buildPasswordField(),
-      const SizedBox(height: 14),
-      _buildConfirmPasswordField(),
+      if (!_conGoogle) ...[
+        const SizedBox(height: 14),
+        _buildPasswordField(),
+        const SizedBox(height: 14),
+        _buildConfirmPasswordField(),
+      ],
     ];
   }
 
@@ -606,13 +665,15 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
       const SizedBox(height: 14),
       _buildPhoneField(),
 
-      const SizedBox(height: 24),
-      // ─── Seguridad ─────────────────────────────────────────
-      _buildSectionTitle('Seguridad', Icons.lock_rounded),
-      const SizedBox(height: 14),
-      _buildPasswordField(),
-      const SizedBox(height: 14),
-      _buildConfirmPasswordField(),
+      if (!_conGoogle) ...[
+        const SizedBox(height: 24),
+        // ─── Seguridad ───────────────────────────────────────
+        _buildSectionTitle('Seguridad', Icons.lock_rounded),
+        const SizedBox(height: 14),
+        _buildPasswordField(),
+        const SizedBox(height: 14),
+        _buildConfirmPasswordField(),
+      ],
     ];
   }
 
@@ -672,9 +733,19 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
   Widget _buildEmailField() {
     return TextFormField(
       controller: _emailController,
+      // Con Google el correo no se edita: la cuenta se crea con el que venga
+      // firmado en el idToken, así que un valor distinto aquí sería mentira.
+      readOnly: _conGoogle,
       decoration: InputDecoration(
         labelText: 'auth.email_label'.tr(),
         prefixIcon: const Icon(Icons.email_rounded),
+        helperText: _conGoogle ? 'auth.google_email_locked'.tr() : null,
+        suffixIcon: _conGoogle
+            ? const Padding(
+                padding: EdgeInsets.all(12),
+                child: GoogleLogo(size: 18),
+              )
+            : null,
       ),
       keyboardType: TextInputType.emailAddress,
       validator: (v) {

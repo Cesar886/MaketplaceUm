@@ -304,6 +304,70 @@ class ApiService {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  /// Llama a POST /api/auth/google con el idToken que emitió Google en el
+  /// dispositivo. El backend lo verifica contra las claves públicas de
+  /// Google y devuelve **la misma** respuesta que /auth/login (`token` +
+  /// `seller`), para que la app no tenga dos caminos distintos de "qué pasa
+  /// después de iniciar sesión".
+  ///
+  /// Tres desenlaces:
+  ///  - La cuenta existe (o [registro] venía puesto): devuelve token+seller.
+  ///  - No existe y no se mandó [registro]: lanza
+  ///    [GoogleRegistroRequeridoException] con el perfil de Google, para
+  ///    llevar al formulario de registro ya prellenado.
+  ///  - Cualquier otro rechazo del servidor: lanza [GoogleAuthException] con
+  ///    el código del backend (GOOGLE_NO_CONFIGURADO, GOOGLE_TOKEN_INVALIDO,
+  ///    GOOGLE_DOMINIO_NO_PERMITIDO…).
+  ///
+  /// [registro] son los datos que el idToken no puede traer y el registro de
+  /// este marketplace sí exige: tipo de cuenta, teléfono y métodos de pago.
+  static Future<Map<String, dynamic>> authGoogle({
+    required String idToken,
+    String? deviceId,
+    Map<String, dynamic>? registro,
+  }) async {
+    final res = await _client.post(
+      _uri('/auth/google'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'idToken': idToken,
+        if (deviceId != null) 'deviceId': deviceId,
+        if (registro != null) 'registro': registro,
+      }),
+    );
+
+    Map<String, dynamic> body;
+    try {
+      body = jsonDecode(res.body) as Map<String, dynamic>;
+    } catch (_) {
+      // Un 502 del proxy no trae JSON; sin esto el usuario vería una
+      // excepción de parseo en vez de un mensaje.
+      throw GoogleAuthException(
+        'HTTP_${res.statusCode}',
+        'errors.login_failed'.tr(),
+      );
+    }
+
+    if (res.statusCode == 200 || res.statusCode == 201) return body;
+
+    final codigo = body['error'] as String? ?? 'HTTP_${res.statusCode}';
+    if (codigo == 'GOOGLE_ACCOUNT_NOT_FOUND') {
+      final google = (body['google'] as Map?)?.cast<String, dynamic>() ?? {};
+      throw GoogleRegistroRequeridoException(
+        email: google['email'] as String? ?? '',
+        nombre: google['name'] as String? ?? '',
+        foto: google['picture'] as String?,
+      );
+    }
+    // `error` trae un código-máquina en las rutas de Google y la frase para
+    // el usuario va en `message` (mismo criterio que los 401 de auth.js);
+    // pero el resto de validaciones del registro mandan la frase en `error`.
+    throw GoogleAuthException(
+      codigo,
+      body['message'] as String? ?? codigo,
+    );
+  }
+
   // ─── Verificación de cuenta ─────────────────────────────
   //
   // El backend resuelve la verificación automáticamente (sin revisión
@@ -1677,4 +1741,46 @@ class ComentarioNoVerificadoException implements Exception {
 
   @override
   String toString() => message;
+}
+
+/// El backend rechazó el inicio de sesión con Google.
+///
+/// [codigo] es el valor de `error` que manda el servidor
+/// (GOOGLE_NO_CONFIGURADO, GOOGLE_TOKEN_INVALIDO, GOOGLE_EMAIL_NO_VERIFICADO,
+/// GOOGLE_DOMINIO_NO_PERMITIDO…), para que la UI pueda distinguir casos sin
+/// leer el texto.
+class GoogleAuthException implements Exception {
+  GoogleAuthException(this.codigo, this.mensaje);
+
+  final String codigo;
+  final String mensaje;
+
+  /// El servidor todavía no tiene pegados los Client ID de Google.
+  bool get faltaConfigurar => codigo == 'GOOGLE_NO_CONFIGURADO';
+
+  /// El idToken caducó o no era válido: hay que repetir el flujo de Google.
+  bool get tokenInvalido => codigo == 'GOOGLE_TOKEN_INVALIDO';
+
+  @override
+  String toString() => mensaje;
+}
+
+/// La cuenta de Google es válida pero todavía no existe en el marketplace.
+///
+/// No es un fallo: es el camino normal de "registrarse con Google". Trae lo
+/// que Google sí sabe del usuario para prellenar el formulario; el resto
+/// (tipo de cuenta, teléfono, métodos de pago) lo tiene que capturar él.
+class GoogleRegistroRequeridoException implements Exception {
+  GoogleRegistroRequeridoException({
+    required this.email,
+    required this.nombre,
+    this.foto,
+  });
+
+  final String email;
+  final String nombre;
+  final String? foto;
+
+  @override
+  String toString() => 'GoogleRegistroRequerido($email)';
 }

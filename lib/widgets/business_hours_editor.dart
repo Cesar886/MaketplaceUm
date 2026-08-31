@@ -2,6 +2,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
+import '../constants/dias_semana.dart';
 import '../models.dart';
 
 /// Selector de horario de operación por día ('0'=Lunes .. '6'=Domingo, mismo
@@ -23,16 +24,6 @@ class BusinessHoursEditor extends StatefulWidget {
 }
 
 class _BusinessHoursEditorState extends State<BusinessHoursEditor> {
-  static const _dayNames = [
-    'weekday_full.mon',
-    'weekday_full.tue',
-    'weekday_full.wed',
-    'weekday_full.thu',
-    'weekday_full.fri',
-    'weekday_full.sat',
-    'weekday_full.sun',
-  ];
-
   late final Map<int, BusinessHoursRange> _hours = Map.of(widget.initialHours);
 
   TimeOfDay _parseTime(String hhmm) {
@@ -67,7 +58,7 @@ class _BusinessHoursEditorState extends State<BusinessHoursEditor> {
       context: context,
       initialTime: _parseTime(current.open),
       helpText: 'hours.open_time_day'.tr(
-        namedArgs: {'day': _dayNames[day].tr()},
+        namedArgs: {'day': nombreDiaEnFrase(day)},
       ),
     );
     if (openResult == null || !mounted) return;
@@ -76,7 +67,7 @@ class _BusinessHoursEditorState extends State<BusinessHoursEditor> {
       context: context,
       initialTime: _parseTime(current.close),
       helpText: 'hours.close_time_day'.tr(
-        namedArgs: {'day': _dayNames[day].tr()},
+        namedArgs: {'day': nombreDiaEnFrase(day)},
       ),
     );
     if (closeResult == null || !mounted) return;
@@ -123,7 +114,7 @@ class _BusinessHoursEditorState extends State<BusinessHoursEditor> {
             final selected = _hours.containsKey(day);
             return FilterChip(
               label: Text(
-                _dayNames[day].substring(0, 3),
+                nombreCortoDia(day),
                 style: const TextStyle(fontSize: 12),
               ),
               selected: selected,
@@ -155,10 +146,13 @@ class _BusinessHoursEditorState extends State<BusinessHoursEditor> {
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(
                   children: [
+                    // Ancho fijo para que la columna de horas quede alineada
+                    // entre filas. Da de sobra para el día más largo en los
+                    // dos idiomas ('Miércoles', 'Wednesday') a 13 px.
                     SizedBox(
-                      width: 80,
+                      width: 96,
                       child: Text(
-                        _dayNames[day],
+                        nombreLargoDia(day),
                         style: const TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 13,

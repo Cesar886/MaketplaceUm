@@ -135,7 +135,14 @@
     "account": "Account",
     "type_student_short": "Student",
     "login_required": "Sign in to perform this action",
-    "have_account_action": "I already have an account"
+    "have_account_action": "I already have an account",
+    "or": "or",
+    "google_continue": "Continue with Google",
+    "google_signup": "Sign up with Google",
+    "google_unavailable": "Google sign-in is not available yet.",
+    "google_failed": "Couldn't continue with Google. Please try again.",
+    "google_registering_as": "You're signing up with {email}",
+    "google_email_locked": "Email from your Google account"
   },
   "validation": {
     "email_required": "Enter your email",
@@ -252,7 +259,18 @@
     "highlight_cta_subtitle": "From {price} for {duration}; a monthly plan is also available.",
     "duration_24h": "24h",
     "duration_days": "{days} days",
-    "up_to_discount": "Up to -{percent}% off"
+    "up_to_discount": "Up to -{percent}% off",
+    "categories_menu_subtitle": "Browse the marketplace by category",
+    "categories_menu_title": "All categories",
+    "categories_menu_clear": "See the whole marketplace",
+    "sidebar_account_section": "Account & settings",
+    "sidebar_categories_section": "Categories",
+    "sidebar_verify": "Verify your account",
+    "sidebar_verify_subtitle": "Unlock the verified badge",
+    "sidebar_theme": "Theme",
+    "sidebar_theme_dark": "Dark",
+    "sidebar_theme_light": "Light",
+    "sidebar_language": "Language"
   },
   "search": {
     "hint": "Book, electronics, service...",

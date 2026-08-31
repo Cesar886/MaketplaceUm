@@ -80,6 +80,7 @@ class _CartScreenState extends State<CartScreen> with AutoRefreshMixin {
           productId: product.id,
           sellerId: product.seller.id,
           product: product,
+          otherUser: ChatUser.deSeller(product.seller),
         ),
       ),
     );

@@ -203,13 +203,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ProfileBanner(
                         color: context.colors.primary,
                         fadeTo: context.colors.surface,
-                        extraFade: 16,
                         // Va suelto dentro de un Row (no envuelto en
                         // SizedBox(width: double.infinity) como el banner
                         // del perfil de vendedor), así que debe encogerse al
                         // ancho de la foto en vez de estirarse a todo el
                         // ancho de la tarjeta.
                         expand: false,
+                        // El child aquí es solo el avatar (círculo), no un
+                        // bloque con nombre/badges: recorte circular, sin
+                        // fade, para que el tinte no asome en las esquinas.
+                        circular: true,
                         child: Stack(
                           children: [
                             // El anillo va como borde de un contenedor y no

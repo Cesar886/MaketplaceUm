@@ -220,6 +220,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             productId: conv.productId,
                             // No se pasa sellerId — la conversación ya existe.
                             // ChatScreen solo necesita sellerId para crear una nueva.
+                            otherUser: conv.otherUser,
                           ),
                         ),
                       );

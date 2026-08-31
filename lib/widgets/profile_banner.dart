@@ -38,13 +38,15 @@ class ProfileBanner extends StatelessWidget {
     this.extraFade = 64,
     this.borderRadius = const BorderRadius.all(Radius.circular(18)),
     this.expand = true,
+    this.circular = false,
   });
 
   final Color color;
   final Color fadeTo;
   final Widget child;
 
-  /// Alto en px de la franja de desvanecido que sigue al contenido.
+  /// Alto en px de la franja de desvanecido que sigue al contenido. Sin
+  /// efecto si [circular] es true (ver más abajo).
   final double extraFade;
   final BorderRadius borderRadius;
 
@@ -58,9 +60,24 @@ class ProfileBanner extends StatelessWidget {
   /// de la fila en vez de solo el de la foto, y le quita espacio al resto.
   final bool expand;
 
+  /// Recorta el tinte como un círculo ceñido a [child] en vez del rectángulo
+  /// redondeado de [borderRadius], y no agrega la franja de desvanecido.
+  ///
+  /// Es para cuando [child] YA es una foto circular sola (el avatar del
+  /// perfil propio), no el bloque banner+nombre+badges de un perfil de
+  /// vendedor: con el recorte rectangular por defecto, las cuatro esquinas
+  /// del panel asomaban por fuera del círculo del avatar, y a 42% de alpha
+  /// con las esquinas redondeadas de por medio se leía como una sombra o
+  /// halo difuso pegado al borde de la foto — justo lo que este modo evita,
+  /// sin renunciar a que el tinte del acento siga detrás del avatar.
+  final bool circular;
+
   @override
   Widget build(BuildContext context) {
     final tint = color.withValues(alpha: 0.42);
+    if (circular) {
+      return ClipOval(child: ColoredBox(color: tint, child: child));
+    }
     final column = Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,

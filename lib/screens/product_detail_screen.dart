@@ -1044,6 +1044,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
           productId: product.id,
           sellerId: product.seller.id,
           product: product,
+          otherUser: ChatUser.deSeller(product.seller),
         ),
       ),
     );

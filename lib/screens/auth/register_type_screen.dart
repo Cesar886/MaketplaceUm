@@ -1,11 +1,21 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../app_theme.dart';
+import '../../config/google_auth_config.dart';
+import '../../providers/auth_provider.dart';
+import '../../widgets/google_sign_in_button.dart';
+import 'google_auth_flow.dart';
 import 'register_form_screen.dart';
 
 class RegisterTypeScreen extends StatelessWidget {
-  const RegisterTypeScreen({super.key});
+  const RegisterTypeScreen({super.key, this.google});
+
+  /// Cuando se llega aquí desde "Continuar con Google" con una cuenta que
+  /// todavía no existe: trae el idToken y el perfil para prellenar el
+  /// formulario. En el registro normal es null y nada cambia.
+  final GoogleRegistroPendiente? google;
 
   @override
   Widget build(BuildContext context) {
@@ -29,6 +39,10 @@ class RegisterTypeScreen extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                 ),
               ),
+              if (google != null) ...[
+                const SizedBox(height: 16),
+                _AvisoGoogle(email: google!.email),
+              ],
               const SizedBox(height: 24),
               Expanded(
                 child: ListView(
@@ -72,6 +86,21 @@ class RegisterTypeScreen extends StatelessWidget {
                   ],
                 ),
               ),
+              // ─── Registrarse con Google ─────────────────────
+              //
+              // Solo cuando NO se llegó aquí desde Google: si ya se
+              // autenticó, volver a ofrecerlo sería un bucle. El registro
+              // por correo de arriba no cambia.
+              if (google == null && GoogleAuthConfig.estaConfigurado) ...[
+                const SizedBox(height: 16),
+                const SeparadorODivider(),
+                const SizedBox(height: 14),
+                GoogleSignInButton(
+                  cargando: context.watch<AuthProvider>().isLoading,
+                  etiqueta: 'auth.google_signup'.tr(),
+                  onPressed: () => continuarConGoogle(context),
+                ),
+              ],
             ],
           ),
         ),
@@ -82,7 +111,7 @@ class RegisterTypeScreen extends StatelessWidget {
   void _goToForm(BuildContext context, String type) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => RegisterFormScreen(userType: type),
+        builder: (_) => RegisterFormScreen(userType: type, google: google),
       ),
     );
   }
@@ -184,6 +213,42 @@ class _TypeCard extends StatelessWidget {
             Icon(Icons.chevron_right_rounded, color: context.colors.muted),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Recordatorio de con qué cuenta de Google se está registrando, para que
+/// nadie complete el formulario creyendo que va a otro correo.
+class _AvisoGoogle extends StatelessWidget {
+  const _AvisoGoogle({required this.email});
+
+  final String email;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: context.colors.border),
+      ),
+      child: Row(
+        children: [
+          const GoogleLogo(size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'auth.google_registering_as'.tr(namedArgs: {'email': email}),
+              style: TextStyle(
+                color: context.colors.muted,
+                fontWeight: FontWeight.w600,
+                fontSize: 12.5,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

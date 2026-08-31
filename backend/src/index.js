@@ -32,7 +32,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
 const bcrypt = require('bcryptjs');
-const { generateToken, generateAnonToken, requireAuth, verificarToken } = require('./auth');
+const { generateToken, generateAnonToken, requireAuth, verificarToken, esCuentaDeGoogle } = require('./auth');
 const rateLimit = require('express-rate-limit');
 const { crearRegistroPresencia } = require('./presence');
 const { sellers, saveData, registerSeller, updateSellerField } = require('./data');
@@ -56,6 +56,9 @@ const routes = [
   require('./routes/search'),
   require('./routes/clientErrors'),
   require('./routes/privacy'),
+  // Iniciar sesión / registrarse con Google. Responde 503 mientras falten
+  // los Client ID en .env; el login con correo y contraseña no depende de él.
+  require('./routes/authGoogle'),
   // Pagos con Mercado Pago (split payments). Aislado en su propia carpeta
   // para que sea fácil de auditar por separado; no arranca nada al cargarse
   // y responde 503 mientras falten credenciales en .env.
@@ -267,18 +270,10 @@ for (const route of routes) {
 
 // ─── Auth ──────────────────────────────────────────────────
 
-/**
- * Calcula iniciales a partir de un nombre.
- * Ej: "Daniel Perez" → "DP", "SanksUm" → "SU"
- */
-function computeInitials(name) {
-  if (!name) return '??';
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) {
-    return parts[0].slice(0, 2).toUpperCase();
-  }
-  return parts.map(w => w[0]).join('').slice(0, 2).toUpperCase();
-}
+// Iniciales del avatar por defecto. La implementación vive en
+// utils/iniciales.js porque ahora también la usa el alta de cuentas con
+// Google, y dos copias acabarían calculando iniciales distintas.
+const { calcularIniciales: computeInitials } = require('./utils/iniciales');
 
 // Límite de intentos fallidos de login: tras LOGIN_MAX_ATTEMPTS seguidos,
 // la cuenta se bloquea LOGIN_LOCKOUT_MINUTES para frenar fuerza bruta.
@@ -312,6 +307,19 @@ app.post('/api/auth/login', (req, res) => {
   const valid = row && row.password_hash && bcrypt.compareSync(password, row.password_hash);
 
   if (!valid) {
+    // Una cuenta de Google no tiene contraseña que comparar, así que esto no
+    // es un intento fallido: no se cuenta contra el bloqueo por fuerza bruta
+    // (si no, tres toques al botón equivocado dejarían la cuenta bloqueada).
+    // Decir el motivo aquí no filtra qué correos existen — quien pregunta ya
+    // conoce el correo — y sin él el usuario reintentaría una contraseña que
+    // nunca existió.
+    if (esCuentaDeGoogle(row)) {
+      return res.status(409).json({
+        error: 'GOOGLE_ACCOUNT',
+        message: 'Esa cuenta usa Google. Entra con el botón "Continuar con Google".',
+      });
+    }
+
     // Solo se cuentan intentos sobre cuentas que existen: no hay nada que
     // bloquear para un email que no está registrado.
     if (row) {
@@ -399,6 +407,15 @@ app.post('/api/auth/register', (req, res) => {
       if (!bcrypt.compareSync(password, existingRow.password_hash)) {
         return res.status(409).json({ error: 'Ya existe una cuenta con este correo.' });
       }
+    } else if (esCuentaDeGoogle(existingRow)) {
+      // Cuenta creada con Google: no tiene password_hash, pero NO es una
+      // cuenta legacy a la que se le pueda poner una. Sin esta rama, saber
+      // el correo de alguien que entró con Google bastaría para asignarle
+      // una contraseña aquí y quedarse con su cuenta.
+      return res.status(409).json({
+        error: 'GOOGLE_ACCOUNT',
+        message: 'Esa cuenta usa Google. Entra con el botón "Continuar con Google".',
+      });
     } else {
       // Cuenta legacy: se creó antes de que el backend guardara password
       // (bug de auth anterior). Se backfillea con el password recién dado.
