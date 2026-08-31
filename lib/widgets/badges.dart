@@ -190,13 +190,22 @@ class InsigniaVerificada extends StatelessWidget {
   }
 }
 
-/// Insignia verde "Socio Fundador": la otorga a mano el admin
+/// Insignia "Socio Fundador": la otorga a mano el admin
 /// (`scripts/otorgar-socio-fundador.js`), no la gana ninguna cuenta con datos
-/// o trámites propios — a diferencia de [InsigniaVerificada]. Por eso tiene
-/// su propio color e ícono en vez de compartir el azul de verificación: son
-/// dos cosas distintas y no deben leerse como el mismo sello con otro tinte.
+/// o trámites propios — a diferencia de [InsigniaVerificada].
+///
+/// Usa el MISMO ícono de palomita que la verificación (`verified_rounded`),
+/// solo que en verde en vez de azul, y REEMPLAZA a esa insignia en vez de
+/// mostrarse junto a ella: una cuenta Socio Fundador ya está verificada por
+/// definición (ver [Seller.socioFundador]), así que dos palomitas una al
+/// lado de la otra dirían lo mismo dos veces. Los call sites deciden entre
+/// esta y [InsigniaVerificada] por `seller.socioFundador`, nunca las dos.
 class InsigniaSocioFundador extends StatelessWidget {
-  const InsigniaSocioFundador({super.key, this.compact = false, this.size = 16});
+  const InsigniaSocioFundador({
+    super.key,
+    this.compact = false,
+    this.size = 16,
+  });
 
   final bool compact;
 
@@ -213,11 +222,11 @@ class InsigniaSocioFundador extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (compact) {
-      return Icon(Icons.workspace_premium_rounded, size: size, color: _verde);
+      return Icon(Icons.verified_rounded, size: size, color: _verde);
     }
 
     return _Badge(
-      icon: Icons.workspace_premium_rounded,
+      icon: Icons.verified_rounded,
       label: 'Socio Fundador',
       foreground: _verde,
       background: _verde.withValues(alpha: 0.10),
@@ -436,7 +445,11 @@ class RachaBadge extends StatelessWidget {
 /// insignias son métricas del mercado (verificación, constancia, rapidez) y
 /// esta no lo es. Que desentone un poco es la intención.
 class InsigniaEnigma extends StatelessWidget {
-  const InsigniaEnigma({super.key, required this.posicion, this.compact = false});
+  const InsigniaEnigma({
+    super.key,
+    required this.posicion,
+    this.compact = false,
+  });
 
   final int posicion;
   final bool compact;

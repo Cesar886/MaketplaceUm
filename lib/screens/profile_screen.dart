@@ -345,10 +345,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               spacing: 8,
                               runSpacing: 8,
                               children: [
-                                if (auth.isVerified)
-                                  InsigniaVerificada(tipo: auth.accountType),
+                                // Socio Fundador reemplaza la palomita azul
+                                // por la verde: son la misma palomita, nunca
+                                // las dos juntas.
                                 if (_seller?.socioFundador ?? false)
-                                  const InsigniaSocioFundador(),
+                                  const InsigniaSocioFundador()
+                                else if (auth.isVerified)
+                                  InsigniaVerificada(tipo: auth.accountType),
                                 if (_seller?.enigmaPosicion != null)
                                   InsigniaEnigma(
                                     posicion: _seller!.enigmaPosicion!,
