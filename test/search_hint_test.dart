@@ -35,18 +35,53 @@ void main() {
 
   setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
 
+  /// Búsquedas que llegaron a POST /api/search/track durante el test.
+  final busquedasRegistradas = <Map<String, dynamic>>[];
+
+  /// Cuántas veces se pidió GET /api/search/trending.
+  var peticionesTrending = 0;
+
   /// [trending] null simula el endpoint caído; una lista vacía simula el
   /// "no hay data suficiente todavía" que el backend puede devolver.
   ///
   /// Con [trendingCuelga] la petición nunca resuelve: es la única forma de
   /// congelar el estado "todavía cargando", porque un MockClient responde
   /// tan rápido que en el primer pump las tendencias ya llegaron.
-  void montarBackend({List<String>? trending, bool trendingCuelga = false}) {
+  ///
+  /// [trendingPorLlamada] sirve para simular que el ranking CAMBIA entre dos
+  /// lecturas: devuelve la lista i-ésima en la i-ésima petición, y repite la
+  /// última cuando se acaban.
+  void montarBackend({
+    List<String>? trending,
+    bool trendingCuelga = false,
+    List<List<String>>? trendingPorLlamada,
+  }) {
+    var llamadasTrending = 0;
     ApiService.clienteDePrueba = MockClient((request) async {
       final ruta = request.url.path;
 
+      if (ruta.endsWith('/search/track')) {
+        busquedasRegistradas.add(
+          jsonDecode(request.body) as Map<String, dynamic>,
+        );
+        return http.Response('', 204);
+      }
+
       if (ruta.endsWith('/search/trending')) {
+        peticionesTrending++;
         if (trendingCuelga) return Completer<http.Response>().future;
+        if (trendingPorLlamada != null) {
+          final i = llamadasTrending++;
+          final lista = trendingPorLlamada[i.clamp(
+            0,
+            trendingPorLlamada.length - 1,
+          )];
+          return http.Response(
+            jsonEncode({'terms': lista}),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }
         if (trending == null) return http.Response('boom', 500);
         return http.Response(
           jsonEncode({'terms': trending}),
@@ -70,7 +105,11 @@ void main() {
     });
   }
 
-  tearDown(ApiService.restaurarCliente);
+  tearDown(() {
+    busquedasRegistradas.clear();
+    peticionesTrending = 0;
+    ApiService.restaurarCliente();
+  });
 
   /// El hint que está pintado ahora mismo en la barra de búsqueda.
   String hintActual(WidgetTester tester) {
@@ -158,6 +197,105 @@ void main() {
       // un prefijo del término — capitalizado, como lo pinta la pantalla.
       predicate<String>((s) => 'Audífonos'.startsWith(s) && s.isNotEmpty),
       reason: 'el hint no está tecleando el término de tendencia',
+    );
+  });
+
+  // ─── El ranking cambia mientras la pantalla está abierta ──────
+  //
+  // Antes las tendencias se pedían UNA sola vez, así que el placeholder se
+  // quedaba congelado hasta reabrir la app. Ahora se re-piden, y eso abre un
+  // riesgo nuevo: la lista puede cambiar a media animación de tecleo.
+
+  testWidgets('un término más corto a media animación no rompe el hint', (
+    tester,
+  ) async {
+    // El caso peligroso: se está tecleando una palabra larga y llega una
+    // lista con una corta. Si el contador de letras no se reiniciara junto
+    // con la lista, el substring se saldría del rango y la pantalla se caería.
+    montarBackend(
+      trendingPorLlamada: const [
+        ['electrocardiografo'],
+        ['pan'],
+      ],
+    );
+    await montar(tester);
+
+    // Dejar avanzar el tecleo bastante más allá de la longitud de 'pan'.
+    await tester.pump(const Duration(milliseconds: 900));
+    expect(hintActual(tester).replaceAll('▏', '').length, greaterThan(3));
+
+    // El auto-refresh de la pantalla vuelve a pedir las tendencias.
+    await tester.pump(const Duration(seconds: 31));
+    await tester.pump();
+
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: 'cambiar la lista a media animación tiró una excepción',
+    );
+
+    // Y ahora teclea el término nuevo desde cero, no un resto del anterior.
+    await tester.pump(const Duration(milliseconds: 200));
+    final hint = hintActual(tester).replaceAll('▏', '');
+    expect(
+      'Pan'.startsWith(hint),
+      isTrue,
+      reason: 'el hint quedó tecleando el término viejo: "$hint"',
+    );
+  });
+
+  testWidgets('la pantalla vuelve a pedir las tendencias sola', (tester) async {
+    // Este es el bug de origen: se pedían una sola vez al montar, así que el
+    // placeholder se quedaba con el ranking del momento en que se abrió la
+    // pantalla por más que el backend ya tuviera otro.
+    montarBackend(trending: const ['audífonos']);
+    await montar(tester);
+
+    final alMontar = peticionesTrending;
+    expect(alMontar, greaterThanOrEqualTo(1));
+
+    await tester.pump(const Duration(seconds: 31));
+    await tester.pump();
+
+    expect(
+      peticionesTrending,
+      greaterThan(alMontar),
+      reason: 'las tendencias no se volvieron a pedir: el hint se congela',
+    );
+  });
+
+  testWidgets('buscar registra el término y vuelve a pedir las tendencias', (
+    tester,
+  ) async {
+    // Es lo que hace que el usuario vea su propia búsqueda entrar al
+    // placeholder en vez de esperar al siguiente refresco.
+    montarBackend(
+      trendingPorLlamada: const [
+        ['libro'],
+        ['bicicleta'],
+      ],
+    );
+    await montar(tester);
+
+    await tester.enterText(find.byType(TextField).first, 'bicicleta');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pump();
+    await tester.pump();
+
+    expect(busquedasRegistradas, hasLength(1));
+    expect(busquedasRegistradas.single['query'], 'bicicleta');
+    expect(
+      busquedasRegistradas.single['deviceId'],
+      isNotNull,
+      reason: 'sin deviceId el backend no puede contar personas distintas',
+    );
+
+    await tester.pump(const Duration(milliseconds: 200));
+    final hint = hintActual(tester).replaceAll('▏', '');
+    expect(
+      'Bicicleta'.startsWith(hint) && hint.isNotEmpty,
+      isTrue,
+      reason: 'el placeholder no se actualizó tras buscar: "$hint"',
     );
   });
 }

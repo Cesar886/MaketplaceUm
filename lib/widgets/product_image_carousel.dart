@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -156,38 +157,41 @@ class _ZoomableProductImageState extends State<_ZoomableProductImage> {
         minScale: 1,
         maxScale: 4,
         onInteractionEnd: _handleInteractionEnd,
-        // `cacheWidth` acotado al ancho real de pantalla: sin él, Flutter
+        // `memCacheWidth` acotado al ancho real de pantalla: sin él se
         // decodifica el bitmap a la resolución nativa del archivo aunque acá
         // se vaya a dibujar a lo mucho el ancho del teléfono — con fotos de
-        // varios megapixeles eso es el grueso del tiempo de "carga". Mismo
-        // criterio que [_RemoteProductImage] en mock_product_image.dart.
+        // varios megapixeles eso es el grueso del tiempo de "carga". No
+        // afecta la clave del caché en disco, así que no importa que este
+        // ancho sea distinto al que pide la celda del grid en el home: la
+        // misma foto sigue compartiendo un solo archivo cacheado entre
+        // pantallas. Mismo criterio que [_RemoteProductImage] en
+        // mock_product_image.dart, que es donde se explica por qué
+        // `CachedNetworkImage` y no `Image.network`.
         child: LayoutBuilder(
           builder: (context, constraints) {
             final ratio = MediaQuery.devicePixelRatioOf(context);
-            final cacheWidth = constraints.maxWidth.isFinite
+            final memCacheWidth = constraints.maxWidth.isFinite
                 ? (constraints.maxWidth * ratio).round()
                 : null;
 
-            return Image.network(
-              widget.url,
+            return CachedNetworkImage(
+              imageUrl: widget.url,
               fit: BoxFit.cover,
               width: double.infinity,
               height: double.infinity,
-              gaplessPlayback: true,
-              cacheWidth: cacheWidth,
-              errorBuilder: (_, _, _) => CategoryImagePlaceholder(
+              memCacheWidth: memCacheWidth,
+              fadeInDuration: Duration.zero,
+              fadeOutDuration: Duration.zero,
+              errorWidget: (_, _, _) => CategoryImagePlaceholder(
                 product: widget.product,
                 borderRadius: BorderRadius.zero,
               ),
-              loadingBuilder: (_, child, progress) {
-                if (progress == null) return child;
-                return Container(
-                  color: context.colors.surfaceMuted,
-                  child: const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                );
-              },
+              placeholder: (_, _) => Container(
+                color: context.colors.surfaceMuted,
+                child: const Center(
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
             );
           },
         ),

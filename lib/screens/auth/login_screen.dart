@@ -9,6 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../config/google_auth_config.dart';
 import '../../widgets/app_logo.dart';
 import '../../widgets/google_sign_in_button.dart';
+import '../../main.dart' show mainShellKey;
 import '../main_shell.dart';
 import 'google_auth_flow.dart';
 import 'register_type_screen.dart';
@@ -125,7 +126,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 }
                                 Navigator.of(context).pushAndRemoveUntil(
                                   MaterialPageRoute<void>(
-                                    builder: (_) => const MainShell(),
+                                    builder: (_) => MainShell(key: mainShellKey),
                                   ),
                                   (_) => false,
                                 );

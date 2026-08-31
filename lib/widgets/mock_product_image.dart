@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
@@ -81,33 +82,44 @@ class MockProductImage extends StatelessWidget {
   }
 }
 
-/// Foto remota de producto con dos garantías que `Image.network` pelado no
-/// da: que el spinner termina, y que la imagen no se decodifica más grande
-/// de lo que se va a dibujar.
+/// Foto remota de producto con tres garantías que `Image.network` pelado no
+/// da: que el spinner termina, que la imagen no se decodifica más grande de
+/// lo que se va a dibujar, y que la misma foto no se vuelve a bajar de la
+/// red cada vez que aparece en una pantalla distinta.
 ///
 /// **Por qué el timeout.** `Image.network` no tiene ninguno. Cuando el
 /// servidor entrega un archivo pesado a ~20 KB/s, la respuesta es un 200 OK
-/// perfectamente válido que tarda un minuto en completarse: `errorBuilder`
-/// nunca se dispara — no hay error — y `loadingBuilder` se queda dibujando
-/// el spinner todo ese tiempo. El placeholder de categoría existía y estaba
+/// perfectamente válido que tarda un minuto en completarse: `errorWidget`
+/// nunca se dispara — no hay error — y el placeholder se queda dibujando el
+/// spinner todo ese tiempo. El placeholder de categoría existía y estaba
 /// bien escrito, pero era inalcanzable justo en el caso en el que hacía
 /// falta. Pasado [_timeout] se abandona la carga y se dibuja el fallback,
 /// que es una respuesta honesta ("no pudimos traer la foto") en vez de un
 /// spinner indefinido.
 ///
-/// El timeout acota el ESTADO DE UI, no la conexión: Flutter no expone forma
-/// de cancelar la descarga que `NetworkImage` ya arrancó, así que el socket
-/// sigue su curso en segundo plano y, si termina, la imagen queda en el
-/// caché de `ImageCache` para la próxima vez que se pida esa URL. Lo que se
-/// corrige aquí es que la tarjeta deje de mentirle a quien la mira.
+/// El timeout acota el ESTADO DE UI, no la conexión: no hay forma de
+/// cancelar la descarga que ya arrancó, así que el socket sigue su curso en
+/// segundo plano y, si termina, la imagen queda cacheada para la próxima vez
+/// que se pida esa URL. Lo que se corrige aquí es que la tarjeta deje de
+/// mentirle a quien la mira.
 ///
-/// **Por qué cacheWidth.** Sin él, Flutter decodifica el bitmap a resolución
-/// nativa del archivo y lo guarda así en memoria: una foto de 1280 px
-/// decodificada para una tarjeta de 180 px gasta ~50x los pixeles que va a
-/// dibujar. El ancho sale del `LayoutBuilder` (el ancho real de la celda en
-/// este call site) por el `devicePixelRatio` del dispositivo, así que cada
-/// sitio pide exactamente lo que dibuja sin tener que pasarle un número a
-/// mano a cada uno.
+/// **Por qué `CachedNetworkImage` y no `Image.network`.** `Image.network`
+/// con `cacheWidth` guarda el bitmap decodificado en el `ImageCache` de
+/// Flutter bajo una clave que incluye ese ancho — y la celda del grid del
+/// home pide un ancho distinto al del carrusel del detalle, así que la
+/// MISMA foto generaba dos entradas de caché distintas y se releía por red
+/// en cada pantalla nueva (y de vuelta, si la primera ya había sido
+/// desalojada). `CachedNetworkImage` cachea en disco por URL sola, sin
+/// depender del tamaño con el que se pidió decodificar, así que home →
+/// detalle → home reutiliza siempre el mismo archivo.
+///
+/// **Por qué `memCacheWidth`.** Sin él, se decodifica el bitmap a resolución
+/// nativa del archivo: una foto de 1280 px decodificada para una tarjeta de
+/// 180 px gasta ~50x los pixeles que va a dibujar. El ancho sale del
+/// `LayoutBuilder` (el ancho real de la celda en este call site) por el
+/// `devicePixelRatio` del dispositivo, así que cada sitio pide exactamente
+/// lo que dibuja sin tener que pasarle un número a mano a cada uno. Esto
+/// solo afecta al bitmap en memoria, no a la clave del caché en disco.
 class _RemoteProductImage extends StatefulWidget {
   const _RemoteProductImage({
     required this.url,
@@ -171,38 +183,46 @@ class _RemoteProductImageState extends State<_RemoteProductImage> {
         final ratio = MediaQuery.devicePixelRatioOf(context);
         // Un ancho no acotado (celda dentro de un scroll horizontal sin
         // tamaño fijo) no da una cifra con la que pedir decodificación; ahí
-        // se deja decidir a Flutter en vez de inventar un número.
-        final cacheWidth = constraints.maxWidth.isFinite
+        // se deja decidir al paquete en vez de inventar un número.
+        final memCacheWidth = constraints.maxWidth.isFinite
             ? (constraints.maxWidth * ratio).round()
             : null;
 
-        return Image.network(
-          widget.url,
+        return CachedNetworkImage(
+          imageUrl: widget.url,
           height: widget.height,
           width: double.infinity,
           fit: BoxFit.cover,
-          gaplessPlayback: true,
-          cacheWidth: cacheWidth,
-          errorBuilder: (_, _, _) => widget.fallback,
-          frameBuilder: (_, child, frame, wasSynchronouslyLoaded) {
-            // Hay pixeles en pantalla (o venían del caché): la carga terminó
-            // y el timeout ya no tiene nada que vigilar. Cancelar un Timer no
-            // toca el árbol, así que es seguro hacerlo durante el build.
-            if (frame != null || wasSynchronouslyLoaded) {
-              _temporizador?.cancel();
-            }
-            return child;
-          },
-          loadingBuilder: (_, child, progress) {
-            if (progress == null) return child;
-            return Container(
+          memCacheWidth: memCacheWidth,
+          fadeInDuration: Duration.zero,
+          fadeOutDuration: Duration.zero,
+          errorWidget: (_, _, _) => widget.fallback,
+          imageBuilder: (_, imageProvider) {
+            // Hay pixeles listos (de red o de caché): la carga terminó y el
+            // timeout ya no tiene nada que vigilar. Sin este cancel, a los 20
+            // segundos el `_agotado` reemplazaría por el placeholder una foto
+            // que ya se está viendo.
+            _temporizador?.cancel();
+            // `fit`/`width`/`height` van repetidos aquí a propósito: el
+            // adaptador de cached_network_image (`_octoImageBuilder`)
+            // DESCARTA el widget que OctoImage ya había construido con esas
+            // propiedades y llama a este builder con el ImageProvider crudo.
+            // Sin repetirlas, la foto se dibuja sin recortar y las tarjetas
+            // del grid quedan con la imagen encogida dentro de la celda.
+            return Image(
+              image: imageProvider,
               height: widget.height,
-              color: context.colors.surfaceMuted,
-              child: const Center(
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
+              width: double.infinity,
+              fit: BoxFit.cover,
             );
           },
+          placeholder: (_, _) => Container(
+            height: widget.height,
+            color: context.colors.surfaceMuted,
+            child: const Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
         );
       },
     );

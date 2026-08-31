@@ -5,6 +5,7 @@ const { products, sellers, categories, saveData } = require('../data');
 const { requireAuth } = require('../auth');
 const db = require('../database');
 const { sendPush } = require('../push');
+const { encolarProducto } = require('../notifications/retargeting');
 const { validateLocation, validatePaymentMethods } = require('../validation/sellerProfile');
 const {
   validarAtributosCategoria,
@@ -19,6 +20,32 @@ const COOLDOWN_HOURS = 72;
 // un carrusel horizontal: pasado cierto punto nadie sigue deslizando, y cada
 // producto extra es peso en la misma respuesta que el detalle.
 const RELACIONADOS_MAX = 10;
+
+// Pisos de longitud del texto que escribe el vendedor. El título y la
+// descripción no son solo UI de la app: son literalmente el `og:title` y el
+// `og:description` de la vista previa que se dibuja cuando alguien comparte
+// el link del producto en WhatsApp (ver `website/app/producto/[id]/page.tsx`).
+// Exigir solo "campo no vacío" dejaba entrar títulos como "Jajs", y con eso
+// el preview se lee como un link basura al lado de uno de Mercado Libre.
+// El mismo piso está en el formulario de la app
+// (`lib/screens/publish_product_screen.dart`); acá es donde se hace cumplir,
+// porque la validación del cliente se puede saltar.
+const MINIMO_TITULO = 10;
+const MINIMO_DESCRIPCION = 20;
+
+/**
+ * Valida título y descripción contra los pisos de longitud.
+ * Devuelve `{ error }` con un mensaje presentable, o `{}` si están bien.
+ */
+function validarTextos(title, description) {
+  if (String(title).trim().length < MINIMO_TITULO) {
+    return { error: `El título debe tener al menos ${MINIMO_TITULO} caracteres y describir qué vendes` };
+  }
+  if (String(description).trim().length < MINIMO_DESCRIPCION) {
+    return { error: `La descripción debe tener al menos ${MINIMO_DESCRIPCION} caracteres` };
+  }
+  return {};
+}
 
 // ─── Helper para subir imágenes: usa multer directamente ────
 const multer = require('multer');
@@ -387,7 +414,7 @@ function register(app) {
       // GET /api/products/:id lee del array `products` en memoria (no de
       // SQLite directo), así que hay que reflejar el incremento ahí también
       // o quedaría desactualizado hasta el próximo reinicio del servidor.
-      product.views = (product.views || 0) + 1;
+      product.views = (product.views || 0) + 3;
       db.trackCategoryEngagement(product.category, 'product_view');
     }
     res.status(204).end();
@@ -409,6 +436,8 @@ function register(app) {
       if (!title || !price || !category || !description) {
         return res.status(400).json({ error: 'Faltan campos requeridos (title, price, category, description)' });
       }
+      const textos = validarTextos(title, description);
+      if (textos.error) return res.status(400).json({ error: textos.error });
 
       const sellerId = req.user.id;
       const productId = `p${Date.now()}`;
@@ -520,33 +549,15 @@ function register(app) {
 
           db.trackCategoryEngagement(category, 'publish');
 
-          // ─── Notificar a usuarios interesados en esta categoría ──
-          const interestedUsers = db.getUsersInterestedInCategory(category);
-          if (interestedUsers.length > 0) {
-            // Filtrar al propio vendedor
-            const notifyUsers = interestedUsers.filter(u => u !== sellerId);
-            const catName = categoryObj?.name || category;
-
-            for (const targetUserId of notifyUsers) {
-              const notifId = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-              db.createNotification(
-                notifId,
-                targetUserId,
-                'new_product',
-                `Nuevo producto en ${catName}`,
-                `${title} — $${priceNum}`,
-                { productId, category }
-              );
-            }
-
-            // Enviar push masivo a todos los interesados
-            sendPush(
-              notifyUsers,
-              `Nuevo producto en ${catName}`,
-              `${title} — $${priceNum}`,
-              { productId, category, type: 'new_product' }
-            );
-          }
+          // ─── Retargeting por interés ─────────────────────────────
+          // Antes esto notificaba aquí mismo, en el acto y sin ningún
+          // límite, a TODOS los seguidores de la categoría. Ahora solo se
+          // encola: quién lo recibe y cuándo lo deciden el scoring de
+          // interés y las reglas de frecuencia en notifications/retargeting,
+          // que además agrupa varias publicaciones seguidas en un solo
+          // aviso. Los seguidores explícitos de la categoría siguen
+          // entrando, como candidatos permanentes.
+          encolarProducto(productId);
 
           res.status(201).json(attachRelations([newProduct])[0]);
         })
@@ -587,6 +598,8 @@ function register(app) {
         if (!title || !category || !description) {
           return res.status(400).json({ error: 'Faltan campos requeridos (title, category, description)' });
         }
+        const textos = validarTextos(title, description);
+        if (textos.error) return res.status(400).json({ error: textos.error });
         if (!categories.some(c => c.id === category)) {
           return res.status(400).json({ error: 'Categoría inválida' });
         }

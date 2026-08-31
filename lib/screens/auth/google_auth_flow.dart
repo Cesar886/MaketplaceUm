@@ -7,6 +7,7 @@ import '../../providers/accent_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/google_sign_in_service.dart';
+import '../../main.dart' show mainShellKey;
 import '../main_shell.dart';
 import 'register_type_screen.dart';
 
@@ -68,7 +69,7 @@ Future<void> continuarConGoogle(BuildContext context) async {
       final sellerId = auth.backendSellerId;
       if (sellerId != null) accent.sincronizarDesdeBackend(sellerId);
       navegador.pushAndRemoveUntil(
-        MaterialPageRoute<void>(builder: (_) => const MainShell()),
+        MaterialPageRoute<void>(builder: (_) => MainShell(key: mainShellKey)),
         (_) => false,
       );
 

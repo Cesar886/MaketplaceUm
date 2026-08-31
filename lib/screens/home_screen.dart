@@ -63,6 +63,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   late final AnimationController _staggerController;
 
+  /// Cada cuánto se re-piden los términos en tendencia del placeholder.
+  ///
+  /// Va aparte del refresco del feed a propósito: es un solo request diminuto
+  /// (una lista de 10 strings), mientras que recargar el home entero re-barajaría
+  /// el feed bajo el dedo del usuario. Antes solo se pedían al montar la
+  /// pantalla, así que el placeholder se congelaba hasta reabrir la app.
+  static const _trendingRefreshInterval = Duration(minutes: 2);
+
+  Timer? _trendingTimer;
+  AppLifecycleListener? _lifecycleListener;
+
   @override
   void initState() {
     super.initState();
@@ -71,12 +82,33 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       duration: AppAnimations.slow + AppAnimations.staggerDelay * 14,
     );
     _loadData();
+    // También al volver de segundo plano: es el momento en que la lista tiene
+    // más probabilidad de estar vieja, y el usuario está mirando.
+    _lifecycleListener = AppLifecycleListener(onResume: _loadTrending);
+    _trendingTimer = Timer.periodic(_trendingRefreshInterval, (_) {
+      if (mounted) _loadTrending();
+    });
   }
 
   @override
   void dispose() {
+    _trendingTimer?.cancel();
+    _lifecycleListener?.dispose();
     _staggerController.dispose();
     super.dispose();
+  }
+
+  /// Refresca solo los términos en tendencia. No bloqueante y silencioso: sin
+  /// ellos el buscador cae al hint estático, que nunca es motivo de error
+  /// visible.
+  Future<void> _loadTrending() async {
+    try {
+      final trending = await ApiService.getTrendingSearches();
+      if (!mounted || listEquals(trending, _trendingSearches)) return;
+      setState(() => _trendingSearches = trending);
+    } catch (_) {
+      // Si falla, se conserva la lista anterior.
+    }
   }
 
   double _cardAnimValue(int index) {
@@ -144,15 +176,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         // Si falla, seguimos con lista vacía
       }
 
-      // Términos de búsqueda en tendencia, para el placeholder rotativo del
-      // buscador (no bloqueante: sin ellos, el buscador cae al hint estático).
-      List<String> loadedTrendingSearches = [];
-      try {
-        loadedTrendingSearches = await ApiService.getTrendingSearches();
-      } catch (_) {
-        // Si falla, seguimos con lista vacía
-      }
-
       // Verificar si el usuario ha publicado artículos.
       //
       // TODO: Destacar publicaciones pendiente para próxima actualización -
@@ -176,15 +199,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _highlightPlans = loadedHighlightPlans;
         _sellers = loadedSellers;
         _wantedPosts = loadedWantedPosts;
-        _trendingSearches = loadedTrendingSearches;
         _hasPublished = hasPublished;
         _loading = false;
         _error = null;
         _feedSeed = DateTime.now().millisecondsSinceEpoch;
       });
       _staggerController.forward(from: 0);
-      // Cargar contador de favoritos (no bloqueante)
+      // Ambos no bloqueantes: son adornos del home, no el feed.
       _loadFavoriteCount();
+      _loadTrending();
     } catch (e, stack) {
       if (!mounted) return;
       // El detalle técnico (ej. "ClientException: Connection closed...") ya

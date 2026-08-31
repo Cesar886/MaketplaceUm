@@ -10,6 +10,7 @@ import 'providers/accent_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/main_shell.dart';
 import 'screens/splash_screen.dart';
 import 'services/api_service.dart';
 import 'services/deep_link_service.dart';
@@ -20,6 +21,14 @@ import 'services/push_service.dart';
 /// la capa de red, que no tiene un BuildContext a mano.
 final navigatorKey = GlobalKey<NavigatorState>();
 final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
+/// [MainShell] se abre siempre como ruta propia (nunca embebido en otro
+/// widget), así que las pantallas empujadas ENCIMA de él —como
+/// `MyListingsScreen`— son rutas hermanas en el mismo Navigator, no
+/// descendientes en el árbol de widgets: `findAncestorStateOfType` no puede
+/// alcanzar su State desde ahí. Esta llave sí, sin importar desde qué ruta se
+/// pida.
+final mainShellKey = GlobalKey<MainShellState>();
 
 /// El backend respondió `SESSION_INVALIDATED` en algún endpoint: el JWT
 /// guardado se firmó con un secreto que ya no es el vigente y no hay forma de

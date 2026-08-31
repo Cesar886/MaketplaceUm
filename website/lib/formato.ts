@@ -140,11 +140,36 @@ export function textoBusqueda(busqueda: BusquedaPublica): {
     : { encabezado: 'Busca comprar', etiquetaPresupuesto: 'Dispuesto a pagar' };
 }
 
+/**
+ * Presupuesto de caracteres de la vista previa, medido contra lo que WhatsApp
+ * llega a dibujar: pasado eso el texto no se pierde, se corta con puntos
+ * suspensivos a mitad de palabra, que es justo lo que hace ver improvisado un
+ * link al lado de uno de Mercado Libre.
+ */
+export const MAXIMO_TITULO = 65;
+export const MAXIMO_DESCRIPCION = 150;
+
+/**
+ * ¿Este texto dice algo, o es relleno?
+ *
+ * Un título como "Jajs" pasa cualquier validación de "campo obligatorio" y
+ * deja la vista previa indistinguible de un link basura. Diez caracteres es
+ * el piso por debajo del cual conviene completar con la categoría en vez de
+ * publicar el texto tal cual.
+ */
+export function esTextoUtil(texto: string | null | undefined): boolean {
+  return (texto ?? '').replace(/\s+/g, ' ').trim().length >= 10;
+}
+
 /** Recorta la descripción para `og:description` sin partir una palabra. */
-export function resumen(texto: string, maximo = 150): string {
+export function resumen(texto: string, maximo = MAXIMO_DESCRIPCION): string {
   const limpio = texto.replace(/\s+/g, ' ').trim();
   if (limpio.length <= maximo) return limpio;
   const corte = limpio.slice(0, maximo);
   const ultimoEspacio = corte.lastIndexOf(' ');
-  return `${(ultimoEspacio > 60 ? corte.slice(0, ultimoEspacio) : corte).trimEnd()}…`;
+  // El umbral del espacio se escala con el máximo: cortando a 65 (un título)
+  // no existe ningún espacio pasado el carácter 60, y con el 60 fijo que
+  // había antes el recorte por palabra no se aplicaría nunca en títulos.
+  const minimoEspacio = Math.floor(maximo * 0.4);
+  return `${(ultimoEspacio > minimoEspacio ? corte.slice(0, ultimoEspacio) : corte).trimEnd()}…`;
 }

@@ -11,6 +11,7 @@ import '../services/anon_session.dart';
 import '../services/deep_link_service.dart';
 import '../services/onboarding_service.dart';
 import '../widgets/app_logo.dart';
+import '../main.dart' show mainShellKey;
 import 'main_shell.dart';
 import 'onboarding_screen.dart';
 
@@ -76,7 +77,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
     void entrarAlaApp() {
       navigator.pushReplacement(
-        MaterialPageRoute<void>(builder: (_) => const MainShell()),
+        MaterialPageRoute<void>(builder: (_) => MainShell(key: mainShellKey)),
       );
 
       // Recién ahora hay una pantalla sobre la cual apilar. Si la app se

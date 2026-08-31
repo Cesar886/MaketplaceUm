@@ -59,6 +59,13 @@ dependencies:
   # lib/services/deep_link_service.dart.
   app_links: ^6.3.2
   easy_localization: ^3.0.8
+  # Cachea las fotos de producto en disco por URL (no por tamaño de
+  # decodificación): sin esto, Image.network + cacheWidth generaba una
+  # entrada de ImageCache distinta en cada pantalla (celda de grid vs. hero
+  # del detalle piden anchos distintos) y la misma foto se re-descargaba al
+  # navegar. Ver lib/widgets/mock_product_image.dart y
+  # lib/widgets/product_image_carousel.dart.
+  cached_network_image: ^3.4.1
   # "Continuar con Google" en login y registro. La app solo obtiene el
   # idToken; quien decide si vale es el backend (POST /api/auth/google).
   # Los Client ID viven en lib/config/google_auth_config.dart.

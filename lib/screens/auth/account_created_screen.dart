@@ -6,6 +6,7 @@ import '../../app_theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/app_logo.dart';
 import '../../widgets/badges.dart';
+import '../../main.dart' show mainShellKey;
 import '../main_shell.dart';
 
 class AccountCreatedScreen extends StatelessWidget {
@@ -113,7 +114,7 @@ class AccountCreatedScreen extends StatelessWidget {
                   onPressed: () {
                     Navigator.of(context).pushAndRemoveUntil(
                       MaterialPageRoute<void>(
-                        builder: (_) => const MainShell(),
+                        builder: (_) => MainShell(key: mainShellKey),
                       ),
                       (_) => false,
                     );

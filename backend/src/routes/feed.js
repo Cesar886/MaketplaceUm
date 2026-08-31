@@ -1,4 +1,5 @@
 const db = require('../database');
+const { optionalAuth } = require('../auth');
 const { attachRelations } = require('./products');
 
 // Dentro de los primeros DIVERSITY_WINDOW resultados, como máximo
@@ -62,15 +63,55 @@ function register(app) {
     });
   });
 
-  // POST /api/interacciones — registra vista/favorito/contacto de un producto
-  app.post('/api/interacciones', (req, res) => {
-    const { deviceId, userId, productId, tipo } = req.body || {};
+  // POST /api/interacciones — registra vista/favorito/contacto de un producto,
+  // o la entrada a una categoría.
+  //
+  // `categoria` es el único tipo sin producto: el usuario entró a navegar la
+  // categoría sin abrir nada. Por eso pide `categoryId` en vez de
+  // `productId`, y la fila se guarda con product_id NULL.
+  //
+  // El `userId` sale del JWT, NO del body. Estas filas ahora deciden a quién
+  // se le manda un push de retargeting, así que aceptar un userId arbitrario
+  // por el cuerpo dejaría envenenar el perfil de interés de cualquier otra
+  // persona. Sin sesión la fila queda a nombre del deviceId anónimo, que es
+  // el mismo identificador con el que ese dispositivo registra su token FCM.
+  app.post('/api/interacciones', optionalAuth, (req, res) => {
+    const { deviceId, productId, categoryId, tipo } = req.body || {};
+    const userId = req.user ? req.user.id : null;
 
-    if (!deviceId || !productId || !tipo) {
-      return res.status(400).json({ error: 'deviceId, productId y tipo son obligatorios' });
+    if (!deviceId || !tipo) {
+      return res.status(400).json({ error: 'deviceId y tipo son obligatorios' });
     }
-    if (!['vista', 'favorito', 'contacto'].includes(tipo)) {
-      return res.status(400).json({ error: "tipo debe ser 'vista', 'favorito' o 'contacto'" });
+    if (!['vista', 'favorito', 'contacto', 'categoria'].includes(tipo)) {
+      return res.status(400).json({
+        error: "tipo debe ser 'vista', 'favorito', 'contacto' o 'categoria'",
+      });
+    }
+
+    if (tipo === 'categoria') {
+      if (!categoryId) {
+        return res.status(400).json({ error: "categoryId es obligatorio para tipo 'categoria'" });
+      }
+      const categoria = db.getDb()
+        .prepare('SELECT id FROM categories WHERE id = ?')
+        .get(categoryId);
+      if (!categoria) {
+        return res.status(404).json({ error: 'Categoría no encontrada' });
+      }
+
+      db.registrarInteraccion({
+        deviceId,
+        userId: userId || null,
+        productId: null,
+        category: categoryId,
+        tipo,
+      });
+
+      return res.status(201).json({ ok: true });
+    }
+
+    if (!productId) {
+      return res.status(400).json({ error: 'productId es obligatorio' });
     }
 
     const product = db.getProductById(productId);

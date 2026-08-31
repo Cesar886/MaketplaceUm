@@ -232,15 +232,53 @@ class _InvitacionAPreguntar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Align(
       alignment: Alignment.centerLeft,
-      child: TextButton.icon(
+      child: TextButton(
         onPressed: onPreguntar,
         style: TextButton.styleFrom(
-          foregroundColor: context.colors.accent,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           visualDensity: VisualDensity.compact,
         ),
-        icon: const Icon(Icons.help_outline_rounded, size: 18),
-        label: Text('questions.cta'.tr()),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.help_outline_rounded,
+              size: 18,
+              color: context.colors.muted,
+            ),
+            const SizedBox(width: 6),
+            // `Text.rich` dentro de `Flexible` y no dos `Text` sueltos en el
+            // Row: la frase entera ronda los 280 px y en un teléfono angosto
+            // —o con la fuente del sistema agrandada— dos hijos rígidos
+            // desbordaban el Row con la franja amarilla y negra. Así se parte
+            // en varias líneas, y el subrayado sigue cayendo solo sobre la
+            // parte clicable.
+            Flexible(
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: '${'questions.cta_question'.tr()} ',
+                      style: TextStyle(color: context.colors.muted),
+                    ),
+                    // Subrayado a propósito: es lo único de la frase que se
+                    // puede tocar, y sin esa marca visual leía como una nota
+                    // informativa, no como la invitación clicable que es.
+                    TextSpan(
+                      text: 'questions.cta_action'.tr(),
+                      style: TextStyle(
+                        color: context.colors.accent,
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.underline,
+                        decorationColor: context.colors.accent,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

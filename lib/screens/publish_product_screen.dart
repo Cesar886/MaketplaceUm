@@ -37,6 +37,18 @@ class PublishProductScreen extends StatefulWidget {
   State<PublishProductScreen> createState() => _PublishProductScreenState();
 }
 
+/// Pisos de longitud del título y la descripción.
+///
+/// No son un capricho de UI: el título y la descripción son literalmente lo
+/// que se dibuja como `og:title` y `og:description` en la vista previa del
+/// link compartido (ver `website/app/producto/[id]/page.tsx`). Diez y veinte
+/// caracteres son el mínimo con el que un preview se lee como una
+/// publicación real y no como un link basura. Duplicados a propósito en el
+/// backend (`backend/src/routes/products.js`), que es la única barrera que
+/// un cliente no puede saltarse.
+const _minimoTitulo = 10;
+const _minimoDescripcion = 20;
+
 class _PublishProductScreenState extends State<PublishProductScreen> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -288,8 +300,22 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       _showError('publish.error_title_required'.tr());
       return;
     }
+    // Un mínimo y no solo "no vacío": el campo obligatorio a secas dejaba
+    // pasar títulos como "Jajs", y el título es lo que se pinta como
+    // encabezado en la vista previa de WhatsApp cuando alguien comparte el
+    // link. Un preview con cuatro letras sin sentido se lee como spam.
+    // El mismo piso está en el backend (routes/products.js), que es donde
+    // realmente se hace cumplir.
+    if (title.length < _minimoTitulo) {
+      _showError('publish.error_title_too_short'.tr());
+      return;
+    }
     if (description.isEmpty) {
       _showError('publish.error_description_required'.tr());
+      return;
+    }
+    if (description.length < _minimoDescripcion) {
+      _showError('publish.error_description_too_short'.tr());
       return;
     }
     if (price.isEmpty) {

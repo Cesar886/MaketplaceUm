@@ -1,5 +1,6 @@
 const { categories } = require('../data');
 const db = require('../database');
+const { optionalAuth } = require('../auth');
 const {
   ATRIBUTOS_GENERALES,
   ATRIBUTOS_POR_CATEGORIA,
@@ -46,10 +47,32 @@ function register(app) {
   // POST /api/categories/:id/tap — registra que se tocó el ícono de una
   // categoría (señal de interés/curiosidad, peso bajo). Fire-and-forget:
   // el tracking nunca debe fallar de forma visible para el cliente.
-  app.post('/api/categories/:id/tap', (req, res) => {
+  //
+  // Escribe en dos sitios porque el mismo gesto alimenta dos cosas distintas
+  // y una sola llamada desde la app evita que se desincronicen:
+  //
+  //   - category_engagement_events: agregado global y anónimo, ordena los
+  //     íconos de categoría para toda la comunidad.
+  //   - interacciones_dispositivo: la señal PERSONAL, que puntúa el interés
+  //     de quien tocó y puede acabar en un push de publicaciones nuevas.
+  //
+  // Lo segundo solo ocurre si viene `deviceId`: sin él no hay a quién
+  // atribuir la señal, y la parte global se registra igual.
+  app.post('/api/categories/:id/tap', optionalAuth, (req, res) => {
     const category = categories.find(c => c.id === req.params.id);
     if (category) {
       db.trackCategoryEngagement(category.id, 'icon_tap');
+
+      const deviceId = req.body?.deviceId;
+      if (deviceId) {
+        db.registrarInteraccion({
+          deviceId,
+          userId: req.user ? req.user.id : null,
+          productId: null,
+          category: category.id,
+          tipo: 'categoria',
+        });
+      }
     }
     res.status(204).end();
   });

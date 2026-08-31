@@ -97,6 +97,21 @@ class MainShellState extends State<MainShell> with WidgetsBindingObserver {
     } else if (type == 'new_product' && productId != null) {
       // Navegar al detalle del producto
       _openProduct(productId);
+    } else if (type == ApiService.notifInteresNuevosProductos) {
+      // Aviso de publicaciones nuevas en una categoría que le interesa.
+      //
+      // Registrar la apertura no es telemetría opcional: el backend reduce
+      // la frecuencia y acaba pausando la categoría tras tres avisos
+      // seguidos sin abrir. Si esto no se llama, el sistema se apaga solo.
+      ApiService.registrarAperturaInteres(
+        notificationId: data['notificationId'] as String?,
+        categoryId: data['category'] as String?,
+      );
+      // El aviso puede agrupar varias publicaciones; en ese caso el backend
+      // manda productId vacío y no hay un detalle concreto que abrir.
+      if (productId != null && productId.isNotEmpty) {
+        _openProduct(productId);
+      }
     } else if (type == 'product_comment' && productId != null) {
       // "Comentaron tu publicación": se abre el detalle YA desplazado al
       // hilo. Quien toca esta notificación viene a leer el comentario, no a

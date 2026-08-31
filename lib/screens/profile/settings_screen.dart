@@ -50,10 +50,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// deshabilitado en vez de mentir con un valor por defecto.
   bool? _mostrarEstadoEnLinea;
 
+  /// Avisos de publicaciones nuevas en las categorías que le interesan.
+  /// Mismo criterio que el anterior: null mientras no se sabe.
+  ///
+  /// No se condiciona a tener sesión: un dispositivo sin cuenta también
+  /// recibe estos pushes (bajo su id anónimo), así que también tiene que
+  /// poder apagarlos.
+  bool? _avisosInteres;
+
   @override
   void initState() {
     super.initState();
     _cargarPrivacidad();
+    _cargarPreferenciasNotificacion();
   }
 
   Future<void> _cargarPrivacidad() async {
@@ -83,6 +92,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('presence.save_error'.tr())));
+    }
+  }
+
+  Future<void> _cargarPreferenciasNotificacion() async {
+    try {
+      final prefs = await ApiService.getNotificationPreferences();
+      // Ausencia de dato = habilitado: el backend es opt-out, y asumir lo
+      // contrario apagaría el interruptor de todo el mundo la primera vez.
+      final valor = prefs[ApiService.notifInteresNuevosProductos] ?? true;
+      if (mounted) setState(() => _avisosInteres = valor);
+    } catch (_) {
+      // Sin red el interruptor se queda deshabilitado, igual que el de
+      // privacidad. Sin snackbar: nadie pidió abrir esto.
+    }
+  }
+
+  Future<void> _cambiarAvisosInteres(bool valor) async {
+    final anterior = _avisosInteres;
+    setState(() => _avisosInteres = valor);
+    try {
+      await ApiService.setNotificationPreference(
+        type: ApiService.notifInteresNuevosProductos,
+        enabled: valor,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _avisosInteres = anterior);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('settings.notif_save_error'.tr())));
     }
   }
 
@@ -155,6 +194,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: 'settings.vibration_subtitle'.tr(),
               value: _vibracion,
               onChanged: (v) => setState(() => _vibracion = v),
+            ),
+
+            _SectionHeader('settings.section_notifications'.tr()),
+            _PreferenceSwitch(
+              icon: Icons.notifications_active_rounded,
+              title: 'settings.notif_interest'.tr(),
+              subtitle: 'settings.notif_interest_subtitle'.tr(),
+              value: _avisosInteres ?? false,
+              onChanged: _avisosInteres == null ? null : _cambiarAvisosInteres,
             ),
 
             // Solo con sesión: una cuenta anónima no tiene estado en línea
@@ -437,22 +485,29 @@ class _AccentPicker extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: context.colors.border),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(
-            'settings.theme'.tr(),
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: context.colors.ink,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'settings.theme'.tr(),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: context.colors.ink,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'settings.theme_subtitle'.tr(),
+                  style: TextStyle(color: context.colors.muted, fontSize: 13),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 2),
-          Text(
-            'settings.theme_subtitle'.tr(),
-            style: TextStyle(color: context.colors.muted, fontSize: 13),
-          ),
-          const SizedBox(height: 14),
+          const SizedBox(width: 12),
           // Mientras hay un PATCH en vuelo, la fila queda bloqueada: sin
           // esto, tocar dos muestras rápido mandaba el segundo tap al
           // guard interno de `AccentProvider.seleccionar` (que lo ignora
@@ -463,16 +518,10 @@ class _AccentPicker extends StatelessWidget {
             child: AnimatedOpacity(
               opacity: guardando ? 0.5 : 1,
               duration: AppAnimations.fast,
-              child: Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  for (final swatch in AccentSwatch.opciones)
-                    _SwatchDot(
-                      swatch: swatch,
-                      seleccionado: swatch.id == seleccionado.id,
-                    ),
-                ],
+              child: _SwatchDot(
+                swatch: seleccionado,
+                seleccionado: true,
+                onTapOverride: () => _abrirSelector(context),
               ),
             ),
           ),
@@ -480,13 +529,96 @@ class _AccentPicker extends StatelessWidget {
       ),
     );
   }
+
+  void _abrirSelector(BuildContext context) {
+    // AccentProvider y AuthProvider viven en el MultiProvider de main.dart,
+    // por encima del Navigator: el modal ya cuelga de ese árbol y los ve sin
+    // reinyectarlos.
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: context.colors.surfaceElevated,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => const _AccentSelectorSheet(),
+    );
+  }
+}
+
+/// Contenido del modal con todas las opciones de color.
+class _AccentSelectorSheet extends StatelessWidget {
+  const _AccentSelectorSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    final seleccionado = context.accent;
+    final guardando = context.watch<AccentProvider>().guardando;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'settings.theme'.tr(),
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+                color: context.colors.ink,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'settings.theme_subtitle'.tr(),
+              style: TextStyle(color: context.colors.muted, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            IgnorePointer(
+              ignoring: guardando,
+              child: AnimatedOpacity(
+                opacity: guardando ? 0.5 : 1,
+                duration: AppAnimations.fast,
+                child: Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final swatch in AccentSwatch.opciones)
+                      _SwatchDot(
+                        swatch: swatch,
+                        seleccionado: swatch.id == seleccionado.id,
+                        onTap: () => Navigator.of(context).pop(),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _SwatchDot extends StatelessWidget {
-  const _SwatchDot({required this.swatch, required this.seleccionado});
+  const _SwatchDot({
+    required this.swatch,
+    required this.seleccionado,
+    this.onTap,
+    this.onTapOverride,
+  });
 
   final AccentSwatch swatch;
   final bool seleccionado;
+
+  /// Callback adicional tras aplicar la selección (p. ej. cerrar el modal
+  /// del selector).
+  final VoidCallback? onTap;
+
+  /// Cuando se da, reemplaza por completo el tap normal (seleccionar el
+  /// color): lo usa la card resumen, cuyo único color mostrado ya está
+  /// seleccionado y solo debe abrir el selector, no volver a aplicarse.
+  final VoidCallback? onTapOverride;
 
   /// El color se guarda en el perfil del backend, así que sin sesión no hay
   /// dónde guardarlo. Solo se llega aquí desde el perfil propio (que ya
@@ -517,7 +649,11 @@ class _SwatchDot extends StatelessWidget {
       selected: seleccionado,
       label: swatch.label,
       child: InkWell(
-        onTap: () => _seleccionar(context),
+        onTap: onTapOverride ??
+            () async {
+              await _seleccionar(context);
+              onTap?.call();
+            },
         customBorder: const CircleBorder(),
         child: Container(
           width: 44,

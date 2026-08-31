@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:easy_localization/easy_localization.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -57,7 +58,7 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
     _selectedCategoryId = widget.initialCategoryId;
     if (widget.initialQuery != null && widget.initialQuery!.isNotEmpty) {
       _queryController.text = widget.initialQuery!;
-      ApiService.recordSearchQuery(widget.initialQuery!);
+      _registrarBusqueda(widget.initialQuery!);
     }
     _loadData();
     _cursorTimer = Timer.periodic(_cursorBlink, (_) {
@@ -122,20 +123,41 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
         _categories = results[1] as List<MarketplaceCategory>;
         _loading = false;
       });
-
-      // No bloqueante: sin ellos, el buscador cae al hint estático.
-      try {
-        final trending = await ApiService.getTrendingSearches();
-        if (!mounted) return;
-        setState(() => _trendingSearches = trending);
-        _restartTyping();
-      } catch (_) {
-        // Si falla, seguimos con el hint estático.
-      }
+      await _loadTrending();
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
     }
+  }
+
+  /// Recarga los términos en tendencia. No bloqueante: si falla, el buscador
+  /// se queda con el hint estático en vez de quedarse sin ninguna pista.
+  ///
+  /// Solo toca el estado cuando la lista de verdad cambió: reasignarla igual
+  /// reiniciaría la animación de tecleo a media palabra en cada auto-refresh.
+  Future<void> _loadTrending() async {
+    try {
+      final trending = await ApiService.getTrendingSearches();
+      if (!mounted || listEquals(trending, _trendingSearches)) return;
+      setState(() {
+        _trendingSearches = trending;
+        _termIndex = 0;
+        _charCount = 0;
+        _deleting = false;
+      });
+      _restartTyping();
+    } catch (_) {
+      // Si falla, seguimos con lo que ya teníamos.
+    }
+  }
+
+  /// Cuenta la búsqueda y vuelve a pedir las tendencias, para que el usuario
+  /// vea su propio término entrar al placeholder en vez de tener que esperar
+  /// al siguiente auto-refresh.
+  Future<void> _registrarBusqueda(String value) async {
+    await ApiService.recordSearchQuery(value);
+    if (!mounted) return;
+    await _loadTrending();
   }
 
   @override
@@ -228,7 +250,7 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
           TextField(
             controller: _queryController,
             onChanged: (_) => setState(() {}),
-            onSubmitted: (value) => ApiService.recordSearchQuery(value),
+            onSubmitted: _registrarBusqueda,
             textInputAction: TextInputAction.search,
             textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(

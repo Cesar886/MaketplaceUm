@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import '../models.dart';
 import '../config/app_config.dart';
+import 'anonymous_id.dart';
 import 'api_error.dart';
 
 /// Cliente HTTP que vigila TODAS las respuestas del backend en busca de un
@@ -48,9 +49,13 @@ class _SessionAwareClient extends http.BaseClient {
     // que se materializa y se reconstruye la respuesta para que quien llamó
     // la reciba intacta y pueda seguir generando su propio mensaje de error.
     final bytes = await res.stream.toBytes();
-    if (utf8
-        .decode(bytes, allowMalformed: true)
-        .contains('SESSION_INVALIDATED')) {
+    // Cualquier 401 con Authorization presente significa que el token que
+    // mandamos ya no sirve — firma inválida (SESSION_INVALIDATED), expirado
+    // (`requireAuth` en el backend), o corrupto. Antes solo se reaccionaba a
+    // SESSION_INVALIDATED, así que un JWT de cuenta real que expiraba a las
+    // 24h (a diferencia del anónimo, que sí se auto-renueva) se quedaba
+    // fallando en silencio hasta que el usuario cerraba sesión a mano.
+    if (request.headers.containsKey('Authorization')) {
       ApiService.notificarSesionInvalidada();
     }
     return http.StreamedResponse(
@@ -556,21 +561,163 @@ class ApiService {
   }
 
   /// Registra una búsqueda ejecutada por el usuario (al presionar
-  /// buscar/enter, nunca por cada tecla). Fire-and-forget a propósito: una
-  /// búsqueda del usuario nunca debe fallar ni demorarse porque el tracking
-  /// no pudo llegar al servidor.
-  static void recordSearchQuery(String text) {
+  /// buscar/enter, nunca por cada tecla).
+  ///
+  /// Manda el ID anónimo del dispositivo porque el backend rankea por
+  /// personas distintas, no por tecleos: sin él, quien busque lo mismo veinte
+  /// veces se adueña del placeholder de toda la comunidad.
+  ///
+  /// El Future se devuelve para poder recargar las tendencias justo después
+  /// (así el usuario ve el efecto de su propia búsqueda), pero nunca falla ni
+  /// se propaga hacia arriba: una búsqueda del usuario no puede romperse
+  /// porque el tracking no llegó al servidor.
+  static Future<void> recordSearchQuery(String text) async {
     final trimmed = text.trim();
     if (trimmed.length < 2 || trimmed.length > 60) return;
-    unawaited(
-      _client
-          .post(
-            _uri('/search/track'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'query': trimmed}),
-          )
-          .catchError((_) => http.Response('', 500)),
+    try {
+      final deviceId = await AnonymousId.get();
+      await _client.post(
+        _uri('/search/track'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'query': trimmed, 'deviceId': deviceId}),
+      );
+    } catch (_) {
+      // Best-effort: si no se pudo contar, la búsqueda del usuario ya se hizo.
+    }
+  }
+
+  // ─── Interacciones (señal conductual) ───────────────────
+  //
+  // Alimentan dos cosas a la vez: el ranking de afinidad del feed y el score
+  // de interés por categoría que decide los avisos de publicaciones nuevas.
+  // Sin estas llamadas el backend no tiene ninguna señal de qué le interesa
+  // a cada persona, así que el feed sale plano y no se envía retargeting.
+  //
+  // Todas son best-effort y silenciosas por diseño: el tracking nunca puede
+  // romper ni frenar la acción que el usuario acaba de hacer. Por eso no se
+  // esperan (`unawaited`) desde las pantallas ni devuelven error.
+  //
+  // El `userId` NO se manda: el backend lo saca del JWT. Lo que se manda es
+  // el id anónimo del dispositivo, que es también el id con el que ese
+  // dispositivo registra su token FCM, para que un usuario sin cuenta pueda
+  // recibir el aviso igual.
+  static Future<void> _registrarInteraccion(Map<String, dynamic> cuerpo) async {
+    try {
+      final deviceId = await AnonymousId.get();
+      await _client.post(
+        _uri('/interacciones'),
+        headers: _authHeaders,
+        body: jsonEncode({'deviceId': deviceId, ...cuerpo}),
+      );
+    } catch (_) {
+      // Best-effort: ver comentario del bloque.
+    }
+  }
+
+  /// El usuario abrió la ficha de un producto.
+  static Future<void> registrarVistaProducto(String productId) =>
+      _registrarInteraccion({'tipo': 'vista', 'productId': productId});
+
+  /// El usuario guardó un producto en favoritos.
+  static Future<void> registrarFavorito(String productId) =>
+      _registrarInteraccion({'tipo': 'favorito', 'productId': productId});
+
+  /// El usuario contactó al vendedor (chat o WhatsApp). Es la señal más
+  /// fuerte de intención de compra que produce la app.
+  static Future<void> registrarContacto(String productId) =>
+      _registrarInteraccion({'tipo': 'contacto', 'productId': productId});
+
+  /// El usuario entró a navegar una categoría, sin abrir nada todavía.
+  ///
+  /// Va por `/categories/:id/tap` en vez de por `/interacciones` porque ese
+  /// endpoint registra el gesto en los dos sitios que lo necesitan de una
+  /// sola llamada: el agregado global que ordena los íconos de categoría, y
+  /// la señal personal que puntúa el interés de quien tocó.
+  static Future<void> registrarVistaCategoria(String categoryId) async {
+    try {
+      final deviceId = await AnonymousId.get();
+      await _client.post(
+        _uri('/categories/$categoryId/tap'),
+        headers: _authHeaders,
+        body: jsonEncode({'deviceId': deviceId}),
+      );
+    } catch (_) {
+      // Best-effort: ver comentario del bloque.
+    }
+  }
+
+  // ─── Preferencias de notificación ───────────────────────
+
+  /// Tipo de notificación de retargeting; debe coincidir con
+  /// `TIPO_RETARGETING` en backend/src/notifications/frecuencia.js.
+  static const notifInteresNuevosProductos = 'interest_new_product';
+
+  /// Sin sesión, el sujeto de las preferencias es el id anónimo del
+  /// dispositivo: recibe pushes, así que también tiene que poder apagarlos.
+  static Future<String?> _subjectIdAnonimo() async =>
+      _token == null ? await AnonymousId.get() : null;
+
+  /// Preferencias del usuario. Ausencia de dato = habilitado (opt-out), así
+  /// que ante un fallo de red se asume habilitado y no se apaga nada solo.
+  static Future<Map<String, bool>> getNotificationPreferences() async {
+    final subjectId = await _subjectIdAnonimo();
+    final res = await _client.get(
+      _uri('/notifications/preferences', {
+        if (subjectId != null) 'subjectId': subjectId,
+      }),
+      headers: _authHeaders,
     );
+    if (res.statusCode != 200) {
+      throw Exception('No se pudieron cargar las preferencias');
+    }
+    final prefs = (jsonDecode(res.body) as Map<String, dynamic>)['preferences']
+        as Map<String, dynamic>;
+    return prefs.map((k, v) => MapEntry(k, v == true));
+  }
+
+  static Future<void> setNotificationPreference({
+    required String type,
+    required bool enabled,
+  }) async {
+    final subjectId = await _subjectIdAnonimo();
+    final res = await _client.put(
+      _uri('/notifications/preferences'),
+      headers: _authHeaders,
+      body: jsonEncode({
+        'type': type,
+        'enabled': enabled,
+        if (subjectId != null) 'subjectId': subjectId,
+      }),
+    );
+    if (res.statusCode != 200) {
+      throw Exception('No se pudo guardar la preferencia');
+    }
+  }
+
+  /// Avisa de que el usuario abrió un push de publicaciones nuevas.
+  ///
+  /// No es solo telemetría: la reducción adaptativa del backend pausa una
+  /// categoría tras tres avisos seguidos sin abrir. Si la app deja de llamar
+  /// aquí, el sistema concluye que a nadie le interesa nada y se apaga solo.
+  static Future<void> registrarAperturaInteres({
+    String? notificationId,
+    String? categoryId,
+  }) async {
+    if (notificationId == null && categoryId == null) return;
+    try {
+      final subjectId = await _subjectIdAnonimo();
+      await _client.post(
+        _uri('/notifications/interest-opened'),
+        headers: _authHeaders,
+        body: jsonEncode({
+          if (notificationId != null) 'notificationId': notificationId,
+          if (categoryId != null) 'categoryId': categoryId,
+          if (subjectId != null) 'subjectId': subjectId,
+        }),
+      );
+    } catch (_) {
+      // Best-effort: perder una apertura sesga la métrica, no rompe la app.
+    }
   }
 
   // ─── Products ───────────────────────────────────────────

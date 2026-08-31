@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
 import '../models.dart';
+import '../services/api_service.dart';
 import 'app_logo.dart';
 import 'category_sidebar_menu.dart';
 
@@ -76,7 +79,7 @@ class CategoryLogoMenu extends StatefulWidget {
 }
 
 class _CategoryLogoMenuState extends State<CategoryLogoMenu>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final _link = LayerLink();
   late final AnimationController _controller = AnimationController(
     vsync: this,
@@ -88,12 +91,44 @@ class _CategoryLogoMenuState extends State<CategoryLogoMenu>
 
   bool get _isOpen => _entry != null;
 
+  // ─── Wiggle de descubribilidad ───────────────────────────────────
+  //
+  // El logo es el único acceso al menú (categorías, ajustes, verificación...)
+  // y no tiene ningún indicio visual de que se puede tocar, así que nadie lo
+  // descubre solo. Un balanceo periódico y sutil es la señal; se repite en
+  // loop porque no hay forma de saber "ya lo aprendió" sin persistir estado,
+  // y se pausa mientras el menú está abierto para no competir con él.
+  late final AnimationController _wiggleController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 600),
+  );
+  late final Animation<double> _wiggleAnimation =
+      TweenSequence<double>([
+        TweenSequenceItem(tween: Tween(begin: 0, end: -0.09), weight: 1),
+        TweenSequenceItem(tween: Tween(begin: -0.09, end: 0.09), weight: 2),
+        TweenSequenceItem(tween: Tween(begin: 0.09, end: -0.05), weight: 2),
+        TweenSequenceItem(tween: Tween(begin: -0.05, end: 0), weight: 1),
+      ]).animate(
+        CurvedAnimation(parent: _wiggleController, curve: Curves.easeInOut),
+      );
+  Timer? _wiggleTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _wiggleTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!_isOpen) _wiggleController.forward(from: 0);
+    });
+  }
+
   @override
   void dispose() {
     // El overlay cuelga del Navigator, no de este subárbol: si el home se
     // desmonta con el menú abierto, hay que quitarlo a mano o queda pintado.
     _entry?.remove();
     _entry = null;
+    _wiggleTimer?.cancel();
+    _wiggleController.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -144,6 +179,12 @@ class _CategoryLogoMenuState extends State<CategoryLogoMenu>
 
   Future<void> _select(String categoryId) async {
     await _close();
+    // Señal de interés por la categoría: es el evento de menor peso del
+    // scoring, pero es el único que existe antes de que la persona abra
+    // ningún producto, y por eso es el que da señal de alguien recién
+    // llegado. Se registra aquí, en el punto único por el que pasan las dos
+    // rejillas de íconos, y no en cada pantalla que las usa.
+    ApiService.registrarVistaCategoria(categoryId);
     widget.onCategorySelected(categoryId);
   }
 
@@ -166,7 +207,34 @@ class _CategoryLogoMenuState extends State<CategoryLogoMenu>
           borderRadius: BorderRadius.circular(10),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(2, 6, 8, 6),
-            child: AppLogo(size: widget.logoSize, textColor: widget.foregroundColor),
+            // Solo el ícono se balancea, no el wordmark: por eso no se anima
+            // el `AppLogo` completo (que trae texto pegado), sino que se arma
+            // la fila a mano con el ícono solo (`showText: false`) girando y
+            // el texto quieto al lado, igual que pinta `AppLogo` internamente.
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedBuilder(
+                  animation: _wiggleAnimation,
+                  builder: (context, child) => Transform.rotate(
+                    angle: _wiggleAnimation.value,
+                    child: child,
+                  ),
+                  child: AppLogo(size: widget.logoSize, showText: false),
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    'app.name'.tr(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: widget.foregroundColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

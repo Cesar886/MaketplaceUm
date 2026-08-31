@@ -276,9 +276,11 @@ function initDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       device_id TEXT NOT NULL,
       user_id TEXT,
-      product_id TEXT NOT NULL,
+      -- product_id es NULL para tipo='categoria': entrar a navegar una
+      -- categoría es una interacción con la categoría, no con un producto.
+      product_id TEXT,
       category TEXT NOT NULL,
-      tipo TEXT NOT NULL CHECK(tipo IN ('vista', 'favorito', 'contacto')),
+      tipo TEXT NOT NULL CHECK(tipo IN ('vista', 'favorito', 'contacto', 'categoria')),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
     );
@@ -293,16 +295,29 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_products_seller ON products(seller);
 
     -- Búsquedas ejecutadas por los usuarios (al presionar buscar/enter, no
-    -- por tecla). Agregado estadístico puro para alimentar "trending
-    -- searches": solo texto + timestamp, sin device_id/user_id.
+    -- por tecla). Agregado estadístico para alimentar "trending searches".
+    --
+    -- query_text es la forma legible (lo que se muestra en el placeholder);
+    -- query_key es la clave canónica con la que se agrupa (ver
+    -- searchQueryKey): sin acentos, sin puntuación y en singular, para que
+    -- "Cálculo", "calculo" y "calculos" cuenten como el MISMO término.
+    -- device_id es el id anónimo del dispositivo y existe solo para contar
+    -- personas distintas en vez de tecleos: sin él, alguien buscando 50 veces
+    -- lo mismo se apodera del placeholder de toda la comunidad.
     CREATE TABLE IF NOT EXISTS search_queries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       query_text TEXT NOT NULL,
+      query_key TEXT,
+      device_id TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
     CREATE INDEX IF NOT EXISTS idx_search_queries_created ON search_queries(created_at);
     CREATE INDEX IF NOT EXISTS idx_search_queries_text ON search_queries(query_text, created_at);
+    -- El índice por query_key NO va aquí: este bloque corre antes de las
+    -- migraciones, y en una base que viene de la versión anterior la columna
+    -- todavía no existe (CREATE TABLE IF NOT EXISTS no la agrega). Lo crea la
+    -- migración 39, justo después de añadir la columna.
 
     -- Eventos de engagement por categoría (publicar/tocar ícono/ver
     -- producto), usados para ordenar dinámicamente los íconos de categoría
@@ -318,6 +333,82 @@ function initDatabase() {
 
     CREATE INDEX IF NOT EXISTS idx_category_engagement_category_created
       ON category_engagement_events(category_id, created_at);
+
+    -- ─── Retargeting conductual por categoría ───────────────────────
+    --
+    -- El "sujeto" de todo este subsistema es un subject_id, que es el
+    -- user_id si hay sesión y el id anónimo (anon_...) si no. No son dos
+    -- espacios de nombres distintos: AnonymousId.resolve() en la app
+    -- devuelve el mismo valor que se manda como deviceId a
+    -- /api/interacciones y como userId a /register-push-anon, así que
+    -- sendPush([subjectId]) encuentra los tokens de ambos casos igual.
+
+    -- Snapshot del interés por categoría. NO es la fuente de verdad: lo
+    -- reescribe entero refrescarInteres() a partir de
+    -- interacciones_dispositivo en cada pasada del job. Existe para poder
+    -- consultar y depurar el score sin recalcularlo, y para que cambiar los
+    -- pesos no deje scores viejos cocinados en la tabla.
+    CREATE TABLE IF NOT EXISTS user_category_interest (
+      subject_id          TEXT NOT NULL,
+      category_id         TEXT NOT NULL,
+      interest_score      REAL NOT NULL,
+      last_interaction_at TEXT NOT NULL,
+      decay_status        TEXT NOT NULL CHECK(decay_status IN ('fresh', 'decaying')),
+      updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (subject_id, category_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_user_category_interest_categoria
+      ON user_category_interest(category_id, interest_score);
+
+    -- Registro de cada push de retargeting enviado. Es la ÚNICA fuente para
+    -- el frequency capping, la reducción adaptativa y las métricas: no hay
+    -- tabla de contadores ni de backoff que se pueda desincronizar de esto.
+    -- product_ids es el JSON de los productos que iban en el push, para
+    -- poder deduplicar y para saber qué se anunció.
+    CREATE TABLE IF NOT EXISTS notification_log (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      subject_id      TEXT NOT NULL,
+      type            TEXT NOT NULL,
+      category_id     TEXT,
+      product_ids     TEXT NOT NULL DEFAULT '[]',
+      notification_id TEXT,
+      sent_at         TEXT NOT NULL DEFAULT (datetime('now')),
+      opened_at       TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_notification_log_subject_tipo
+      ON notification_log(subject_id, type, sent_at);
+    CREATE INDEX IF NOT EXISTS idx_notification_log_subject_categoria
+      ON notification_log(subject_id, category_id, sent_at);
+
+    -- Preferencias de notificación por sujeto. Semántica OPT-OUT: la
+    -- ausencia de fila significa habilitado, así que un usuario nuevo recibe
+    -- notificaciones sin necesidad de sembrarle filas al registrarse.
+    CREATE TABLE IF NOT EXISTS user_notification_preferences (
+      subject_id        TEXT NOT NULL,
+      notification_type TEXT NOT NULL,
+      enabled           INTEGER NOT NULL DEFAULT 1,
+      updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (subject_id, notification_type)
+    );
+
+    -- Cola de productos publicados pendientes de evaluar para retargeting.
+    -- products.created_at existe y bastaría para preguntar "qué es nuevo",
+    -- pero entonces el job dependería de una marca de agua de su última
+    -- pasada: si el proceso se reinicia entre corridas, o dos corridas se
+    -- solapan, se pierden o se repiten productos. La cola da semántica de
+    -- procesado-una-vez sin estado en memoria, y el resto de los datos
+    -- (título, categoría, vendedor) se lee de products al procesarla para
+    -- no duplicarlos aquí y que no queden obsoletos si el producto se edita.
+    CREATE TABLE IF NOT EXISTS interest_notification_queue (
+      product_id   TEXT PRIMARY KEY,
+      created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+      processed_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_interest_queue_pendientes
+      ON interest_notification_queue(processed_at, created_at);
   `);
 
   // ─── Migración desde schema legacy ─────────────────────────
@@ -354,6 +445,14 @@ function initDatabase() {
       ['m1', 'Plan mensual', '$180', 'Pensado para negocios fijos: aparece arriba en su categoria todo el mes.', 30],
     ];
     for (const p of plans) insertPlan.run(...p);
+  }
+
+  // Historial de búsquedas viejo: se tira en cada arranque. Además de
+  // ahorrar disco, acota la tabla que consulta la deduplicación de
+  // recordSearchQuery en cada búsqueda registrada.
+  const purgadas = purgeOldSearchQueries();
+  if (purgadas > 0) {
+    console.log(`🧹 ${purgadas} búsquedas antiguas purgadas del historial`);
   }
 
   // El caché de calificaciones por vendedor se reconstruye en cada arranque.
@@ -1401,6 +1500,84 @@ function runMigrations() {
       ON sellers(google_sub) WHERE google_sub IS NOT NULL;
   `);
 
+  // 39. Trending searches: agrupar por término real, no por cadena exacta.
+  //
+  //     Antes se agrupaba por `query_text` tal cual, así que "cálculo",
+  //     "calculo" y "calculos" eran tres términos distintos con un voto cada
+  //     uno y ninguno llegaba al top. `query_key` es la forma canónica
+  //     (searchQueryKey) y es la columna por la que se agrupa ahora.
+  //
+  //     `device_id` deja contar dispositivos distintos en vez de tecleos.
+  //     Las filas viejas se quedan en NULL a propósito: cada una cuenta como
+  //     una unidad suelta, que es exactamente lo que valían antes.
+  const searchCols = db.prepare("PRAGMA table_info('search_queries')").all();
+  if (!searchCols.some(c => c.name === 'query_key')) {
+    db.exec(`ALTER TABLE search_queries ADD COLUMN query_key TEXT`);
+  }
+  if (!searchCols.some(c => c.name === 'device_id')) {
+    db.exec(`ALTER TABLE search_queries ADD COLUMN device_id TEXT`);
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_search_queries_key
+      ON search_queries(query_key, created_at);
+  `);
+  // Backfill: la clave se calcula en JS (quitar acentos no se puede en SQL
+  // puro), pero solo sobre las filas dentro de la ventana que el ranking
+  // mira. Rellenar años de historial que nadie va a consultar sería trabajo
+  // de arranque tirado a la basura.
+  const sinClave = db.prepare(`
+    SELECT id, query_text FROM search_queries
+    WHERE query_key IS NULL AND created_at >= datetime('now', '-30 days')
+  `).all();
+  if (sinClave.length > 0) {
+    const setClave = db.prepare('UPDATE search_queries SET query_key = ? WHERE id = ?');
+    db.transaction(filas => {
+      for (const fila of filas) setClave.run(searchQueryKey(fila.query_text), fila.id);
+    })(sinClave);
+  }
+
+  // 40. Interés por categoría: admitir el evento `categoria` (el usuario
+  //     entró a navegar una categoría, sin abrir ningún producto).
+  //
+  //     Exige reconstruir la tabla, no un ALTER: hay que relajar el CHECK de
+  //     `tipo` y quitar el NOT NULL de `product_id` (ver una categoría no
+  //     tiene producto asociado), y SQLite no permite alterar constraints in
+  //     place. Se copian las filas existentes tal cual.
+  const interCols = db.prepare("PRAGMA table_info('interacciones_dispositivo')").all();
+  const productIdNulable = interCols.find(c => c.name === 'product_id')?.notnull === 0;
+  if (interCols.length > 0 && !productIdNulable) {
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+
+      CREATE TABLE interacciones_dispositivo_nueva (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        device_id TEXT NOT NULL,
+        user_id TEXT,
+        product_id TEXT,
+        category TEXT NOT NULL,
+        tipo TEXT NOT NULL CHECK(tipo IN ('vista', 'favorito', 'contacto', 'categoria')),
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+      );
+
+      INSERT INTO interacciones_dispositivo_nueva
+        (id, device_id, user_id, product_id, category, tipo, created_at)
+        SELECT id, device_id, user_id, product_id, category, tipo, created_at
+        FROM interacciones_dispositivo;
+
+      DROP TABLE interacciones_dispositivo;
+      ALTER TABLE interacciones_dispositivo_nueva RENAME TO interacciones_dispositivo;
+
+      CREATE INDEX IF NOT EXISTS idx_interacciones_device ON interacciones_dispositivo(device_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_interacciones_user ON interacciones_dispositivo(user_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_interacciones_producto_tipo ON interacciones_dispositivo(product_id, tipo);
+      CREATE INDEX IF NOT EXISTS idx_interacciones_device_categoria ON interacciones_dispositivo(device_id, category, created_at);
+      CREATE INDEX IF NOT EXISTS idx_interacciones_user_categoria ON interacciones_dispositivo(user_id, category, created_at);
+
+      PRAGMA foreign_keys = ON;
+    `);
+  }
+
   console.log('🔄 Migración de schema completada');
 }
 
@@ -1807,7 +1984,7 @@ function deleteProduct(id) {
 }
 
 function incrementProductViews(id) {
-  db.prepare('UPDATE products SET views = views + 1 WHERE id = ?').run(id);
+  db.prepare('UPDATE products SET views = views + 3 WHERE id = ?').run(id);
 }
 
 // ─── Carrito ────────────────────────────────────────────────
@@ -3396,30 +3573,196 @@ function getSellerOtherProducts(sellerId, { excludeProductId = null, limit = 10 
 const SEARCH_QUERY_MIN_LEN = 2;
 const SEARCH_QUERY_MAX_LEN = 60;
 
+/**
+ * Ventana durante la cual una MISMA persona buscando lo MISMO no vuelve a
+ * sumar. Quien corrige el filtro y le da enter tres veces seguidas está
+ * haciendo una sola búsqueda, no tres.
+ */
+const SEARCH_QUERY_DEDUPE_SECONDS = 120;
+
+/**
+ * Cuánto historial de búsquedas se conserva.
+ *
+ * El ranking solo mira 7 días, así que todo lo anterior es peso muerto en
+ * disco y en la consulta de deduplicación. Se guardan 60 y no 7 para dejar
+ * margen a análisis a posteriori ("qué se buscaba el mes pasado") y para que
+ * subir la ventana del ranking no exija recolectar datos desde cero.
+ */
+const SEARCH_QUERY_RETENTION_DAYS = 60;
+
+/** Cada cuánto, como mucho, se hace la limpieza. */
+const SEARCH_PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+let ultimaPurgaSearchQueries = 0;
+
+/**
+ * Borra el historial de búsquedas más viejo que `days`. Devuelve cuántas
+ * filas se fueron.
+ */
+function purgeOldSearchQueries({ days = SEARCH_QUERY_RETENTION_DAYS } = {}) {
+  const info = db.prepare(
+    "DELETE FROM search_queries WHERE created_at < datetime('now', '-' || ? || ' days')"
+  ).run(days);
+  ultimaPurgaSearchQueries = Date.now();
+  return info.changes;
+}
+
+/**
+ * Limpieza oportunista: corre como mucho una vez cada
+ * SEARCH_PURGE_INTERVAL_MS, colgada del registro de búsquedas.
+ *
+ * Va aquí y no en un setInterval a propósito: un timer de fondo sobrevive a
+ * los tests (hay que acordarse de unref) y corre igual en un proceso que no
+ * está recibiendo tráfico. Colgarla de la escritura hace que la tabla se
+ * limpie exactamente cuando está creciendo, que es cuando importa.
+ */
+function purgeOldSearchQueriesIfDue() {
+  if (Date.now() - ultimaPurgaSearchQueries < SEARCH_PURGE_INTERVAL_MS) return 0;
+  return purgeOldSearchQueries();
+}
+
+/**
+ * Revisión monotónica de `search_queries`: sube con cada búsqueda registrada.
+ *
+ * Existe para que quien cachee el agregado (routes/search.js) sepa que su
+ * copia quedó vieja SIN tener que consultar la tabla. Antes el caché solo
+ * moría por TTL, y en la práctica eso significaba que el placeholder no
+ * cambiaba hasta reiniciar el proceso.
+ */
+let searchQueriesRevision = 0;
+function getSearchQueriesRevision() {
+  return searchQueriesRevision;
+}
+
+/** Forma legible del término: es la que termina en el placeholder. */
 function normalizeSearchQuery(text) {
   return String(text ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-/** Registra una búsqueda ejecutada. Descarta ruido (vacía, muy corta/larga). */
-function recordSearchQuery(text) {
+/**
+ * Clave canónica con la que se agrupan las búsquedas.
+ *
+ * Sobre la forma legible quita acentos, quita puntuación y pasa cada palabra
+ * a singular. Es lo que hace que "Cálculo", "calculo", "calculo!" y
+ * "calculos" sumen al MISMO contador en vez de repartirse cuatro votos
+ * sueltos que nunca llegan al top 10.
+ *
+ * El singular es un simple recorte de la "s" final en palabras de más de 3
+ * letras. Es tosco a propósito: no pretende ser correcto lingüísticamente,
+ * solo estable — "ingles" e "inglés" caen los dos en "ingle", que como clave
+ * interna da igual porque lo que se muestra sale de `query_text`, nunca de
+ * aquí.
+ */
+function searchQueryKey(text) {
+  return normalizeSearchQuery(text)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')  // marcas de acento sueltas que dejó NFD
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .map(palabra => (palabra.length > 3 && palabra.endsWith('s') ? palabra.slice(0, -1) : palabra))
+    .join(' ');
+}
+
+/**
+ * Registra una búsqueda ejecutada. Descarta ruido (vacía, muy corta/larga) y
+ * los reintentos del mismo dispositivo sobre el mismo término dentro de
+ * SEARCH_QUERY_DEDUPE_SECONDS.
+ *
+ * Devuelve true solo si la fila entró (es decir, si el ranking cambió).
+ */
+function recordSearchQuery(text, deviceId = null) {
   const normalized = normalizeSearchQuery(text);
   if (normalized.length < SEARCH_QUERY_MIN_LEN || normalized.length > SEARCH_QUERY_MAX_LEN) {
     return false;
   }
-  db.prepare('INSERT INTO search_queries (query_text) VALUES (?)').run(normalized);
+  const key = searchQueryKey(normalized);
+  if (!key) return false;
+
+  purgeOldSearchQueriesIfDue();
+
+  // La deduplicación es por dispositivo: sin deviceId no se puede distinguir
+  // "la misma persona insistiendo" de "dos personas buscando lo mismo", y
+  // castigar la segunda sería peor que dejar pasar la primera.
+  if (deviceId) {
+    const reciente = db.prepare(`
+      SELECT 1 FROM search_queries
+      WHERE device_id = ? AND query_key = ?
+        AND created_at >= datetime('now', '-' || ? || ' seconds')
+      LIMIT 1
+    `).get(deviceId, key, SEARCH_QUERY_DEDUPE_SECONDS);
+    if (reciente) return false;
+  }
+
+  db.prepare(
+    'INSERT INTO search_queries (query_text, query_key, device_id) VALUES (?, ?, ?)'
+  ).run(normalized, key, deviceId || null);
+  searchQueriesRevision++;
   return true;
 }
 
-/** Términos más buscados en los últimos `days` días, de más a menos frecuente. */
+/**
+ * Los términos más buscados de los últimos `days` días, del más al menos
+ * popular.
+ *
+ * Tres decisiones que valen más que el COUNT(*) que había antes:
+ *
+ * 1. Se agrupa por `query_key`, no por el texto tal cual, para que las
+ *    variantes del mismo término sumen juntas (ver searchQueryKey). Las
+ *    filas anteriores a la migración 39 no tienen clave, así que se cae a
+ *    `query_text`: cuentan como antes en vez de desaparecer del ranking.
+ *
+ * 2. Se cuentan DISPOSITIVOS distintos, no filas: un término que buscaron 8
+ *    personas una vez es más popular que uno que una sola persona buscó 30
+ *    veces. Las filas sin device_id cuentan como una unidad cada una.
+ *
+ * 3. A igualdad de dispositivos manda lo más reciente (una búsqueda de hoy
+ *    pesa 3, la de esta semana 1), para que el placeholder siga a lo que
+ *    está pasando ahora y no se quede clavado en el término del lunes.
+ *
+ * El texto que se muestra es la variante escrita más veces dentro del grupo,
+ * así que la comunidad decide también cómo se ve — con acentos si así la
+ * escribe la mayoría.
+ */
 function getTrendingSearches({ days, limit }) {
   return db.prepare(`
-    SELECT query_text AS queryText, COUNT(*) AS count
-    FROM search_queries
-    WHERE created_at >= datetime('now', '-' || ? || ' days')
-    GROUP BY query_text
-    ORDER BY count DESC, MAX(created_at) DESC
-    LIMIT ?
-  `).all(days, limit);
+    WITH recientes AS (
+      SELECT id, query_text, device_id, created_at,
+             COALESCE(query_key, query_text) AS clave
+      FROM search_queries
+      WHERE created_at >= datetime('now', '-' || @days || ' days')
+    ),
+    ranking AS (
+      SELECT clave,
+             COUNT(DISTINCT COALESCE(device_id, 'fila:' || id)) AS personas,
+             SUM(CASE
+                   WHEN created_at >= datetime('now', '-1 day')  THEN 3
+                   WHEN created_at >= datetime('now', '-3 days') THEN 2
+                   ELSE 1
+                 END) AS recencia,
+             MAX(created_at) AS ultima
+      FROM recientes
+      GROUP BY clave
+    ),
+    etiquetas AS (
+      SELECT clave, query_text,
+             ROW_NUMBER() OVER (
+               PARTITION BY clave
+               -- query_text al final para que un empate no dependa del orden
+               -- físico de las filas: el placeholder no debe cambiar de
+               -- ortografía entre dos lecturas idénticas.
+               ORDER BY COUNT(*) DESC, MAX(created_at) DESC, query_text ASC
+             ) AS puesto
+      FROM recientes
+      GROUP BY clave, query_text
+    )
+    SELECT e.query_text AS queryText, r.personas AS count
+    FROM ranking r
+    JOIN etiquetas e ON e.clave = r.clave AND e.puesto = 1
+    ORDER BY r.personas DESC, r.recencia DESC, r.ultima DESC
+    LIMIT @limit
+  `).all({ days, limit });
 }
 
 /**
@@ -3638,7 +3981,11 @@ module.exports = {
   getSellerOtherProducts,
   // Search trending
   normalizeSearchQuery,
+  searchQueryKey,
   recordSearchQuery,
+  getSearchQueriesRevision,
+  SEARCH_QUERY_RETENTION_DAYS,
+  purgeOldSearchQueries,
   getTrendingSearches,
   getFallbackSearchTerms,
   // Category engagement (orden dinámico de categorías)

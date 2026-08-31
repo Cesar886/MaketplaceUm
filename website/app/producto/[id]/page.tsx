@@ -5,8 +5,11 @@ import VistaBusqueda from '@/components/VistaBusqueda';
 import VistaProducto from '@/components/VistaProducto';
 import { obtenerPublicacion, SITE_URL, urlFoto } from '@/lib/api';
 import {
+  esTextoUtil,
   formatearPrecio,
   formatearRango,
+  MAXIMO_DESCRIPCION,
+  MAXIMO_TITULO,
   resumen,
   textoBusqueda,
 } from '@/lib/formato';
@@ -22,19 +25,53 @@ type Props = { params: Promise<{ id: string }> };
  * distinguiría al pegar un link.
  */
 
+/**
+ * Encabezado de la vista previa.
+ *
+ * El título lo escribe el vendedor y no siempre describe nada ("Jajs", "No
+ * hay plata"): un preview con eso arriba se lee como spam al lado de un link
+ * de Mercado Libre. Cuando el texto no llega al piso de [esTextoUtil] se le
+ * suma la categoría — el único dato descriptivo que el backend garantiza — en
+ * vez de publicarlo pelado, y si no hay ni título ni categoría se cae a la
+ * marca antes que a un `undefined` o a un guion suelto.
+ *
+ * El recorte a [MAXIMO_TITULO] es lo que evita que WhatsApp lo corte a mitad
+ * de palabra por su cuenta.
+ */
+function tituloPreview(
+  titulo: string,
+  categoria: string | null,
+  sufijo: string,
+): string {
+  const limpio = titulo.replace(/\s+/g, ' ').trim();
+  const encabezado = esTextoUtil(limpio)
+    ? limpio
+    : [limpio, categoria].filter(Boolean).join(' · ') || 'Publicación';
+
+  // El sufijo de marca no se recorta: se descuenta del presupuesto para que
+  // sobreviva entero, que es lo que hace reconocible el link.
+  return `${resumen(encabezado, MAXIMO_TITULO - sufijo.length)} ${sufijo}`;
+}
+
 /** Título, descripción e imagen de la vista previa, según el tipo. */
 function metaDe(publicacion: PublicacionPublica): {
   titulo: string;
   descripcion: string;
   foto: string | null;
 } {
+  const categoria = publicacion.categoria?.nombre ?? null;
+
   if (publicacion.tipo === 'busqueda') {
     const { encabezado } = textoBusqueda(publicacion);
     const rango = formatearRango(publicacion.precioMin, publicacion.precioMax);
 
     return {
-      titulo: `${publicacion.titulo} - Se busca en Marketplace UM`,
-      descripcion: publicacion.descripcion
+      titulo: tituloPreview(
+        publicacion.titulo,
+        categoria,
+        '- Se busca en Marketplace UM',
+      ),
+      descripcion: esTextoUtil(publicacion.descripcion)
         ? resumen(publicacion.descripcion)
         : `${encabezado}${rango ? `: ${rango}` : ''}. Publicado en Marketplace UM.`,
       // Una búsqueda no tiene fotos. Sin `og:image` WhatsApp cae a la tarjeta
@@ -44,11 +81,17 @@ function metaDe(publicacion: PublicacionPublica): {
     };
   }
 
+  const precio = formatearPrecio(publicacion.precio);
+
   return {
-    titulo: `${publicacion.titulo} - Marketplace UM`,
-    descripcion: publicacion.descripcion
-      ? resumen(publicacion.descripcion)
-      : `${formatearPrecio(publicacion.precio)} · Disponible en Marketplace UM.`,
+    titulo: tituloPreview(publicacion.titulo, categoria, '- Marketplace UM'),
+    // El precio va primero, como en Mercado Libre: es el dato que decide si
+    // alguien abre el link, y así queda del lado que WhatsApp nunca corta.
+    descripcion: esTextoUtil(publicacion.descripcion)
+      ? `${precio} · ${resumen(publicacion.descripcion, MAXIMO_DESCRIPCION - precio.length - 3)}`
+      : [precio, categoria, 'Disponible en Marketplace UM']
+          .filter(Boolean)
+          .join(' · '),
     foto: publicacion.fotos[0] ? urlFoto(publicacion.fotos[0]) : null,
   };
 }
@@ -87,7 +130,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       // que corresponde a un artículo a la venta es 'website' salvo que se
       // declare el namespace completo de product, que WhatsApp ignora.
       type: 'website',
-      images: foto ? [{ url: foto, alt: publicacion.titulo }] : [],
+      // El alt sale del título ya saneado: el crudo puede venir vacío, y un
+      // `alt=""` en la foto principal es exactamente lo que no debe pasar.
+      images: foto ? [{ url: foto, alt: titulo }] : [],
     },
     twitter: {
       card: foto ? 'summary_large_image' : 'summary',

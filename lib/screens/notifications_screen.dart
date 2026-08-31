@@ -10,6 +10,7 @@ import 'auth/login_screen.dart';
 import 'chat_screen.dart';
 import 'product_detail_screen.dart';
 import 'product_questions_screen.dart';
+import 'search_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -242,6 +243,45 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             ),
           );
         } catch (_) {}
+      }
+    } else if (notif.type == ApiService.notifInteresNuevosProductos) {
+      // Aviso de publicaciones nuevas en una categoría que le interesa.
+      //
+      // Registrar la apertura no es telemetría opcional: el backend cuenta
+      // como ignorada toda notificación de este tipo sin apertura y, a las
+      // tres seguidas, pausa la categoría 14 días. Sin esta rama, quien leía
+      // sus avisos desde la campana en lugar de desde la push se autopausaba
+      // sin haber hecho nada. `main_shell` hace lo propio al tocar la push.
+      final categoryId = notif.data['category'] as String?;
+      ApiService.registrarAperturaInteres(
+        notificationId: notif.id,
+        categoryId: categoryId,
+      );
+
+      final productIds =
+          (notif.data['productIds'] as List<dynamic>? ?? const <dynamic>[])
+              .cast<String>();
+
+      if (productIds.length == 1) {
+        try {
+          final product = await ApiService.getProduct(productIds.single);
+          if (!mounted) return;
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => ProductDetailScreen(product: product),
+            ),
+          );
+        } catch (_) {}
+      } else if (categoryId != null) {
+        // El aviso agrupa varias publicaciones: no hay un detalle concreto al
+        // que ir, pero el tile tampoco puede quedarse muerto. La categoría
+        // que lo motivó es el destino honesto.
+        if (!mounted) return;
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => SearchScreen(initialCategoryId: categoryId),
+          ),
+        );
       }
     }
   }

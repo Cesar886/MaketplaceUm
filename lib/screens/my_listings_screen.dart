@@ -9,6 +9,7 @@ import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../widgets/auto_refresh.dart';
 import '../widgets/badges.dart';
+import '../main.dart' show mainShellKey;
 import '../widgets/mock_product_image.dart';
 import 'profile/highlight_plans_screen.dart';
 import 'publish_product_screen.dart';
@@ -106,6 +107,22 @@ class _MyListingsScreenState extends State<MyListingsScreen>
   }
 
   Future<void> _openPublish({Product? editingProduct}) async {
+    // Publicar (sin producto): PublishProductScreen en ese modo no trae su
+    // propio Scaffold —vive embebida como pestaña de MainShell, que se lo da—
+    // así que empujarla como ruta aparte deja el contenido sobre negro, sin
+    // fondo ni estilos. Se navega a la pestaña ya existente en su lugar,
+    // igual que hace HomeScreen (ver `findAncestorStateOfType<MainShellState>`
+    // ahí). Editar sí tiene su propio Scaffold (rama `_isEditing` en esa
+    // pantalla), así que ese caso puede seguir empujándose normal.
+    if (editingProduct == null) {
+      // Esta pantalla se abre como ruta empujada sobre MainShell (nunca
+      // embebida en su árbol), así que su State no es alcanzable por
+      // ancestro — de ahí la llave global en vez de
+      // `findAncestorStateOfType`.
+      mainShellKey.currentState?.selectTab(2);
+      Navigator.of(context).pop();
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => PublishProductScreen(editingProduct: editingProduct),

@@ -586,3 +586,18 @@ setInterval(() => db.limpiarInteraccionesAntiguas(), 24 * 60 * 60 * 1000);
 // arrancar: no hace falta un intervalo porque después de esta pasada ya no
 // quedan filas que reconciliar hasta el próximo despliegue.
 require('./routes/verificacion').reconciliarVerificacionesPendientesPorMercadoPago();
+
+// Retargeting por interés: cada 15 minutos se recalcula el score de interés
+// y se avisa a quien corresponda de los productos publicados en la ventana.
+//
+// El intervalo es la ventana de agrupación: subirlo junta más publicaciones
+// en un mismo aviso (menos pushes, menos inmediatez) y bajarlo hace lo
+// contrario. No se ejecuta al arrancar a propósito: un reinicio no debe
+// disparar una tanda de notificaciones fuera del ritmo normal.
+const { ejecutarJobRetargeting } = require('./notifications/retargeting');
+const RETARGETING_INTERVALO_MS = 15 * 60 * 1000;
+setInterval(() => {
+  ejecutarJobRetargeting().catch(err =>
+    console.error('[retargeting] el job periódico falló:', err.message)
+  );
+}, RETARGETING_INTERVALO_MS);

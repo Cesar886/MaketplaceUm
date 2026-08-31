@@ -174,7 +174,30 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       ApiService.registerWantedPostView(id, userId: userId);
     } else {
       ApiService.registerProductView(id, userId: userId);
+      // Señal conductual: alimenta la afinidad del feed y el score de
+      // interés por categoría. Va dentro del mismo cooldown que la vista
+      // contable a propósito — abrir y cerrar la misma ficha diez veces es
+      // una persona indecisa, no diez veces más interés.
+      ApiService.registrarVistaProducto(id);
     }
+  }
+
+  /// Marca o desmarca el favorito y, si lo marcó, lo registra como señal de
+  /// interés. Existe porque el botón está en dos sitios de esta pantalla (la
+  /// barra superior y la de acciones) y el tracking no puede depender de que
+  /// alguien se acuerde de copiarlo en los dos.
+  ///
+  /// Solo puntúa al MARCAR: desmarcar es lo contrario del interés, y
+  /// puntuarlo convertiría a quien duda en el usuario más interesado.
+  Future<void> _alternarFavorito() async {
+    final nowFav = await FavoriteProductsService.toggleFavorite(
+      widget.product.id,
+    );
+    if (nowFav) {
+      ApiService.registrarFavorito(widget.product.id);
+    }
+    if (!mounted) return;
+    setState(() => _favorite = nowFav);
   }
 
   @override
@@ -268,13 +291,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
             actions: [
               IconButton.filled(
                 style: _appBarIconButtonStyle,
-                onPressed: () => _requireAuth(context, () async {
-                  final nowFav = await FavoriteProductsService.toggleFavorite(
-                    widget.product.id,
-                  );
-                  if (!mounted) return;
-                  setState(() => _favorite = nowFav);
-                }),
+                onPressed: () => _requireAuth(context, _alternarFavorito),
                 // `_favorite ? 1 : 0` convierte el booleano en algo que sube
                 // solo al MARCAR: desmarcar baja, y el rebote se queda
                 // callado. Con háptico porque aquí el cambio es respuesta
@@ -781,13 +798,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
               // Favoritos se guarda localmente por dispositivo (sin cuenta),
               // así que no debe pedir login — ver FavoriteProductsService.
               IconButton.outlined(
-                onPressed: () async {
-                  final nowFav = await FavoriteProductsService.toggleFavorite(
-                    widget.product.id,
-                  );
-                  if (!mounted) return;
-                  setState(() => _favorite = nowFav);
-                },
+                onPressed: _alternarFavorito,
                 icon: BounceOnIncrease(
                   value: _favorite ? 1 : 0,
                   haptic: true,
@@ -1019,6 +1030,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       'https://wa.me/$phone?text=${Uri.encodeComponent(message)}',
     );
     final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (launched) {
+      // Solo cuenta como contacto si WhatsApp llegó a abrirse.
+      ApiService.registrarContacto(product.id);
+    }
     if (!launched && context.mounted) {
       ScaffoldMessenger.of(
         context,
@@ -1035,6 +1050,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       ).showSnackBar(SnackBar(content: Text('chat.self_message_error'.tr())));
       return;
     }
+
+    // Contactar al vendedor es la señal de interés más fuerte que produce la
+    // app. Se registra al abrir el chat y no al enviar el primer mensaje
+    // porque abrir ya es intención declarada, y muchos escriben desde la
+    // pantalla de chat sin volver a pasar por aquí.
+    ApiService.registrarContacto(product.id);
 
     // Navegar al chat con un conversationId vacío (se creará al enviar el primer mensaje)
     Navigator.of(context).push(

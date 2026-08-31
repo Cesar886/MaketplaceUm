@@ -1,6 +1,61 @@
 const db = require('../database');
-const { requireAuth } = require('../auth');
+const { requireAuth, optionalAuth } = require('../auth');
 const { sendPush } = require('../push');
+const frecuencia = require('../notifications/frecuencia');
+const metricas = require('../notifications/metricas');
+const retargeting = require('../notifications/retargeting');
+
+/**
+ * Resuelve el sujeto de una petición que puede venir de una cuenta o de un
+ * dispositivo anónimo, y rechaza el caso peligroso: mandar como `subjectId`
+ * el id de otra persona. Un id anónimo tiene prefijo 'anon_' y no puede
+ * coincidir con una cuenta (mismo criterio que /register-push-anon).
+ *
+ * @returns {{subjectId: string}|{error: string, status: number}}
+ */
+function resolverSujeto(req) {
+  if (req.user) return { subjectId: req.user.id };
+
+  const subjectId = req.body?.subjectId || req.query?.subjectId;
+  if (!subjectId) {
+    return { error: 'subjectId es requerido sin sesión', status: 400 };
+  }
+  if (!String(subjectId).startsWith('anon_')) {
+    return { error: 'subjectId inválido para uso anónimo', status: 400 };
+  }
+  const cuenta = db.getDb().prepare('SELECT id FROM sellers WHERE id = ?').get(subjectId);
+  if (cuenta) {
+    return { error: 'subjectId no permitido', status: 403 };
+  }
+  return { subjectId };
+}
+
+/**
+ * Guardia de los endpoints de operación (disparar el job, leer métricas):
+ * no son de usuario, son de infraestructura.
+ *
+ * Con NOTIFICATIONS_JOB_TOKEN definido exige ese token en la cabecera. Sin
+ * definir, solo acepta llamadas desde loopback, para que en desarrollo se
+ * pueda usar con curl sin dejar el endpoint abierto en un despliegue donde
+ * alguien olvidó configurar la variable.
+ */
+function permitirOperacion(req, res) {
+  const esperado = process.env.NOTIFICATIONS_JOB_TOKEN;
+
+  if (esperado) {
+    if (req.get('x-job-token') === esperado) return true;
+    res.status(401).json({ error: 'token de job inválido' });
+    return false;
+  }
+
+  const ip = req.ip || '';
+  if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') return true;
+
+  res.status(503).json({
+    error: 'NOTIFICATIONS_JOB_TOKEN no está configurado; solo se acepta desde localhost',
+  });
+  return false;
+}
 
 function register(app) {
   // GET /api/notifications - obtener notificaciones del usuario autenticado
@@ -67,6 +122,85 @@ function register(app) {
     db.removeCategoryInterest(req.user.id, req.params.categoryId);
     const interests = db.getCategoryInterests(req.user.id);
     res.json({ interests });
+  });
+
+  // ─── Retargeting por interés ─────────────────────────────────────
+
+  // GET /api/notifications/preferences - preferencias del sujeto.
+  // optionalAuth: sirve igual a una cuenta (por el JWT) que a un dispositivo
+  // anónimo (por ?subjectId=anon_...), porque ambos reciben estos pushes.
+  app.get('/api/notifications/preferences', optionalAuth, (req, res) => {
+    const sujeto = resolverSujeto(req);
+    if (sujeto.error) return res.status(sujeto.status).json({ error: sujeto.error });
+
+    res.json({
+      subjectId: sujeto.subjectId,
+      preferences: frecuencia.getPreferencias(sujeto.subjectId),
+    });
+  });
+
+  // PUT /api/notifications/preferences - activar/desactivar un tipo
+  app.put('/api/notifications/preferences', optionalAuth, (req, res) => {
+    const sujeto = resolverSujeto(req);
+    if (sujeto.error) return res.status(sujeto.status).json({ error: sujeto.error });
+
+    const { type, enabled } = req.body || {};
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'enabled debe ser booleano' });
+    }
+    const tipo = type || frecuencia.TIPO_RETARGETING;
+    if (tipo !== frecuencia.TIPO_RETARGETING) {
+      return res.status(400).json({ error: `type no soportado: ${tipo}` });
+    }
+
+    frecuencia.setHabilitado(sujeto.subjectId, tipo, enabled);
+    res.json({
+      subjectId: sujeto.subjectId,
+      preferences: frecuencia.getPreferencias(sujeto.subjectId),
+    });
+  });
+
+  // POST /api/notifications/interest-opened - la app abrió un push de
+  // retargeting. Alimenta el open rate Y la reducción adaptativa: sin esta
+  // llamada el sistema da por ignoradas todas las notificaciones y acaba
+  // autopausándose solo.
+  app.post('/api/notifications/interest-opened', optionalAuth, (req, res) => {
+    const sujeto = resolverSujeto(req);
+    if (sujeto.error) return res.status(sujeto.status).json({ error: sujeto.error });
+
+    const { notificationId, categoryId } = req.body || {};
+    if (!notificationId && !categoryId) {
+      return res.status(400).json({ error: 'notificationId o categoryId es requerido' });
+    }
+
+    const marcadas = frecuencia.registrarApertura({
+      subjectId: sujeto.subjectId,
+      notificationId,
+      categoryId,
+    });
+    res.json({ success: true, marcadas });
+  });
+
+  // POST /api/notifications/trigger-interest-based - ejecuta una pasada del
+  // job. Lo llama el intervalo interno de index.js; queda expuesto para
+  // poder dispararlo desde un cron externo o a mano al depurar.
+  app.post('/api/notifications/trigger-interest-based', (req, res) => {
+    if (!permitirOperacion(req, res)) return;
+
+    retargeting.ejecutarJobRetargeting()
+      .then(resumen => res.json({ success: true, ...resumen }))
+      .catch(err => {
+        console.error('[retargeting] el job falló:', err);
+        res.status(500).json({ error: err.message });
+      });
+  });
+
+  // GET /api/notifications/metrics - open rate por tipo y por categoría
+  app.get('/api/notifications/metrics', (req, res) => {
+    if (!permitirOperacion(req, res)) return;
+
+    const dias = Number(req.query.dias) || metricas.VENTANA_METRICAS_DIAS;
+    res.json(metricas.getOpenRate({ dias }));
   });
 
   // ─── Push Tokens (FCM) ───────────────────────────────────────────
