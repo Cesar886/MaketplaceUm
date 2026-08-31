@@ -3,71 +3,131 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Paleta y piezas visuales compartidas por las dos pantallas del enigma.
+/// Paleta oscura del mundo secreto: azul de medianoche y latón viejo.
 ///
-/// Estas pantallas NO usan `context.colors` ni respetan el tema del usuario,
-/// y es a propósito: el resto de la app es un mercado claro y amable que
-/// además cambia de color según el swatch elegido, así que cualquier cosa
-/// pintada con esa paleta se lee como "otra sección más". Lo que se busca
-/// aquí es lo contrario — que quien cruce la puerta sienta que salió de la
-/// app. Un solo mundo fijo, oscuro y de latón, igual para todos.
-class SecretoColors {
-  /// Fondo: azul de medianoche, más profundo que el navy de marca.
-  static const noche = Color(0xFF0B111C);
-  static const nocheProfunda = Color(0xFF060A11);
+/// A diferencia de `context.colors` (que cambia con el swatch elegido), esta
+/// paleta es fija — el latón y el azul son el único vestuario del enigma, en
+/// los dos temas. Lo que sí sigue al usuario es CUÁL de las dos paletas se
+/// usa: [SecretoPalette.of] elige esta o [_SecretoColoresClaros] según el
+/// modo oscuro/claro que ya eligió para el resto de la app. Ver
+/// [SecretoPalette].
+class _SecretoColoresOscuros {
+  const _SecretoColoresOscuros();
 
-  /// Latón viejo. El acento entero del mundo secreto: bordes, numerales,
-  /// el cursor del campo. Cálido para que el azul no se sienta clínico.
-  static const laton = Color(0xFFC9A96A);
-  static const latonClaro = Color(0xFFE7D3A8);
-  static const latonProfundo = Color(0xFF8A6F3C);
+  Color get fondo => const Color(0xFF0B111C);
+  Color get fondoProfundo => const Color(0xFF060A11);
+  Color get halo => const Color(0x80162031);
 
-  static const tinta = Color(0xFFF2EDE3);
-  static const tintaTenue = Color(0x99F2EDE3);
-  static const tintaSusurro = Color(0x5AF2EDE3);
+  Color get laton => const Color(0xFFC9A96A);
+  Color get latonClaro => const Color(0xFFE7D3A8);
+  Color get latonProfundo => const Color(0xFF8A6F3C);
+
+  /// Color de las motas de polvo: el más claro de latón, para que brillen
+  /// como chispas contra el azul oscuro.
+  Color get mota => latonClaro;
+
+  Color get tinta => const Color(0xFFF2EDE3);
+  Color get tintaTenue => const Color(0x99F2EDE3);
+  Color get tintaSusurro => const Color(0x5AF2EDE3);
 }
 
-class SecretoType {
-  static TextStyle titulo(double size, {Color color = SecretoColors.tinta}) =>
-      GoogleFonts.baloo2(
-        fontSize: size,
-        fontWeight: FontWeight.w700,
-        color: color,
-        height: 1.15,
-      );
+/// Paleta clara: pergamino cálido en vez de medianoche, con el mismo latón
+/// pero en tonos más profundos — sobre un fondo claro, el latón pálido de la
+/// versión oscura se perdería por falta de contraste.
+class _SecretoColoresClaros {
+  const _SecretoColoresClaros();
 
-  static TextStyle verso(double size, {Color color = SecretoColors.tinta}) =>
-      GoogleFonts.workSans(
-        fontSize: size,
-        fontWeight: FontWeight.w300,
-        color: color,
-        height: 1.75,
-        // El interletrado abierto es lo que separa un verso de un párrafo de
-        // ayuda: obliga a leer despacio, que es el ritmo del acertijo.
-        letterSpacing: 0.4,
-      );
+  Color get fondo => const Color(0xFFF7F1E3);
+  Color get fondoProfundo => const Color(0xFFE9DEC2);
+  Color get halo => const Color(0x40C9A96A);
 
-  static TextStyle cuerpo(double size, {Color color = SecretoColors.tintaTenue}) =>
-      GoogleFonts.workSans(
-        fontSize: size,
-        fontWeight: FontWeight.w400,
-        color: color,
-        height: 1.5,
-      );
+  Color get laton => const Color(0xFF9C7A3F);
+  Color get latonClaro => const Color(0xFFB8935A);
+  Color get latonProfundo => const Color(0xFF6B4F24);
+
+  /// Sobre pergamino, la mota tiene que ser la más oscura del set: el latón
+  /// claro de la versión nocturna es casi invisible aquí.
+  Color get mota => latonProfundo;
+
+  Color get tinta => const Color(0xFF241C10);
+  Color get tintaTenue => const Color(0x99241C10);
+  Color get tintaSusurro => const Color(0x5A241C10);
+}
+
+/// Paleta resuelta del mundo secreto, ya elegida entre oscura y clara.
+///
+/// Se obtiene con [SecretoPalette.of], que lee `Theme.of(context).brightness`
+/// — el mismo brightness que ya decide el modo oscuro/claro del resto de la
+/// app (ver `ThemeProvider` y `main.dart`), así que el enigma cambia de
+/// vestuario solo con lo que el usuario ya eligió, sin leer esa preferencia
+/// por su cuenta.
+class SecretoPalette {
+  const SecretoPalette._(this._oscuro, this._claro, this.esOscuro);
+
+  factory SecretoPalette.of(BuildContext context) {
+    final oscuro = Theme.of(context).brightness == Brightness.dark;
+    return SecretoPalette._(
+      const _SecretoColoresOscuros(),
+      const _SecretoColoresClaros(),
+      oscuro,
+    );
+  }
+
+  final _SecretoColoresOscuros _oscuro;
+  final _SecretoColoresClaros _claro;
+  final bool esOscuro;
+
+  Color get fondo => esOscuro ? _oscuro.fondo : _claro.fondo;
+  Color get fondoProfundo =>
+      esOscuro ? _oscuro.fondoProfundo : _claro.fondoProfundo;
+  Color get halo => esOscuro ? _oscuro.halo : _claro.halo;
+  Color get laton => esOscuro ? _oscuro.laton : _claro.laton;
+  Color get latonClaro => esOscuro ? _oscuro.latonClaro : _claro.latonClaro;
+  Color get latonProfundo =>
+      esOscuro ? _oscuro.latonProfundo : _claro.latonProfundo;
+  Color get mota => esOscuro ? _oscuro.mota : _claro.mota;
+  Color get tinta => esOscuro ? _oscuro.tinta : _claro.tinta;
+  Color get tintaTenue => esOscuro ? _oscuro.tintaTenue : _claro.tintaTenue;
+  Color get tintaSusurro =>
+      esOscuro ? _oscuro.tintaSusurro : _claro.tintaSusurro;
+
+  TextStyle titulo(double size, {Color? color}) => GoogleFonts.baloo2(
+    fontSize: size,
+    fontWeight: FontWeight.w700,
+    color: color ?? tinta,
+    height: 1.15,
+  );
+
+  TextStyle verso(double size, {Color? color}) => GoogleFonts.workSans(
+    fontSize: size,
+    fontWeight: FontWeight.w300,
+    color: color ?? tinta,
+    height: 1.75,
+    // El interletrado abierto es lo que separa un verso de un párrafo de
+    // ayuda: obliga a leer despacio, que es el ritmo del acertijo.
+    letterSpacing: 0.4,
+  );
+
+  TextStyle cuerpo(double size, {Color? color}) => GoogleFonts.workSans(
+    fontSize: size,
+    fontWeight: FontWeight.w400,
+    color: color ?? tintaTenue,
+    height: 1.5,
+  );
 
   /// Versalitas espaciadas para etiquetas cortas ("el enigma", "posición").
-  static TextStyle sello(double size, {Color color = SecretoColors.laton}) =>
-      GoogleFonts.workSans(
-        fontSize: size,
-        fontWeight: FontWeight.w600,
-        color: color,
-        height: 1.2,
-        letterSpacing: 3.2,
-      );
+  TextStyle sello(double size, {Color? color}) => GoogleFonts.workSans(
+    fontSize: size,
+    fontWeight: FontWeight.w600,
+    color: color ?? laton,
+    height: 1.2,
+    letterSpacing: 3.2,
+  );
 }
 
-/// Fondo vivo de las dos pantallas: un degradado de medianoche con motas de
-/// polvo dorado a la deriva.
+/// Fondo vivo de las dos pantallas: un degradado con motas de polvo dorado a
+/// la deriva. Los colores salen de [SecretoPalette.of], así que cambian solos
+/// entre el pergamino claro y la medianoche según el tema del usuario.
 ///
 /// Las motas se dibujan en un [CustomPainter] con una sola animación de 0 a 1
 /// que se repite, y cada una calcula su posición a partir de esa fracción:
@@ -103,17 +163,19 @@ class _SecretoFondoState extends State<SecretoFondo>
 
   @override
   Widget build(BuildContext context) {
+    final p = SecretoPalette.of(context);
+
     return DecoratedBox(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: RadialGradient(
           // Centro desplazado hacia arriba: deja el halo detrás del título y
           // la parte baja de la pantalla en sombra, que es donde va el campo.
-          center: Alignment(0, -0.55),
+          center: const Alignment(0, -0.55),
           radius: 1.25,
-          colors: [Color(0x80162031), SecretoColors.nocheProfunda],
-          stops: [0.0, 1.0],
+          colors: [p.halo, p.fondoProfundo],
+          stops: const [0.0, 1.0],
         ),
-        color: SecretoColors.noche,
+        color: p.fondo,
       ),
       child: Stack(
         fit: StackFit.expand,
@@ -125,6 +187,12 @@ class _SecretoFondoState extends State<SecretoFondo>
                 painter: _PolvoPainter(
                   fase: _deriva.value,
                   cantidad: widget.motas,
+                  color: p.mota,
+                  // Sobre pergamino claro las motas necesitan pesar más para
+                  // notarse; sobre medianoche, menos, porque compiten con
+                  // menos ruido de fondo.
+                  brilloBase: p.esOscuro ? 0.10 : 0.16,
+                  brilloExtra: p.esOscuro ? 0.35 : 0.30,
                 ),
               ),
             ),
@@ -137,10 +205,19 @@ class _SecretoFondoState extends State<SecretoFondo>
 }
 
 class _PolvoPainter extends CustomPainter {
-  _PolvoPainter({required this.fase, required this.cantidad});
+  _PolvoPainter({
+    required this.fase,
+    required this.cantidad,
+    required this.color,
+    required this.brilloBase,
+    required this.brilloExtra,
+  });
 
   final double fase;
   final int cantidad;
+  final Color color;
+  final double brilloBase;
+  final double brilloExtra;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -153,7 +230,7 @@ class _PolvoPainter extends CustomPainter {
       final x = rnd.nextDouble();
       final velocidad = 0.35 + rnd.nextDouble() * 0.9;
       final radio = 0.6 + rnd.nextDouble() * 1.7;
-      final brillo = 0.10 + rnd.nextDouble() * 0.35;
+      final brillo = brilloBase + rnd.nextDouble() * brilloExtra;
       // Deriva horizontal mínima, con desfase propio: sin ella todas subirían
       // en líneas paralelas perfectas y se leería como una cortina.
       final vaiven = math.sin((fase * velocidad + x) * math.pi * 2) * 0.02;
@@ -165,7 +242,7 @@ class _PolvoPainter extends CustomPainter {
       final borde = math.min(y, 1 - y);
       final opacidad = brillo * (borde < 0.12 ? borde / 0.12 : 1.0);
 
-      pincel.color = SecretoColors.latonClaro.withValues(alpha: opacidad);
+      pincel.color = color.withValues(alpha: opacidad);
       canvas.drawCircle(
         Offset((x + vaiven) * size.width, y * size.height),
         radio,
@@ -176,7 +253,9 @@ class _PolvoPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_PolvoPainter anterior) =>
-      anterior.fase != fase || anterior.cantidad != cantidad;
+      anterior.fase != fase ||
+      anterior.cantidad != cantidad ||
+      anterior.color != color;
 }
 
 /// Filete de latón: una línea que se desvanece hacia los extremos. Separa
@@ -188,15 +267,16 @@ class SecretoFilete extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final laton = SecretoPalette.of(context).laton;
     return Container(
       width: ancho,
       height: 1,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Color(0x00C9A96A),
-            SecretoColors.laton,
-            Color(0x00C9A96A),
+            laton.withValues(alpha: 0),
+            laton,
+            laton.withValues(alpha: 0),
           ],
         ),
       ),

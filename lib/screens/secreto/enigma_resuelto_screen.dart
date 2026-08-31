@@ -44,7 +44,9 @@ class _EnigmaResueltoScreenState extends State<EnigmaResueltoScreen>
   }
 
   String get _titulo {
-    if (widget.resultado.repetida) return 'Sigues siendo\nel número ${widget.resultado.posicion}.';
+    if (widget.resultado.repetida) {
+      return 'Sigues siendo\nel número ${widget.resultado.posicion}.';
+    }
     if (widget.resultado.esElPrimero) return 'Nadie llegó\nantes que tú.';
     return 'Lo resolviste.';
   }
@@ -70,8 +72,10 @@ class _EnigmaResueltoScreenState extends State<EnigmaResueltoScreen>
 
   @override
   Widget build(BuildContext context) {
+    final p = SecretoPalette.of(context);
+
     return Scaffold(
-      backgroundColor: SecretoColors.noche,
+      backgroundColor: p.fondo,
       body: SecretoFondo(
         // Más polvo que en el acertijo: la sala del final está más viva.
         motas: 60,
@@ -96,7 +100,7 @@ class _EnigmaResueltoScreenState extends State<EnigmaResueltoScreen>
                     child: Text(
                       _titulo,
                       textAlign: TextAlign.center,
-                      style: SecretoType.titulo(30),
+                      style: p.titulo(30),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -109,7 +113,7 @@ class _EnigmaResueltoScreenState extends State<EnigmaResueltoScreen>
                         Text(
                           _subtitulo,
                           textAlign: TextAlign.center,
-                          style: SecretoType.cuerpo(14.5),
+                          style: p.cuerpo(14.5),
                         ),
                       ],
                     ),
@@ -133,14 +137,11 @@ class _EnigmaResueltoScreenState extends State<EnigmaResueltoScreen>
                         TextButton(
                           onPressed: () => Navigator.of(context).maybePop(),
                           style: TextButton.styleFrom(
-                            foregroundColor: SecretoColors.tintaSusurro,
+                            foregroundColor: p.tintaSusurro,
                           ),
                           child: Text(
                             'Volver al mercado',
-                            style: SecretoType.cuerpo(
-                              13.5,
-                              color: SecretoColors.tintaSusurro,
-                            ),
+                            style: p.cuerpo(13.5, color: p.tintaSusurro),
                           ),
                         ),
                       ],
@@ -165,6 +166,8 @@ class _Sello extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = SecretoPalette.of(context);
+
     return AnimatedBuilder(
       animation: brasa,
       builder: (context, hijo) {
@@ -175,22 +178,18 @@ class _Sello extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(
-              color: Color.lerp(
-                SecretoColors.latonProfundo,
-                SecretoColors.laton,
-                t,
-              )!,
+              color: Color.lerp(p.latonProfundo, p.laton, t)!,
               width: 1.2,
             ),
             gradient: RadialGradient(
               colors: [
-                SecretoColors.laton.withValues(alpha: 0.05 + t * 0.09),
-                const Color(0x00C9A96A),
+                p.laton.withValues(alpha: 0.05 + t * 0.09),
+                p.laton.withValues(alpha: 0),
               ],
             ),
             boxShadow: [
               BoxShadow(
-                color: SecretoColors.laton.withValues(alpha: 0.06 + t * 0.10),
+                color: p.laton.withValues(alpha: 0.06 + t * 0.10),
                 blurRadius: 40 + t * 20,
                 spreadRadius: 2,
               ),
@@ -202,23 +201,19 @@ class _Sello extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text('POSICIÓN', style: SecretoType.sello(9)),
+          Text('POSICIÓN', style: p.sello(9)),
           const SizedBox(height: 6),
           // El numeral con degradado de latón: un ShaderMask sobre el texto,
           // que es lo más cerca del pan de oro que se llega sin una imagen.
           ShaderMask(
-            shaderCallback: (rect) => const LinearGradient(
+            shaderCallback: (rect) => LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [
-                SecretoColors.latonClaro,
-                SecretoColors.laton,
-                SecretoColors.latonProfundo,
-              ],
+              colors: [p.latonClaro, p.laton, p.latonProfundo],
             ).createShader(rect),
             child: Text(
               '$posicion',
-              style: SecretoType.titulo(
+              style: p.titulo(
                 // Un 1 y un 128 no pueden medir lo mismo: el tamaño baja con
                 // los dígitos para que el disco nunca se quede corto.
                 posicion < 10
@@ -243,8 +238,18 @@ class _Acta extends StatelessWidget {
   final EnigmaResuelto resultado;
 
   static const _meses = [
-    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+    'enero',
+    'febrero',
+    'marzo',
+    'abril',
+    'mayo',
+    'junio',
+    'julio',
+    'agosto',
+    'septiembre',
+    'octubre',
+    'noviembre',
+    'diciembre',
   ];
 
   String get _fecha {
@@ -257,12 +262,16 @@ class _Acta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = SecretoPalette.of(context);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
+        color: (p.esOscuro ? Colors.white : Colors.black).withValues(
+          alpha: 0.03,
+        ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: SecretoColors.latonProfundo.withValues(alpha: 0.35)),
+        border: Border.all(color: p.latonProfundo.withValues(alpha: 0.35)),
       ),
       child: Column(
         children: [
@@ -270,7 +279,8 @@ class _Acta extends StatelessWidget {
           const SizedBox(height: 12),
           _Linea(
             etiqueta: 'LO HAN LOGRADO',
-            valor: '${resultado.total} ${resultado.total == 1 ? 'persona' : 'personas'}',
+            valor:
+                '${resultado.total} ${resultado.total == 1 ? 'persona' : 'personas'}',
           ),
         ],
       ),
@@ -286,16 +296,18 @@ class _Linea extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = SecretoPalette.of(context);
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(etiqueta, style: SecretoType.sello(9)),
+        Text(etiqueta, style: p.sello(9)),
         const SizedBox(width: 18),
         Flexible(
           child: Text(
             valor,
             textAlign: TextAlign.right,
-            style: SecretoType.cuerpo(13, color: SecretoColors.tinta),
+            style: p.cuerpo(13, color: p.tinta),
           ),
         ),
       ],
@@ -318,27 +330,26 @@ class _BotonLaton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = SecretoPalette.of(context);
+
     return Material(
-      color: SecretoColors.laton.withValues(alpha: 0.10),
+      color: p.laton.withValues(alpha: 0.10),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(999),
-        side: const BorderSide(color: SecretoColors.latonProfundo),
+        side: BorderSide(color: p.latonProfundo),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        splashColor: SecretoColors.laton.withValues(alpha: 0.12),
+        splashColor: p.laton.withValues(alpha: 0.12),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icono, size: 16, color: SecretoColors.latonClaro),
+              Icon(icono, size: 16, color: p.latonClaro),
               const SizedBox(width: 10),
-              Text(
-                etiqueta,
-                style: SecretoType.cuerpo(14, color: SecretoColors.latonClaro),
-              ),
+              Text(etiqueta, style: p.cuerpo(14, color: p.latonClaro)),
             ],
           ),
         ),
