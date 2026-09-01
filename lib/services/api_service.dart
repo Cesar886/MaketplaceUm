@@ -1601,9 +1601,26 @@ class ApiService {
 
   /// Obtiene las conversaciones del usuario del token (cuenta o invitado).
   static Future<Map<String, dynamic>> getConversations() async {
-    final res = await _getWithRetry(_uri('/chat/conversations'), headers: _authHeaders);
+    final res = await _getWithRetry(
+      _uri('/chat/conversations'),
+      headers: _authHeaders,
+    );
     if (res.statusCode != 200) throw Exception('Error fetching conversations');
     return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Elimina el chat solo de la bandeja del usuario autenticado.
+  ///
+  /// El historial de la otra persona no se modifica. Si llega un mensaje
+  /// posterior, la conversación vuelve a aparecer desde ese mensaje.
+  static Future<void> deleteConversation(String conversationId) async {
+    final res = await _client.delete(
+      _uri('/chat/conversations/$conversationId'),
+      headers: _authHeaders,
+    );
+    if (res.statusCode != 200) {
+      throw Exception('Error deleting conversation');
+    }
   }
 
   static Future<List<ChatMessage>> getMessages(String conversationId) async {

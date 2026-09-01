@@ -222,7 +222,7 @@ function register(app) {
       return res.status(403).json({ error: 'No tienes acceso a esta conversación' });
     }
 
-    const messages = db.getMessages(req.params.id);
+    const messages = db.getMessages(req.params.id, userId);
     db.markConversationMessagesRead(req.params.id, userId);
 
     res.json({ messages });
@@ -294,6 +294,24 @@ function register(app) {
 
       const messages = notifyNewMessage(app, conversation, userId, '📷 Foto');
       res.status(201).json({ messages, conversationId: conversation.id });
+    });
+  });
+
+  // DELETE /api/chat/conversations/:id - retirar un chat de la bandeja propia
+  app.delete('/api/chat/conversations/:id', requireAuth, (req, res) => {
+    const userId = req.user.id;
+    const deleted = db.deleteConversationForUser(req.params.id, userId);
+    if (!deleted) {
+      // La misma respuesta cubre inexistente y ajena para no revelar ids de
+      // conversaciones privadas a quien no participa.
+      return res.status(404).json({
+        error: 'Conversación no encontrada o no tienes permiso para eliminarla',
+      });
+    }
+
+    res.json({
+      success: true,
+      unreadCount: db.getUnreadMessageCount(userId),
     });
   });
 

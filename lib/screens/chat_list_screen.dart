@@ -10,6 +10,7 @@ import '../providers/auth_provider.dart';
 import '../services/anonymous_id.dart';
 import '../services/api_service.dart';
 import '../services/chat_socket_service.dart';
+import '../services/notification_cleaner.dart';
 import '../services/presence_service.dart';
 import '../widgets/badges.dart';
 import '../widgets/online_status_avatar.dart';
@@ -135,6 +136,65 @@ class _ChatListScreenState extends State<ChatListScreen> {
     }
   }
 
+  Future<bool> _confirmarYEliminar(Conversation conversation) async {
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('chat.delete_conversation_confirm'.tr()),
+        content: Text('chat.delete_conversation_explanation'.tr()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text('common.cancel'.tr()),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: dialogContext.colors.danger,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text('common.delete'.tr()),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmado != true) return false;
+
+    try {
+      await ApiService.deleteConversation(conversation.id);
+      await limpiarNotificacionesDeConversacion(conversation.id);
+      return mounted;
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('chat.delete_conversation_error'.tr())),
+        );
+      }
+      return false;
+    }
+  }
+
+  void _quitarConversacion(Conversation conversation) {
+    if (!mounted) return;
+    setState(() {
+      _conversations.removeWhere((item) => item.id == conversation.id);
+    });
+    _seguirPresencia(_conversations);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('chat.delete_conversation_success'.tr())),
+    );
+
+    unawaited(_load());
+    final shell = context.findAncestorStateOfType<MainShellState>();
+    if (shell != null) unawaited(shell.recargarContadores());
+  }
+
+  Future<void> _eliminarDesdeBoton(Conversation conversation) async {
+    if (await _confirmarYEliminar(conversation)) {
+      _quitarConversacion(conversation);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -210,31 +270,63 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   final auth = context.read<AuthProvider>();
                   final isOwn =
                       auth.isLoggedIn && auth.backendSellerId == conv.sellerId;
-                  return _ConversationTile(
-                    conversation: conv,
-                    isOwn: isOwn,
-                    onTap: () async {
-                      await Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => ChatScreen(
-                            conversationId: conv.id,
-                            productId: conv.productId,
-                            // No se pasa sellerId — la conversación ya existe.
-                            // ChatScreen solo necesita sellerId para crear una nueva.
-                            otherUser: conv.otherUser,
+                  return Dismissible(
+                    key: ValueKey('conversation-${conv.id}'),
+                    direction: DismissDirection.endToStart,
+                    background: Container(
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      decoration: BoxDecoration(
+                        color: AppColors.danger,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.delete_outline_rounded,
+                            color: Colors.white,
                           ),
-                        ),
-                      );
-                      _load();
-                      // Además del listado, el badge de la barra inferior:
-                      // se calculó antes de abrir el chat y ahí sigue con el
-                      // conteo viejo.
-                      if (context.mounted) {
-                        context
-                            .findAncestorStateOfType<MainShellState>()
-                            ?.recargarContadores();
-                      }
-                    },
+                          const SizedBox(width: 8),
+                          Text(
+                            'common.delete'.tr(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    confirmDismiss: (_) => _confirmarYEliminar(conv),
+                    onDismissed: (_) => _quitarConversacion(conv),
+                    child: _ConversationTile(
+                      conversation: conv,
+                      isOwn: isOwn,
+                      onDelete: () => _eliminarDesdeBoton(conv),
+                      onTap: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => ChatScreen(
+                              conversationId: conv.id,
+                              productId: conv.productId,
+                              // No se pasa sellerId — la conversación ya existe.
+                              // ChatScreen solo necesita sellerId para crear una nueva.
+                              otherUser: conv.otherUser,
+                            ),
+                          ),
+                        );
+                        _load();
+                        // Además del listado, el badge de la barra inferior:
+                        // se calculó antes de abrir el chat y ahí sigue con el
+                        // conteo viejo.
+                        if (context.mounted) {
+                          context
+                              .findAncestorStateOfType<MainShellState>()
+                              ?.recargarContadores();
+                        }
+                      },
+                    ),
                   );
                 },
               ),
@@ -248,11 +340,13 @@ class _ConversationTile extends StatelessWidget {
     required this.conversation,
     required this.isOwn,
     required this.onTap,
+    required this.onDelete,
   });
 
   final Conversation conversation;
   final bool isOwn;
   final VoidCallback onTap;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -391,11 +485,13 @@ class _ConversationTile extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: context.colors.muted,
-                size: 20,
+              const SizedBox(width: 4),
+              IconButton(
+                tooltip: 'chat.delete_conversation'.tr(),
+                visualDensity: VisualDensity.compact,
+                color: context.colors.danger,
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline_rounded, size: 21),
               ),
             ],
           ),

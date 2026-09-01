@@ -98,7 +98,7 @@ function pedir(ruta, { token, metodo = 'GET', cuerpo } = {}) {
 
 // ═══ Sin token no se entra a ningún endpoint ═════════════════
 
-test('los cinco endpoints rechazan una petición sin token', async () => {
+test('los seis endpoints rechazan una petición sin token', async () => {
   const rutas = [
     ['/api/chat/conversations', 'GET'],
     ['/api/chat/conversations/conv_x/messages', 'GET'],
@@ -167,6 +167,99 @@ test('los participantes sí leen su conversación', async () => {
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.messages.length, 1);
   }
+});
+
+// ═══ Eliminar conversaciones de la bandeja propia ═══════════
+
+test('un tercero no puede eliminar una conversación ajena', async () => {
+  const ana = crearUsuario();
+  const beto = crearUsuario();
+  const intrusa = crearUsuario();
+  const producto = crearProducto(beto.id);
+  const { convId } = crearConversacion(ana.id, beto.id, producto.id);
+
+  const res = await pedir(`/api/chat/conversations/${convId}`, {
+    token: intrusa.token,
+    metodo: 'DELETE',
+  });
+
+  assert.strictEqual(res.status, 404);
+  const bandeja = await pedir('/api/chat/conversations', { token: ana.token });
+  assert.ok(bandeja.body.conversations.some(c => c.id === convId));
+});
+
+test('eliminar un chat solo lo retira para quien lo elimina y limpia sus badges', async () => {
+  const ana = crearUsuario();
+  const beto = crearUsuario();
+  const producto = crearProducto(beto.id);
+  const { convId } = crearConversacion(ana.id, beto.id, producto.id);
+  db.createNotification(
+    `notif_delete_${++contador}`,
+    beto.id,
+    'new_message',
+    'Nuevo mensaje',
+    'Ana te escribió',
+    { conversationId: convId },
+  );
+
+  assert.strictEqual(db.getUnreadMessageCount(beto.id), 1);
+  assert.strictEqual(db.getUnreadNotificationCount(beto.id), 1);
+
+  const eliminada = await pedir(`/api/chat/conversations/${convId}`, {
+    token: beto.token,
+    metodo: 'DELETE',
+  });
+
+  assert.strictEqual(eliminada.status, 200);
+  assert.strictEqual(eliminada.body.unreadCount, 0);
+  assert.strictEqual(db.getUnreadNotificationCount(beto.id), 0);
+
+  const bandejaBeto = await pedir('/api/chat/conversations', { token: beto.token });
+  const bandejaAna = await pedir('/api/chat/conversations', { token: ana.token });
+  assert.ok(!bandejaBeto.body.conversations.some(c => c.id === convId));
+  assert.ok(bandejaAna.body.conversations.some(c => c.id === convId));
+
+  const mensajesBeto = await pedir(
+    `/api/chat/conversations/${convId}/messages`,
+    { token: beto.token },
+  );
+  const mensajesAna = await pedir(
+    `/api/chat/conversations/${convId}/messages`,
+    { token: ana.token },
+  );
+  assert.deepStrictEqual(mensajesBeto.body.messages, []);
+  assert.strictEqual(mensajesAna.body.messages.length, 1);
+  assert.strictEqual(db.getMessages(convId).length, 1, 'el historial compartido no se destruye');
+});
+
+test('un mensaje nuevo reactiva el chat sin restaurar el historial eliminado', async () => {
+  const ana = crearUsuario();
+  const beto = crearUsuario();
+  const producto = crearProducto(beto.id);
+  const { convId } = crearConversacion(ana.id, beto.id, producto.id);
+
+  await pedir(`/api/chat/conversations/${convId}`, {
+    token: beto.token,
+    metodo: 'DELETE',
+  });
+  const enviada = await pedir('/api/chat/send', {
+    token: ana.token,
+    metodo: 'POST',
+    cuerpo: { conversationId: convId, text: '¿Todavía te interesa?' },
+  });
+  assert.strictEqual(enviada.status, 201);
+
+  const bandeja = await pedir('/api/chat/conversations', { token: beto.token });
+  assert.ok(bandeja.body.conversations.some(c => c.id === convId));
+
+  const historial = await pedir(
+    `/api/chat/conversations/${convId}/messages`,
+    { token: beto.token },
+  );
+  assert.deepStrictEqual(
+    historial.body.messages.map(m => m.text),
+    ['¿Todavía te interesa?'],
+  );
 });
 
 // ═══ C-01: suplantación al enviar ════════════════════════════

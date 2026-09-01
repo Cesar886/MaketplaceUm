@@ -1602,6 +1602,33 @@ function runMigrations() {
     `);
   }
 
+  // 41. Borrado de conversaciones por participante.
+  //
+  //     Una conversación pertenece a dos personas, por lo que borrarla de
+  //     la bandeja de una no debe destruir el historial de la otra. Se guarda
+  //     el id del último mensaje que esa persona decidió retirar: así, si
+  //     después llega uno nuevo, el chat reaparece pero el historial borrado
+  //     no vuelve a mostrársele. El corte se resuelve a rowid al consultar (en
+  //     vez de persistir el rowid), porque SQLite puede renumerarlos al hacer
+  //     VACUUM mientras que el id del mensaje sí es estable.
+  //
+  //     La tabla se crea aquí (después de la migración 10 que reconstruye
+  //     conversations) para que una base muy antigua no termine con una FK
+  //     reescrita hacia conversations_legacy durante aquella migración.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS conversation_deletions (
+      conversation_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      deleted_through_message_id TEXT DEFAULT NULL,
+      deleted_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (conversation_id, user_id),
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_conversation_deletions_user
+      ON conversation_deletions(user_id, conversation_id);
+  `);
+
   // Insignia verde "Socio Fundador": columna nueva en `sellers`, para bases
   // que ya existían antes de agregarla al CREATE TABLE de arriba.
   const sellerColsSocio = db.prepare("PRAGMA table_info('sellers')").all();
@@ -2451,7 +2478,7 @@ function rowToProductComment(row) {
       id: row.userId,
       // Una cuenta borrada deja su comentario en pie pero sin autor que
       // resolver; el hilo no debe romperse por eso.
-      name: row.autorNombre || 'Usuario',
+      name: row.autorNombre ?? 'Usuario',
       avatarInitials: row.autorIniciales || '??',
       logoUrl: row.autorLogo || null,
       major: row.autorMajor || '',
@@ -2782,7 +2809,7 @@ function rowToProductQuestion(row) {
       id: row.askedBy,
       // Una cuenta borrada deja su pregunta en pie pero sin autor que
       // resolver; el hilo no debe romperse por eso.
-      name: row.autorNombre || 'Usuario',
+      name: row.autorNombre ?? 'Usuario',
       avatarInitials: row.autorIniciales || '??',
       logoUrl: row.autorLogo || null,
       major: row.autorMajor || '',
@@ -3062,10 +3089,23 @@ function findConversation(productId, buyerId, sellerId) {
 
 function getConversationsForUser(userId) {
   return db.prepare(`
-    SELECT * FROM conversations
-    WHERE buyer_id = ? OR seller_id = ?
-    ORDER BY last_message_at DESC
-  `).all(userId, userId).map(row => ({
+    SELECT c.* FROM conversations c
+    LEFT JOIN conversation_deletions d
+      ON d.conversation_id = c.id AND d.user_id = ?
+    WHERE (c.buyer_id = ? OR c.seller_id = ?)
+      AND (
+        d.conversation_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM messages nuevos
+          WHERE nuevos.conversation_id = c.id
+            AND nuevos.rowid > COALESCE((
+              SELECT corte.rowid FROM messages corte
+              WHERE corte.id = d.deleted_through_message_id
+            ), 0)
+        )
+      )
+    ORDER BY c.last_message_at DESC
+  `).all(userId, userId, userId).map(row => ({
     id: row.id,
     productId: row.product_id,
     wantedPostId: row.wanted_post_id,
@@ -3075,6 +3115,49 @@ function getConversationsForUser(userId) {
     lastMessageAt: row.last_message_at,
     lastMessagePreview: row.last_message_preview || '',
   }));
+}
+
+/** Retira una conversación solo de la bandeja de `userId`.
+ *
+ *  No borra mensajes compartidos. Guarda el id del último que vio la persona
+ *  para que un mensaje posterior reactive el chat sin restaurar el historial
+ *  que ya había eliminado. También consume sus mensajes/notificaciones pendientes
+ *  para que los badges bajen en la misma operación.
+ *
+ *  Retorna false si la conversación no existe o el usuario no participa. */
+function deleteConversationForUser(conversationId, userId) {
+  const conversation = db.prepare(`
+    SELECT id FROM conversations
+    WHERE id = ? AND (buyer_id = ? OR seller_id = ?)
+  `).get(conversationId, userId, userId);
+  if (!conversation) return false;
+
+  db.transaction(() => {
+    const ultimo = db.prepare(`
+      SELECT id FROM messages
+      WHERE conversation_id = ?
+      ORDER BY rowid DESC
+      LIMIT 1
+    `).get(conversationId);
+
+    db.prepare(`
+      INSERT INTO conversation_deletions
+        (conversation_id, user_id, deleted_through_message_id, deleted_at)
+      VALUES (?, ?, ?, datetime('now'))
+      ON CONFLICT(conversation_id, user_id) DO UPDATE SET
+        deleted_through_message_id = excluded.deleted_through_message_id,
+        deleted_at = excluded.deleted_at
+    `).run(conversationId, userId, ultimo?.id ?? null);
+
+    db.prepare(`
+      UPDATE messages SET read = 1
+      WHERE conversation_id = ? AND sender_id != ? AND read = 0
+    `).run(conversationId, userId);
+
+    markNotificationsReadForConversation(userId, conversationId);
+  })();
+
+  return true;
 }
 
 function updateConversationPreview(conversationId, previewText) {
@@ -3087,8 +3170,16 @@ function getUnreadMessageCount(userId) {
   const row = db.prepare(`
     SELECT COUNT(*) as count FROM messages m
     JOIN conversations c ON c.id = m.conversation_id
-    WHERE (c.buyer_id = ? OR c.seller_id = ?) AND m.sender_id != ? AND m.read = 0
-  `).get(userId, userId, userId);
+    LEFT JOIN conversation_deletions d
+      ON d.conversation_id = c.id AND d.user_id = ?
+    WHERE (c.buyer_id = ? OR c.seller_id = ?)
+      AND m.sender_id != ?
+      AND m.read = 0
+      AND m.rowid > COALESCE((
+        SELECT corte.rowid FROM messages corte
+        WHERE corte.id = d.deleted_through_message_id
+      ), 0)
+  `).get(userId, userId, userId, userId);
   return row?.count ?? 0;
 }
 
@@ -3271,7 +3362,18 @@ function rowToMessage(row, replyTo = undefined) {
   };
 }
 
-function getMessages(conversationId) {
+function getMessages(conversationId, userId = null) {
+  const deletion = userId
+    ? db.prepare(`
+        SELECT deleted_through_message_id FROM conversation_deletions
+        WHERE conversation_id = ? AND user_id = ?
+      `).get(conversationId, userId)
+    : null;
+  const deletedThroughRowid = deletion?.deleted_through_message_id
+    ? db.prepare('SELECT rowid FROM messages WHERE id = ?')
+        .get(deletion.deleted_through_message_id)?.rowid ?? 0
+    : 0;
+
   // LEFT JOIN y no una consulta por mensaje: un chat de 200 mensajes con
   // respuestas haría 200 SELECT extra.
   return db.prepare(`
@@ -3282,9 +3384,9 @@ function getMessages(conversationId) {
            r.image_url  AS reply_image_url
     FROM messages m
     LEFT JOIN messages r ON r.id = m.reply_to_message_id
-    WHERE m.conversation_id = ?
+    WHERE m.conversation_id = ? AND m.rowid > ?
     ORDER BY m.created_at ASC
-  `).all(conversationId).map(row => rowToMessage(row));
+  `).all(conversationId, deletedThroughRowid).map(row => rowToMessage(row));
 }
 
 /** Devuelve el resumen del mensaje citado, o null si no existe. */
@@ -4050,6 +4152,7 @@ module.exports = {
   createConversation,
   findConversation,
   getConversationsForUser,
+  deleteConversationForUser,
   setUltimaActividad,
   setMostrarEstadoEnLinea,
   getPresencia,
