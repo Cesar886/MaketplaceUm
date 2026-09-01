@@ -49,9 +49,30 @@ function register(app) {
   // rompe sin que nadie escriba nada), así que un caché estaría mintiendo
   // hasta el siguiente evento que lo refrescara.
   function conMetricas(seller) {
+    const w = db.FEED_WEIGHTS;
+    const ventasConfirmadas = db.countVentasConfirmadas(seller.id);
+    // `created_at` se guarda como 'YYYY-MM-DD HH:MM:SS' (UTC, sin 'Z') —
+    // mismo formato que el resto de columnas datetime('now') del esquema.
+    // `new Date` no lo interpreta como UTC sin el separador 'T' y el
+    // sufijo 'Z' explícitos.
+    const diasDesdeAlta = seller.createdAt
+      ? (Date.now() - new Date(seller.createdAt.replace(' ', 'T') + 'Z').getTime()) / 86400000
+      : null;
+    // Cuenta propia del admin: todas las insignias de esta pantalla quedan
+    // desbloqueadas siempre, sin depender de métricas reales que puedan
+    // subir y bajar (racha, tiempo de respuesta, etc.) — ver
+    // `esCuentaTodosLosBadges` para el mismo trato en `verified`/
+    // `socioFundador`, que se resuelve en `rowToSeller` porque esos dos se
+    // usan fuera de este endpoint también (tarjetas, comentarios...).
+    const rawRow = db.getDb()
+      .prepare('SELECT email FROM sellers WHERE id = ?')
+      .get(seller.id);
+    const todosLosBadges = db.esCuentaTodosLosBadges(rawRow && rawRow.email);
     return {
       ...seller,
-      rachaSemanas: db.computeRachaPublicaciones(seller.id),
+      rachaSemanas: todosLosBadges
+        ? Math.max(2, db.computeRachaPublicaciones(seller.id))
+        : db.computeRachaPublicaciones(seller.id),
       // Posición en el enigma escondido, o null si no lo ha resuelto. Es lo
       // ÚNICO que el mundo secreto asoma a una respuesta pública, y a
       // propósito no dice nada de cómo se consigue: un número suelto en el
@@ -59,8 +80,42 @@ function register(app) {
       // pregunte. Ver secreto/enigma.js.
       enigmaPosicion: (db.getResolucionEnigma(seller.id) || {}).posicion ?? null,
       respondeRapido:
-        seller.medianResponseMinutes !== null &&
-        seller.medianResponseMinutes <= db.FEED_WEIGHTS.FAST_REPLY_MAX_MINUTES,
+        todosLosBadges ||
+        (seller.medianResponseMinutes !== null &&
+          seller.medianResponseMinutes <= w.FAST_REPLY_MAX_MINUTES),
+      // Nivel superior de "responde rápido": mediana bajo un umbral bastante
+      // más estricto. No reemplaza a `respondeRapido` en la respuesta — el
+      // cliente decide cuál mostrar (ver InsigniaCuenta para el mismo patrón
+      // con verificado/socio fundador) porque esta implica la otra.
+      respuestaInstantanea:
+        todosLosBadges ||
+        (seller.medianResponseMinutes !== null &&
+          seller.medianResponseMinutes <= w.INSTANT_REPLY_MAX_MINUTES),
+      // "Vendedor confiable": rating alto sostenido por un mínimo de
+      // reseñas. Sin el mínimo, un solo comentario de 5 estrellas bastaría
+      // para la insignia, que es justo el ruido que el umbral de reseñas
+      // busca evitar.
+      vendedorConfiable:
+        todosLosBadges ||
+        (seller.rating >= w.TOP_RATED_MIN_RATING &&
+          seller.reviews >= w.TOP_RATED_MIN_REVIEWS),
+      // "Novato": insignia de bienvenida, no de mérito permanente — por eso
+      // depende de la antigüedad de la cuenta y no solo de la venta. Sin el
+      // límite de días se quedaría pegada para siempre en cuanto se hiciera
+      // la primera venta, y dejaría de leerse como "nuevo por aquí".
+      esVendedorNuevo:
+        todosLosBadges ||
+        (diasDesdeAlta !== null &&
+          diasDesdeAlta <= w.NOVATO_MAX_DIAS &&
+          ventasConfirmadas >= 1),
+      // Años completos desde el alta. 0 significa "todavía no cumple un
+      // año": el call site decide no pintar nada en ese caso, así que el
+      // valor crudo (y no un booleano) es lo que necesita.
+      aniversarioAnios: todosLosBadges
+        ? Math.max(1, diasDesdeAlta !== null ? Math.floor(diasDesdeAlta / 365) : 0)
+        : diasDesdeAlta !== null
+        ? Math.floor(diasDesdeAlta / 365)
+        : 0,
       // El producto fijado se verifica al leer: si se borró o ya no es del
       // vendedor, se devuelve null en vez de un ID colgante que el cliente
       // tendría que resolver a una tarjeta vacía.

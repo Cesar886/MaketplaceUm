@@ -47,7 +47,14 @@ function initDatabase() {
       -- propósito: verificar es un trámite (comprobar un dato real de
       -- contacto) y esto es una distinción, no tienen la misma puerta ni el
       -- mismo significado.
-      socio_fundador INTEGER DEFAULT 0
+      socio_fundador INTEGER DEFAULT 0,
+      -- Fecha de alta, para la insignia de Aniversario y para decidir qué
+      -- cuentas son "nuevas" (insignia de Novato). Ver migración 42 para
+      -- bases que ya existían antes de esta columna: ahí no hay DEFAULT de
+      -- tabla que valga (SQLite no acepta uno no-constante en ADD COLUMN),
+      -- así que las tres vías de alta (data.js, authGoogle.js, insertSeller)
+      -- mandan datetime('now') explícito en el INSERT.
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
     CREATE TABLE IF NOT EXISTS products (
@@ -1636,6 +1643,22 @@ function runMigrations() {
     db.exec(`ALTER TABLE sellers ADD COLUMN socio_fundador INTEGER DEFAULT 0`);
   }
 
+  // 42. Fecha de alta de la cuenta (ver CREATE TABLE de arriba), para bases
+  //     que ya existían antes de agregarla. SQLite no acepta un default
+  //     no-constante (como datetime('now')) en un ADD COLUMN, así que se
+  //     agrega sin default y se rellena aparte: las cuentas ya existentes
+  //     quedan con la fecha de esta migración (lo más cerca de su alta real
+  //     que se puede reconstruir sin haberlo guardado antes). Las cuentas
+  //     nuevas no dependen de un default de columna — data.js, authGoogle.js
+  //     e insertSeller mandan `datetime('now')` explícito en su INSERT.
+  const sellerColsCreatedAt = db.prepare("PRAGMA table_info('sellers')").all();
+  if (!sellerColsCreatedAt.some(c => c.name === 'created_at')) {
+    db.exec(`
+      ALTER TABLE sellers ADD COLUMN created_at TEXT;
+      UPDATE sellers SET created_at = datetime('now') WHERE created_at IS NULL;
+    `);
+  }
+
   console.log('🔄 Migración de schema completada');
 }
 
@@ -1878,8 +1901,20 @@ function getCategories() {
   return db.prepare('SELECT * FROM categories ORDER BY id').all();
 }
 
+// Cuenta propia del admin: siempre se ve con todas las insignias
+// desbloqueadas, sin que ningún flujo normal (revocar verificación, perder
+// racha, etc.) se las pueda quitar — es un caso hardcodeado, no una fila que
+// se pueda editar por error. Comparación case-insensitive porque los emails
+// institucionales se guardan tal cual los manda Google/OTP.
+const CUENTA_TODOS_LOS_BADGES = '1220326@alumno.um.edu.mx';
+
+function esCuentaTodosLosBadges(email) {
+  return (email || '').trim().toLowerCase() === CUENTA_TODOS_LOS_BADGES;
+}
+
 function rowToSeller(row) {
   if (!row) return null;
+  const todosLosBadges = esCuentaTodosLosBadges(row.email);
   return {
     id: row.id,
     name: row.name,
@@ -1894,12 +1929,12 @@ function rowToSeller(row) {
     logoUrl: row.logoUrl || null,
     rating: row.rating ?? 0,
     reviews: row.reviews ?? 0,
-    verified: !!row.verified,
+    verified: todosLosBadges || !!row.verified,
     // Insignia verde otorgada a mano por el admin. Separada de `verified` a
     // propósito: no la gana ningún dato ni trámite de la cuenta, así que no
     // comparte puerta con la verificación. Ver
     // scripts/otorgar-socio-fundador.js.
-    socioFundador: !!row.socio_fundador,
+    socioFundador: todosLosBadges || !!row.socio_fundador,
     // Determina el color/etiqueta de la insignia de verificación en la app.
     // 'particular' es lo que la UI llama "externo".
     tipoCuenta: row.tipo_cuenta || 'particular',
@@ -1927,6 +1962,10 @@ function rowToSeller(row) {
     whatsappNumber: row.whatsapp_number || null,
     tiktokUrl: row.tiktok_url || null,
     twitterUrl: row.twitter_url || null,
+    // Fecha de alta de la cuenta. Ver migración 42: en cuentas creadas antes
+    // de esa migración no es la fecha real de alta, es la fecha en la que se
+    // corrió la migración.
+    createdAt: row.created_at,
   };
 }
 
@@ -1955,8 +1994,8 @@ function getSellers() {
 
 function insertSeller(seller) {
   db.prepare(`
-    INSERT OR IGNORE INTO sellers (id, name, avatarInitials, major, isBusiness, logoUrl, rating, reviews, verified)
-    VALUES (@id, @name, @avatarInitials, @major, @isBusiness, @logoUrl, @rating, @reviews, @verified)
+    INSERT OR IGNORE INTO sellers (id, name, avatarInitials, major, isBusiness, logoUrl, rating, reviews, verified, created_at)
+    VALUES (@id, @name, @avatarInitials, @major, @isBusiness, @logoUrl, @rating, @reviews, @verified, datetime('now'))
   `).run({
     ...seller,
     isBusiness: seller.isBusiness ? 1 : 0,
@@ -2395,6 +2434,17 @@ function computeRachaPublicaciones(sellerId) {
   let racha = 0;
   while (ventanas.has(racha)) racha += 1;
   return racha;
+}
+
+// Ventas confirmadas de un vendedor: órdenes con status = 'paid', el único
+// estado que significa que el cobro se completó (ver CHECK de la tabla
+// orders). 'pending'/'cancelled'/'requires_other_method' no cuentan como
+// venta, son intentos que no llegaron a buen puerto.
+function countVentasConfirmadas(sellerId) {
+  const row = db.prepare(
+    `SELECT COUNT(*) AS n FROM orders WHERE vendor_id = ? AND status = 'paid'`,
+  ).get(sellerId);
+  return row ? row.n : 0;
 }
 
 // Recalcula el caché de TODOS los vendedores desde product_ratings. Corre al
@@ -3449,6 +3499,10 @@ const FEED_WEIGHTS = {
   W_SELLER_PHOTO: 5,           // bonus por tener foto/logo de perfil
   W_SELLER_FAST_REPLY: 8,      // bonus por responder rápido
   FAST_REPLY_MAX_MINUTES: 60,  // umbral para considerar "responde rápido"
+  INSTANT_REPLY_MAX_MINUTES: 10, // umbral, más estricto, para "respuesta instantánea"
+  TOP_RATED_MIN_RATING: 4.5,   // rating mínimo para "vendedor confiable"
+  TOP_RATED_MIN_REVIEWS: 10,   // reseñas mínimas para que el rating anterior cuente
+  NOVATO_MAX_DIAS: 60,         // ventana desde el alta en la que la insignia de Novato puede mostrarse
   AFFINITY_MULTIPLIER: 1.3,    // multiplicador si la categoría es top-3 del device/usuario
   NO_STOCK_PENALTY_FACTOR: 0.01, // castigo drástico si no hay stock/está vendido
   POPULARITY_WINDOW_DAYS: 180, // ventana de interacciones que cuentan para popularidad
@@ -3978,15 +4032,54 @@ function getTrendingSearches({ days, limit }) {
  * categoría además de por título, así que tocar la sugerencia siempre
  * devuelve resultados en vez de dejar la lista vacía.
  */
+/**
+ * Fallback de "búsquedas populares" para cuando aún no hay historial de
+ * búsquedas reales (arranque en frío).
+ *
+ * Antes caía a nombres de categorías ("Electrónica", "Ropa"...), pero eso no
+ * es una búsqueda: es un rótulo del catálogo, y como placeholder confunde
+ * ("¿por qué me sugiere 'Hogar' como si alguien lo hubiera buscado?").
+ *
+ * En su lugar usa los nombres de los productos con más interacción real
+ * (vistas/favoritos/contactos, misma señal que rankea el feed en
+ * getFeedRanked) dentro de la ventana de popularidad: eso sí se parece a lo
+ * que la gente busca, porque es lo que la gente efectivamente toca. Con cero
+ * interacciones todavía (día uno, sin tráfico) cae a los productos más
+ * recientes, que siguen siendo términos de producto reales y no categorías.
+ */
 function getFallbackSearchTerms({ limit }) {
+  const w = FEED_WEIGHTS;
   return db.prepare(`
-    SELECT c.name AS queryText, COUNT(p.id) AS count
-    FROM categories c
-    JOIN products p ON p.category = c.id AND ${SQL_PRODUCTO_ACTIVO}
-    GROUP BY c.id
-    ORDER BY count DESC, c.name ASC
-    LIMIT ?
-  `).all(limit);
+    WITH product_stats AS (
+      SELECT
+        product_id,
+        SUM(CASE WHEN tipo = 'vista' THEN 1 ELSE 0 END) AS vistas,
+        SUM(CASE WHEN tipo = 'favorito' THEN 1 ELSE 0 END) AS favoritos,
+        SUM(CASE WHEN tipo = 'contacto' THEN 1 ELSE 0 END) AS contactos
+      FROM interacciones_dispositivo
+      WHERE created_at >= datetime('now', '-' || @popularityWindowDays || ' days')
+      GROUP BY product_id
+    )
+    SELECT
+      p.title AS queryText,
+      (
+        @wViews * COALESCE(ps.vistas, 0)
+        + @wFavoritos * COALESCE(ps.favoritos, 0)
+        + @wContactos * COALESCE(ps.contactos, 0)
+      ) AS score
+    FROM products p
+    LEFT JOIN product_stats ps ON ps.product_id = p.id
+    WHERE ${SQL_PRODUCTO_ACTIVO}
+    GROUP BY p.id
+    ORDER BY score DESC, p.created_at DESC
+    LIMIT @limit
+  `).all({
+    popularityWindowDays: w.POPULARITY_WINDOW_DAYS,
+    wViews: w.W_VIEWS,
+    wFavoritos: w.W_FAVORITOS,
+    wContactos: w.W_CONTACTOS,
+    limit,
+  });
 }
 
 // ─── Category Engagement (orden dinámico de íconos de categoría) ─────────
@@ -4067,6 +4160,7 @@ module.exports = {
   getSellers,
   esParticipanteDeConversacion,
   rowToSeller,
+  esCuentaTodosLosBadges,
   insertSeller,
   getHighlightPlans,
   getAllProducts,
@@ -4105,6 +4199,7 @@ module.exports = {
   getResponseDeltasMinutes,
   syncSellerResponseTime,
   computeRachaPublicaciones,
+  countVentasConfirmadas,
   // Product comments
   COMENTARIOS_POR_PAGINA,
   COMENTARIOS_MAX_POR_PAGINA,

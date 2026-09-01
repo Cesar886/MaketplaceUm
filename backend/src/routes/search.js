@@ -38,9 +38,10 @@ function register(app) {
         limit: TRENDING_LIMIT,
       });
       // Arranque en frío: sin búsquedas registradas el placeholder se
-      // quedaría en el texto fijo para siempre. Se cae a categorías reales
-      // del catálogo, que ya son dinámicas (dependen de qué hay publicado)
-      // y se reemplazan solas en cuanto haya búsquedas de verdad.
+      // quedaría en el texto fijo para siempre. Se cae a nombres de
+      // productos populares (por vistas/favoritos/contactos), que ya son
+      // dinámicos y se parecen a una búsqueda real, no a una categoría del
+      // catálogo. Se reemplazan solos en cuanto haya búsquedas de verdad.
       if (rows.length === 0) {
         rows = db.getFallbackSearchTerms({ limit: TRENDING_LIMIT });
       }

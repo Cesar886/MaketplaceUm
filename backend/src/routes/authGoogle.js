@@ -223,10 +223,10 @@ function crearRutasAuthGoogle({
     db.prepare(`
       INSERT INTO sellers (id, name, email, phone, avatarInitials, major, isBusiness,
         rating, reviews, verified, tipo_cuenta, businessHours, paymentMethods,
-        password_hash, auth_provider, google_sub, avatarUrl)
+        password_hash, auth_provider, google_sub, avatarUrl, created_at)
       VALUES (@id, @name, @email, @phone, @avatarInitials, @major, @isBusiness,
         0, 0, 0, @tipo_cuenta, @businessHours, @paymentMethods,
-        NULL, @auth_provider, @google_sub, @avatarUrl)
+        NULL, @auth_provider, @google_sub, @avatarUrl, datetime('now'))
     `).run({
       id: sellerId,
       name: nombre.trim(),

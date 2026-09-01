@@ -49,6 +49,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final TextEditingController _textController = TextEditingController();
+  final FocusNode _textFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   final ChatSocketService _socket = ChatSocketService.instance;
   List<ChatMessage> _messages = [];
@@ -254,6 +255,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _socket.unsubscribePresence([otro.id]);
     }
     _textController.dispose();
+    _textFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -309,6 +311,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void _empezarRespuesta(ChatMessage msg) {
     if (msg.text == '[Mensaje eliminado]') return;
     setState(() => _replyingTo = msg);
+    // El swipe pasa por encima del campo de texto sin tocarlo, así que el
+    // teclado no se abre solo: hay que pedirle el foco explícitamente para
+    // que el usuario pueda escribir la respuesta de una vez.
+    _textFocusNode.requestFocus();
   }
 
   void _cancelarRespuesta() {
@@ -737,6 +743,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     Expanded(
                       child: TextField(
                         controller: _textController,
+                        focusNode: _textFocusNode,
                         textInputAction: TextInputAction.send,
                         textCapitalization: TextCapitalization.sentences,
                         onSubmitted: (_) => _sendMessage(),

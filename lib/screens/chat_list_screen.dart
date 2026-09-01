@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
@@ -189,6 +190,59 @@ class _ChatListScreenState extends State<ChatListScreen> {
     if (shell != null) unawaited(shell.recargarContadores());
   }
 
+  /// Menú de opciones al mantener presionado un chat. Sustituye al ícono de
+  /// basura fijo en cada fila: ese botón estaba a un toque de distancia de
+  /// abrir el chat y borraba conversaciones por error. Con mantener
+  /// presionado hay una intención explícita antes de llegar a la opción, y
+  /// encima el diálogo de confirmación sigue ahí como segunda barrera.
+  Future<void> _abrirOpciones(Conversation conversation) async {
+    HapticFeedback.mediumImpact();
+    final accion = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => SafeArea(
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          decoration: BoxDecoration(
+            color: sheetContext.colors.surface,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 6),
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: sheetContext.colors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              ListTile(
+                leading: Icon(
+                  Icons.delete_outline_rounded,
+                  color: sheetContext.colors.danger,
+                ),
+                title: Text(
+                  'chat.delete_conversation'.tr(),
+                  style: TextStyle(
+                    color: sheetContext.colors.danger,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                onTap: () => Navigator.of(sheetContext).pop('delete'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (accion == 'delete') {
+      await _eliminarDesdeBoton(conversation);
+    }
+  }
+
   Future<void> _eliminarDesdeBoton(Conversation conversation) async {
     if (await _confirmarYEliminar(conversation)) {
       _quitarConversacion(conversation);
@@ -264,7 +318,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
             : ListView.separated(
                 padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
                 itemCount: _conversations.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 6),
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
                 itemBuilder: (context, index) {
                   final conv = _conversations[index];
                   final auth = context.read<AuthProvider>();
@@ -303,7 +357,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     child: _ConversationTile(
                       conversation: conv,
                       isOwn: isOwn,
-                      onDelete: () => _eliminarDesdeBoton(conv),
+                      onLongPress: () => _abrirOpciones(conv),
                       onTap: () async {
                         await Navigator.of(context).push(
                           MaterialPageRoute<void>(
@@ -340,13 +394,13 @@ class _ConversationTile extends StatelessWidget {
     required this.conversation,
     required this.isOwn,
     required this.onTap,
-    required this.onDelete,
+    required this.onLongPress,
   });
 
   final Conversation conversation;
   final bool isOwn;
   final VoidCallback onTap;
-  final VoidCallback onDelete;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -362,138 +416,176 @@ class _ConversationTile extends StatelessWidget {
             (isOwn ? conversation.sellerId : conversation.buyerId) &&
         !conversation.lastMessage!.read;
 
-    return Material(
-      color: context.colors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(
-          color: unread
-              ? context.colors.primary.withValues(alpha: 0.3)
-              : context.colors.border,
-          width: unread ? 1.5 : 1,
-        ),
+    // Mismo lenguaje de tarjeta que el resto del catálogo (radio 14 + sombra
+    // suave): la bandeja era la única lista con tarjetas planas de radio 8 y
+    // se veía de otra app. El borde tintado de no leído usa el MISMO verde
+    // que el puntito, para que el estado se lea de una sola pasada.
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: AppShadows.soft,
       ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              Material(
-                type: MaterialType.circle,
-                color: Colors.transparent,
-                child: InkWell(
-                  customBorder: const CircleBorder(),
-                  onTap: otherUser != null && otherUser.id.isNotEmpty
-                      ? () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) =>
-                                SellerProfileScreen(sellerId: otherUser.id),
-                          ),
-                        )
-                      : null,
-                  // `watch` y no `read`: es lo que hace que el puntito se
-                  // encienda solo cuando llega el evento del socket, sin que
-                  // la persona tenga que recargar la lista.
-                  child: OnlineStatusAvatar(
-                    radius: 24,
-                    iniciales: otherUser?.avatarInitials,
-                    imageUrl:
-                        otherUser?.logoUrl != null &&
-                            otherUser!.logoUrl!.isNotEmpty
-                        ? '${ApiService.baseUrl}${otherUser.logoUrl}'
+      child: Material(
+        color: context.colors.surface,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(
+            color: unread
+                ? context.colors.online.withValues(alpha: 0.4)
+                : context.colors.border,
+            width: unread ? 1.5 : 1,
+          ),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          splashColor: context.colors.primary.withValues(alpha: 0.06),
+          highlightColor: context.colors.primary.withValues(alpha: 0.03),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+            child: Row(
+              children: [
+                Material(
+                  type: MaterialType.circle,
+                  color: Colors.transparent,
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: otherUser != null && otherUser.id.isNotEmpty
+                        ? () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) =>
+                                  SellerProfileScreen(sellerId: otherUser.id),
+                            ),
+                          )
                         : null,
-                    enLinea:
-                        otherUser != null &&
-                        context
-                            .watch<PresenceService>()
-                            .estadoDe(otherUser.id)
-                            .enLinea,
+                    // `watch` y no `read`: es lo que hace que el puntito se
+                    // encienda solo cuando llega el evento del socket, sin que
+                    // la persona tenga que recargar la lista.
+                    child: OnlineStatusAvatar(
+                      radius: 24,
+                      iniciales: otherUser?.avatarInitials,
+                      imageUrl:
+                          otherUser?.logoUrl != null &&
+                              otherUser!.logoUrl!.isNotEmpty
+                          ? '${ApiService.baseUrl}${otherUser.logoUrl}'
+                          : null,
+                      enLinea:
+                          otherUser != null &&
+                          context
+                              .watch<PresenceService>()
+                              .estadoDe(otherUser.id)
+                              .enLinea,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            otherUser?.name ?? 'Usuario',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontWeight: unread
-                                  ? FontWeight.w700
-                                  : FontWeight.w600,
-                              color: context.colors.ink,
-                              fontSize: 15,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    otherUser?.name ?? 'Usuario',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontWeight: unread
+                                          ? FontWeight.w700
+                                          : FontWeight.w600,
+                                      color: context.colors.ink,
+                                      fontSize: 15,
+                                      letterSpacing: -0.1,
+                                    ),
+                                  ),
+                                ),
+                                if (otherUser != null &&
+                                    (otherUser.verified ||
+                                        otherUser.socioFundador)) ...[
+                                  const SizedBox(width: 3),
+                                  InsigniaCuenta(
+                                    verified: otherUser.verified,
+                                    socioFundador: otherUser.socioFundador,
+                                    tipoCuenta: otherUser.tipoCuenta,
+                                    size: 14,
+                                  ),
+                                ],
+                              ],
                             ),
+                          ),
+                          if (unread) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: context.colors.online,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: context.colors.surface,
+                                  width: 1.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      // El producto es contexto, no contenido: va en pastilla
+                      // tenue para que no compita con el nombre ni con el
+                      // último mensaje, que son las dos cosas que se leen.
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: context.colors.surfaceMuted,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'chat.about'.tr(namedArgs: {'product': productName}),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: context.colors.mutedStrong,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        if (otherUser != null &&
-                            (otherUser.verified ||
-                                otherUser.socioFundador)) ...[
-                          const SizedBox(width: 5),
-                          InsigniaCuenta(
-                            verified: otherUser.verified,
-                            socioFundador: otherUser.socioFundador,
-                            tipoCuenta: otherUser.tipoCuenta,
-                            size: 14,
-                          ),
-                        ],
-                        if (unread) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: context.colors.primary,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      'chat.about'.tr(namedArgs: {'product': productName}),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: context.colors.muted,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
                       ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      conversation.lastMessagePreview.isNotEmpty
-                          ? conversation.lastMessagePreview
-                          : 'chat.tap_to_open'.tr(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: context.colors.muted,
-                        fontWeight: unread ? FontWeight.w600 : FontWeight.w500,
-                        fontSize: 13,
+                      const SizedBox(height: 5),
+                      Text(
+                        conversation.lastMessagePreview.isNotEmpty
+                            ? conversation.lastMessagePreview
+                            : 'chat.tap_to_open'.tr(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          // Sin leer el mensaje sube a tinta plena: es la
+                          // jerarquía que hace que la fila "pese" más que las
+                          // ya atendidas, sin gritar con color.
+                          color: unread
+                              ? context.colors.ink
+                              : context.colors.muted,
+                          fontWeight: unread
+                              ? FontWeight.w600
+                              : FontWeight.w500,
+                          fontSize: 13,
+                          height: 1.25,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 4),
-              IconButton(
-                tooltip: 'chat.delete_conversation'.tr(),
-                visualDensity: VisualDensity.compact,
-                color: context.colors.danger,
-                onPressed: onDelete,
-                icon: const Icon(Icons.delete_outline_rounded, size: 21),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

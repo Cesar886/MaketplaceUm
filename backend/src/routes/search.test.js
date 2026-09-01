@@ -256,36 +256,51 @@ test('GET /api/search/trending devuelve a lo sumo 10 términos', async () => {
   assert.strictEqual(body.terms.length, 10);
 });
 
-// ─── Arranque en frío: fallback a categorías del catálogo ──────
+// ─── Arranque en frío: fallback a productos populares del catálogo ────
 
-test('sin búsquedas registradas, cae a categorías con producto activo', async () => {
+test('sin búsquedas registradas, cae a títulos de producto activo por interacción', async () => {
   resetTrendingCache();
   db.getDb().exec('DELETE FROM search_queries');
 
   const raw = db.getDb();
-  raw.exec(`DELETE FROM products; DELETE FROM categories;`);
+  raw.exec(`DELETE FROM products; DELETE FROM categories; DELETE FROM interacciones_dispositivo;`);
   raw.prepare('INSERT INTO categories (id, name) VALUES (?, ?)').run('c_libros', 'Libros');
   raw.prepare('INSERT INTO categories (id, name) VALUES (?, ?)').run('c_tec', 'Tecnología');
-  raw.prepare('INSERT INTO categories (id, name) VALUES (?, ?)').run('c_vacia', 'Sin nada');
 
-  const insertar = (id, categoria) =>
+  const insertar = (id, titulo, categoria) =>
     raw
       .prepare('INSERT INTO products (id, title, price, category) VALUES (?, ?, 100, ?)')
-      .run(id, `Producto ${id}`, categoria);
+      .run(id, titulo, categoria);
 
-  insertar('p1', 'c_tec');
-  insertar('p2', 'c_tec');
-  insertar('p3', 'c_libros');
+  insertar('p1', 'Bicicleta rodada 26', 'c_tec');
+  insertar('p2', 'Laptop usada', 'c_tec');
+  insertar('p3', 'Libro de cálculo', 'c_libros');
+
+  const interactuar = (productId, tipo, veces) => {
+    for (let i = 0; i < veces; i++) {
+      raw
+        .prepare(
+          `INSERT INTO interacciones_dispositivo (device_id, product_id, category, tipo, created_at)
+           VALUES (?, ?, ?, ?, datetime('now'))`,
+        )
+        .run(`dev${i}`, productId, 'c_tec', tipo);
+    }
+  };
+
+  // p1 con más señal de interés real que p2; p3 sin ninguna interacción
+  // (debe seguir apareciendo, ordenado detrás por score 0 → cae a recencia).
+  interactuar('p1', 'favorito', 5);
+  interactuar('p2', 'vista', 2);
 
   const res = await fetch(`${baseUrl}/api/search/trending`);
   const body = await res.json();
 
-  // Ordenadas por cuántos productos activos tiene cada una; la categoría
-  // sin producto no se sugiere (buscarla dejaría la lista vacía).
-  assert.deepStrictEqual(body.terms, ['Tecnología', 'Libros']);
+  // Ni una categoría en la lista: son títulos de producto reales,
+  // rankeados por la misma señal de popularidad que usa el feed.
+  assert.deepStrictEqual(body.terms, ['Bicicleta rodada 26', 'Laptop usada', 'Libro de cálculo']);
 });
 
-test('las búsquedas reales le ganan al fallback de categorías', async () => {
+test('las búsquedas reales le ganan al fallback de productos populares', async () => {
   resetTrendingCache();
   db.getDb().exec('DELETE FROM search_queries');
   sembrarBusqueda('bicicleta', 0);

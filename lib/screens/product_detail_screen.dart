@@ -988,19 +988,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       return;
     }
 
-    final priceText = product.price == 0
-        ? 'product.free'.tr()
-        : Product.formatPrice(product.price);
-    final sellerName = seller.trim();
-
     final lines = <String>[
-      '$title — $priceText',
-      if (sellerName.isNotEmpty)
-        'product.share_seller_line'.tr(namedArgs: {'seller': sellerName}),
+      '$title — ${'app.name'.tr()}',
       '',
       url,
-      '',
-      'app.name'.tr(),
     ];
     Share.share(lines.join('\n'));
   }

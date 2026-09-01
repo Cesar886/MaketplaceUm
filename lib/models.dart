@@ -181,6 +181,10 @@ class Seller {
     this.productoFijadoId,
     this.estadoConexion = EstadoConexion.desconocido,
     this.respondeRapido = false,
+    this.respuestaInstantanea = false,
+    this.vendedorConfiable = false,
+    this.esVendedorNuevo = false,
+    this.aniversarioAnios = 0,
     this.rachaSemanas = 0,
     this.enigmaPosicion,
     this.facebookUrl,
@@ -225,6 +229,10 @@ class Seller {
       // defaults dejan que un Seller construido desde una respuesta parcial
       // simplemente no muestre los badges, en vez de reventar.
       respondeRapido: json['respondeRapido'] as bool? ?? false,
+      respuestaInstantanea: json['respuestaInstantanea'] as bool? ?? false,
+      vendedorConfiable: json['vendedorConfiable'] as bool? ?? false,
+      esVendedorNuevo: json['esVendedorNuevo'] as bool? ?? false,
+      aniversarioAnios: (json['aniversarioAnios'] as num?)?.toInt() ?? 0,
       rachaSemanas: (json['rachaSemanas'] as num?)?.toInt() ?? 0,
       enigmaPosicion: (json['enigmaPosicion'] as num?)?.toInt(),
       facebookUrl: json['facebookUrl'] as String?,
@@ -309,6 +317,25 @@ class Seller {
   /// sistema. Lo decide el backend para que la app no tenga que conocer el
   /// umbral ni recibir los tiempos crudos de nadie.
   final bool respondeRapido;
+
+  /// Igual que [respondeRapido] pero con un umbral bastante más estricto.
+  /// Cuando es true, [respondeRapido] también lo es — el backend calcula
+  /// ambas del mismo dato, solo cambia el umbral.
+  final bool respuestaInstantanea;
+
+  /// Rating alto sostenido por un mínimo de reseñas, calculado por el
+  /// backend. Ver [InsigniaVendedorConfiable] en widgets/badges.dart.
+  final bool vendedorConfiable;
+
+  /// Insignia de bienvenida: cuenta creada hace poco que ya tiene su primera
+  /// venta confirmada. A diferencia del resto de insignias, no es
+  /// permanente — deja de mostrarse cuando la cuenta envejece, aunque las
+  /// ventas se mantengan.
+  final bool esVendedorNuevo;
+
+  /// Años completos desde el alta de la cuenta. 0 = todavía no cumple un
+  /// año, así que no hay nada que mostrar.
+  final int aniversarioAnios;
 
   /// Ventanas consecutivas de 7 días en las que publicó algo. Solo cuenta
   /// publicar: vender no la mueve.

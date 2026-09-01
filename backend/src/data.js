@@ -30,8 +30,8 @@ let ownListings = db.getAllListings().map(row => ({
 function registerSeller(sellerData) {
   // Insertar en SQLite
   db.getDb().prepare(`
-    INSERT OR IGNORE INTO sellers (id, name, email, phone, avatarInitials, major, isBusiness, logoUrl, rating, reviews, verified, password_hash, businessHours, paymentMethods, tipo_cuenta)
-    VALUES (@id, @name, @email, @phone, @avatarInitials, @major, @isBusiness, @logoUrl, @rating, @reviews, @verified, @password_hash, @businessHours, @paymentMethods, @tipo_cuenta)
+    INSERT OR IGNORE INTO sellers (id, name, email, phone, avatarInitials, major, isBusiness, logoUrl, rating, reviews, verified, password_hash, businessHours, paymentMethods, tipo_cuenta, created_at)
+    VALUES (@id, @name, @email, @phone, @avatarInitials, @major, @isBusiness, @logoUrl, @rating, @reviews, @verified, @password_hash, @businessHours, @paymentMethods, @tipo_cuenta, datetime('now'))
   `).run({
     ...sellerData,
     email: sellerData.email || null,

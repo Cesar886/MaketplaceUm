@@ -66,21 +66,25 @@ class OfferCornerTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: context.colors.primary,
-        borderRadius: BorderRadius.only(
-          bottomRight: Radius.circular(10),
-          topLeft: Radius.circular(10),
+    return Tooltip(
+      message: label,
+      triggerMode: TooltipTriggerMode.tap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: context.colors.primary,
+          borderRadius: BorderRadius.only(
+            bottomRight: Radius.circular(10),
+            topLeft: Radius.circular(10),
+          ),
         ),
-      ),
-      child: Text(
-        label,
-        style: AppTypography.label(
-          11,
-          weight: FontWeight.w800,
-          color: context.colors.onPrimary,
+        child: Text(
+          label,
+          style: AppTypography.label(
+            11,
+            weight: FontWeight.w800,
+            color: context.colors.onPrimary,
+          ),
         ),
       ),
     );
@@ -105,18 +109,22 @@ class StatusBadge extends StatelessWidget {
       ListingStatus.expired => (c.danger, c.neutralBg),
     };
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        status.label,
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.w600,
-          fontSize: 11,
+    return Tooltip(
+      message: status.label,
+      triggerMode: TooltipTriggerMode.tap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          status.label,
+          style: TextStyle(
+            color: color,
+            fontWeight: FontWeight.w600,
+            fontSize: 11,
+          ),
         ),
       ),
     );
@@ -175,9 +183,14 @@ class InsigniaVerificada extends StatelessWidget {
     const color = AppColors.verifiedBlue;
 
     // En modo compacto (tarjetas de producto, listas) solo cabe el ícono: la
-    // etiqueta completa competiría con el título del producto.
+    // etiqueta completa competiría con el título del producto. El tooltip al
+    // tocar compensa esa falta de texto explicando qué significa la palomita.
     if (compact) {
-      return Icon(Icons.verified_rounded, size: size, color: color);
+      return Tooltip(
+        message: etiqueta,
+        triggerMode: TooltipTriggerMode.tap,
+        child: Icon(Icons.verified_rounded, size: size, color: color),
+      );
     }
 
     return _Badge(
@@ -222,7 +235,11 @@ class InsigniaSocioFundador extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (compact) {
-      return Icon(Icons.verified_rounded, size: size, color: _verde);
+      return Tooltip(
+        message: 'Socio Fundador',
+        triggerMode: TooltipTriggerMode.tap,
+        child: Icon(Icons.verified_rounded, size: size, color: _verde),
+      );
     }
 
     return _Badge(
@@ -375,29 +392,33 @@ class AvailabilityBadge extends StatelessWidget {
       ),
     };
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-      decoration: BoxDecoration(
-        color: onPhoto ? c.surface : background,
-        borderRadius: BorderRadius.circular(999),
-        boxShadow: onPhoto
-            ? [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.18),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ]
-            : null,
-      ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: foreground,
-          fontSize: 10.5,
-          fontWeight: FontWeight.w700,
+    return Tooltip(
+      message: label,
+      triggerMode: TooltipTriggerMode.tap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+        decoration: BoxDecoration(
+          color: onPhoto ? c.surface : background,
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: onPhoto
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.18),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: foreground,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );
@@ -419,18 +440,23 @@ class OpenStatusBadge extends StatelessWidget {
         ? (context.colors.success, context.colors.successBg)
         : (context.colors.mutedStrong, context.colors.neutralBg);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        isOpen ? 'status.open'.tr() : 'status.closed'.tr(),
-        style: TextStyle(
-          color: foreground,
-          fontSize: 10.5,
-          fontWeight: FontWeight.w600,
+    final label = isOpen ? 'status.open'.tr() : 'status.closed'.tr();
+    return Tooltip(
+      message: label,
+      triggerMode: TooltipTriggerMode.tap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: foreground,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );
@@ -467,6 +493,105 @@ class RespondeRapidoBadge extends StatelessWidget {
       label: 'badge.fast_replies'.tr(),
       foreground: context.colors.success,
       background: context.colors.successBg,
+      compact: compact,
+    );
+  }
+}
+
+/// "Respuesta instantánea": nivel superior de [RespondeRapidoBadge], mismo
+/// dato (mediana de tiempo de respuesta) pero con un umbral bastante más
+/// estricto — ver `INSTANT_REPLY_MAX_MINUTES` en el backend.
+///
+/// Va en el MISMO verde sage que "Responde rápido" a propósito: es la misma
+/// promesa de confianza, solo que a un nivel más alto, no una categoría
+/// distinta. El ícono cambia (rayo doble) para que las dos no se confundan
+/// una con otra a simple vista cuando aparecen juntas.
+class RespuestaInstantaneaBadge extends StatelessWidget {
+  const RespuestaInstantaneaBadge({super.key, this.compact = false});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Badge(
+      icon: Icons.electric_bolt_rounded,
+      label: 'badge.instant_replies'.tr(),
+      foreground: context.colors.success,
+      background: context.colors.successBg,
+      compact: compact,
+    );
+  }
+}
+
+/// "Vendedor confiable": rating alto sostenido por un mínimo de reseñas
+/// (`TOP_RATED_MIN_RATING` / `TOP_RATED_MIN_REVIEWS` en el backend), no solo
+/// un rating alto — un puñado de reseñas de 5 estrellas no basta.
+///
+/// Usa el color de acento del sistema (oro/latón según el swatch elegido),
+/// igual que [FeaturedBadge]: es una insignia que empuja hacia la compra,
+/// como el destacado, pero ganada por historial y no comprada.
+class InsigniaVendedorConfiable extends StatelessWidget {
+  const InsigniaVendedorConfiable({super.key, this.compact = false});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Badge(
+      icon: Icons.workspace_premium_rounded,
+      label: 'badge.top_rated'.tr(),
+      foreground: context.colors.accent,
+      background: context.colors.accentTint,
+      border: context.colors.accentTintBorder,
+      compact: compact,
+    );
+  }
+}
+
+/// Insignia de bienvenida para cuentas nuevas con ya al menos una venta
+/// confirmada (`esVendedorNuevo` en el backend: cuenta creada hace poco Y
+/// con ventas). A diferencia del resto de insignias de esta pantalla, no es
+/// un logro permanente — deja de mostrarse sola cuando la cuenta envejece,
+/// así que no hace falta que el cliente decida cuándo ocultarla.
+///
+/// Va en azul celeste (no en el verde de confianza ni en el oro de
+/// conversión): es una señal de bienvenida, no de mérito ni de venta.
+class InsigniaVendedorNuevo extends StatelessWidget {
+  const InsigniaVendedorNuevo({super.key, this.compact = false});
+
+  final bool compact;
+
+  static const _celeste = Color(0xFF2F9BE0);
+
+  @override
+  Widget build(BuildContext context) {
+    return _Badge(
+      icon: Icons.emoji_events_rounded,
+      label: 'badge.new_seller'.tr(),
+      foreground: _celeste,
+      background: _celeste.withValues(alpha: 0.10),
+      compact: compact,
+    );
+  }
+}
+
+/// "N años en Mercadito": contador desde el alta de la cuenta
+/// (`aniversarioAnios` en el backend). Solo se pinta desde 1 año — el call
+/// site condiciona por `aniversarioAnios > 0`, igual que [RachaBadge]
+/// condiciona por `rachaSemanas > 1`.
+class AniversarioBadge extends StatelessWidget {
+  const AniversarioBadge({super.key, required this.anios, this.compact = false});
+
+  final int anios;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Badge(
+      icon: Icons.cake_rounded,
+      label: '$anios ${anios == 1 ? 'año' : 'años'} en Mercadito',
+      foreground: context.colors.mutedStrong,
+      background: context.colors.surfaceMuted,
       compact: compact,
     );
   }
@@ -628,30 +753,34 @@ class _Badge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 7 : 9,
-        vertical: compact ? 3 : 4,
-      ),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-        border: border == null ? null : Border.all(color: border!),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: compact ? 11 : 12, color: foreground),
-          const SizedBox(width: 3),
-          Text(
-            label,
-            style: TextStyle(
-              color: foreground,
-              fontSize: compact ? 10 : 10.5,
-              fontWeight: FontWeight.w600,
+    return Tooltip(
+      message: label,
+      triggerMode: TooltipTriggerMode.tap,
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 7 : 9,
+          vertical: compact ? 3 : 4,
+        ),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(999),
+          border: border == null ? null : Border.all(color: border!),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: compact ? 11 : 12, color: foreground),
+            const SizedBox(width: 3),
+            Text(
+              label,
+              style: TextStyle(
+                color: foreground,
+                fontSize: compact ? 10 : 10.5,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

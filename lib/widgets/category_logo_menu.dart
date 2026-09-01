@@ -104,10 +104,10 @@ class _CategoryLogoMenuState extends State<CategoryLogoMenu>
   );
   late final Animation<double> _wiggleAnimation =
       TweenSequence<double>([
-        TweenSequenceItem(tween: Tween(begin: 0, end: -0.09), weight: 1),
-        TweenSequenceItem(tween: Tween(begin: -0.09, end: 0.09), weight: 2),
-        TweenSequenceItem(tween: Tween(begin: 0.09, end: -0.05), weight: 2),
-        TweenSequenceItem(tween: Tween(begin: -0.05, end: 0), weight: 1),
+        TweenSequenceItem(tween: Tween(begin: 0, end: -0.2), weight: 1),
+        TweenSequenceItem(tween: Tween(begin: -0.2, end: 0.2), weight: 2),
+        TweenSequenceItem(tween: Tween(begin: 0.2, end: -0.12), weight: 2),
+        TweenSequenceItem(tween: Tween(begin: -0.12, end: 0), weight: 1),
       ]).animate(
         CurvedAnimation(parent: _wiggleController, curve: Curves.easeInOut),
       );

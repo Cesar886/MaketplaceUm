@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../app_theme.dart';
 import '../models.dart';
+import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../services/chat_socket_service.dart';
 import '../services/presence_service.dart';
@@ -21,6 +22,7 @@ import '../widgets/seller_schedule_location_row.dart';
 import '../widgets/online_status_avatar.dart';
 import '../widgets/social_links_row.dart';
 import '../widgets/user_role.dart';
+import 'chat_screen.dart';
 import 'product_detail_screen.dart';
 
 /// El color del banner del perfil: el swatch del VENDEDOR, resuelto contra
@@ -148,14 +150,27 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
     }
   }
 
+  void _openChat() {
+    final seller = _seller;
+    if (seller == null) return;
+    final auth = context.read<AuthProvider>();
+    if (auth.isLoggedIn && auth.backendSellerId == seller.id) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ChatScreen(
+          conversationId: '',
+          sellerId: seller.id,
+          otherUser: ChatUser.deSeller(seller),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final seller = _seller;
-    final showWhatsappBar =
-        !_loading &&
-        _error == null &&
-        seller != null &&
-        (seller.phone ?? '').trim().isNotEmpty;
+    final hasPhone = (seller?.phone ?? '').trim().isNotEmpty;
+    final showContactBar = !_loading && _error == null && seller != null;
     return Scaffold(
       appBar: AppBar(title: Text('nav.profile'.tr())),
       body: AnimatedSwitcher(
@@ -176,7 +191,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                 child: _buildContent(context),
               ),
       ),
-      bottomNavigationBar: showWhatsappBar
+      bottomNavigationBar: showContactBar
           ? SafeArea(
               top: false,
               child: Padding(
@@ -184,12 +199,18 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                 child: SizedBox(
                   height: 50,
                   child: ElevatedButton.icon(
-                    onPressed: _openWhatsapp,
-                    icon: const FaIcon(
-                      FontAwesomeIcons.whatsapp,
-                      color: Colors.white,
+                    onPressed: hasPhone ? _openWhatsapp : _openChat,
+                    icon: hasPhone
+                        ? const FaIcon(
+                            FontAwesomeIcons.whatsapp,
+                            color: Colors.white,
+                          )
+                        : const Icon(Icons.chat_bubble, color: Colors.white),
+                    label: Text(
+                      hasPhone
+                          ? 'product.contact_whatsapp'.tr()
+                          : 'product.contact_chat'.tr(),
                     ),
-                    label: Text('product.contact_whatsapp'.tr()),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: context.colors.primary,
                       foregroundColor: Colors.white,
@@ -339,8 +360,11 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                       style: TextStyle(color: context.colors.muted),
                     ),
                   ],
-                  if (seller.respondeRapido ||
+                  if (seller.vendedorConfiable ||
+                      seller.respondeRapido ||
+                      seller.esVendedorNuevo ||
                       seller.rachaSemanas > 1 ||
+                      seller.aniversarioAnios > 0 ||
                       seller.resolvioElEnigma) ...[
                     const SizedBox(height: 10),
                     Wrap(
@@ -348,12 +372,24 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                       runSpacing: 8,
                       alignment: WrapAlignment.center,
                       children: [
-                        if (seller.respondeRapido) const RespondeRapidoBadge(),
+                        if (seller.vendedorConfiable)
+                          const InsigniaVendedorConfiable(),
+                        // Instantánea implica "responde rápido": mostrar las
+                        // dos repetiría el mismo dato en dos badges, así que
+                        // solo se pinta la más específica de las dos.
+                        if (seller.respuestaInstantanea)
+                          const RespuestaInstantaneaBadge()
+                        else if (seller.respondeRapido)
+                          const RespondeRapidoBadge(),
+                        if (seller.esVendedorNuevo)
+                          const InsigniaVendedorNuevo(),
                         // Una sola ventana no es una racha: todo el que
                         // publicó algo esta semana tendría el badge y
                         // dejaría de significar constancia.
                         if (seller.rachaSemanas > 1)
                           RachaBadge(semanas: seller.rachaSemanas),
+                        if (seller.aniversarioAnios > 0)
+                          AniversarioBadge(anios: seller.aniversarioAnios),
                         // Va al final de la fila: es la más rara de todas y
                         // se descubre después de leer las que sí se explican
                         // solas.
