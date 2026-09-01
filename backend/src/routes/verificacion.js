@@ -816,6 +816,7 @@ function completarVerificacionPendientePorPagos(usuarioId) {
 
   // data.js sirve los vendedores desde un array en memoria: sin esto seguiría
   // diciendo `verified: false` hasta el siguiente reinicio.
+  db.refrescarCuentasDueno();
   sellers.length = 0;
   sellers.push(...db.getSellers());
 
@@ -880,6 +881,10 @@ function register(app) {
       // rutas leen directamente; sin este refresco seguirían sirviendo
       // `verified: false` hasta el siguiente reinicio del servidor.
       refrescarSellers: () => {
+        // ANTES de releer los vendedores: `rowToSeller` consulta el conjunto
+        // de cuentas del dueño, y si una acaba de verificarse con su correo
+        // institucional el conjunto que hay en caché todavía no la incluye.
+        db.refrescarCuentasDueno();
         sellers.length = 0;
         sellers.push(...db.getSellers());
       },

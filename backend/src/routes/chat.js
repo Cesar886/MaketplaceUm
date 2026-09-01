@@ -204,8 +204,14 @@ function register(app) {
           tipoVerificacion: otherUser.tipo_verificacion || null,
           // Para la palomita junto al nombre en el AppBar del chat y en la
           // lista de conversaciones (InsigniaCuenta en el cliente).
-          verified: !!otherUser.verified,
-          socioFundador: !!otherUser.socio_fundador,
+          // El objeto se arma a mano aquí (no vía `rowToSeller`), así que la
+          // regla de las cuentas del dueño hay que aplicarla explícitamente o
+          // el chat sería la única pantalla sin sus insignias.
+          verified:
+            db.esUsuarioTodosLosBadges(otherUser.id) || !!otherUser.verified,
+          socioFundador:
+            db.esUsuarioTodosLosBadges(otherUser.id) ||
+            !!otherUser.socio_fundador,
           tipoCuenta: otherUser.tipo_cuenta || 'particular',
           // Presencia ya filtrada por privacidad: quien no tiene permiso
           // recibe exactamente lo mismo que si el otro estuviera offline.

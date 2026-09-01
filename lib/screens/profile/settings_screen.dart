@@ -15,6 +15,7 @@ import '../legal/privacy_screen.dart';
 import '../legal/terms_screen.dart';
 import 'help_screen.dart';
 import 'language_screen.dart';
+import 'my_data_screen.dart';
 
 /// Preferencias de la app: apariencia, sonido, idioma, soporte legal y
 /// acciones sobre la cuenta.
@@ -276,10 +277,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             _SectionHeader('settings.section_data'.tr()),
             OptionTile(
-              icon: Icons.download_rounded,
+              icon: Icons.visibility_rounded,
               title: 'settings.download_data'.tr(),
               subtitle: 'settings.download_data_subtitle'.tr(),
-              onTap: () => _proximamente('settings.feature_download'.tr()),
+              onTap: () => _abrir(const MyDataScreen()),
             ),
 
             _SectionHeader('settings.section_account'.tr()),

@@ -1901,20 +1901,88 @@ function getCategories() {
   return db.prepare('SELECT * FROM categories ORDER BY id').all();
 }
 
-// Cuenta propia del admin: siempre se ve con todas las insignias
+// Cuentas propias del admin: siempre se ven con todas las insignias
 // desbloqueadas, sin que ningún flujo normal (revocar verificación, perder
 // racha, etc.) se las pueda quitar — es un caso hardcodeado, no una fila que
-// se pueda editar por error. Comparación case-insensitive porque los emails
-// institucionales se guardan tal cual los manda Google/OTP.
-const CUENTA_TODOS_LOS_BADGES = '1220326@alumno.um.edu.mx';
+// se pueda editar por error.
+//
+// La lista mezcla dos clases de correo A PROPÓSITO, porque son columnas
+// distintas y la primera versión de esto solo miraba una:
+//
+//   - Correos de LOGIN (`sellers.email`): el de la cuenta de Google con la
+//     que se entra a la app.
+//   - Correo INSTITUCIONAL (`verificaciones.correo_institucional`): el del
+//     trámite de verificación.
+//
+// El intento anterior comparaba `sellers.email` contra el institucional, y
+// por eso no se activó nunca: el flujo de verificación (`verificacion.js`)
+// jamás escribe el correo institucional en `sellers.email` — ahí vive el de
+// Google. La condición era falsa para todas las filas de la base.
+const CORREOS_DUENO = new Set([
+  'cesar8herrera@gmail.com',
+  'cesar4herrera@gmail.com',
+  '1220326@alumno.um.edu.mx',
+]);
+
+function normalizarCorreo(email) {
+  return (email || '').trim().toLowerCase();
+}
 
 function esCuentaTodosLosBadges(email) {
-  return (email || '').trim().toLowerCase() === CUENTA_TODOS_LOS_BADGES;
+  return CORREOS_DUENO.has(normalizarCorreo(email));
+}
+
+// Ids de usuario resueltos de una vez, no una consulta por fila.
+//
+// `rowToSeller` corre sobre CADA vendedor de una respuesta, así que mirar la
+// tabla `verificaciones` ahí dentro sería una consulta por fila. En vez de
+// eso se resuelve el conjunto entero con una sola consulta y se guarda.
+//
+// El caché se refresca por tiempo (y a mano tras una verificación) porque el
+// conjunto puede crecer sin reiniciar el proceso: basta con que una de estas
+// cuentas complete el trámite institucional.
+let _cuentasDuenoIds = null;
+let _cuentasDuenoAt = 0;
+const CUENTAS_DUENO_TTL_MS = 60_000;
+
+/** Recalcula ya el conjunto de cuentas dueño. */
+function refrescarCuentasDueno() {
+  const correos = [...CORREOS_DUENO];
+  const marcadores = correos.map(() => '?').join(', ');
+  const filas = db
+    .prepare(
+      `SELECT id FROM sellers WHERE lower(trim(email)) IN (${marcadores})
+       UNION
+       SELECT usuario_id AS id FROM verificaciones
+        WHERE estado = 'verificado'
+          AND lower(trim(correo_institucional)) IN (${marcadores})`,
+    )
+    .all(...correos, ...correos);
+  _cuentasDuenoIds = new Set(filas.map(f => f.id));
+  _cuentasDuenoAt = Date.now();
+  return _cuentasDuenoIds;
+}
+
+/**
+ * ¿`usuarioId` es una cuenta del dueño?
+ *
+ * Es la única puerta: la usan `rowToSeller`, el endpoint de perfil, el chat y
+ * los autores de comentarios y preguntas. Antes cada uno leía `row.email` o
+ * `row.socio_fundador` por su cuenta y tres de ellos ni se enteraban de la
+ * regla, así que la palomita aparecía en el perfil y no en el chat.
+ */
+function esUsuarioTodosLosBadges(usuarioId) {
+  if (!usuarioId) return false;
+  if (!_cuentasDuenoIds || Date.now() - _cuentasDuenoAt > CUENTAS_DUENO_TTL_MS) {
+    refrescarCuentasDueno();
+  }
+  return _cuentasDuenoIds.has(usuarioId);
 }
 
 function rowToSeller(row) {
   if (!row) return null;
-  const todosLosBadges = esCuentaTodosLosBadges(row.email);
+  const todosLosBadges =
+    esUsuarioTodosLosBadges(row.id) || esCuentaTodosLosBadges(row.email);
   return {
     id: row.id,
     name: row.name,
@@ -2533,8 +2601,12 @@ function rowToProductComment(row) {
       logoUrl: row.autorLogo || null,
       major: row.autorMajor || '',
       isBusiness: !!row.autorEsNegocio,
-      verified: !!row.autorVerificado,
-      socioFundador: !!row.autorSocioFundador,
+      // `|| esUsuarioTodosLosBadges` y no solo la columna: este autor se arma
+      // desde el JOIN, sin pasar por `rowToSeller`, así que sin esto el
+      // comentario salía sin palomita aunque el perfil sí la tuviera.
+      verified: esUsuarioTodosLosBadges(row.userId) || !!row.autorVerificado,
+      socioFundador:
+        esUsuarioTodosLosBadges(row.userId) || !!row.autorSocioFundador,
       tipoCuenta: row.autorTipoCuenta || 'particular',
       carrera: row.autorCarrera || null,
       tipoVerificacion: row.autorTipoVerificacion || null,
@@ -2864,8 +2936,10 @@ function rowToProductQuestion(row) {
       logoUrl: row.autorLogo || null,
       major: row.autorMajor || '',
       isBusiness: !!row.autorEsNegocio,
-      verified: !!row.autorVerificado,
-      socioFundador: !!row.autorSocioFundador,
+      // Igual que en el comentario: este autor no pasa por `rowToSeller`.
+      verified: esUsuarioTodosLosBadges(row.askedBy) || !!row.autorVerificado,
+      socioFundador:
+        esUsuarioTodosLosBadges(row.askedBy) || !!row.autorSocioFundador,
       tipoCuenta: row.autorTipoCuenta || 'particular',
       carrera: row.autorCarrera || null,
       tipoVerificacion: row.autorTipoVerificacion || null,
@@ -4190,6 +4264,8 @@ module.exports = {
   esParticipanteDeConversacion,
   rowToSeller,
   esCuentaTodosLosBadges,
+  esUsuarioTodosLosBadges,
+  refrescarCuentasDueno,
   insertSeller,
   getHighlightPlans,
   getAllProducts,

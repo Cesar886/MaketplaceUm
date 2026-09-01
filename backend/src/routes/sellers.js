@@ -64,10 +64,7 @@ function register(app) {
     // `esCuentaTodosLosBadges` para el mismo trato en `verified`/
     // `socioFundador`, que se resuelve en `rowToSeller` porque esos dos se
     // usan fuera de este endpoint también (tarjetas, comentarios...).
-    const rawRow = db.getDb()
-      .prepare('SELECT email FROM sellers WHERE id = ?')
-      .get(seller.id);
-    const todosLosBadges = db.esCuentaTodosLosBadges(rawRow && rawRow.email);
+    const todosLosBadges = db.esUsuarioTodosLosBadges(seller.id);
     return {
       ...seller,
       rachaSemanas: todosLosBadges
