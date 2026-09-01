@@ -367,10 +367,7 @@ class ApiService {
     // `error` trae un código-máquina en las rutas de Google y la frase para
     // el usuario va en `message` (mismo criterio que los 401 de auth.js);
     // pero el resto de validaciones del registro mandan la frase en `error`.
-    throw GoogleAuthException(
-      codigo,
-      body['message'] as String? ?? codigo,
-    );
+    throw GoogleAuthException(codigo, body['message'] as String? ?? codigo);
   }
 
   // ─── Verificación de cuenta ─────────────────────────────
@@ -670,8 +667,9 @@ class ApiService {
     if (res.statusCode != 200) {
       throw Exception('No se pudieron cargar las preferencias');
     }
-    final prefs = (jsonDecode(res.body) as Map<String, dynamic>)['preferences']
-        as Map<String, dynamic>;
+    final prefs =
+        (jsonDecode(res.body) as Map<String, dynamic>)['preferences']
+            as Map<String, dynamic>;
     return prefs.map((k, v) => MapEntry(k, v == true));
   }
 
@@ -1661,7 +1659,14 @@ class ApiService {
       headers: _authHeaders,
       body: jsonEncode(body),
     );
-    if (res.statusCode != 201) throw Exception('Error sending message');
+    // El `Exception('Error sending message')` que había aquí tiraba a la
+    // basura el mensaje del backend. Cuando el envío desde el perfil público
+    // fallaba, el servidor decía exactamente por qué ("productId y sellerId
+    // son requeridos…") y la app enseñaba un "Error sending message" en
+    // inglés que no ayudaba ni al usuario ni a diagnosticar.
+    if (res.statusCode != 201) {
+      throw excepcionDeRespuesta(res, fallback: 'chat.send_error'.tr());
+    }
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
@@ -1700,9 +1705,12 @@ class ApiService {
 
     final streamed = await request.send();
     final res = await http.Response.fromStream(streamed);
+    // Mismo criterio que en [sendMessage]. Aquí además el `jsonDecode` a pelo
+    // reventaba con un FormatException si el cuerpo del fallo no era JSON (el
+    // HTML de nginx en un 502, p. ej.), sustituyendo el error real por uno de
+    // parseo; `excepcionDeRespuesta` decodifica protegido.
     if (res.statusCode != 201) {
-      final decoded = jsonDecode(res.body) as Map<String, dynamic>;
-      throw Exception(decoded['error'] ?? 'Error al enviar la imagen');
+      throw excepcionDeRespuesta(res, fallback: 'chat.send_image_error'.tr());
     }
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -1789,7 +1797,9 @@ class ApiService {
 
     if (res.statusCode == 429) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
-      throw Exception(body['error'] ?? 'Espera un momento antes de intentar de nuevo.');
+      throw Exception(
+        body['error'] ?? 'Espera un momento antes de intentar de nuevo.',
+      );
     }
     if (res.statusCode != 200) {
       throw Exception('No se pudo validar la respuesta');

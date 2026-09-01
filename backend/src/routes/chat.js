@@ -39,6 +39,10 @@ async function convertToWebp(filePath) {
  * Busca la conversación indicada por conversationId, o la busca/crea a
  * partir de (productId, sellerId, senderId). Usado tanto por el envío de
  * texto como por el envío de imagen para no duplicar esta lógica.
+ *
+ * `productId` es OPCIONAL: sin él la conversación es un chat directo entre
+ * las dos personas (el del perfil público), y se guarda con `product_id`
+ * NULL. Lo único imprescindible para abrir hilo es `sellerId`.
  * Lanza un objeto { status, error } (no una excepción) para que la ruta
  * que llama decida cómo responder sin try/catch.
  */
@@ -52,11 +56,26 @@ function resolveConversation({ conversationId, productId, sellerId, userId }) {
     return { conversation };
   }
 
-  if (!productId || !sellerId) {
-    return { error: { status: 400, error: 'productId y sellerId son requeridos para iniciar una conversación' } };
+  if (!sellerId) {
+    return { error: { status: 400, error: 'sellerId es requerido para iniciar una conversación' } };
   }
   if (userId === sellerId) {
     return { error: { status: 400, error: 'No puedes enviarte un mensaje a ti mismo' } };
+  }
+
+  // Sin producto: chat directo, el del botón "Contactar por chat" del perfil
+  // público. Antes esta rama no existía y se exigía `productId`, así que ese
+  // botón abría el chat y el primer envío moría con un 400 — el chat se veía
+  // funcionando pero no dejaba mandar nada. La tabla ya admite `product_id`
+  // NULL desde la migración que se hizo para los "se busca".
+  if (!productId) {
+    let conversation = db.findDirectConversation(userId, sellerId);
+    if (!conversation) {
+      const convId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      db.createDirectConversation(convId, userId, sellerId);
+      conversation = db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(convId);
+    }
+    return { conversation };
   }
 
   let conversation = db.findConversation(productId, userId, sellerId);

@@ -396,3 +396,136 @@ test('otherUser trae socioFundador y verified, para la palomita del chat', async
   assert.strictEqual(conv.otherUser.socioFundador, true);
   assert.strictEqual(conv.otherUser.verified, true);
 });
+
+// ═══ Chat directo desde el perfil público (sin producto) ═════
+//
+// El botón "Contactar por chat" del perfil público abre un chat que no es
+// SOBRE nada: no hay producto de por medio, solo dos personas. Hasta esta
+// corrección el envío moría con un 400 ("productId y sellerId son
+// requeridos"), así que el chat abría pero no dejaba mandar nada.
+//
+// La tabla ya admitía `product_id` NULL desde la migración 10 (la que se
+// hizo para los "se busca"); lo que faltaba era la rama que la usa.
+
+test('se puede iniciar un chat sin producto desde el perfil público', async () => {
+  const comprador = crearUsuario();
+  const vendedor = crearUsuario();
+
+  const res = await pedir('/api/chat/send', {
+    token: comprador.token,
+    metodo: 'POST',
+    cuerpo: { sellerId: vendedor.id, text: 'Hola, vi tu perfil' },
+  });
+
+  assert.strictEqual(res.status, 201, JSON.stringify(res.body));
+  assert.ok(res.body.conversationId, 'debe devolver el id de la conversación creada');
+  assert.strictEqual(res.body.messages.at(-1).text, 'Hola, vi tu perfil');
+});
+
+test('un productId vacío se trata como chat directo, no como error', async () => {
+  // El cliente manda `productId: ''` (no `undefined`) porque el campo del
+  // widget es opcional y cae a cadena vacía. Un `''` NO puede leerse como
+  // "producto inválido": es exactamente el caso del perfil público.
+  const comprador = crearUsuario();
+  const vendedor = crearUsuario();
+
+  const res = await pedir('/api/chat/send', {
+    token: comprador.token,
+    metodo: 'POST',
+    cuerpo: { productId: '', sellerId: vendedor.id, text: 'Hola' },
+  });
+
+  assert.strictEqual(res.status, 201, JSON.stringify(res.body));
+});
+
+test('el segundo mensaje directo reusa la conversación, no crea otra', async () => {
+  // `WHERE product_id = ?` con NULL no empata NUNCA en SQL, así que una
+  // búsqueda ingenua devolvería siempre "no existe" y cada mensaje abriría
+  // un hilo nuevo. La búsqueda del chat directo tiene que usar `IS NULL`.
+  const comprador = crearUsuario();
+  const vendedor = crearUsuario();
+
+  const primero = await pedir('/api/chat/send', {
+    token: comprador.token,
+    metodo: 'POST',
+    cuerpo: { sellerId: vendedor.id, text: 'Primero' },
+  });
+  const segundo = await pedir('/api/chat/send', {
+    token: comprador.token,
+    metodo: 'POST',
+    cuerpo: { sellerId: vendedor.id, text: 'Segundo' },
+  });
+
+  assert.strictEqual(segundo.status, 201, JSON.stringify(segundo.body));
+  assert.strictEqual(segundo.body.conversationId, primero.body.conversationId);
+
+  const inbox = await pedir('/api/chat/conversations', { token: comprador.token });
+  const directas = inbox.body.conversations.filter(c => c.sellerId === vendedor.id);
+  assert.strictEqual(directas.length, 1, 'no debe duplicarse el hilo directo');
+});
+
+test('si el otro contesta desde MI perfil, sigue siendo el mismo hilo', async () => {
+  // Sin producto no hay quién es "comprador" y quién "vendedor": son dos
+  // personas hablando. Si A escribe a B desde su perfil y luego B escribe a
+  // A desde el suyo, los roles quedan al revés en la tabla; sin buscar en
+  // ambos sentidos serían dos hilos paralelos entre las mismas dos personas.
+  const ana = crearUsuario();
+  const beto = crearUsuario();
+
+  const deAna = await pedir('/api/chat/send', {
+    token: ana.token,
+    metodo: 'POST',
+    cuerpo: { sellerId: beto.id, text: 'Hola Beto' },
+  });
+  const deBeto = await pedir('/api/chat/send', {
+    token: beto.token,
+    metodo: 'POST',
+    cuerpo: { sellerId: ana.id, text: 'Hola Ana' },
+  });
+
+  assert.strictEqual(deBeto.status, 201, JSON.stringify(deBeto.body));
+  assert.strictEqual(deBeto.body.conversationId, deAna.body.conversationId);
+});
+
+test('un chat directo aparece en la bandeja sin producto ni "se busca"', async () => {
+  const comprador = crearUsuario();
+  const vendedor = crearUsuario();
+
+  const enviado = await pedir('/api/chat/send', {
+    token: comprador.token,
+    metodo: 'POST',
+    cuerpo: { sellerId: vendedor.id, text: 'Hola' },
+  });
+
+  const res = await pedir('/api/chat/conversations', { token: comprador.token });
+  const conv = res.body.conversations.find(c => c.id === enviado.body.conversationId);
+
+  assert.ok(conv, 'el chat directo debe listarse en la bandeja');
+  assert.strictEqual(conv.product, null);
+  assert.strictEqual(conv.wantedPost, null);
+  assert.strictEqual(conv.otherUser.id, vendedor.id);
+});
+
+test('sigue sin poder enviarse un mensaje a uno mismo sin producto', async () => {
+  const solo = crearUsuario();
+
+  const res = await pedir('/api/chat/send', {
+    token: solo.token,
+    metodo: 'POST',
+    cuerpo: { sellerId: solo.id, text: 'Hola yo' },
+  });
+
+  assert.strictEqual(res.status, 400);
+});
+
+test('sin sellerId y sin conversationId sigue siendo un 400', async () => {
+  const comprador = crearUsuario();
+
+  const res = await pedir('/api/chat/send', {
+    token: comprador.token,
+    metodo: 'POST',
+    cuerpo: { text: 'Hola a nadie' },
+  });
+
+  assert.strictEqual(res.status, 400);
+});

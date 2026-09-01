@@ -3137,6 +3137,35 @@ function findConversation(productId, buyerId, sellerId) {
   ).get(productId, buyerId, sellerId);
 }
 
+/** Chat directo entre dos personas, sin producto ni "se busca" de por medio:
+ *  el que abre el botón "Contactar por chat" del perfil público. */
+function createDirectConversation(id, buyerId, sellerId) {
+  db.prepare(`
+    INSERT INTO conversations (id, product_id, wanted_post_id, buyer_id, seller_id, created_at, last_message_at, last_message_preview)
+    VALUES (?, NULL, NULL, ?, ?, datetime('now'), datetime('now'), '')
+  `).run(id, buyerId, sellerId);
+}
+
+/** El chat directo entre dos personas, mirado en los DOS sentidos.
+ *
+ *  Dos detalles que no son estilo:
+ *
+ *  1. `product_id IS NULL`, no `product_id = ?`. En SQL, `NULL = NULL` es
+ *     desconocido, nunca verdadero: una búsqueda por igualdad no encontraría
+ *     jamás el hilo directo y cada mensaje abriría uno nuevo.
+ *  2. Los dos sentidos de (buyer, seller). Sin producto no hay quién compra
+ *     ni quién vende — son dos personas hablando — y quien escribe primero se
+ *     queda como `buyer_id`. Si después el otro contesta desde el perfil de
+ *     quien lo escribió, los roles llegan invertidos, y buscar en un solo
+ *     sentido dejaría dos hilos paralelos entre las mismas dos personas. */
+function findDirectConversation(unoId, otroId) {
+  return db.prepare(`
+    SELECT * FROM conversations
+    WHERE product_id IS NULL AND wanted_post_id IS NULL
+      AND ((buyer_id = ? AND seller_id = ?) OR (buyer_id = ? AND seller_id = ?))
+  `).get(unoId, otroId, otroId, unoId);
+}
+
 function getConversationsForUser(userId) {
   return db.prepare(`
     SELECT c.* FROM conversations c
@@ -4246,6 +4275,8 @@ module.exports = {
   // Conversations
   createConversation,
   findConversation,
+  createDirectConversation,
+  findDirectConversation,
   getConversationsForUser,
   deleteConversationForUser,
   setUltimaActividad,

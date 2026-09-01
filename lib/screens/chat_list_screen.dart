@@ -406,10 +406,18 @@ class _ConversationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final otherUser = conversation.otherUser;
     final product = conversation.product;
-    final productName =
-        product?.title ??
-        conversation.wantedPostTitle ??
-        'chat.product_fallback'.tr();
+    // Un chat directo (el del botón "Contactar por chat" del perfil público)
+    // no es SOBRE nada: no hay producto ni "se busca" de por medio, solo dos
+    // personas. Null significa "no pintes la pastilla de contexto"; el
+    // fallback genérico se reserva para su caso real, que es una conversación
+    // que SÍ nació de un producto y ese producto ya no existe.
+    final esDirecta =
+        conversation.productId.isEmpty && conversation.wantedPostId == null;
+    final productName = esDirecta
+        ? null
+        : product?.title ??
+              conversation.wantedPostTitle ??
+              'chat.product_fallback'.tr();
     final unread =
         conversation.lastMessage != null &&
         conversation.lastMessage!.senderId !=
@@ -540,27 +548,31 @@ class _ConversationTile extends StatelessWidget {
                       // El producto es contexto, no contenido: va en pastilla
                       // tenue para que no compita con el nombre ni con el
                       // último mensaje, que son las dos cosas que se leen.
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: context.colors.surfaceMuted,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          'chat.about'.tr(namedArgs: {'product': productName}),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: context.colors.mutedStrong,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
+                      if (productName != null) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: context.colors.surfaceMuted,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'chat.about'.tr(
+                              namedArgs: {'product': productName},
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: context.colors.mutedStrong,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 5),
+                        const SizedBox(height: 5),
+                      ],
                       Text(
                         conversation.lastMessagePreview.isNotEmpty
                             ? conversation.lastMessagePreview
