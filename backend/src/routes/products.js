@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const sharp = require('sharp');
 const { products, sellers, categories, saveData } = require('../data');
 const { requireAuth } = require('../auth');
@@ -55,7 +56,7 @@ const upload = multer({
     destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
     filename: (_req, file, cb) => {
       const ext = path.extname(file.originalname) || '.jpg';
-      cb(null, `product_${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`);
+      cb(null, `product_${Date.now()}_${crypto.randomBytes(12).toString('hex')}${ext}`);
     },
   }),
   limits: { fileSize: 10 * 1024 * 1024 },
@@ -504,8 +505,8 @@ function register(app) {
       const conversionPromises = (req.files || []).map((file) => {
         return convertToWebp(file.path).catch((convErr) => {
           console.error('Error convirtiendo a WebP:', convErr);
-          // Fallback: usar la ruta original si falla la conversión
-          return '/uploads/' + path.basename(file.path);
+          fs.unlink(file.path, () => {});
+          throw new Error('Una imagen no tiene un formato válido.');
         });
       });
 
@@ -663,7 +664,8 @@ function register(app) {
         const conversionPromises = (req.files || []).map((file) => {
           return convertToWebp(file.path).catch((convErr) => {
             console.error('Error convirtiendo a WebP:', convErr);
-            return '/uploads/' + path.basename(file.path);
+            fs.unlink(file.path, () => {});
+            throw new Error('Una imagen no tiene un formato válido.');
           });
         });
 
@@ -1051,15 +1053,15 @@ function register(app) {
     }
   });
 
-  // POST /api/products/:id/rate – calificar un producto (anónimo o con sesión)
-  app.post('/api/products/:id/rate', (req, res) => {
+  // Cuenta o invitado: en ambos casos la identidad sale del JWT firmado.
+  app.post('/api/products/:id/rate', requireAuth, (req, res) => {
     try {
       const productId = req.params.id;
       const product = products.find(p => p.id === productId);
       if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
 
-      const { stars, userId } = req.body;
-      if (!userId) return res.status(400).json({ error: 'userId es requerido' });
+      const { stars } = req.body;
+      const userId = req.user.id;
       if (!stars || stars < 1 || stars > 5) {
         return res.status(400).json({ error: 'stars debe ser un número entre 1 y 5' });
       }

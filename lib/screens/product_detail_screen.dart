@@ -40,7 +40,7 @@ import '../widgets/views_counter.dart';
 import 'auth/login_screen.dart';
 import 'chat_screen.dart';
 import 'home_screen.dart';
-import 'profile/report_problem_screen.dart';
+import 'report_product_sheet.dart';
 import 'publish_product_screen.dart';
 import 'qr_display_screen.dart';
 import 'seller_profile_screen.dart';
@@ -560,8 +560,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       ),
                     ],
                   ),
+                  // Acción de seguridad visible desde el primer bloque del
+                  // detalle. Está fuera de cualquier condición de sesión o
+                  // propiedad: cualquier persona puede reportar lo que ve.
+                  const SizedBox(height: 8),
+                  _PremiumReportButton(
+                    onPressed: () => showProductReportSheet(
+                      context: context,
+                      product: product,
+                    ),
+                  ),
                   // ─── Descripción ──────────────────────────────────
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 14),
                   _SectionHeader(
                     icon: Icons.notes_rounded,
                     label: 'publish.field_description'.tr(),
@@ -757,19 +767,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       productOwnerId: product.seller.id,
                     ),
                   ],
-                  const SizedBox(height: 20),
-                  TextButton.icon(
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const ReportProblemScreen(),
-                      ),
-                    ),
-                    style: TextButton.styleFrom(
-                      foregroundColor: context.colors.muted,
-                    ),
-                    icon: const Icon(Icons.flag_outlined, size: 18),
-                    label: Text('product.report'.tr()),
-                  ),
                   const SizedBox(height: 16),
                   // Resolver búsqueda (solo visible para el dueño). El estado
                   // de un producto (disponible/apartado/vendido/...) ya no se
@@ -989,11 +986,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       return;
     }
 
-    final lines = <String>[
-      '$title — ${'app.name'.tr()}',
-      '',
-      url,
-    ];
+    final lines = <String>['$title — ${'app.name'.tr()}', '', url];
     Share.share(lines.join('\n'));
   }
 
@@ -1321,6 +1314,53 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 
 /// Encabezado de sección consistente — ícono + label, usado en toda la
 /// pantalla de detalle para que las secciones se lean como un solo sistema.
+class _PremiumReportButton extends StatelessWidget {
+  const _PremiumReportButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final danger = context.colors.danger;
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(999),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(999),
+          splashColor: danger.withValues(alpha: 0.08),
+          highlightColor: danger.withValues(alpha: 0.05),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.flag_outlined,
+                  size: 15,
+                  color: danger.withValues(alpha: 0.82),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'product.report'.tr(),
+                  style: TextStyle(
+                    color: danger.withValues(alpha: 0.86),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.icon, required this.label});
 

@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { randomUUID } = require('crypto');
+const db = require('./database');
 
 // Sin fallback: un valor por defecto silencioso (`|| 'algo-fijo'`) es
 // exactamente lo que enmascaró el incidente de 2026-08 — cuando el .env no
@@ -28,6 +29,20 @@ const JWT_EXPIRES_IN = '24h';
 // una línea y elimina la categoría entera (hallazgo M-04).
 const ALGORITMO = 'HS256';
 
+function sesionRevocada(decoded) {
+  if (!decoded.jti) return false;
+  try {
+    const database = db.getDb();
+    return !!database?.prepare(
+      'SELECT 1 FROM revoked_sessions WHERE jti = ? AND expires_at > unixepoch()',
+    ).get(decoded.jti);
+  } catch {
+    // Durante arranque/pruebas la base puede no estar inicializada todavía.
+    // La firma y expiración del JWT siguen verificándose normalmente.
+    return false;
+  }
+}
+
 /**
  * Genera un token JWT para un usuario dado.
  * @param {string} userId - ID del usuario/seller
@@ -35,6 +50,7 @@ const ALGORITMO = 'HS256';
  */
 function generateToken(userId) {
   return jwt.sign({ sub: userId }, JWT_SECRET, {
+    jwtid: randomUUID(),
     expiresIn: JWT_EXPIRES_IN,
     algorithm: ALGORITMO,
   });
@@ -65,6 +81,7 @@ function generateAnonToken() {
   return {
     anonId,
     token: jwt.sign({ sub: anonId, anon: true }, JWT_SECRET, {
+      jwtid: randomUUID(),
       expiresIn: JWT_ANON_EXPIRES_IN,
       algorithm: ALGORITMO,
     }),
@@ -93,7 +110,8 @@ function requireAuth(req, res, next) {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET, { algorithms: [ALGORITMO] });
-    req.user = { id: decoded.sub, anon: decoded.anon === true };
+    if (sesionRevocada(decoded)) return res.status(401).json({ error: 'SESSION_INVALIDATED', message: 'Sesión cerrada.' });
+    req.user = { id: decoded.sub, anon: decoded.anon === true, jti: decoded.jti, exp: decoded.exp };
     next();
   } catch (err) {
     if (err.name === 'TokenExpiredError') {
@@ -126,6 +144,7 @@ function optionalAuth(req, _res, next) {
 
   try {
     const decoded = jwt.verify(parts[1], JWT_SECRET, { algorithms: [ALGORITMO] });
+    if (sesionRevocada(decoded)) return next();
     req.user = { id: decoded.sub, anon: decoded.anon === true };
   } catch (err) {
     // Token ausente/expirado/inválido: se ignora, el request sigue como anónimo.
@@ -143,7 +162,9 @@ function optionalAuth(req, _res, next) {
 function verificarToken(token) {
   if (!token || typeof token !== 'string') return null;
   try {
-    return jwt.verify(token, JWT_SECRET, { algorithms: [ALGORITMO] }).sub || null;
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: [ALGORITMO] });
+    if (sesionRevocada(decoded)) return null;
+    return decoded.sub || null;
   } catch (err) {
     return null;
   }

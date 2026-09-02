@@ -966,9 +966,8 @@ class ApiService {
   }) async {
     final res = await _client.patch(
       _uri('/wanted/$id/resolve'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _authHeaders,
       body: jsonEncode({
-        'userId': userId,
         if (resolvedWithUserId != null)
           'resolvedWithUserId': resolvedWithUserId,
       }),
@@ -984,8 +983,8 @@ class ApiService {
   }) async {
     final res = await _client.post(
       _uri('/wanted/$id/respond'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'userId': userId}),
+      headers: _authHeaders,
+      body: jsonEncode({}),
     );
     if (res.statusCode != 200)
       throw Exception('${res.statusCode}: ${res.body}');
@@ -1211,8 +1210,8 @@ class ApiService {
   }) async {
     final res = await _client.post(
       _uri('/products/$productId/rate'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'stars': stars, 'userId': userId}),
+      headers: _authHeaders,
+      body: jsonEncode({'stars': stars}),
     );
     if (res.statusCode == 403) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
@@ -1577,12 +1576,8 @@ class ApiService {
   }) async {
     final res = await _client.post(
       _uri('/notifications/register-push-anon'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'playerId': fcmToken,
-        'userId': anonymousId,
-        'platform': platform,
-      }),
+      headers: _authHeaders,
+      body: jsonEncode({'playerId': fcmToken, 'platform': platform}),
     );
     if (res.statusCode != 200) {
       throw Exception('Error registering anonymous push token');
@@ -1652,15 +1647,27 @@ class ApiService {
 
   /// Pide una sesión de invitado al backend. Ver [AnonSession], que es quien
   /// la persiste y decide cuándo hace falta.
-  static Future<Map<String, dynamic>> crearSesionInvitado() async {
+  static Future<Map<String, dynamic>> crearSesionInvitado(
+    String deviceId,
+  ) async {
     final res = await _client.post(
       _uri('/auth/anon'),
       headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'deviceId': deviceId}),
     );
     if (res.statusCode != 201) {
       throw Exception('No se pudo iniciar la sesión de invitado');
     }
     return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  static Future<void> revokeCurrentSession() async {
+    if (token == null) return;
+    try {
+      await _client.post(_uri('/auth/logout'), headers: _authHeaders);
+    } catch (_) {
+      // El borrado local debe continuar aunque el dispositivo ya no tenga red.
+    }
   }
 
   // ─── Chat ────────────────────────────────────────────────

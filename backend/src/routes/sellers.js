@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const sharp = require('sharp');
 const multer = require('multer');
 const { sellers, categories, updateSellerField } = require('../data');
@@ -32,7 +33,7 @@ const upload = multer({
     destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
     filename: (_req, file, cb) => {
       const ext = path.extname(file.originalname) || '.png';
-      cb(null, `logo_${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`);
+      cb(null, `logo_${Date.now()}_${crypto.randomBytes(12).toString('hex')}${ext}`);
     },
   }),
   limits: { fileSize: 5 * 1024 * 1024 },
@@ -486,11 +487,8 @@ function register(app) {
         })
         .catch((convErr) => {
           console.error('Error convirtiendo logo a WebP:', convErr);
-          // Fallback: usar la ruta original (el archivo subido sí existe en disco)
-          const fallbackUrl = '/uploads/' + path.basename(req.file.path);
-          updateSellerField(seller.id, 'logoUrl', fallbackUrl);
-          deleteUploadedFile(previousLogoUrl);
-          res.json(sellers.find(s => s.id === seller.id));
+          fs.unlink(req.file.path, () => {});
+          res.status(400).json({ error: 'El archivo no es una imagen válida.' });
         });
     });
   });

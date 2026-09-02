@@ -153,8 +153,12 @@ async function pedir(ruta, token, cuerpo) {
  */
 async function subirDocumento(token, tipo, contenido, nombre) {
   const form = new FormData();
+  const png = Buffer.concat([
+    Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'),
+    Buffer.from(contenido),
+  ]);
   form.append('doc_type', tipo);
-  form.append('file', new Blob([contenido], { type: 'image/jpeg' }), nombre);
+  form.append('file', new Blob([png], { type: 'image/png' }), nombre.replace(/\.jpg$/i, '.png'));
   const res = await fetch(baseUrl + '/api/verificacion/negocio/documentos', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + token },

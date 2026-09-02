@@ -14,6 +14,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
+const sharp = require('sharp');
 const { requireAuth } = require('../auth');
 const {
   generarCodigo,
@@ -56,7 +57,7 @@ fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 const documentUpload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
-    filename: (_req, file, cb) => cb(null, 'verification_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10) + path.extname(file.originalname).toLowerCase()),
+    filename: (_req, file, cb) => cb(null, 'verification_' + Date.now() + '_' + crypto.randomBytes(12).toString('hex') + path.extname(file.originalname).toLowerCase()),
   }),
   limits: { fileSize: 15 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => cb(null, /\.(jpg|jpeg|png|webp|pdf)$/i.test(path.extname(file.originalname))),
@@ -587,7 +588,7 @@ function crearRutasVerificacion({
   // ═══ NEGOCIO ═════════════════════════════════════════════
 
   router.post('/negocio/documentos', requireAuth, exigirTipo('negocio'), (req, res) => {
-    documentUpload.single('file')(req, res, error => {
+    documentUpload.single('file')(req, res, async error => {
       if (error) {
         return res.status(400).json({
           error: 'No pudimos subir el documento: ' + error.message,
@@ -620,6 +621,25 @@ function crearRutasVerificacion({
           error: 'La INE debe enviarse como fotografía.',
           campo: 'file',
         });
+      }
+
+      // La extensión y el MIME vienen del cliente. Se valida el contenido
+      // antes de registrar o conservar documentos de identidad.
+      try {
+        const extension = path.extname(req.file.originalname).toLowerCase();
+        if (extension === '.pdf') {
+          const descriptor = fs.openSync(req.file.path, 'r');
+          const signature = Buffer.alloc(5);
+          fs.readSync(descriptor, signature, 0, 5, 0);
+          fs.closeSync(descriptor);
+          if (signature.toString('ascii') !== '%PDF-') throw new Error('PDF inválido');
+        } else {
+          const metadata = await sharp(req.file.path, { limitInputPixels: 25_000_000 }).metadata();
+          if (!['jpeg', 'png', 'webp'].includes(metadata.format)) throw new Error('Imagen inválida');
+        }
+      } catch {
+        descartarArchivo();
+        return res.status(400).json({ error: 'El contenido del archivo no coincide con un formato permitido.', campo: 'file' });
       }
 
       const db = getDb();

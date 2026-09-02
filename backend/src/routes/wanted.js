@@ -202,8 +202,9 @@ function register(app) {
   });
 
   // PATCH /api/wanted/:id/resolve - marcar como resuelta (solo el dueño)
-  app.patch('/api/wanted/:id/resolve', (req, res) => {
-    const { userId, resolvedWithUserId } = req.body;
+  app.patch('/api/wanted/:id/resolve', requireAuth, (req, res) => {
+    const { resolvedWithUserId } = req.body;
+    const userId = req.user.id;
     const post = db.getWantedPostById(req.params.id);
     if (!post) return res.status(404).json({ error: 'Publicación no encontrada' });
     if (post.userId !== userId) {
@@ -216,9 +217,8 @@ function register(app) {
   });
 
   // POST /api/wanted/:id/respond - abrir/reusar chat con el publicador
-  app.post('/api/wanted/:id/respond', (req, res) => {
-    const { userId } = req.body;
-    if (!userId) return res.status(400).json({ error: 'userId es requerido' });
+  app.post('/api/wanted/:id/respond', requireAuth, (req, res) => {
+    const userId = req.user.id;
 
     const post = db.getWantedPostById(req.params.id);
     if (!post) return res.status(404).json({ error: 'Publicación no encontrada' });

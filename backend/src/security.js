@@ -70,6 +70,19 @@ function createAuthLimiters() {
   ];
 }
 
+function createAnonymousSessionLimiter() {
+  return rateLimit({
+    windowMs: 60 * 60 * 1000,
+    limit: 10,
+    keyGenerator: req => fingerprint(
+      typeof req.body?.deviceId === 'string' ? req.body.deviceId.trim() : 'missing-device',
+    ),
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Demasiadas sesiones de invitado para esta instalación.' },
+  });
+}
+
 function configureProxy(app) {
   // Evita el parser anidado `qs`: la API solo usa pares clave=valor. Ademas
   // elimina de la superficie los objetos profundos y arrays construidos con
@@ -83,4 +96,4 @@ function configureProxy(app) {
   app.set('trust proxy', Number(raw));
 }
 
-module.exports = { allowedOrigins, corsOrigin, securityHeaders, authIdentity, createAuthLimiters, configureProxy };
+module.exports = { allowedOrigins, corsOrigin, securityHeaders, authIdentity, createAuthLimiters, createAnonymousSessionLimiter, configureProxy };

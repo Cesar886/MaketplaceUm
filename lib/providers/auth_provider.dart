@@ -7,6 +7,7 @@ import '../models.dart';
 import '../models/verification_requirement.dart';
 import '../services/anonymous_id.dart';
 import '../services/anon_session.dart';
+import '../services/secure_session_storage.dart';
 import '../services/api_service.dart';
 import '../services/chat_socket_service.dart';
 import '../services/db_helper.dart';
@@ -195,7 +196,7 @@ class AuthProvider extends ChangeNotifier {
     ApiService.setToken(_backendToken!);
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('backend_token', _backendToken!);
+    await SecureSessionStorage.write('backend_token', _backendToken!);
     await prefs.setString('backend_seller_id', _backendSellerId!);
 
     await _registerPushDevice();
@@ -686,7 +687,7 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _clearSession() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_sessionKey);
-    await prefs.remove('backend_token');
+    await SecureSessionStorage.delete('backend_token');
     await prefs.remove('backend_seller_id');
   }
 
@@ -711,7 +712,7 @@ class AuthProvider extends ChangeNotifier {
     _currentUser = user;
 
     // Restaurar token de backend si existe
-    _backendToken = prefs.getString('backend_token');
+    _backendToken = await SecureSessionStorage.read('backend_token');
     _backendSellerId = prefs.getString('backend_seller_id');
     if (_backendToken != null) {
       ApiService.setToken(_backendToken!);
@@ -766,6 +767,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    await ApiService.revokeCurrentSession();
     // Desregistrar solo el token de ESTE dispositivo en el backend
     // (No usa unregisterAllDevices para no apagar push en otros dispositivos
     //  donde el usuario tenga sesión activa)

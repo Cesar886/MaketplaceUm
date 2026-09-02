@@ -1945,6 +1945,19 @@ function runMigrations() {
       ON sellers(tipo_cuenta, verified, created_at DESC, id);
   `);
 
+  // JWT revocados antes de su expiracion (logout, telefono perdido). Solo se
+  // guarda el identificador aleatorio jti, nunca el token completo.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS revoked_sessions (
+      jti TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      revoked_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_revoked_sessions_expiry ON revoked_sessions(expires_at);
+    DELETE FROM revoked_sessions WHERE expires_at <= unixepoch();
+  `);
+
   // Recoge estadisticas para que SQLite pueda elegir los indices nuevos desde
   // el primer arranque posterior al despliegue.
   db.pragma('optimize');
@@ -3580,8 +3593,9 @@ function getNotifications(userId) {
   }));
 }
 
-function markNotificationRead(notificationId) {
-  db.prepare('UPDATE notifications SET read = 1 WHERE id = ?').run(notificationId);
+function markNotificationRead(notificationId, userId) {
+  return db.prepare('UPDATE notifications SET read = 1 WHERE id = ? AND user_id = ?')
+    .run(notificationId, userId).changes > 0;
 }
 
 function markAllNotificationsRead(userId) {

@@ -33,11 +33,11 @@ const cors = require('cors');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const { generateToken, generateAnonToken, requireAuth, verificarToken, esCuentaDeGoogle } = require('./auth');
-const rateLimit = require('express-rate-limit');
 const {
   corsOrigin,
   securityHeaders,
   createAuthLimiters,
+  createAnonymousSessionLimiter,
   configureProxy,
 } = require('./security');
 const { crearRegistroPresencia } = require('./presence');
@@ -579,18 +579,26 @@ app.post('/api/auth/register', ...authLimiters, (req, res) => {
 // credencial alguna: sin freno, es una fuente gratuita de tokens válidos.
 app.post(
   '/api/auth/anon',
-  rateLimit({
-    windowMs: 60 * 60 * 1000,
-    limit: 20,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: 'Demasiadas sesiones de invitado desde esta red. Intenta más tarde.' },
-  }),
-  (_req, res) => {
+  createAnonymousSessionLimiter(),
+  (req, res) => {
+    if (typeof req.body?.deviceId !== 'string'
+        || !/^[A-Za-z0-9._:-]{8,180}$/.test(req.body.deviceId)) {
+      return res.status(400).json({ error: 'Identificador de instalación inválido.' });
+    }
     const { token, anonId } = generateAnonToken();
     res.status(201).json({ token, anonId });
   },
 );
+
+app.post('/api/auth/logout', requireAuth, (req, res) => {
+  if (req.user.jti && req.user.exp) {
+    db.getDb().prepare(
+      `INSERT OR REPLACE INTO revoked_sessions (jti, user_id, expires_at)
+       VALUES (?, ?, ?)`,
+    ).run(req.user.jti, req.user.id, req.user.exp);
+  }
+  res.status(204).end();
+});
 
 // Health check
 app.get('/api/health', (_req, res) => {

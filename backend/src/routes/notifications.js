@@ -67,7 +67,8 @@ function register(app) {
 
   // PATCH /api/notifications/:id/read - marcar una notificación como leída
   app.patch('/api/notifications/:id/read', requireAuth, (req, res) => {
-    db.markNotificationRead(req.params.id);
+    const changed = db.markNotificationRead(req.params.id, req.user.id);
+    if (!changed) return res.status(404).json({ error: 'Notificación no encontrada.' });
     res.json({ success: true });
   });
 
@@ -230,15 +231,16 @@ function register(app) {
   // POST /api/notifications/register-push-anon - FCM token para usuarios anónimos (sin auth)
   // El userId debe tener el prefijo 'anon_' (formato generado por AnonymousId en Flutter)
   // y NO puede coincidir con un usuario autenticado, para evitar hijacking de notificaciones.
-  app.post('/api/notifications/register-push-anon', (req, res) => {
-    const { playerId, userId, platform } = req.body;
-    if (!playerId || !userId) {
-      return res.status(400).json({ error: 'playerId y userId son requeridos' });
+  app.post('/api/notifications/register-push-anon', requireAuth, (req, res) => {
+    const { playerId, platform } = req.body;
+    const userId = req.user.id;
+    if (!playerId) {
+      return res.status(400).json({ error: 'playerId es requerido' });
     }
 
     // Solo se aceptan IDs anónimos (prefijo 'anon_')
-    if (!userId.startsWith('anon_')) {
-      return res.status(400).json({ error: 'userId inválido para registro anónimo' });
+    if (!req.user.anon || !userId.startsWith('anon_')) {
+      return res.status(403).json({ error: 'Se requiere una sesión de invitado.' });
     }
 
     // Rechazar si el ID corresponde a un usuario autenticado en la base de datos

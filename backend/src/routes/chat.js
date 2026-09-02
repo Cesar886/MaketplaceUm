@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const sharp = require('sharp');
 const multer = require('multer');
 const db = require('../database');
@@ -14,7 +15,7 @@ const upload = multer({
     destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
     filename: (_req, file, cb) => {
       const ext = path.extname(file.originalname) || '.jpg';
-      cb(null, `chatimg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`);
+      cb(null, `chatimg_${Date.now()}_${crypto.randomBytes(12).toString('hex')}${ext}`);
     },
   }),
   limits: { fileSize: 10 * 1024 * 1024 },
@@ -327,8 +328,8 @@ function register(app) {
         imageUrl = await convertToWebp(req.file.path);
       } catch (convErr) {
         console.error('Error convirtiendo imagen de chat a WebP:', convErr);
-        // Fallback: usar el archivo original (sí existe en disco)
-        imageUrl = '/uploads/' + path.basename(req.file.path);
+        fs.unlink(req.file.path, () => {});
+        return res.status(400).json({ error: 'La imagen no tiene un formato válido.' });
       }
 
       const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;

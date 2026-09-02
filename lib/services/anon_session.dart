@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_service.dart';
+import 'anonymous_id.dart';
+import 'secure_session_storage.dart';
 
 /// Sesión de invitado: permite chatear sin cuenta.
 ///
@@ -44,7 +46,7 @@ class AnonSession {
     if (ApiService.token != null) return;
 
     final prefs = await SharedPreferences.getInstance();
-    _token ??= prefs.getString(_tokenKey);
+    _token ??= await SecureSessionStorage.read(_tokenKey);
     _anonId ??= prefs.getString(_idKey);
 
     if (_token != null && !_expirado(_token!)) {
@@ -52,10 +54,12 @@ class AnonSession {
       return;
     }
 
-    final sesion = await ApiService.crearSesionInvitado();
+    final sesion = await ApiService.crearSesionInvitado(
+      await AnonymousId.get(),
+    );
     _token = sesion['token'] as String;
     _anonId = sesion['anonId'] as String;
-    await prefs.setString(_tokenKey, _token!);
+    await SecureSessionStorage.write(_tokenKey, _token!);
     await prefs.setString(_idKey, _anonId!);
     ApiService.setToken(_token!);
   }
@@ -72,7 +76,7 @@ class AnonSession {
     _token = null;
     _anonId = null;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_tokenKey);
+    await SecureSessionStorage.delete(_tokenKey);
     await prefs.remove(_idKey);
   }
 
@@ -84,9 +88,11 @@ class AnonSession {
     try {
       final partes = token.split('.');
       if (partes.length != 3) return true;
-      final payload = jsonDecode(
-        utf8.decode(base64Url.decode(base64Url.normalize(partes[1]))),
-      ) as Map<String, dynamic>;
+      final payload =
+          jsonDecode(
+                utf8.decode(base64Url.decode(base64Url.normalize(partes[1]))),
+              )
+              as Map<String, dynamic>;
       final exp = payload['exp'] as int?;
       if (exp == null) return true;
       // Margen de un día: renovar antes de que expire evita que el token
