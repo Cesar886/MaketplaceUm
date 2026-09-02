@@ -1806,13 +1806,6 @@ function runMigrations() {
     'CREATE INDEX IF NOT EXISTS idx_verification_documents_hash '
       + 'ON verification_documents(usuario_id, doc_type, content_hash)',
   );
-  // Los archivos de verificacion se bloquean en /uploads y solo se sirven por
-  // el endpoint privado del panel. Este indice evita recorrer toda la tabla en
-  // cada foto publica para decidir si la ruta corresponde a una evidencia.
-  db.exec(
-    'CREATE INDEX IF NOT EXISTS idx_verification_documents_file_url '
-      + 'ON verification_documents(file_url)',
-  );
 
   // 46. Historial inmutable de decisiones del panel privado. La tabla
   // `verificaciones` conserva solo el estado actual; este log mantiene cada
@@ -1917,37 +1910,6 @@ function runMigrations() {
         WHERE h.usuario_id = v.usuario_id
       )
   `);
-
-  // 47. Bitacora dedicada a los cambios de palomita desde el padron de
-  // cuentas. No lleva FK para que la auditoria sobreviva si la cuenta se
-  // elimina. request_id hace idempotente cada accion del panel: un reintento
-  // de red no puede aplicar ni registrar dos veces el mismo cambio.
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS verification_admin_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      request_id TEXT NOT NULL UNIQUE,
-      usuario_id TEXT NOT NULL,
-      account_name TEXT NOT NULL,
-      account_type TEXT NOT NULL
-        CHECK(account_type IN ('negocio','estudiante','empleado')),
-      action TEXT NOT NULL CHECK(action IN ('verified','unverified')),
-      previous_verified INTEGER NOT NULL CHECK(previous_verified IN (0,1)),
-      new_verified INTEGER NOT NULL CHECK(new_verified IN (0,1)),
-      reason TEXT NOT NULL CHECK(length(reason) BETWEEN 10 AND 500),
-      actor TEXT NOT NULL,
-      decided_at TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_verification_admin_log_user_date
-      ON verification_admin_log(usuario_id, decided_at DESC, id DESC);
-    CREATE INDEX IF NOT EXISTS idx_verification_admin_log_date
-      ON verification_admin_log(decided_at DESC, id DESC);
-    CREATE INDEX IF NOT EXISTS idx_sellers_verification_admin
-      ON sellers(tipo_cuenta, verified, created_at DESC, id);
-  `);
-
-  // Recoge estadisticas para que SQLite pueda elegir los indices nuevos desde
-  // el primer arranque posterior al despliegue.
-  db.pragma('optimize');
 
   console.log('🔄 Migración de schema completada');
 }

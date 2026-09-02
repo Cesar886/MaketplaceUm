@@ -1,0 +1,12 @@
+--- backend/src/routes/revision.js
++++ backend/src/routes/revision.js
+@@ -11,3 +13,9 @@
+ } = require('../verificationDossier');
+ 
+ const MAX_MOTIVO = 500;
++const MIN_MOTIVO_ADMIN = 10;
++const MAX_BUSQUEDA = 100;
++const MAX_ACTOR = 100;
++const MAX_ACCOUNT_ID = 180;
++const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
++const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');

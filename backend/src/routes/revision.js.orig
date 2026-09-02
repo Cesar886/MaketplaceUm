@@ -790,9 +790,8 @@ function router() {
       if (!solicitud || solicitud.verified) return false;
       database.prepare(
         `UPDATE verificaciones SET estado = 'verificado', fecha_verificacion = ?,
-         identidad_confirmada_en = COALESCE(identidad_confirmada_en, ?),
          motivo_rechazo = NULL, campo_rechazado = NULL WHERE usuario_id = ?`,
-      ).run(decididoEn, decididoEn, solicitud.id);
+      ).run(decididoEn, solicitud.id);
       database.prepare('UPDATE sellers SET verified = 1 WHERE id = ?').run(solicitud.id);
       registrarDecision(database, solicitud, 'restored', motivo, decididoEn);
       return true;

@@ -124,12 +124,6 @@ const actionLabel: Record<HistoryAction, string> = {
   restored: 'Verificación reactivada',
 };
 
-const accountRoleLabel: Record<AccountRole, string> = {
-  negocio: 'Negocio',
-  estudiante: 'Estudiante',
-  empleado: 'Empleado UM',
-};
-
 const dateFormatter = new Intl.DateTimeFormat('es-MX', {
   dateStyle: 'medium',
   timeStyle: 'short',

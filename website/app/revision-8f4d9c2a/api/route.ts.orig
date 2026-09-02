@@ -139,40 +139,29 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!mutationIsSameOrigin(request)) {
-    return json({ error: 'Solicitud administrativa no autorizada.' }, 403);
-  }
-
   const id = request.nextUrl.searchParams.get('id');
   const action = request.nextUrl.searchParams.get('action');
-  if (
-    !id
-    || !['approve', 'reject', 'revoke', 'restore', 'set-verification']
-      .includes(action ?? '')
-  ) {
-    return json({ error: 'Acción inválida.' }, 400);
-  }
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return json({ error: 'El cuerpo JSON es obligatorio.' }, 400);
+  if (!id || !['approve', 'reject', 'revoke', 'restore'].includes(action ?? '')) {
+    return NextResponse.json({ error: 'Acción inválida.' }, { status: 400 });
   }
 
   try {
-    const endpoint = action === 'set-verification'
-      ? `${backend}/api/revision/cuentas/${encodeURIComponent(id)}/verificacion`
-      : `${backend}/api/revision/verificaciones/${encodeURIComponent(id)}/${action}`;
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: authHeaders(request.headers.get('x-revision-admin')),
-      body: JSON.stringify(body),
-      cache: 'no-store',
-      signal: AbortSignal.timeout(10_000),
-    });
-    return json(await response.json(), response.status);
+    const body = ['approve', 'restore'].includes(action ?? '')
+      ? undefined : await request.json();
+    const response = await fetch(
+      `${backend}/api/revision/verificaciones/${encodeURIComponent(id)}/${action}`,
+      {
+        method: 'POST',
+        headers: authHeaders(),
+        body: body ? JSON.stringify(body) : undefined,
+        cache: 'no-store',
+      },
+    );
+    return NextResponse.json(await response.json(), { status: response.status });
   } catch {
-    return json({ error: 'No se pudo conectar al backend de revisión.' }, 502);
+    return NextResponse.json(
+      { error: 'No se pudo conectar al backend de revisión.' },
+      { status: 502 },
+    );
   }
 }
