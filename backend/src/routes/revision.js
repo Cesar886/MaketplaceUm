@@ -4,6 +4,9 @@ const crypto = require('crypto');
 const express = require('express');
 const { refrescarSellers } = require('../data');
 const db = require('../database');
+const {
+  obtenerExpedienteVerificacion,
+} = require('../verificationDossier');
 
 const MAX_MOTIVO = 500;
 
@@ -40,7 +43,8 @@ function obtenerSolicitud(database, id, estado) {
   return database.prepare(
     `SELECT v.usuario_id AS id, v.estado,
        v.responsable_negocio AS responsibleName,
-       s.name, s.businessCategory, s.businessDescription, s.phone, s.verified
+       COALESCE(NULLIF(v.nombre_negocio, ''), s.name) AS name,
+       s.businessCategory, s.businessDescription, s.phone, s.verified
      FROM verificaciones v
      JOIN sellers s ON s.id = v.usuario_id
      WHERE v.usuario_id = ? AND v.tipo_cuenta = 'negocio'
@@ -49,11 +53,16 @@ function obtenerSolicitud(database, id, estado) {
 }
 
 function registrarDecision(database, solicitud, accion, motivo, decididoEn) {
+  const solicitudGuardada = database.prepare(
+    'SELECT solicitud_json FROM verificaciones WHERE usuario_id = ?',
+  ).get(solicitud.id);
+  const expediente = parsearJson(solicitudGuardada?.solicitud_json, null)
+    || obtenerExpedienteVerificacion(database, solicitud.id);
   database.prepare(
     `INSERT INTO verification_review_log (
        usuario_id, accion, motivo, nombre_negocio, categoria_negocio,
-       responsable_negocio, decidido_en
-     ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       responsable_negocio, decidido_en, solicitud_json
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     solicitud.id,
     accion,
@@ -62,6 +71,7 @@ function registrarDecision(database, solicitud, accion, motivo, decididoEn) {
     solicitud.businessCategory || null,
     solicitud.responsibleName || null,
     decididoEn,
+    expediente ? JSON.stringify(expediente) : null,
   );
 }
 
@@ -80,6 +90,7 @@ function router() {
          v.responsable_negocio AS responsibleName,
          v.ubicacion_lat AS requestedLat, v.ubicacion_lng AS requestedLng,
          v.link_red_social AS submittedSocialLink,
+         v.solicitud_json AS requestJson,
          s.name, s.businessCategory, s.businessDescription, s.phone, s.email,
          s.logoUrl, s.created_at AS accountCreatedAt,
          s.businessHours, s.paymentMethods,
@@ -100,6 +111,9 @@ function router() {
       additional_evidence: 2,
     };
     const requests = rows.map(row => {
+      const expedienteGuardado = parsearJson(row.requestJson, null);
+      if (expedienteGuardado) return expedienteGuardado;
+
       const vistos = new Set();
       const documents = db.getDb().prepare(
         'SELECT id, doc_type AS type, file_url AS url, '
@@ -163,42 +177,71 @@ function router() {
   });
 
   api.get('/historial', (_req, res) => {
-    const rows = db.getDb().prepare(
+    const database = db.getDb();
+    const rows = database.prepare(
       `SELECT h.id, h.usuario_id AS userId, h.accion AS action,
          h.motivo AS reason, h.nombre_negocio AS businessName,
          h.categoria_negocio AS businessCategory,
          h.responsable_negocio AS responsibleName,
-         h.decidido_en AS decidedAt,
-         COALESCE(s.verified, 0) AS currentVerified,
-         CASE
-           WHEN h.accion = 'approved'
-             AND COALESCE(s.verified, 0) = 1
-             AND h.id = (
-               SELECT MAX(ultimo.id) FROM verification_review_log ultimo
-               WHERE ultimo.usuario_id = h.usuario_id
-             )
-           THEN 1 ELSE 0
-         END AS canRevoke
+         h.decidido_en AS decidedAt, h.solicitud_json AS requestJson,
+         s.id AS accountId, COALESCE(s.verified, 0) AS currentVerified,
+         v.estado AS currentVerificationState
        FROM verification_review_log h
        LEFT JOIN sellers s ON s.id = h.usuario_id
+       LEFT JOIN verificaciones v ON v.usuario_id = h.usuario_id
        ORDER BY h.decidido_en DESC, h.id DESC`,
     ).all();
 
+    const expedientesActuales = new Map();
     return res.json({
-      entries: rows.map(row => ({
-        id: row.id,
-        userId: row.userId,
-        action: row.action,
-        reason: row.reason || null,
-        business: {
-          name: row.businessName,
-          category: row.businessCategory || null,
-          responsibleName: row.responsibleName || null,
-        },
-        decidedAt: row.decidedAt,
-        currentVerified: !!row.currentVerified,
-        canRevoke: !!row.canRevoke,
-      })),
+      entries: rows.map(row => {
+        const expedienteGuardado = parsearJson(row.requestJson, null);
+        if (!expedientesActuales.has(row.userId)) {
+          expedientesActuales.set(
+            row.userId,
+            obtenerExpedienteVerificacion(database, row.userId),
+          );
+        }
+        const expedienteActual = expedientesActuales.get(row.userId);
+        const request = expedienteGuardado
+          || (expedienteActual
+            ? JSON.parse(JSON.stringify(expedienteActual))
+            : null);
+
+        // Las decisiones anteriores a solicitud_json usan el mejor expediente
+        // aún disponible, pero conservan los tres datos que sí eran históricos.
+        if (!expedienteGuardado && request) {
+          request.business = {
+            ...request.business,
+            name: row.businessName,
+            category: row.businessCategory || request.business.category || null,
+            responsibleName:
+              row.responsibleName || request.business.responsibleName || null,
+          };
+        }
+
+        const accountExists = !!row.accountId;
+        const currentVerified = !!row.currentVerified;
+        return {
+          id: row.id,
+          userId: row.userId,
+          action: row.action,
+          reason: row.reason || null,
+          business: {
+            name: row.businessName,
+            category: row.businessCategory || null,
+            responsibleName: row.responsibleName || null,
+          },
+          decidedAt: row.decidedAt,
+          currentVerified,
+          canRevoke: accountExists && currentVerified,
+          canRestore:
+            accountExists
+            && !currentVerified
+            && row.currentVerificationState === 'rechazado',
+          request,
+        };
+      }),
     });
   });
 
@@ -282,6 +325,37 @@ function router() {
     }
     refrescarSellers();
     return res.json({ status: 'revoked' });
+  });
+
+  api.post('/verificaciones/:id/restore', (req, res) => {
+    const motivo = leerMotivo(req, false);
+    if (motivo === null && String(req.body?.reason || '').trim().length > MAX_MOTIVO) {
+      return res.status(400).json({
+        error: `La nota no puede superar ${MAX_MOTIVO} caracteres.`,
+      });
+    }
+
+    const database = db.getDb();
+    const decididoEn = new Date().toISOString();
+    const restored = database.transaction(() => {
+      const solicitud = obtenerSolicitud(database, req.params.id, 'rechazado');
+      if (!solicitud || solicitud.verified) return false;
+      database.prepare(
+        `UPDATE verificaciones SET estado = 'verificado', fecha_verificacion = ?,
+         motivo_rechazo = NULL, campo_rechazado = NULL WHERE usuario_id = ?`,
+      ).run(decididoEn, solicitud.id);
+      database.prepare('UPDATE sellers SET verified = 1 WHERE id = ?').run(solicitud.id);
+      registrarDecision(database, solicitud, 'restored', motivo, decididoEn);
+      return true;
+    })();
+
+    if (!restored) {
+      return res.status(409).json({
+        error: 'La cuenta no está disponible para volver a verificarse.',
+      });
+    }
+    refrescarSellers();
+    return res.json({ status: 'restored' });
   });
 
   return api;

@@ -7,7 +7,14 @@ import StaticMiniMap from './static-mini-map';
 
 const apiBase = '/revision-8f4d9c2a/api';
 
-type Document = { id: string; type: string; url: string; mimeType?: string };
+type Document = {
+  id: string | number;
+  type: string;
+  url: string;
+  mimeType?: string;
+  originalName?: string;
+  uploadedAt?: string;
+};
 type BusinessHour = { open?: string; close?: string };
 type Request = {
   id: string;
@@ -52,7 +59,7 @@ const paymentLabel: Record<string, string> = {
   cripto: 'Cripto',
   transferencia: 'Transferencia',
 };
-type HistoryAction = 'approved' | 'rejected' | 'revoked';
+type HistoryAction = 'approved' | 'rejected' | 'revoked' | 'restored';
 type HistoryEntry = {
   id: number;
   userId: string;
@@ -66,6 +73,8 @@ type HistoryEntry = {
   decidedAt: string;
   currentVerified: boolean;
   canRevoke: boolean;
+  canRestore: boolean;
+  request: Request | null;
 };
 type Notice = { kind: 'error' | 'success'; text: string } | null;
 
@@ -83,6 +92,7 @@ const actionLabel: Record<HistoryAction, string> = {
   approved: 'Aceptada',
   rejected: 'Rechazada',
   revoked: 'Verificación retirada',
+  restored: 'Verificación reactivada',
 };
 
 const dateFormatter = new Intl.DateTimeFormat('es-MX', {
@@ -99,6 +109,14 @@ function isImage(document: Document) {
 function formatDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : dateFormatter.format(date);
+}
+
+function normalizeSearch(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 }
 
 function safeUrl(value?: string | null) {
@@ -150,6 +168,166 @@ async function payloadOrError<T>(response: Response, fallback: string): Promise<
   return payload;
 }
 
+function VerificationDossier({
+  request,
+  onPreview,
+}: {
+  request: Request;
+  onPreview: (document: Document) => void;
+}) {
+  const hours = businessHourEntries(request);
+  const socials = socialEntries(request);
+  const payments = request.business.paymentMethods ?? [];
+
+  return (
+    <div className={styles.dossier}>
+      <div className={styles.dossierHeading}>
+        <div>
+          <p className={styles.eyebrow}>Expediente enviado</p>
+          <h3>Todo lo revisado en esta decisión</h3>
+        </div>
+        {request.submittedAt && (
+          <time dateTime={request.submittedAt}>{formatDate(request.submittedAt)}</time>
+        )}
+      </div>
+
+      <dl className={styles.details}>
+        <div>
+          <dt>Responsable</dt>
+          <dd>{request.business.responsibleName ?? 'No capturado'}</dd>
+        </div>
+        <div>
+          <dt>Teléfono</dt>
+          <dd>{request.business.phone ?? 'No capturado'}</dd>
+        </div>
+        <div>
+          <dt>Correo</dt>
+          <dd>
+            {request.business.email
+              ? <a href={`mailto:${request.business.email}`}>{request.business.email}</a>
+              : 'No capturado'}
+          </dd>
+        </div>
+        <div>
+          <dt>Cuenta creada</dt>
+          <dd>
+            {request.business.accountCreatedAt
+              ? formatDate(request.business.accountCreatedAt)
+              : 'Sin fecha'}
+          </dd>
+        </div>
+        <div>
+          <dt>ID de cuenta</dt>
+          <dd><code>{request.id}</code></dd>
+        </div>
+        {request.business.profileName
+          && request.business.profileName !== request.business.name && (
+          <div>
+            <dt>Nombre guardado en el perfil</dt>
+            <dd>{request.business.profileName}</dd>
+          </div>
+        )}
+      </dl>
+
+      <section className={styles.infoSection}>
+        <h3>Descripción del negocio</h3>
+        <p>{request.business.description ?? 'No se capturó una descripción.'}</p>
+      </section>
+
+      <section className={styles.infoSection}>
+        <h3>Ubicación y coordenadas</h3>
+        {request.location ? (
+          <StaticMiniMap
+            lat={request.location.lat}
+            lng={request.location.lng}
+            source={request.location.source}
+          />
+        ) : (
+          <p className={styles.emptyValue}>No hay una ubicación registrada.</p>
+        )}
+      </section>
+
+      <section className={styles.infoSection}>
+        <h3>Redes sociales y enlace de verificación</h3>
+        {socials.length ? (
+          <div className={styles.linkGrid}>
+            {socials.map(social => (
+              <a
+                href={social.url}
+                key={`${social.label}-${social.url}`}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <span>{social.label}</span>
+                <strong>{social.url}</strong>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <p className={styles.emptyValue}>No hay redes sociales registradas.</p>
+        )}
+      </section>
+
+      <div className={styles.profileGrid}>
+        <section className={styles.infoSection}>
+          <h3>Horario del negocio</h3>
+          {hours.length ? (
+            <dl className={styles.hoursList}>
+              {hours.map(hour => (
+                <div key={hour.order}>
+                  <dt>{hour.day}</dt>
+                  <dd>{hour.open} – {hour.close}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p className={styles.emptyValue}>No hay horarios registrados.</p>
+          )}
+        </section>
+
+        <section className={styles.infoSection}>
+          <h3>Métodos de pago</h3>
+          {payments.length ? (
+            <div className={styles.chips}>
+              {payments.map(method => (
+                <span key={method}>{paymentLabel[method] ?? method}</span>
+              ))}
+            </div>
+          ) : (
+            <p className={styles.emptyValue}>No hay métodos registrados.</p>
+          )}
+        </section>
+      </div>
+
+      <section className={styles.infoSection}>
+        <h3>Documentos y evidencias</h3>
+        {request.documents.length ? (
+          <div className={styles.documents}>
+            {request.documents.map(document => (
+              <button
+                className={styles.document}
+                key={document.id}
+                onClick={() => onPreview(document)}
+                type="button"
+              >
+                {isImage(document)
+                  ? <img alt={documentLabel[document.type] ?? 'Documento'} src={document.url} />
+                  : <span className={styles.pdf}>PDF</span>}
+                <span>{documentLabel[document.type] ?? document.type}</span>
+                {document.originalName && (
+                  <small title={document.originalName}>{document.originalName}</small>
+                )}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className={styles.emptyValue}>No hay documentos adjuntos.</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
 export default function RevisionQueue() {
   const [requests, setRequests] = useState<Request[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -160,6 +338,9 @@ export default function RevisionQueue() {
   const [rejectReason, setRejectReason] = useState('');
   const [revoking, setRevoking] = useState<number | null>(null);
   const [revokeReason, setRevokeReason] = useState('');
+  const [restoring, setRestoring] = useState<number | null>(null);
+  const [expandedHistory, setExpandedHistory] = useState<number | null>(null);
+  const [historyQuery, setHistoryQuery] = useState('');
   const [working, setWorking] = useState<string | null>(null);
   const [preview, setPreview] = useState<Document | null>(null);
 
@@ -192,11 +373,11 @@ export default function RevisionQueue() {
 
   async function decide(
     id: string,
-    action: 'approve' | 'reject' | 'revoke',
+    action: 'approve' | 'reject' | 'revoke' | 'restore',
     reason?: string,
   ) {
     const trimmedReason = reason?.trim() ?? '';
-    if (action !== 'approve' && !trimmedReason) {
+    if (['reject', 'revoke'].includes(action) && !trimmedReason) {
       setNotice({
         kind: 'error',
         text: action === 'reject'
@@ -215,20 +396,21 @@ export default function RevisionQueue() {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: action === 'approve'
+          body: ['approve', 'restore'].includes(action)
             ? undefined
             : JSON.stringify({ reason: trimmedReason }),
         },
       );
       await payloadOrError<ErrorPayload>(response, 'No se pudo guardar la decisión.');
 
-      if (action !== 'revoke') {
+      if (['approve', 'reject'].includes(action)) {
         setRequests(current => current.filter(request => request.id !== id));
       }
       setRejecting(null);
       setRejectReason('');
       setRevoking(null);
       setRevokeReason('');
+      setRestoring(null);
 
       try {
         await loadHistory();
@@ -238,7 +420,9 @@ export default function RevisionQueue() {
             ? 'Cuenta aceptada. La decisión quedó guardada en el historial.'
             : action === 'reject'
               ? 'Solicitud rechazada. El motivo quedó guardado en el historial.'
-              : 'La verificación fue retirada y el motivo quedó registrado.',
+              : action === 'revoke'
+                ? 'La verificación fue retirada y el motivo quedó registrado.'
+                : 'La cuenta volvió a estar verificada y quedó registrada la reactivación.',
         });
       } catch {
         setNotice({
@@ -255,6 +439,15 @@ export default function RevisionQueue() {
       setWorking(null);
     }
   }
+
+  const normalizedHistoryQuery = normalizeSearch(historyQuery);
+  const filteredHistory = normalizedHistoryQuery
+    ? history.filter(entry => normalizeSearch([
+        entry.business.name,
+        entry.business.responsibleName ?? '',
+        entry.userId,
+      ].join(' ')).includes(normalizedHistoryQuery))
+    : history;
 
   if (loading) return <p className={styles.state}>Cargando solicitudes e historial…</p>;
 
@@ -522,99 +715,177 @@ export default function RevisionQueue() {
 
       {view === 'history' && (
         <div className={styles.list} role="tabpanel">
+          {history.length > 0 && (
+            <div className={styles.historySearch}>
+              <label htmlFor="history-search">Buscar en el historial</label>
+              <div>
+                <input
+                  id="history-search"
+                  onChange={event => setHistoryQuery(event.target.value)}
+                  placeholder="Negocio, responsable o ID de cuenta"
+                  type="search"
+                  value={historyQuery}
+                />
+                <span>{filteredHistory.length} resultado(s)</span>
+              </div>
+            </div>
+          )}
           {history.length === 0 && (
             <p className={styles.state}>Todavía no hay decisiones registradas.</p>
           )}
-          {history.map(entry => (
-            <article className={`${styles.card} ${styles.historyCard}`} key={entry.id}>
-              <div className={styles.business}>
-                <div>
-                  <p className={styles.eyebrow}>{entry.business.category ?? 'Negocio'}</p>
-                  <h2>{entry.business.name}</h2>
-                </div>
-                <span className={`${styles.decision} ${styles[entry.action]}`}>
-                  {actionLabel[entry.action]}
-                </span>
-              </div>
+          {history.length > 0 && filteredHistory.length === 0 && (
+            <p className={styles.state}>No encontramos una cuenta con esa búsqueda.</p>
+          )}
+          {filteredHistory.map(entry => {
+            const expanded = expandedHistory === entry.id;
+            const currentState = entry.currentVerified
+              ? 'Verificación activa'
+              : entry.canRestore
+                ? 'Sin verificación · disponible para reactivar'
+                : 'Sin verificación';
 
-              <dl className={styles.historyDetails}>
-                <div>
-                  <dt>Fecha</dt>
-                  <dd><time dateTime={entry.decidedAt}>{formatDate(entry.decidedAt)}</time></dd>
+            return (
+              <article className={`${styles.card} ${styles.historyCard}`} key={entry.id}>
+                <div className={styles.business}>
+                  <div>
+                    <p className={styles.eyebrow}>{entry.business.category ?? 'Negocio'}</p>
+                    <h2>{entry.business.name}</h2>
+                  </div>
+                  <span className={`${styles.decision} ${styles[entry.action]}`}>
+                    {actionLabel[entry.action]}
+                  </span>
                 </div>
-                <div>
-                  <dt>Responsable</dt>
-                  <dd>{entry.business.responsibleName ?? '—'}</dd>
-                </div>
-                <div>
-                  <dt>ID de cuenta</dt>
-                  <dd><code>{entry.userId}</code></dd>
-                </div>
-                <div>
-                  <dt>Estado actual</dt>
-                  <dd>{entry.currentVerified ? 'Verificación activa' : 'Sin verificación'}</dd>
-                </div>
-              </dl>
 
-              {entry.reason ? (
-                <div className={styles.reason}>
-                  <strong>Motivo</strong>
-                  <p>{entry.reason}</p>
-                </div>
-              ) : (
-                <p className={styles.noReason}>Decisión registrada sin observaciones.</p>
-              )}
+                <dl className={styles.historyDetails}>
+                  <div>
+                    <dt>Fecha</dt>
+                    <dd><time dateTime={entry.decidedAt}>{formatDate(entry.decidedAt)}</time></dd>
+                  </div>
+                  <div>
+                    <dt>Responsable</dt>
+                    <dd>{entry.business.responsibleName ?? '—'}</dd>
+                  </div>
+                  <div>
+                    <dt>ID de cuenta</dt>
+                    <dd><code>{entry.userId}</code></dd>
+                  </div>
+                  <div>
+                    <dt>Estado actual</dt>
+                    <dd>{currentState}</dd>
+                  </div>
+                </dl>
 
-              {entry.canRevoke && revoking !== entry.id && (
-                <div className={styles.actions}>
+                {entry.reason ? (
+                  <div className={styles.reason}>
+                    <strong>Motivo</strong>
+                    <p>{entry.reason}</p>
+                  </div>
+                ) : (
+                  <p className={styles.noReason}>Decisión registrada sin observaciones.</p>
+                )}
+
+                <div className={styles.historyToolbar}>
                   <button
-                    className={styles.revoke}
-                    disabled={working !== null}
-                    onClick={() => {
-                      setRevoking(entry.id);
-                      setRevokeReason('');
-                    }}
+                    aria-expanded={expanded}
+                    className={styles.moreButton}
+                    disabled={!entry.request}
+                    onClick={() => setExpandedHistory(expanded ? null : entry.id)}
                     type="button"
                   >
-                    Quitar verificación
+                    {entry.request ? (expanded ? 'Ocultar detalles' : 'Ver más') : 'Sin expediente'}
                   </button>
-                </div>
-              )}
 
-              {entry.canRevoke && revoking === entry.id && (
-                <div className={`${styles.decisionBox} ${styles.revokeBox}`}>
-                  <label htmlFor={`revoke-${entry.id}`}>Motivo para quitar la verificación</label>
-                  <textarea
-                    id={`revoke-${entry.id}`}
-                    maxLength={500}
-                    onChange={event => setRevokeReason(event.target.value)}
-                    placeholder="Explica por qué esta cuenta ya no debe estar verificada."
-                    value={revokeReason}
-                  />
-                  <p>Esta acción quitará la insignia de verificación de la cuenta.</p>
-                  <div className={styles.actions}>
+                  {entry.canRevoke && revoking !== entry.id && (
                     <button
+                      className={styles.revoke}
+                      disabled={working !== null}
                       onClick={() => {
-                        setRevoking(null);
+                        setRestoring(null);
+                        setRevoking(entry.id);
                         setRevokeReason('');
                       }}
                       type="button"
                     >
-                      Cancelar
+                      Retirar verificación
                     </button>
+                  )}
+
+                  {entry.canRestore && restoring !== entry.id && (
                     <button
-                      className={styles.revoke}
-                      disabled={working === `revoke:${entry.userId}`}
-                      onClick={() => decide(entry.userId, 'revoke', revokeReason)}
+                      className={styles.restore}
+                      disabled={working !== null}
+                      onClick={() => {
+                        setRevoking(null);
+                        setRestoring(entry.id);
+                      }}
                       type="button"
                     >
-                      Confirmar retiro
+                      Volver a verificar
                     </button>
-                  </div>
+                  )}
                 </div>
-              )}
-            </article>
-          ))}
+
+                {expanded && entry.request && (
+                  <VerificationDossier request={entry.request} onPreview={setPreview} />
+                )}
+
+                {entry.canRevoke && revoking === entry.id && (
+                  <div className={`${styles.decisionBox} ${styles.revokeBox}`}>
+                    <label htmlFor={`revoke-${entry.id}`}>
+                      Motivo para retirar la verificación
+                    </label>
+                    <textarea
+                      id={`revoke-${entry.id}`}
+                      maxLength={500}
+                      onChange={event => setRevokeReason(event.target.value)}
+                      placeholder="Explica por qué esta cuenta ya no debe estar verificada."
+                      value={revokeReason}
+                    />
+                    <p>La cuenta perderá su insignia, pero el expediente seguirá en el historial.</p>
+                    <div className={styles.actions}>
+                      <button
+                        onClick={() => {
+                          setRevoking(null);
+                          setRevokeReason('');
+                        }}
+                        type="button"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        className={styles.revoke}
+                        disabled={working === `revoke:${entry.userId}`}
+                        onClick={() => decide(entry.userId, 'revoke', revokeReason)}
+                        type="button"
+                      >
+                        Confirmar retiro
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {entry.canRestore && restoring === entry.id && (
+                  <div className={`${styles.decisionBox} ${styles.restoreBox}`}>
+                    <strong>¿Volver a verificar esta cuenta?</strong>
+                    <p>La insignia se activará de inmediato y la reactivación quedará auditada.</p>
+                    <div className={styles.actions}>
+                      <button onClick={() => setRestoring(null)} type="button">
+                        Cancelar
+                      </button>
+                      <button
+                        className={styles.restore}
+                        disabled={working === `restore:${entry.userId}`}
+                        onClick={() => decide(entry.userId, 'restore')}
+                        type="button"
+                      >
+                        Confirmar reactivación
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </article>
+            );
+          })}
         </div>
       )}
 

@@ -32,6 +32,9 @@ const {
 const { validateLocation } = require('../validation/sellerProfile');
 const { validarCarrera } = require('../validation/carreras');
 const {
+  obtenerExpedienteVerificacion,
+} = require('../verificationDossier');
+const {
   requisitosDeVerificacion,
   primerFaltante,
 } = require('../validation/requisitosVerificacion');
@@ -726,27 +729,33 @@ function crearRutasVerificacion({
     }
 
     asegurarVerificacion(req.user.id, 'negocio');
-    db.prepare(
-      `UPDATE verificaciones SET
-         estado = 'pendiente',
-         creado_en = ?,
-         nombre_negocio = ?,
-         responsable_negocio = ?,
-         ubicacion_lat = ?,
-         ubicacion_lng = ?,
-         link_red_social = ?,
-         motivo_rechazo = NULL,
-         campo_rechazado = NULL
-       WHERE usuario_id = ?`,
-    ).run(
-      ahora(),
-      nombre,
-      responsable,
-      ubicacion.value.lat,
-      ubicacion.value.lng,
-      link,
-      req.user.id,
-    );
+    db.transaction(() => {
+      db.prepare(
+        `UPDATE verificaciones SET
+           estado = 'pendiente',
+           creado_en = ?,
+           nombre_negocio = ?,
+           responsable_negocio = ?,
+           ubicacion_lat = ?,
+           ubicacion_lng = ?,
+           link_red_social = ?,
+           motivo_rechazo = NULL,
+           campo_rechazado = NULL
+         WHERE usuario_id = ?`,
+      ).run(
+        ahora(),
+        nombre,
+        responsable,
+        ubicacion.value.lat,
+        ubicacion.value.lng,
+        link,
+        req.user.id,
+      );
+      const expediente = obtenerExpedienteVerificacion(db, req.user.id);
+      db.prepare(
+        'UPDATE verificaciones SET solicitud_json = ? WHERE usuario_id = ?',
+      ).run(expediente ? JSON.stringify(expediente) : null, req.user.id);
+    })();
     return res.status(201).json({
       estado: 'pendiente',
       verificado: false,

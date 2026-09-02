@@ -167,6 +167,11 @@ class _VerificationScreenState extends State<VerificationScreen> {
     if (!mounted) return;
 
     if (widget.tipo == AccountType.negocio) {
+      if (_auth.isVerified) {
+        setState(() => _revisandoEstadoSolicitud = false);
+        _terminar(verificado: true);
+        return;
+      }
       setState(() {
         _solicitudPendiente = _auth.solicitudManualPendiente;
         _revisandoEstadoSolicitud = false;

@@ -37,6 +37,9 @@ const db = require('../database');
 const { generateToken } = require('../auth');
 const { crearRutasVerificacion } = require('./verificacion');
 const { register: registerRevision } = require('./revision');
+const {
+  obtenerExpedienteVerificacion,
+} = require('../verificationDossier');
 const { CARRERAS_UM } = require('../validation/carreras');
 
 const CARRERA_VALIDA = CARRERAS_UM[0];
@@ -1287,6 +1290,25 @@ test('la solicitud manual guarda todos los datos y no duplica evidencia al reint
     fila.link_red_social,
     'https://www.instagram.com/tacos_manual_um/',
   );
+  assert.ok(fila.solicitud_json);
+  const expedienteEnviado = JSON.parse(fila.solicitud_json);
+  assert.strictEqual(expedienteEnviado.business.name, 'Tacos Manual UM');
+  assert.strictEqual(
+    expedienteEnviado.business.description,
+    'Comida hecha al momento',
+  );
+  assert.deepStrictEqual(
+    expedienteEnviado.documents.map(documento => documento.type),
+    [
+      'responsible_ine_front',
+      'responsible_ine_back',
+      'additional_evidence',
+    ],
+  );
+
+  db.getDb().prepare(
+    'UPDATE sellers SET businessDescription = ?, phone = ? WHERE id = ?',
+  ).run('Perfil editado mientras espera', '0000000000', usuario.id);
 
   const estado = await pedir('/estado', usuario.token);
   assert.strictEqual(estado.status, 200);
@@ -1423,6 +1445,168 @@ test('el panel conserva cada decisión y permite retirar una verificación con m
   );
   assert.strictEqual(eventosReintentado[1].reason, motivoRechazo);
   assert.strictEqual(eventosReintentado[0].canRevoke, true);
+});
+
+test('el expediente histórico queda congelado y una cuenta antigua se puede retirar y reactivar', async () => {
+  const daniel = crearUsuario('negocio');
+  const database = db.getDb();
+  const submittedAt = '2026-09-01T15:30:00.000Z';
+
+  database.prepare(
+    `UPDATE sellers SET name = ?, businessCategory = ?, businessDescription = ?,
+       phone = ?, email = ?, businessHours = ?, paymentMethods = ?,
+       facebook_url = ?, instagram_url = ? WHERE id = ?`,
+  ).run(
+    'Negocio de Daniel',
+    'food',
+    'Descripción original enviada por Daniel',
+    '8261000000',
+    'daniel@negocio.test',
+    JSON.stringify({ '1': { open: '08:00', close: '16:00' } }),
+    JSON.stringify(['efectivo', 'transferencia']),
+    'https://facebook.com/daniel-original',
+    'https://instagram.com/daniel-original',
+    daniel.id,
+  );
+  database.prepare(
+    `INSERT INTO verificaciones (
+       usuario_id, tipo_cuenta, estado, creado_en, nombre_negocio,
+       responsable_negocio, ubicacion_lat, ubicacion_lng, link_red_social
+     ) VALUES (?, 'negocio', 'pendiente', ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    daniel.id,
+    submittedAt,
+    'Daniel Gourmet',
+    'Daniel Responsable',
+    25.671,
+    -100.309,
+    'https://instagram.com/daniel-solicitud',
+  );
+  database.prepare(
+    `INSERT INTO verification_documents (
+       usuario_id, doc_type, file_url, original_name, mime_type, uploaded_at,
+       content_hash
+     ) VALUES (?, 'responsible_ine_front', ?, ?, 'image/jpeg', ?, ?)`,
+  ).run(
+    daniel.id,
+    '/uploads/daniel-ine-original.jpg',
+    'ine-daniel-frente.jpg',
+    submittedAt,
+    'hash-daniel-original',
+  );
+
+  const expedienteEnviado = obtenerExpedienteVerificacion(database, daniel.id);
+  database.prepare(
+    'UPDATE verificaciones SET solicitud_json = ? WHERE usuario_id = ?',
+  ).run(JSON.stringify(expedienteEnviado), daniel.id);
+  database.prepare(
+    'UPDATE sellers SET businessDescription = ?, phone = ? WHERE id = ?',
+  ).run(
+    'Editada después del envío y antes de la decisión',
+    '1111111111',
+    daniel.id,
+  );
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'x-revision-api-key': 'revision-prueba',
+  };
+  const decidir = (usuarioId, accion, body) => fetch(
+    `${baseUrl}/api/revision/verificaciones/${usuarioId}/${accion}`,
+    {
+      method: 'POST',
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    },
+  );
+  const obtenerHistorial = async () => {
+    const response = await fetch(baseUrl + '/api/revision/historial', { headers });
+    assert.strictEqual(response.status, 200);
+    return (await response.json()).entries;
+  };
+
+  const aprobacionDaniel = await decidir(daniel.id, 'approve');
+  assert.strictEqual(aprobacionDaniel.status, 200, await aprobacionDaniel.text());
+
+  // Tres decisiones posteriores de otras cuentas no deben volver inaccesible
+  // a Daniel en el historial.
+  for (let i = 0; i < 3; i += 1) {
+    const posterior = crearUsuario('negocio');
+    database.prepare(
+      `INSERT INTO verificaciones (
+         usuario_id, tipo_cuenta, estado, creado_en, responsable_negocio
+       ) VALUES (?, 'negocio', 'pendiente', ?, ?)`,
+    ).run(posterior.id, new Date(Date.now() + i + 1).toISOString(), `Responsable ${i}`);
+    const aprobacionPosterior = await decidir(posterior.id, 'approve');
+    assert.strictEqual(
+      aprobacionPosterior.status,
+      200,
+      await aprobacionPosterior.text(),
+    );
+  }
+
+  // Cambiar el perfil y los archivos vivos después de aprobar no puede
+  // reescribir lo que realmente vio el administrador en aquella decisión.
+  database.prepare(
+    'UPDATE sellers SET name = ?, businessDescription = ?, phone = ? WHERE id = ?',
+  ).run('Nombre posterior', 'Descripción posterior', '0000000000', daniel.id);
+  database.prepare(
+    'DELETE FROM verification_documents WHERE usuario_id = ?',
+  ).run(daniel.id);
+
+  let historial = await obtenerHistorial();
+  let eventosDaniel = historial.filter(evento => evento.userId === daniel.id);
+  const decisionOriginal = eventosDaniel.find(evento => evento.action === 'approved');
+  assert.ok(decisionOriginal);
+  assert.strictEqual(decisionOriginal.canRevoke, true);
+  assert.strictEqual(decisionOriginal.canRestore, false);
+  assert.strictEqual(decisionOriginal.request.business.name, 'Daniel Gourmet');
+  assert.strictEqual(
+    decisionOriginal.request.business.description,
+    'Descripción original enviada por Daniel',
+  );
+  assert.strictEqual(decisionOriginal.request.business.phone, '8261000000');
+  assert.deepStrictEqual(decisionOriginal.request.location, {
+    lat: 25.671,
+    lng: -100.309,
+    source: 'request',
+  });
+  assert.strictEqual(decisionOriginal.request.documents.length, 1);
+  assert.strictEqual(
+    decisionOriginal.request.documents[0].originalName,
+    'ine-daniel-frente.jpg',
+  );
+
+  const retiro = await decidir(daniel.id, 'revoke', {
+    reason: 'Retiro administrativo de prueba.',
+  });
+  assert.strictEqual(retiro.status, 200, await retiro.text());
+
+  historial = await obtenerHistorial();
+  eventosDaniel = historial.filter(evento => evento.userId === daniel.id);
+  assert.ok(eventosDaniel.every(evento => evento.canRevoke === false));
+  assert.ok(eventosDaniel.every(evento => evento.canRestore === true));
+
+  const reactivacion = await decidir(daniel.id, 'restore');
+  assert.strictEqual(reactivacion.status, 200, await reactivacion.text());
+  assert.strictEqual(estaVerificado(daniel.id), true);
+
+  historial = await obtenerHistorial();
+  eventosDaniel = historial.filter(evento => evento.userId === daniel.id);
+  assert.deepStrictEqual(
+    eventosDaniel.map(evento => evento.action),
+    ['restored', 'revoked', 'approved'],
+  );
+  assert.ok(eventosDaniel.every(evento => evento.canRevoke === true));
+  assert.ok(eventosDaniel.every(evento => evento.canRestore === false));
+
+  const originalDespuesDeReactivar = eventosDaniel.find(
+    evento => evento.action === 'approved',
+  );
+  assert.strictEqual(
+    originalDespuesDeReactivar.request.business.description,
+    'Descripción original enviada por Daniel',
+  );
 });
 
 // ═══ MERCADO_PAGO_HABILITADO=false (estado real de producción hoy) ═══

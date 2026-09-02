@@ -2,6 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const backend = (process.env.API_URL ?? 'http://127.0.0.1:3000').replace(/\/$/, '');
 
+type ReviewRequestPayload = {
+  business?: { logoUrl?: string | null };
+  documents?: Array<{ url: string }>;
+};
+
+function proxyDocumentUrls(item: ReviewRequestPayload, pathname: string) {
+  if (item.business?.logoUrl
+      && /^\/uploads\/[a-zA-Z0-9._-]+$/.test(item.business.logoUrl)) {
+    item.business.logoUrl = pathname
+      + '?document=' + encodeURIComponent(item.business.logoUrl);
+  }
+  for (const document of item.documents ?? []) {
+    if (/^\/uploads\/[a-zA-Z0-9._-]+$/.test(document.url)) {
+      document.url = pathname + '?document=' + encodeURIComponent(document.url);
+    }
+  }
+}
+
 function authHeaders() {
   const key = process.env.REVISION_API_KEY;
   if (!key) throw new Error('REVISION_API_KEY no está configurada.');
@@ -56,23 +74,18 @@ export async function GET(request: NextRequest) {
       cache: 'no-store',
     });
     const payload = await response.json() as {
-      requests?: Array<{
-        business?: { logoUrl?: string | null };
-        documents?: Array<{ url: string }>;
-      }>;
+      requests?: ReviewRequestPayload[];
+      entries?: Array<{ request?: ReviewRequestPayload | null }>;
     };
 
-    if (response.ok && view === 'pending') {
-      for (const item of payload.requests ?? []) {
-        if (item.business?.logoUrl
-            && /^\/uploads\/[a-zA-Z0-9._-]+$/.test(item.business.logoUrl)) {
-          item.business.logoUrl = request.nextUrl.pathname
-            + '?document=' + encodeURIComponent(item.business.logoUrl);
-        }
-        for (const document of item.documents ?? []) {
-          document.url = request.nextUrl.pathname
-            + '?document=' + encodeURIComponent(document.url);
-        }
+    if (response.ok) {
+      const items = view === 'pending'
+        ? payload.requests ?? []
+        : (payload.entries ?? []).flatMap(entry =>
+            entry.request ? [entry.request] : [],
+          );
+      for (const item of items) {
+        proxyDocumentUrls(item, request.nextUrl.pathname);
       }
     }
     return NextResponse.json(payload, { status: response.status });
@@ -87,12 +100,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const id = request.nextUrl.searchParams.get('id');
   const action = request.nextUrl.searchParams.get('action');
-  if (!id || !['approve', 'reject', 'revoke'].includes(action ?? '')) {
+  if (!id || !['approve', 'reject', 'revoke', 'restore'].includes(action ?? '')) {
     return NextResponse.json({ error: 'Acción inválida.' }, { status: 400 });
   }
 
   try {
-    const body = action === 'approve' ? undefined : await request.json();
+    const body = ['approve', 'restore'].includes(action ?? '')
+      ? undefined : await request.json();
     const response = await fetch(
       `${backend}/api/revision/verificaciones/${encodeURIComponent(id)}/${action}`,
       {

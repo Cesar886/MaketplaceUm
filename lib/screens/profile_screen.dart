@@ -173,7 +173,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return SafeArea(
       child: RefreshIndicator(
-        onRefresh: () => Future.wait([_loadListings(), _loadRecentProducts()]),
+        onRefresh: () => Future.wait([
+          _loadListings(),
+          _loadRecentProducts(),
+          auth.refrescarEstadoVerificacion(),
+        ]),
         child: ListView(
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
           children: [
@@ -621,6 +625,11 @@ class _VerificationCard extends StatelessWidget {
       );
     }
 
+    // La solicitud manual permanece pendiente hasta que un administrador la
+    // aprueba o rechaza. La tarjeta sigue siendo tocable para consultar el
+    // estado actualizado dentro del flujo de verificación.
+    final pendiente = auth.solicitudManualPendiente;
+
     // Rechazada: se explica qué corregir y se ofrece reintentar. Solo aplica
     // al flujo de negocio, el único que puede terminar en rechazo.
     final rechazada = auth.estadoVerificacion == 'rechazado';
@@ -648,7 +657,11 @@ class _VerificationCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
-                rechazada ? Icons.gpp_bad_rounded : Icons.badge_rounded,
+                rechazada
+                    ? Icons.gpp_bad_rounded
+                    : pendiente
+                    ? Icons.hourglass_top_rounded
+                    : Icons.badge_rounded,
                 color: rechazada ? AppColors.danger : context.colors.accent,
               ),
             ),
@@ -660,12 +673,18 @@ class _VerificationCard extends StatelessWidget {
                   Text(
                     rechazada
                         ? 'profile.fix_verification'.tr()
+                        : pendiente
+                        ? 'profile.verification_pending'.tr()
                         : 'profile.verify_account'.tr(),
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    auth.motivoRechazo ?? 'profile.verify_hint'.tr(),
+                    rechazada
+                        ? auth.motivoRechazo ?? 'profile.verify_hint'.tr()
+                        : pendiente
+                        ? 'profile.verification_pending_hint'.tr()
+                        : 'profile.verify_hint'.tr(),
                     style: TextStyle(
                       color: context.colors.muted,
                       fontWeight: FontWeight.w600,

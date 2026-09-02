@@ -324,6 +324,26 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                   height: 50,
                   child: Row(
                     children: [
+                      if (hasPhone) ...[
+                        Expanded(
+                          flex: 3,
+                          child: Tooltip(
+                            message: 'product.contact_whatsapp'.tr(),
+                            child: OutlinedButton(
+                              onPressed: _openWhatsapp,
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: context.colors.primary,
+                                side: BorderSide(color: context.colors.primary),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: const FaIcon(FontAwesomeIcons.whatsapp),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
                       // El chat siempre es el contacto principal. Cuando hay
                       // WhatsApp conserva siete décimos de la fila; sin
                       // teléfono ocupa la fila completa.
@@ -349,26 +369,6 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
                           ),
                         ),
                       ),
-                      if (hasPhone) ...[
-                        const SizedBox(width: 8),
-                        Expanded(
-                          flex: 3,
-                          child: Tooltip(
-                            message: 'product.contact_whatsapp'.tr(),
-                            child: OutlinedButton(
-                              onPressed: _openWhatsapp,
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: context.colors.primary,
-                                side: BorderSide(color: context.colors.primary),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                              ),
-                              child: const FaIcon(FontAwesomeIcons.whatsapp),
-                            ),
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),

@@ -12,8 +12,8 @@
 .details div { border-left: 2px solid var(--border); padding-left: 10px; }.details .description { grid-column: 1 / -1; }
 .details dt { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }.details dd { margin: 2px 0 0; }
 .documents { display: flex; flex-wrap: wrap; gap: 10px; }
-.document { background: var(--surface-muted); border: 1px solid var(--border); border-radius: 10px; color: var(--ink); cursor: pointer; font: inherit; overflow: hidden; padding: 0 0 8px; text-align: left; width: 132px; }.document img, .pdf { aspect-ratio: 4 / 3; display: grid; object-fit: cover; place-items: center; width: 100%; }.pdf { background: #f9e9e6; color: var(--danger); font-size: 20px; font-weight: 700; }.document span:last-child { display: block; font-size: 12px; padding: 7px 8px 0; }
-.actions { justify-content: flex-end; margin-top: 22px; }.actions button, .close { border: 0; border-radius: 9px; cursor: pointer; font: inherit; font-weight: 700; padding: 10px 14px; }.approve { background: var(--success); color: white; }.reject { background: var(--danger); color: white; }.actions button:not(.approve):not(.reject) { background: var(--surface-muted); color: var(--ink); }
+.document { background: var(--surface-muted); border: 1px solid var(--border); border-radius: 10px; color: var(--ink); cursor: pointer; font: inherit; overflow: hidden; padding: 0 0 8px; text-align: left; width: 132px; }.document img, .pdf { aspect-ratio: 4 / 3; display: grid; object-fit: cover; place-items: center; width: 100%; }.pdf { background: #f9e9e6; color: var(--danger); font-size: 20px; font-weight: 700; }.document > span:not(.pdf) { display: block; font-size: 12px; padding: 7px 8px 0; }
+.actions { justify-content: flex-end; margin-top: 22px; }.actions button, .close { border: 0; border-radius: 9px; cursor: pointer; font: inherit; font-weight: 700; padding: 10px 14px; }.approve { background: var(--success); color: white; }.reject { background: var(--danger); color: white; }.actions button:not(.approve):not(.reject):not(.revoke):not(.restore) { background: var(--surface-muted); color: var(--ink); }
 .rejectBox { background: #fff8f7; border: 1px solid #f0c6c1; border-radius: 10px; margin-top: 20px; padding: 14px; }.rejectBox label { display: block; font-weight: 700; margin-bottom: 7px; }.rejectBox textarea { border: 1px solid var(--border); border-radius: 8px; font: inherit; min-height: 78px; padding: 9px; resize: vertical; width: 100%; }
 .state, .error { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }.error { border-color: #f0c6c1; color: var(--danger); }
 .modal { align-items: center; background: rgb(0 0 0 / 72%); display: flex; inset: 0; justify-content: center; padding: 24px; position: fixed; z-index: 10; }.preview { background: var(--surface); border-radius: 12px; max-height: 92vh; max-width: 920px; padding: 36px 16px 16px; position: relative; }.preview img { max-height: calc(92vh - 52px); }.close { background: var(--ink); color: white; font-size: 22px; line-height: 1; position: absolute; right: 8px; top: 8px; }
@@ -86,10 +86,38 @@
 .mapFooter span { color: var(--muted); font-size: 11px; }
 .mapFooter > a { flex: 0 0 auto; font-size: 13px; font-weight: 700; }
 
+.historySearch { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }
+.historySearch label { color: var(--primary-dark); display: block; font-size: 13px; font-weight: 800; margin-bottom: 7px; }
+.historySearch > div { align-items: center; display: flex; gap: 12px; }
+.historySearch input { background: var(--surface-muted); border: 1px solid transparent; border-radius: 10px; flex: 1; font: inherit; min-width: 0; padding: 11px 13px; }
+.historySearch input:focus { background: var(--surface); border-color: var(--primary-dark); outline: 3px solid rgb(27 42 74 / 10%); }
+.historySearch span { color: var(--muted); flex: 0 0 auto; font-size: 12px; font-weight: 700; }
+.restored { background: #e8f0ff; color: #2456a6; }
+.historyToolbar { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+.historyToolbar button { border: 0; border-radius: 10px; cursor: pointer; font: inherit; font-weight: 750; padding: 11px 16px; }
+.historyToolbar button:disabled { cursor: not-allowed; opacity: .55; }
+.moreButton { background: linear-gradient(135deg, var(--primary-dark), #344e78); box-shadow: 0 8px 20px rgb(27 42 74 / 20%); color: white; letter-spacing: .01em; }
+.moreButton:hover:not(:disabled) { box-shadow: 0 10px 26px rgb(27 42 74 / 28%); transform: translateY(-1px); }
+.restore { background: #24633a; color: white; }
+.dossier { background: linear-gradient(180deg, #fbfcff 0%, var(--surface) 150px); border: 1px solid #dbe3ef; border-radius: 14px; margin-top: 18px; padding: 20px; }
+.dossierHeading { align-items: flex-start; display: flex; gap: 16px; justify-content: space-between; }
+.dossierHeading h3 { color: var(--primary-dark); font-size: 19px; margin: 0; }
+.dossierHeading time { color: var(--muted); flex: 0 0 auto; font-size: 12px; font-weight: 700; }
+.document small { color: var(--muted); display: block; font-size: 10px; overflow: hidden; padding: 3px 8px 0; text-overflow: ellipsis; white-space: nowrap; }
+.restoreBox { background: #f5fbf6; border-color: #b9d5bd; }
+.restoreBox > strong { display: block; margin-bottom: 6px; }
+.restoreBox > p { color: #245f37; font-size: 13px; margin: 0; }
+
 @media (max-width: 680px) {
   .linkGrid, .profileGrid { grid-template-columns: 1fr; }
   .mapViewport { height: 220px; }
   .mapFooter { align-items: flex-start; flex-direction: column; gap: 8px; }
   .businessIdentity { align-items: flex-start; }
   .businessLogo, .logoFallback { height: 48px; width: 48px; }
+  .dossier { padding: 15px; }
+  .dossierHeading { flex-direction: column; gap: 7px; }
+  .historyToolbar { align-items: stretch; flex-direction: column; }
+  .historyToolbar button { width: 100%; }
+  .historySearch > div { align-items: stretch; flex-direction: column; }
+  .historySearch span { align-self: flex-end; }
 }

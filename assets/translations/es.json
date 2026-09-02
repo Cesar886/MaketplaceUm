@@ -1068,6 +1068,8 @@
     "logout": "Cerrar sesión",
     "badge_visible": "Esta insignia es visible en tus publicaciones",
     "fix_verification": "Corregir verificación",
+    "verification_pending": "Pendiente",
+    "verification_pending_hint": "Tu solicitud fue enviada y está en revisión.",
     "verify_account": "Verifica tu cuenta",
     "verify_hint": "Toca para verificarte y desbloquear todas las funciones",
     "see_all": "Ver todos"

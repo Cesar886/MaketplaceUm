@@ -850,6 +850,7 @@ function runMigrations() {
       ubicacion_lat REAL,
       ubicacion_lng REAL,
       link_red_social TEXT,
+      solicitud_json TEXT,
 
       telefono TEXT,
       codigo_otp_sms TEXT,
@@ -1767,6 +1768,9 @@ function runMigrations() {
   if (!verificacionColsManual.some(c => c.name === 'responsable_negocio')) {
     db.exec('ALTER TABLE verificaciones ADD COLUMN responsable_negocio TEXT');
   }
+  if (!verificacionColsManual.some(c => c.name === 'solicitud_json')) {
+    db.exec('ALTER TABLE verificaciones ADD COLUMN solicitud_json TEXT');
+  }
 
   const documentoColsHash = db
     .prepare("PRAGMA table_info('verification_documents')")
@@ -1811,18 +1815,74 @@ function runMigrations() {
     CREATE TABLE IF NOT EXISTS verification_review_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       usuario_id TEXT NOT NULL,
-      accion TEXT NOT NULL CHECK(accion IN ('approved','rejected','revoked')),
+      accion TEXT NOT NULL CHECK(accion IN ('approved','rejected','revoked','restored')),
       motivo TEXT,
       nombre_negocio TEXT NOT NULL,
       categoria_negocio TEXT,
       responsable_negocio TEXT,
-      decidido_en TEXT NOT NULL
+      decidido_en TEXT NOT NULL,
+      solicitud_json TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_verification_review_log_date
       ON verification_review_log(decidido_en DESC, id DESC);
     CREATE INDEX IF NOT EXISTS idx_verification_review_log_user
       ON verification_review_log(usuario_id, id DESC);
   `);
+
+  // SQLite no permite ampliar un CHECK con ALTER TABLE. Las instalaciones
+  // que ya tenían el historial se reconstruyen dentro de una transacción,
+  // conservando ids y decisiones. `solicitud_json` congela el expediente
+  // exacto desde que el negocio lo envía; no lleva FK para que sus datos
+  // sigan auditables aunque después cambie o desaparezca la cuenta.
+  const tablaHistorial = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'verification_review_log'",
+  ).get();
+  if (tablaHistorial?.sql && !tablaHistorial.sql.includes("'restored'")) {
+    const columnasHistorial = db
+      .prepare("PRAGMA table_info('verification_review_log')")
+      .all();
+    const teniaSolicitudJson = columnasHistorial.some(
+      columna => columna.name === 'solicitud_json',
+    );
+    db.transaction(() => {
+      db.exec(`
+        DROP INDEX IF EXISTS idx_verification_review_log_date;
+        DROP INDEX IF EXISTS idx_verification_review_log_user;
+        ALTER TABLE verification_review_log RENAME TO verification_review_log_anterior;
+        CREATE TABLE verification_review_log (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          usuario_id TEXT NOT NULL,
+          accion TEXT NOT NULL CHECK(accion IN ('approved','rejected','revoked','restored')),
+          motivo TEXT,
+          nombre_negocio TEXT NOT NULL,
+          categoria_negocio TEXT,
+          responsable_negocio TEXT,
+          decidido_en TEXT NOT NULL,
+          solicitud_json TEXT
+        );
+        INSERT INTO verification_review_log (
+          id, usuario_id, accion, motivo, nombre_negocio, categoria_negocio,
+          responsable_negocio, decidido_en, solicitud_json
+        )
+        SELECT id, usuario_id, accion, motivo, nombre_negocio,
+          categoria_negocio, responsable_negocio, decidido_en,
+          ${teniaSolicitudJson ? 'solicitud_json' : 'NULL'}
+        FROM verification_review_log_anterior;
+        DROP TABLE verification_review_log_anterior;
+        CREATE INDEX idx_verification_review_log_date
+          ON verification_review_log(decidido_en DESC, id DESC);
+        CREATE INDEX idx_verification_review_log_user
+          ON verification_review_log(usuario_id, id DESC);
+      `);
+    })();
+  }
+
+  const columnasHistorialActual = db
+    .prepare("PRAGMA table_info('verification_review_log')")
+    .all();
+  if (!columnasHistorialActual.some(columna => columna.name === 'solicitud_json')) {
+    db.exec('ALTER TABLE verification_review_log ADD COLUMN solicitud_json TEXT');
+  }
 
   // Registra una instantánea del último estado conocido de cada negocio
   // anterior a esta migración. Así las cuentas ya verificadas aparecen en el

@@ -1068,6 +1068,8 @@
     "logout": "Log out",
     "badge_visible": "This badge is visible on your listings",
     "fix_verification": "Fix verification",
+    "verification_pending": "Pending",
+    "verification_pending_hint": "Your request was submitted and is under review.",
     "verify_account": "Verify your account",
     "verify_hint": "Tap to verify and unlock all features",
     "see_all": "See all"
