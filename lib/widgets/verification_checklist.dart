@@ -44,14 +44,14 @@ class VerificationChecklist extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(
-                faltan == 0
-                    ? Icons.verified_rounded
-                    : Icons.checklist_rtl_rounded,
-                size: 18,
-                color: faltan == 0 ? AppColors.success : colors.accent,
-              ),
-              const SizedBox(width: 8),
+              if (faltan > 0) ...[
+                Icon(
+                  Icons.checklist_rtl_rounded,
+                  size: 18,
+                  color: colors.accent,
+                ),
+                const SizedBox(width: 8),
+              ],
               Expanded(
                 child: Text(
                   faltan == 0
@@ -60,6 +60,14 @@ class VerificationChecklist extends StatelessWidget {
                   style: AppTypography.heading(14.5, color: colors.ink),
                 ),
               ),
+              if (faltan == 0) ...[
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.verified_rounded,
+                  size: 18,
+                  color: AppColors.verifiedBlue,
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 4),

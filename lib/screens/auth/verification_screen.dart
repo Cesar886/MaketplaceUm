@@ -52,6 +52,8 @@ class VerificationScreen extends StatefulWidget {
 
 class _VerificationScreenState extends State<VerificationScreen> {
   bool _enviando = false;
+  bool _solicitudPendiente = false;
+  bool _revisandoEstadoSolicitud = true;
   String? _error;
   String? _campoConError;
 
@@ -164,9 +166,17 @@ class _VerificationScreenState extends State<VerificationScreen> {
     await _auth.refrescarEstadoVerificacion();
     if (!mounted) return;
 
-    // El flujo de negocio ya pinta su fila de conectar dentro del formulario,
-    // con los datos del negocio que hay que conservar a la vista.
-    if (widget.tipo == AccountType.negocio) return;
+    if (widget.tipo == AccountType.negocio) {
+      setState(() {
+        _solicitudPendiente = _auth.solicitudManualPendiente;
+        _revisandoEstadoSolicitud = false;
+        if (_auth.estadoVerificacion == 'rechazado') {
+          _error = _auth.motivoRechazo;
+          _campoConError = _auth.campoRechazado;
+        }
+      });
+      return;
+    }
 
     // TODO: Mercado Pago pendiente para próxima actualización - no eliminar,
     // solo quitar este corte cuando esté listo. Mientras tanto el paso de
@@ -186,8 +196,13 @@ class _VerificationScreenState extends State<VerificationScreen> {
     final perfil = await _auth.getBusinessProfileLocal();
     if (!mounted) return;
     final faltantes = <String>{};
+    final nombrePerfil = (perfil?['business_name'] as String? ?? '').trim();
     _responsableNegocio = (perfil?['responsible_name'] as String?)?.trim();
-    if ((perfil?['business_name'] as String? ?? '').trim().isEmpty) {
+    if (_nombreNegocioController.text.trim().isEmpty &&
+        nombrePerfil.isNotEmpty) {
+      _nombreNegocioController.text = nombrePerfil;
+    }
+    if (nombrePerfil.isEmpty) {
       faltantes.add('Nombre del negocio');
     }
     if ((perfil?['business_type'] as String? ?? '').trim().isEmpty) {
@@ -572,15 +587,37 @@ class _VerificationScreenState extends State<VerificationScreen> {
   }
 
   Future<void> _verificarNegocio() {
-    if (!_perfilNegocioCompleto || _ineFrente == null || _ineReverso == null) {
+    final nombre = _nombreNegocioController.text.trim();
+    final link = _linkController.text.trim();
+    String? mensaje;
+    String? campo;
+
+    if (!_perfilNegocioCompleto) {
+      mensaje =
+          'Completa los campos obligatorios de tu perfil de negocio antes de enviar la solicitud.';
+      campo = 'perfil_negocio';
+    } else if (nombre.isEmpty) {
+      mensaje = 'Escribe el nombre del negocio.';
+      campo = 'nombre_negocio';
+    } else if (_ubicacion == null) {
+      mensaje = 'Coloca la ubicación de tu negocio en el mapa.';
+      campo = 'ubicacion';
+    } else if (link.isEmpty) {
+      mensaje = 'Agrega la red social o página pública del negocio.';
+      campo = 'link_red_social';
+    } else if (_ineFrente == null || _ineReverso == null) {
+      mensaje = 'Adjunta el frente y reverso de la INE del responsable.';
+      campo = 'ine';
+    }
+
+    if (mensaje != null) {
       setState(() {
-        _error = !_perfilNegocioCompleto
-            ? 'Completa los campos obligatorios de tu perfil de negocio antes de enviar la solicitud.'
-            : 'Adjunta el frente y reverso de la INE del responsable.';
-        _campoConError = !_perfilNegocioCompleto ? 'perfil_negocio' : 'ine';
+        _error = mensaje;
+        _campoConError = campo;
       });
       return Future.value();
     }
+
     return _ejecutar(() async {
       if (!_ineFrenteSubida) {
         await ApiService.uploadBusinessVerificationDocument(
@@ -604,11 +641,38 @@ class _VerificationScreenState extends State<VerificationScreen> {
         );
         _evidenciaAdicionalSubida.add(path);
       }
-      await ApiService.solicitarVerificacionManualNegocio(
+      await _auth.solicitarVerificacionManualNegocio(
         responsableNombre: _responsableNegocio!,
+        nombreNegocio: nombre,
+        lat: _ubicacion!.latitude,
+        lng: _ubicacion!.longitude,
+        linkRedSocial: link,
       );
-      await _auth.refrescarEstadoVerificacion();
-      if (mounted) _terminar(verificado: false);
+      if (!mounted) return;
+      setState(() => _solicitudPendiente = true);
+    });
+  }
+
+  Future<void> _actualizarSolicitudPendiente() async {
+    setState(() => _enviando = true);
+    await _auth.refrescarEstadoVerificacion();
+    if (!mounted) return;
+
+    if (_auth.isVerified) {
+      setState(() => _enviando = false);
+      _terminar(verificado: true);
+      return;
+    }
+
+    setState(() {
+      _enviando = false;
+      _solicitudPendiente = _auth.solicitudManualPendiente;
+      if (!_solicitudPendiente) {
+        _error =
+            _auth.motivoRechazo ??
+            'La solicitud ya no está pendiente. Revisa los datos y vuelve a enviarla.';
+        _campoConError = _auth.campoRechazado;
+      }
     });
   }
 
@@ -707,12 +771,20 @@ class _VerificationScreenState extends State<VerificationScreen> {
       return const AccountCreatedScreen();
     }
 
-    // `watch` y no `read`: al volver de "Editar perfil" el provider notifica
-    // con la lista nueva y esta pantalla se repinta sola — es lo que hace que
-    // la ✗ pase a ✓ y que el botón se habilite sin tocar nada más.
-    final requisitos = _requisitosVisibles(
-      context.watch<AuthProvider>().requisitos,
-    );
+    // `watch` mantiene sincronizados el checklist y el estado que decide el
+    // administrador aunque la pantalla siga abierta.
+    final auth = context.watch<AuthProvider>();
+    if (widget.tipo == AccountType.negocio && _revisandoEstadoSolicitud) {
+      return Scaffold(
+        appBar: AppBar(title: Text('verification.title'.tr())),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (widget.tipo == AccountType.negocio && _solicitudPendiente) {
+      return _buildSolicitudPendiente();
+    }
+
+    final requisitos = _requisitosVisibles(auth.requisitos);
     // Bloquea el envío mientras falte algo. Si la lista todavía no llegó
     // (arranque sin conexión) no se bloquea: el backend vuelve a validar al
     // cerrar la verificación, así que dejar pasar aquí como mucho cuesta un
@@ -808,6 +880,86 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   ),
                 ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSolicitudPendiente() {
+    return Scaffold(
+      appBar: AppBar(title: Text('verification.title'.tr())),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 88,
+                    height: 88,
+                    decoration: BoxDecoration(
+                      color: context.colors.accent.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.hourglass_top_rounded,
+                      color: context.colors.accent,
+                      size: 44,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'verification.manual_pending_title'.tr(),
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'verification.manual_pending_description'.tr(),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: context.colors.muted,
+                      fontWeight: FontWeight.w600,
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _CajaAviso(
+                    mensaje: 'verification.manual_pending_hint'.tr(),
+                    color: context.colors.accent,
+                    icono: Icons.notifications_active_outlined,
+                  ),
+                  const SizedBox(height: 28),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _enviando
+                          ? null
+                          : _actualizarSolicitudPendiente,
+                      icon: _enviando
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.refresh_rounded),
+                      label: Text('verification.refresh_status'.tr()),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: _enviando ? null : _posponer,
+                      child: Text('verification.continue'.tr()),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -1031,22 +1183,15 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
   Widget _insigniaDocumento(String texto, {required bool requerido}) {
     final colors = context.colors;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: requerido ? colors.accentTint : colors.surfaceMuted,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: requerido ? colors.accentTintBorder : colors.border,
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Text(
         texto,
         style: TextStyle(
-          color: colors.ink,
+          color: requerido ? colors.ink : colors.muted,
           fontSize: 10,
           fontWeight: FontWeight.w800,
-          letterSpacing: 0.6,
+          letterSpacing: 0.8,
         ),
       ),
     );
@@ -1060,56 +1205,41 @@ class _VerificationScreenState extends State<VerificationScreen> {
     final colors = context.colors;
     final capturada = preview != null;
     return Material(
-      color: colors.surface,
-      borderRadius: BorderRadius.circular(18),
-      clipBehavior: Clip.antiAlias,
+      color: Colors.transparent,
       child: InkWell(
         onTap: _enviando ? null : onTap,
-        child: Container(
+        borderRadius: BorderRadius.circular(14),
+        child: SizedBox(
           height: 176,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: capturada ? colors.success : colors.border,
-              width: capturada ? 1.5 : 1,
-            ),
-          ),
           child: Column(
             children: [
               Expanded(
-                child: SizedBox.expand(
-                  child: capturada
-                      ? Image.memory(preview, fit: BoxFit.cover)
-                      : ColoredBox(
-                          color: colors.surfaceMuted,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  color: colors.accentTint,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  Icons.photo_camera_rounded,
-                                  color: colors.ink,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Abrir cámara',
-                                style: TextStyle(
-                                  color: colors.mutedStrong,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
+                child: capturada
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: SizedBox.expand(
+                          child: Image.memory(preview, fit: BoxFit.cover),
                         ),
-                ),
+                      )
+                    : Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.photo_camera_outlined,
+                            size: 32,
+                            color: colors.muted,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Abrir cámara',
+                            style: TextStyle(
+                              color: colors.mutedStrong,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
@@ -1179,38 +1309,18 @@ class _VerificationScreenState extends State<VerificationScreen> {
             ),
           ),
         const SizedBox(height: 14),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: colors.surface,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: conErrorIne ? colors.danger : colors.accentTintBorder,
-              width: conErrorIne ? 1.5 : 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 24,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: colors.accentTint,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(Icons.badge_outlined, color: colors.ink),
+                  Icon(
+                    Icons.badge_outlined,
+                    size: 25,
+                    color: conErrorIne ? colors.danger : colors.mutedStrong,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1293,32 +1403,19 @@ class _VerificationScreenState extends State<VerificationScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 16),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: colors.surface,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: colors.border),
-          ),
+        const SizedBox(height: 28),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: colors.surfaceMuted,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(
-                      Icons.collections_bookmark_outlined,
-                      color: colors.ink,
-                    ),
+                  Icon(
+                    Icons.collections_bookmark_outlined,
+                    size: 25,
+                    color: colors.mutedStrong,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1346,9 +1443,12 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   _insigniaDocumento('OPCIONAL', requerido: false),
                 ],
               ),
-              const SizedBox(height: 16),
-              OutlinedButton.icon(
+              const SizedBox(height: 12),
+              TextButton.icon(
                 onPressed: _enviando ? null : _seleccionarEvidenciaAdicional,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                ),
                 icon: const Icon(Icons.add_rounded),
                 label: const Text('Agregar imágenes o PDF'),
               ),
@@ -1358,13 +1458,8 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   final nombre = path.split('/').last;
                   final esPdf = nombre.toLowerCase().endsWith('.pdf');
                   final subida = _evidenciaAdicionalSubida.contains(path);
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
-                    decoration: BoxDecoration(
-                      color: colors.surfaceMuted,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
                     child: Row(
                       children: [
                         Icon(

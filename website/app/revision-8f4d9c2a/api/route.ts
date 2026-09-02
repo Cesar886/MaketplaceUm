@@ -42,18 +42,33 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  const view = request.nextUrl.searchParams.get('view') ?? 'pending';
+  if (!['pending', 'history'].includes(view)) {
+    return NextResponse.json({ error: 'Vista inválida.' }, { status: 400 });
+  }
+
   try {
-    const response = await fetch(
-      backend + '/api/revision/verificaciones?status=pending',
-      { headers: authHeaders(), cache: 'no-store' },
-    );
+    const endpoint = view === 'history'
+      ? '/api/revision/historial'
+      : '/api/revision/verificaciones?status=pending';
+    const response = await fetch(backend + endpoint, {
+      headers: authHeaders(),
+      cache: 'no-store',
+    });
     const payload = await response.json() as {
       requests?: Array<{
+        business?: { logoUrl?: string | null };
         documents?: Array<{ url: string }>;
       }>;
     };
-    if (response.ok) {
+
+    if (response.ok && view === 'pending') {
       for (const item of payload.requests ?? []) {
+        if (item.business?.logoUrl
+            && /^\/uploads\/[a-zA-Z0-9._-]+$/.test(item.business.logoUrl)) {
+          item.business.logoUrl = request.nextUrl.pathname
+            + '?document=' + encodeURIComponent(item.business.logoUrl);
+        }
         for (const document of item.documents ?? []) {
           document.url = request.nextUrl.pathname
             + '?document=' + encodeURIComponent(document.url);
@@ -72,16 +87,26 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const id = request.nextUrl.searchParams.get('id');
   const action = request.nextUrl.searchParams.get('action');
-  if (!id || !['approve', 'reject'].includes(action ?? '')) {
+  if (!id || !['approve', 'reject', 'revoke'].includes(action ?? '')) {
     return NextResponse.json({ error: 'Acción inválida.' }, { status: 400 });
   }
+
   try {
-    const body = action === 'reject' ? await request.json() : undefined;
-    const response = await fetch(`${backend}/api/revision/verificaciones/${encodeURIComponent(id)}/${action}`, {
-      method: 'POST', headers: authHeaders(), body: body ? JSON.stringify(body) : undefined, cache: 'no-store',
-    });
+    const body = action === 'approve' ? undefined : await request.json();
+    const response = await fetch(
+      `${backend}/api/revision/verificaciones/${encodeURIComponent(id)}/${action}`,
+      {
+        method: 'POST',
+        headers: authHeaders(),
+        body: body ? JSON.stringify(body) : undefined,
+        cache: 'no-store',
+      },
+    );
     return NextResponse.json(await response.json(), { status: response.status });
   } catch {
-    return NextResponse.json({ error: 'No se pudo conectar al backend de revisión.' }, { status: 502 });
+    return NextResponse.json(
+      { error: 'No se pudo conectar al backend de revisión.' },
+      { status: 502 },
+    );
   }
 }

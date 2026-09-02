@@ -495,8 +495,16 @@ class ApiService {
 
   static Future<Map<String, dynamic>> solicitarVerificacionManualNegocio({
     required String responsableNombre,
+    required String nombreNegocio,
+    required double lat,
+    required double lng,
+    required String linkRedSocial,
   }) => _postVerificacion('/negocio/solicitar-manual', {
     'responsable_nombre': responsableNombre,
+    'nombre_negocio': nombreNegocio,
+    'ubicacion_lat': lat,
+    'ubicacion_lng': lng,
+    'link_red_social': linkRedSocial,
   });
 
   static Future<Map<String, dynamic>> solicitarVerificacionExterno(

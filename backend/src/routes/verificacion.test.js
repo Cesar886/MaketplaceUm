@@ -731,6 +731,7 @@ test('reporta el estado inicial de una cuenta que nunca inició verificación', 
     tipo_cuenta: 'particular',
     estado: 'pendiente',
     verificado: false,
+    solicitud_manual_pendiente: false,
     motivo_rechazo: null,
     campo_rechazado: null,
     identidad_confirmada: false,
@@ -1195,7 +1196,7 @@ test('conectar Mercado Pago NO verifica si además falta el inventario', async (
 
 // ═══ NEGOCIO · REVISIÓN MANUAL ═════════════════════════════
 
-test('la solicitud manual guarda responsable y no duplica evidencia al reintentar', async t => {
+test('la solicitud manual guarda todos los datos y no duplica evidencia al reintentar', async t => {
   const usuario = crearUsuario('negocio', { logoUrl: null });
 
   t.after(() => {
@@ -1211,8 +1212,22 @@ test('la solicitud manual guarda responsable y no duplica evidencia al reintenta
   });
 
   db.getDb().prepare(
-    'UPDATE sellers SET businessCategory = ? WHERE id = ?',
-  ).run('food', usuario.id);
+    `UPDATE sellers SET businessCategory = ?, businessDescription = ?, phone = ?,
+       location_lat = ?, location_lng = ?, facebook_url = ?, instagram_url = ?,
+       whatsapp_number = ?, tiktok_url = ?, twitter_url = ? WHERE id = ?`,
+  ).run(
+    'food',
+    'Comida hecha al momento',
+    '8261234567',
+    25.680001,
+    -100.320001,
+    'https://facebook.com/tacosmanualum',
+    'https://instagram.com/tacosmanualum',
+    '+528261234567',
+    'https://tiktok.com/@tacosmanualum',
+    'https://x.com/tacosmanualum',
+    usuario.id,
+  );
 
   const frente = await subirDocumento(
     usuario.token,
@@ -1245,16 +1260,37 @@ test('la solicitud manual guarda responsable y no duplica evidencia al reintenta
   assert.strictEqual(evidencia2.status, 200, JSON.stringify(evidencia2.body));
   assert.strictEqual(evidencia2.body.duplicate, true);
 
+  const incompleta = await pedir('/negocio/solicitar-manual', usuario.token, {
+    responsable_nombre: 'María Responsable',
+  });
+  assert.strictEqual(incompleta.status, 400);
+  assert.strictEqual(incompleta.body.campo, 'nombre_negocio');
+
   const solicitud = await pedir('/negocio/solicitar-manual', usuario.token, {
     responsable_nombre: 'María Responsable',
+    nombre_negocio: 'Tacos Manual UM',
+    ubicacion_lat: 25.671234,
+    ubicacion_lng: -100.309876,
+    link_red_social: 'https://www.instagram.com/tacos_manual_um/',
   });
   assert.strictEqual(solicitud.status, 201, JSON.stringify(solicitud.body));
   assert.strictEqual(solicitud.body.estado, 'pendiente');
+  assert.strictEqual(solicitud.body.solicitud_manual_pendiente, true);
   assert.strictEqual(estaVerificado(usuario.id), false);
+
+  const fila = filaVerificacion(usuario.id);
+  assert.strictEqual(fila.responsable_negocio, 'María Responsable');
+  assert.strictEqual(fila.nombre_negocio, 'Tacos Manual UM');
+  assert.strictEqual(fila.ubicacion_lat, 25.671234);
+  assert.strictEqual(fila.ubicacion_lng, -100.309876);
   assert.strictEqual(
-    filaVerificacion(usuario.id).responsable_negocio,
-    'María Responsable',
+    fila.link_red_social,
+    'https://www.instagram.com/tacos_manual_um/',
   );
+
+  const estado = await pedir('/estado', usuario.token);
+  assert.strictEqual(estado.status, 200);
+  assert.strictEqual(estado.body.solicitud_manual_pendiente, true);
 
   const adicionales = db.getDb().prepare(
     "SELECT COUNT(*) AS n FROM verification_documents WHERE usuario_id = ? AND doc_type = 'additional_evidence'",
@@ -1269,7 +1305,25 @@ test('la solicitud manual guarda responsable y no duplica evidencia al reintenta
   const cola = await revision.json();
   const enRevision = cola.requests.find(item => item.id === usuario.id);
   assert.ok(enRevision);
+  assert.strictEqual(enRevision.business.name, 'Tacos Manual UM');
   assert.strictEqual(enRevision.business.responsibleName, 'María Responsable');
+  assert.strictEqual(enRevision.business.description, 'Comida hecha al momento');
+  assert.strictEqual(enRevision.business.phone, '8261234567');
+  assert.deepStrictEqual(enRevision.business.businessHours, {
+    '0': { open: '09:00', close: '18:00' },
+  });
+  assert.deepStrictEqual(enRevision.business.paymentMethods, ['efectivo']);
+  assert.deepStrictEqual(enRevision.location, {
+    lat: 25.671234,
+    lng: -100.309876,
+    source: 'request',
+  });
+  assert.strictEqual(
+    enRevision.socialLinks.submitted,
+    'https://www.instagram.com/tacos_manual_um/',
+  );
+  assert.strictEqual(enRevision.socialLinks.facebook, 'https://facebook.com/tacosmanualum');
+  assert.strictEqual(enRevision.socialLinks.whatsapp, '+528261234567');
   assert.deepStrictEqual(
     enRevision.documents.map(documento => documento.type),
     [
@@ -1279,6 +1333,96 @@ test('la solicitud manual guarda responsable y no duplica evidencia al reintenta
     ],
   );
 
+});
+
+
+test('el panel conserva cada decisión y permite retirar una verificación con motivo', async () => {
+  const aprobado = crearUsuario('negocio');
+  const reintentado = crearUsuario('negocio');
+  const ahora = new Date().toISOString();
+
+  const insertarPendiente = db.getDb().prepare(
+    `INSERT INTO verificaciones (
+       usuario_id, tipo_cuenta, estado, creado_en, responsable_negocio
+     ) VALUES (?, 'negocio', 'pendiente', ?, ?)`,
+  );
+  insertarPendiente.run(aprobado.id, ahora, 'Responsable Aprobado');
+  insertarPendiente.run(reintentado.id, ahora, 'Responsable Reintento');
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'x-revision-api-key': 'revision-prueba',
+  };
+  const decidir = (usuarioId, accion, body) => fetch(
+    `${baseUrl}/api/revision/verificaciones/${usuarioId}/${accion}`,
+    {
+      method: 'POST',
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    },
+  );
+  const obtenerHistorial = async () => {
+    const response = await fetch(baseUrl + '/api/revision/historial', { headers });
+    assert.strictEqual(response.status, 200);
+    return (await response.json()).entries;
+  };
+
+  const aprobacion = await decidir(aprobado.id, 'approve');
+  assert.strictEqual(aprobacion.status, 200, await aprobacion.text());
+  assert.strictEqual(estaVerificado(aprobado.id), true);
+
+  let historial = await obtenerHistorial();
+  const aprobacionGuardada = historial.find(
+    evento => evento.userId === aprobado.id && evento.action === 'approved',
+  );
+  assert.ok(aprobacionGuardada);
+  assert.strictEqual(aprobacionGuardada.canRevoke, true);
+  assert.strictEqual(aprobacionGuardada.currentVerified, true);
+
+  const retiroSinMotivo = await decidir(aprobado.id, 'revoke', { reason: '   ' });
+  assert.strictEqual(retiroSinMotivo.status, 400);
+  assert.strictEqual(estaVerificado(aprobado.id), true);
+
+  const motivoRetiro = 'La documentación dejó de corresponder al responsable actual.';
+  const retiro = await decidir(aprobado.id, 'revoke', { reason: motivoRetiro });
+  assert.strictEqual(retiro.status, 200, await retiro.text());
+  assert.strictEqual(estaVerificado(aprobado.id), false);
+  assert.strictEqual(filaVerificacion(aprobado.id).estado, 'rechazado');
+  assert.strictEqual(filaVerificacion(aprobado.id).motivo_rechazo, motivoRetiro);
+  assert.strictEqual(filaVerificacion(aprobado.id).campo_rechazado, 'revision_manual');
+
+  const motivoRechazo = 'La identificación está borrosa y no permite validar el nombre.';
+  const rechazo = await decidir(reintentado.id, 'reject', { reason: motivoRechazo });
+  assert.strictEqual(rechazo.status, 200, await rechazo.text());
+  assert.strictEqual(estaVerificado(reintentado.id), false);
+
+  // Simula que la persona corrigió sus documentos y volvió a enviar la
+  // solicitud. La aprobación nueva no debe pisar el rechazo anterior.
+  db.getDb().prepare(
+    `UPDATE verificaciones SET estado = 'pendiente', motivo_rechazo = NULL,
+     campo_rechazado = NULL WHERE usuario_id = ?`,
+  ).run(reintentado.id);
+  const segundaAprobacion = await decidir(reintentado.id, 'approve');
+  assert.strictEqual(segundaAprobacion.status, 200, await segundaAprobacion.text());
+
+  historial = await obtenerHistorial();
+  const eventosAprobado = historial.filter(evento => evento.userId === aprobado.id);
+  assert.deepStrictEqual(
+    eventosAprobado.map(evento => evento.action),
+    ['revoked', 'approved'],
+  );
+  assert.strictEqual(eventosAprobado[0].reason, motivoRetiro);
+  assert.ok(eventosAprobado.every(evento => evento.canRevoke === false));
+
+  const eventosReintentado = historial.filter(
+    evento => evento.userId === reintentado.id,
+  );
+  assert.deepStrictEqual(
+    eventosReintentado.map(evento => evento.action),
+    ['approved', 'rejected'],
+  );
+  assert.strictEqual(eventosReintentado[1].reason, motivoRechazo);
+  assert.strictEqual(eventosReintentado[0].canRevoke, true);
 });
 
 // ═══ MERCADO_PAGO_HABILITADO=false (estado real de producción hoy) ═══

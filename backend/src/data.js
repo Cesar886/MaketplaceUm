@@ -11,6 +11,14 @@ const categories = db.getCategories();
 const sellers = db.getSellers();
 const highlightPlans = db.getHighlightPlans();
 
+// Recarga la caché compartida después de una decisión administrativa que
+// cambie `sellers.verified`. Las rutas antiguas leen este array directamente.
+function refrescarSellers() {
+  db.refrescarCuentasDueno();
+  sellers.length = 0;
+  sellers.push(...db.getSellers());
+}
+
 // Limpiar ofertas expiradas al arrancar
 db.expireStaleOffers();
 
@@ -92,4 +100,4 @@ function updateSellerField(sellerId, field, value) {
   sellers.push(...db.getSellers());
 }
 
-module.exports = { categories, sellers, products, ownListings, highlightPlans, saveData, registerSeller, updateSellerField };
+module.exports = { categories, sellers, products, ownListings, highlightPlans, saveData, registerSeller, updateSellerField, refrescarSellers };

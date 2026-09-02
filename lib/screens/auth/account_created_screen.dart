@@ -134,14 +134,44 @@ class AccountCreatedScreen extends StatelessWidget {
     );
   }
 
-  /// La verificación ya no tiene estado "en revisión": el backend la
-  /// resuelve al instante, así que la cuenta solo puede estar verificada o
-  /// no. Si no lo está, es porque el usuario pospuso el trámite o porque sus
-  /// datos fueron rechazados; en ambos casos puede retomarlo desde el perfil.
-  String _verificationLabel(AuthProvider auth) =>
-      auth.isVerified ? 'auth.verified'.tr() : 'auth.unverified'.tr();
+  String _verificationLabel(AuthProvider auth) {
+    if (auth.isVerified) return 'auth.verified'.tr();
+    if (auth.solicitudManualPendiente) return 'auth.pending_review'.tr();
+    return 'auth.unverified'.tr();
+  }
 
   Widget _buildVerificationBadge(BuildContext context, AuthProvider auth) {
+    if (auth.solicitudManualPendiente) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: context.colors.accent.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: context.colors.accent.withValues(alpha: 0.25),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.hourglass_top_rounded,
+              size: 16,
+              color: context.colors.accent,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'auth.pending_review'.tr(),
+              style: TextStyle(
+                color: context.colors.accent,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     if (auth.isVerified) {
       return InsigniaVerificada(tipo: auth.accountType);
     }

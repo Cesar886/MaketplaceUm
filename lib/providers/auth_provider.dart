@@ -119,6 +119,7 @@ class AuthProvider extends ChangeNotifier {
   // automáticamente y aquí solo se refleja.
 
   bool _verificado = false;
+  bool _solicitudManualPendiente = false;
   String _estadoVerificacion = 'pendiente';
   String? _tipoCuentaBackend;
   String? _motivoRechazo;
@@ -136,6 +137,7 @@ class AuthProvider extends ChangeNotifier {
       _requisitos.where((r) => !r.cumplido).toList();
 
   bool get isVerified => _verificado;
+  bool get solicitudManualPendiente => _solicitudManualPendiente;
 
   /// Las cuentas particulares pueden iniciar sesión y usar el marketplace,
   /// pero no participan en el programa de verificación ni reciben insignia.
@@ -547,6 +549,8 @@ class AuthProvider extends ChangeNotifier {
 
   void _aplicarEstadoVerificacion(Map<String, dynamic> estado) {
     _verificado = estado['verificado'] as bool? ?? false;
+    _solicitudManualPendiente =
+        estado['solicitud_manual_pendiente'] as bool? ?? false;
     _estadoVerificacion = estado['estado'] as String? ?? 'pendiente';
     _tipoCuentaBackend = estado['tipo_cuenta'] as String?;
     _motivoRechazo = estado['motivo_rechazo'] as String?;
@@ -608,6 +612,32 @@ class AuthProvider extends ChangeNotifier {
     );
     await refrescarEstadoVerificacion();
     return res['estado'] == 'verificado';
+  }
+
+  /// Envía una solicitud manual y refleja el estado pendiente inmediatamente.
+  /// Si la consulta de seguimiento falla después del POST, se conserva este
+  /// estado confirmado en vez de volver a pintar la cuenta como no verificada.
+  Future<void> solicitarVerificacionManualNegocio({
+    required String responsableNombre,
+    required String nombreNegocio,
+    required double lat,
+    required double lng,
+    required String linkRedSocial,
+  }) async {
+    await ApiService.solicitarVerificacionManualNegocio(
+      responsableNombre: responsableNombre,
+      nombreNegocio: nombreNegocio,
+      lat: lat,
+      lng: lng,
+      linkRedSocial: linkRedSocial,
+    );
+    _verificado = false;
+    _estadoVerificacion = 'pendiente';
+    _solicitudManualPendiente = true;
+    _motivoRechazo = null;
+    _campoRechazado = null;
+    notifyListeners();
+    await refrescarEstadoVerificacion();
   }
 
   Future<String?> solicitarVerificacionExterno(String telefono) async {
@@ -754,6 +784,7 @@ class AuthProvider extends ChangeNotifier {
     _backendToken = null;
     _backendSellerId = null;
     _verificado = false;
+    _solicitudManualPendiente = false;
     _estadoVerificacion = 'pendiente';
     _tipoCuentaBackend = null;
     _motivoRechazo = null;

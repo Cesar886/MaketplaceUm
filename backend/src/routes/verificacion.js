@@ -666,22 +666,92 @@ function crearRutasVerificacion({
 
   router.post('/negocio/solicitar-manual', requireAuth, exigirTipo('negocio'), (req, res) => {
     const db = getDb();
-    const perfil = db.prepare('SELECT name, businessCategory FROM sellers WHERE id = ?').get(req.user.id);
-    const camposFaltantes = [];
+    const perfil = db.prepare(
+      'SELECT name, businessCategory FROM sellers WHERE id = ?',
+    ).get(req.user.id);
     const responsable = String(req.body.responsable_nombre || '').trim();
+    const nombre = String(req.body.nombre_negocio || '').trim();
+    const link = String(req.body.link_red_social || '').trim();
+    const ubicacion = validateLocation(
+      req.body.ubicacion_lat,
+      req.body.ubicacion_lng,
+    );
+
+    const camposFaltantes = [];
     if (!responsable) camposFaltantes.push('responsable');
-    if (!perfil?.name?.trim()) camposFaltantes.push('nombre_negocio');
+    if (!perfil?.name?.trim()) camposFaltantes.push('perfil_nombre_negocio');
     if (!perfil?.businessCategory?.trim()) camposFaltantes.push('categoria');
-    if (camposFaltantes.length) return res.status(400).json({ error: 'Completa los campos obligatorios del perfil de negocio.', campo: camposFaltantes[0], campos_faltantes: camposFaltantes });
+    if (camposFaltantes.length) {
+      return res.status(400).json({
+        error: 'Completa los campos obligatorios del perfil de negocio.',
+        campo: camposFaltantes[0],
+        campos_faltantes: camposFaltantes,
+      });
+    }
+
+    const errorNombre = validarNombreNegocio(nombre);
+    if (errorNombre) {
+      return res.status(400).json({ error: errorNombre, campo: 'nombre_negocio' });
+    }
+    if (ubicacion.error || !ubicacion.value) {
+      return res.status(400).json({
+        error: ubicacion.error || 'Coloca la ubicación de tu negocio en el mapa.',
+        campo: 'ubicacion',
+      });
+    }
+    const errorLink = validarLinkRedSocial(link);
+    if (errorLink) {
+      return res.status(400).json({ error: errorLink, campo: 'link_red_social' });
+    }
+
     const requisitoFaltante = primerFaltante(req.user.id);
-    if (requisitoFaltante) return res.status(400).json({ error: requisitoFaltante.detalle, campo: requisitoFaltante.id });
-    const documentos = db.prepare('SELECT doc_type FROM verification_documents WHERE usuario_id = ?').all(req.user.id);
+    if (requisitoFaltante) {
+      return res.status(400).json({
+        error: requisitoFaltante.detalle,
+        campo: requisitoFaltante.id,
+      });
+    }
+    const documentos = db.prepare(
+      'SELECT doc_type FROM verification_documents WHERE usuario_id = ?',
+    ).all(req.user.id);
     const tipos = new Set(documentos.map(d => d.doc_type));
-    const faltantes = ['responsible_ine_front', 'responsible_ine_back'].filter(tipo => !tipos.has(tipo));
-    if (faltantes.length) return res.status(400).json({ error: 'Adjunta el frente y reverso de la INE del responsable.', campo: 'ine', documentos_faltantes: faltantes });
+    const faltantes = ['responsible_ine_front', 'responsible_ine_back']
+      .filter(tipo => !tipos.has(tipo));
+    if (faltantes.length) {
+      return res.status(400).json({
+        error: 'Adjunta el frente y reverso de la INE del responsable.',
+        campo: 'ine',
+        documentos_faltantes: faltantes,
+      });
+    }
+
     asegurarVerificacion(req.user.id, 'negocio');
-    db.prepare("UPDATE verificaciones SET estado = 'pendiente', responsable_negocio = ?, motivo_rechazo = NULL, campo_rechazado = NULL WHERE usuario_id = ?").run(responsable, req.user.id);
-    return res.status(201).json({ estado: 'pendiente', verificado: false });
+    db.prepare(
+      `UPDATE verificaciones SET
+         estado = 'pendiente',
+         creado_en = ?,
+         nombre_negocio = ?,
+         responsable_negocio = ?,
+         ubicacion_lat = ?,
+         ubicacion_lng = ?,
+         link_red_social = ?,
+         motivo_rechazo = NULL,
+         campo_rechazado = NULL
+       WHERE usuario_id = ?`,
+    ).run(
+      ahora(),
+      nombre,
+      responsable,
+      ubicacion.value.lat,
+      ubicacion.value.lng,
+      link,
+      req.user.id,
+    );
+    return res.status(201).json({
+      estado: 'pendiente',
+      verificado: false,
+      solicitud_manual_pendiente: true,
+    });
   });
 
   // El endpoint histórico se conserva para clientes antiguos.
@@ -812,6 +882,15 @@ function crearRutasVerificacion({
       tipo_cuenta: tipoCuenta,
       estado: seller.verified ? 'verificado' : verificacion?.estado || 'pendiente',
       verificado: !!seller.verified,
+      // `estado='pendiente'` también es el valor por defecto antes de iniciar
+      // un trámite. Esta bandera distingue una solicitud manual realmente
+      // enviada para que Flutter muestre la pantalla "En revisión".
+      solicitud_manual_pendiente: Boolean(
+        !seller.verified
+          && verificacion?.tipo_cuenta === 'negocio'
+          && verificacion?.estado === 'pendiente'
+          && verificacion?.responsable_negocio,
+      ),
       motivo_rechazo: verificacion?.motivo_rechazo || null,
       campo_rechazado: verificacion?.campo_rechazado || null,
       // La identidad ya está probada y lo único que puede faltar es conectar

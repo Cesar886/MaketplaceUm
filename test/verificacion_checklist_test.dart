@@ -94,6 +94,15 @@ void main() {
       );
 
       expect(find.text('Todo listo para verificarte'), findsOneWidget);
+      final palomita = find.byIcon(Icons.verified_rounded);
+      expect(palomita, findsOneWidget);
+      expect(tester.widget<Icon>(palomita).color, AppColors.verifiedBlue);
+      expect(
+        tester.getCenter(palomita).dx,
+        greaterThan(
+          tester.getCenter(find.text('Todo listo para verificarte')).dx,
+        ),
+      );
       expect(find.textContaining('Te falta'), findsNothing);
     });
 
@@ -293,6 +302,23 @@ void main() {
       expect(find.text('Requisito mercadopago'), findsNothing);
       expect(find.text('Requisito metodos_pago'), findsOneWidget);
     });
+
+    testWidgets('un negocio con solicitud enviada ve la pantalla pendiente', (
+      tester,
+    ) async {
+      final auth = _AuthDePrueba(
+        const [],
+        tipo: AccountType.negocio,
+        manualPending: true,
+      );
+
+      await tester.pumpWidget(pantalla(auth, tipo: AccountType.negocio));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.hourglass_top_rounded), findsOneWidget);
+      expect(find.text('Enviar solicitud de verificación'), findsNothing);
+      expect(find.byType(VerificationChecklist), findsNothing);
+    });
   });
 
   // ─── Detección de dominio (alumno / personal) ───────────────
@@ -343,19 +369,41 @@ void main() {
 /// AuthProvider con los requisitos ya resueltos, para montar la pantalla sin
 /// backend: refrescar es un no-op y la lista es la que pide cada test.
 class _AuthDePrueba extends AuthProvider {
-  _AuthDePrueba(this._requisitosDePrueba, {this.tipo = AccountType.estudiante});
+  _AuthDePrueba(
+    this._requisitosDePrueba, {
+    this.tipo = AccountType.estudiante,
+    this.manualPending = false,
+  });
 
   final List<VerificationRequirement> _requisitosDePrueba;
   final AccountType tipo;
+  final bool manualPending;
 
   @override
-  Map<String, dynamic>? get currentUser => const {'name': 'Prueba'};
+  Map<String, dynamic>? get currentUser => const {
+    'id': 1,
+    'name': 'Prueba',
+    'user_type': 'negocio',
+  };
 
   @override
   AccountType get accountType => tipo;
 
   @override
   List<VerificationRequirement> get requisitos => _requisitosDePrueba;
+
+  @override
+  bool get solicitudManualPendiente => manualPending;
+
+  @override
+  String get estadoVerificacion => 'pendiente';
+
+  @override
+  Future<Map<String, dynamic>?> getBusinessProfileLocal() async => const {
+    'business_name': 'Negocio de prueba',
+    'business_type': 'Comida',
+    'responsible_name': 'Responsable de prueba',
+  };
 
   @override
   Future<void> refrescarEstadoVerificacion() async {}

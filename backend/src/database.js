@@ -1803,6 +1803,54 @@ function runMigrations() {
       + 'ON verification_documents(usuario_id, doc_type, content_hash)',
   );
 
+  // 46. Historial inmutable de decisiones del panel privado. La tabla
+  // `verificaciones` conserva solo el estado actual; este log mantiene cada
+  // aprobación, rechazo y retiro con la instantánea del negocio.
+  // No lleva FK: el historial sobrevive aunque la cuenta sea eliminada.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS verification_review_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      usuario_id TEXT NOT NULL,
+      accion TEXT NOT NULL CHECK(accion IN ('approved','rejected','revoked')),
+      motivo TEXT,
+      nombre_negocio TEXT NOT NULL,
+      categoria_negocio TEXT,
+      responsable_negocio TEXT,
+      decidido_en TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_verification_review_log_date
+      ON verification_review_log(decidido_en DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_verification_review_log_user
+      ON verification_review_log(usuario_id, id DESC);
+  `);
+
+  // Registra una instantánea del último estado conocido de cada negocio
+  // anterior a esta migración. Así las cuentas ya verificadas aparecen en el
+  // historial y pueden retirarse desde el panel desde el primer arranque.
+  db.exec(`
+    INSERT INTO verification_review_log (
+      usuario_id, accion, motivo, nombre_negocio, categoria_negocio,
+      responsable_negocio, decidido_en
+    )
+    SELECT
+      v.usuario_id,
+      CASE v.estado WHEN 'verificado' THEN 'approved' ELSE 'rejected' END,
+      CASE WHEN v.estado = 'rechazado' THEN v.motivo_rechazo ELSE NULL END,
+      COALESCE(NULLIF(s.name, ''), NULLIF(v.nombre_negocio, ''), v.usuario_id),
+      s.businessCategory,
+      v.responsable_negocio,
+      COALESCE(v.fecha_verificacion, v.creado_en, datetime('now'))
+    FROM verificaciones v
+    JOIN sellers s ON s.id = v.usuario_id
+    WHERE v.tipo_cuenta = 'negocio'
+      AND v.responsable_negocio IS NOT NULL
+      AND v.estado IN ('verificado', 'rechazado')
+      AND NOT EXISTS (
+        SELECT 1 FROM verification_review_log h
+        WHERE h.usuario_id = v.usuario_id
+      )
+  `);
+
   console.log('🔄 Migración de schema completada');
 }
 
