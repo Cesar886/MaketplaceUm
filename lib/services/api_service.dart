@@ -372,16 +372,16 @@ class ApiService {
 
   // ─── Verificación de cuenta ─────────────────────────────
   //
-  // El backend resuelve la verificación automáticamente (sin revisión
-  // humana) y es la única autoridad sobre `verified`. Todos estos endpoints
-  // toman el usuario del JWT, así que nunca se manda un id de usuario.
+  // El backend es la única autoridad del estado: resuelve los OTP y conserva
+  // en pendiente las solicitudes manuales de negocio. El usuario siempre se
+  // toma del JWT, así que nunca se manda un id de usuario.
 
   /// Decodifica la respuesta de un endpoint de verificación, propagando el
   /// mensaje real del servidor en el error para poder mostrarlo tal cual al
   /// usuario (ej. "La matrícula no coincide con tu correo institucional").
   static Map<String, dynamic> _decodeVerificacion(http.Response res) {
     final body = jsonDecode(res.body) as Map<String, dynamic>;
-    if (res.statusCode != 200) {
+    if (res.statusCode < 200 || res.statusCode >= 300) {
       // `error` es ambiguo en el backend: en la mayoría de rutas trae una
       // frase ya redactada para el usuario, pero en los 401 de auth.js trae
       // un código-máquina (SESSION_INVALIDATED) y la frase va en `message`.
@@ -470,6 +470,34 @@ class ApiService {
       'link_red_social': linkRedSocial,
     });
   }
+
+  static Future<void> uploadBusinessVerificationDocument({
+    required String docType,
+    required String filePath,
+  }) async {
+    final request = http.MultipartRequest(
+      'POST',
+      _uri('/verificacion/negocio/documentos'),
+    );
+    request.headers.addAll(_authHeaders);
+    request.fields['doc_type'] = docType;
+    request.files.add(await http.MultipartFile.fromPath('file', filePath));
+    final response = await http.Response.fromStream(
+      await _client.send(request),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      throw VerificacionException(
+        body['error'] as String? ?? 'No pudimos subir el documento.',
+      );
+    }
+  }
+
+  static Future<Map<String, dynamic>> solicitarVerificacionManualNegocio({
+    required String responsableNombre,
+  }) => _postVerificacion('/negocio/solicitar-manual', {
+    'responsable_nombre': responsableNombre,
+  });
 
   static Future<Map<String, dynamic>> solicitarVerificacionExterno(
     String telefono,
@@ -1290,6 +1318,35 @@ class ApiService {
     return Seller.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  /// El perfil PROPIO, con sesión: mismo endpoint que [getSeller] pero
+  /// mandando el token.
+  ///
+  /// Es un método aparte y no un parámetro de [getSeller] porque el servidor
+  /// devuelve campos privados cuando reconoce al dueño (el email, y qué
+  /// insignias tiene realmente aunque las esconda). Pedirlos por accidente
+  /// desde una pantalla que muestra el perfil de otro sería un escape de
+  /// datos silencioso.
+  static Future<Seller> getMyProfile(String id) async {
+    final res = await _getWithRetry(
+      _uri('/sellers/$id'),
+      headers: _authHeaders,
+    );
+    if (res.statusCode != 200) throw Exception('Seller not found');
+    return Seller.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  /// Las cuentas oficiales a las que abre chat "Reportar un problema".
+  static Future<List<Seller>> getSupportContacts() async {
+    final res = await _getWithRetry(_uri('/support/contacts'));
+    if (res.statusCode != 200)
+      throw Exception('Error fetching support contacts');
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    final List<dynamic> contacts = data['contacts'] as List<dynamic>;
+    return contacts
+        .map((e) => Seller.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   /// Centinela para distinguir "no toques este campo" de "ponlo en null".
   /// El resto de campos del PATCH usan `!= null` para decidir si viajan, pero
   /// para el color de acento y el producto fijado null es un valor con
@@ -1309,6 +1366,7 @@ class ApiService {
     List<String>? paymentMethods,
     Object? colorAcento = _sinCambio,
     Object? productoFijadoId = _sinCambio,
+    Set<String>? insigniasOcultas,
     String? facebookUrl,
     String? instagramUrl,
     String? whatsappNumber,
@@ -1334,6 +1392,12 @@ class ApiService {
     }
     if (!identical(productoFijadoId, _sinCambio)) {
       body['productoFijadoId'] = productoFijadoId;
+    }
+    // Un set vacío es una petición legítima ("no muestres ninguna"), así que
+    // el null-check no puede confundirse con "no lo mandes": null es el que
+    // significa "no toques este ajuste".
+    if (insigniasOcultas != null) {
+      body['insigniasOcultas'] = insigniasOcultas.toList();
     }
     if (facebookUrl != null) body['facebookUrl'] = facebookUrl;
     if (instagramUrl != null) body['instagramUrl'] = instagramUrl;
@@ -1607,6 +1671,21 @@ class ApiService {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  /// Busca la conversación directa (sin producto) ya existente con
+  /// [sellerId], si la hay. Devuelve null si nunca se han escrito.
+  ///
+  /// La usa el perfil público antes de abrir el chat, para reabrir el hilo
+  /// previo en vez de uno vacío: ver comentario del endpoint en el backend.
+  static Future<String?> getDirectConversationId(String sellerId) async {
+    final res = await _getWithRetry(
+      _uri('/chat/conversations/direct/$sellerId'),
+      headers: _authHeaders,
+    );
+    if (res.statusCode != 200) return null;
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return data['conversationId'] as String?;
+  }
+
   /// Elimina el chat solo de la bandeja del usuario autenticado.
   ///
   /// El historial de la otra persona no se modifica. Si llega un mensaje
@@ -1742,12 +1821,7 @@ class ApiService {
     );
   }
 
-  /// Publica un comentario. Requiere sesión CON verificación institucional.
-  ///
-  /// El 403 se traduce a [ComentarioNoVerificadoException] en vez de a un
-  /// `Exception` genérico porque la UI reacciona distinto: no es un error
-  /// que mostrar en un snackbar, es la señal de cambiar el input por la
-  /// tarjeta que lleva a verificarse.
+  /// Publica un comentario. Requiere sesión; no requiere verificación.
   static Future<ProductComment> postProductComment(
     String productId,
     String texto,
@@ -1758,12 +1832,6 @@ class ApiService {
       body: jsonEncode({'texto': texto}),
     );
 
-    if (res.statusCode == 403) {
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
-      throw ComentarioNoVerificadoException(
-        body['error'] as String? ?? 'Verifica tu cuenta para comentar',
-      );
-    }
     if (res.statusCode != 201) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       throw Exception(body['error'] ?? 'No se pudo publicar el comentario');
@@ -1955,17 +2023,6 @@ class ApiService {
       jsonDecode(res.body) as Map<String, dynamic>,
     );
   }
-}
-
-/// El backend rechazó el comentario porque la cuenta no está verificada.
-/// Tipo propio para que la UI la distinga de un fallo cualquiera de red.
-class ComentarioNoVerificadoException implements Exception {
-  const ComentarioNoVerificadoException(this.message);
-
-  final String message;
-
-  @override
-  String toString() => message;
 }
 
 /// Lo que se escribió en el campo de comentarios era la frase que abre el

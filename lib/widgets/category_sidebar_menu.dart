@@ -353,10 +353,7 @@ class _Header extends StatelessWidget {
                           onPressed: () => Navigator.of(context).maybePop(),
                           iconSize: 20,
                           visualDensity: VisualDensity.compact,
-                          icon: Icon(
-                            Icons.close_rounded,
-                            color: sobrePrimary,
-                          ),
+                          icon: Icon(Icons.close_rounded, color: sobrePrimary),
                           tooltip: MaterialLocalizations.of(
                             context,
                           ).closeButtonTooltip,
@@ -648,7 +645,7 @@ class _AccountSection extends StatelessWidget {
         // Solo aparece mientras la cuenta no está verificada: es la acción
         // más prioritaria que puede tomar quien la ve, así que va primero y
         // con acento propio en vez de la fila neutra del resto.
-        if (!auth.isVerified) ...[
+        if (auth.puedeVerificarse && !auth.isVerified) ...[
           _VerifyBanner(
             colors: colors,
             onTap: () {
@@ -709,9 +706,9 @@ class _AccountSection extends StatelessWidget {
           label: 'home.sidebar_language'.tr(),
           onTap: () {
             Navigator.of(context).pop();
-            Navigator.of(
-              context,
-            ).push(MaterialPageRoute<void>(builder: (_) => const LanguageScreen()));
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const LanguageScreen()),
+            );
           },
         ),
         _ActionRow(
@@ -720,9 +717,9 @@ class _AccountSection extends StatelessWidget {
           label: 'settings.title'.tr(),
           onTap: () {
             Navigator.of(context).pop();
-            Navigator.of(
-              context,
-            ).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+            );
           },
         ),
       ],
@@ -831,7 +828,10 @@ class _VerifyBanner extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
-              colors: [marca.withValues(alpha: 0.16), marca.withValues(alpha: 0.04)],
+              colors: [
+                marca.withValues(alpha: 0.16),
+                marca.withValues(alpha: 0.04),
+              ],
             ),
             border: Border.all(color: marca.withValues(alpha: 0.35)),
           ),

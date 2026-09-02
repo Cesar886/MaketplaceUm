@@ -1,11 +1,12 @@
 // Comentarios públicos en una publicación.
 //
 // Asimetría deliberada de permisos: LEER es abierto (cualquiera, con o sin
-// sesión, incluido un dispositivo anónimo) y ESCRIBIR exige una cuenta
-// verificada. Los comentarios son el respaldo social de un vendedor dentro
-// del campus; si los pudiera escribir cualquiera no dirían nada, y si hubiera
-// que iniciar sesión para leerlos no servirían de respaldo ante quien todavía
-// no se registra.
+// sesión, incluido un dispositivo anónimo) y ESCRIBIR exige solo una sesión,
+// verificada o no — la misma puerta que preguntar (routes/questions.js). Un
+// comentario queda firmado con la cuenta que lo escribió, y esa firma es la
+// que responde por él; exigir además verificación silenciaba a gente que ya
+// tenía cuenta. Si hubiera que iniciar sesión para leerlos no servirían de
+// respaldo ante quien todavía no se registra.
 
 const db = require('../database');
 const { requireAuth } = require('../auth');
@@ -31,24 +32,6 @@ const LARGO_PREVIEW = 80;
 
 function nuevoIdComentario() {
   return `cmt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-/**
- * La puerta del feature: comenta cualquier cuenta VERIFICADA, del tipo que
- * sea — alumno, personal UM, negocio o externo.
- *
- * Se mira `sellers.verified` y no `tipo_verificacion` porque esa columna solo
- * se llena en el flujo institucional (OTP al correo, 'estudiante'|'empleado').
- * Negocios y externos verifican por SMS y la dejan nula, así que usarla como
- * puerta los excluiría aun estando verificados. `verified` es la bandera que
- * ponen los cuatro flujos (routes/verificacion.js → marcarVerificado) y la
- * misma que el cliente lee en /verificacion/estado, de modo que lo que el
- * backend permite coincide con lo que la UI ofrece.
- *
- * @param seller Fila de `sellers`, o null/undefined si la cuenta ya no existe.
- */
-function puedeComentar(seller) {
-  return !!(seller && seller.verified);
 }
 
 function register(app) {
@@ -81,7 +64,7 @@ function register(app) {
   });
 
   // ─── POST /api/products/:id/comments ────────────────────────────
-  // Requiere sesión Y verificación institucional.
+  // Requiere sesión. No requiere verificación.
   app.post('/api/products/:id/comments', requireAuth, (req, res) => {
     try {
       const producto = products.find(p => p.id === req.params.id);
@@ -89,20 +72,13 @@ function register(app) {
 
       const autorId = req.user.id;
       const autor = db.getDb()
-        .prepare('SELECT id, name, verified FROM sellers WHERE id = ?')
+        .prepare('SELECT id, name FROM sellers WHERE id = ?')
         .get(autorId);
 
-      // Token válido cuya cuenta ya no existe. No es 403: no hay nada que
-      // verificar, la sesión simplemente dejó de apuntar a algo.
+      // Token válido cuya cuenta ya no existe: la sesión dejó de apuntar a
+      // algo, así que se pide iniciarla de nuevo.
       if (!autor) {
         return res.status(401).json({ error: 'Tu sesión ya no es válida. Inicia sesión de nuevo.' });
-      }
-
-      if (!puedeComentar(autor)) {
-        return res.status(403).json({
-          error: 'Verifica tu cuenta para comentar',
-          code: 'NO_VERIFICADO',
-        });
       }
 
       const saneado = sanitizarComentario(req.body ? req.body.texto : undefined);
@@ -113,9 +89,8 @@ function register(app) {
       // emite por socket, no notifica al vendedor y no cuenta para el hilo.
       // Nadie más que quien lo escribió sabrá nunca que pasó por aquí.
       //
-      // Y va DESPUÉS de la verificación a propósito: quien no puede comentar
-      // tampoco puede tantear frases en este campo, así que el gatillo no
-      // abre una vía de escritura que la cuenta no tuviera ya.
+      // Sigue exigiendo sesión, como todo este endpoint: el gatillo no abre
+      // una vía de escritura que la cuenta no tuviera ya.
       if (esFraseDeEntrada(saneado.value)) {
         // 201 con una forma distinta, no 200: para el cliente esto sigue
         // siendo "tu envío se aceptó", solo que lo que se creó fue una

@@ -7,7 +7,7 @@ import 'package:provider/provider.dart';
 import '../app_theme.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
-import '../screens/auth/verification_screen.dart';
+import '../screens/auth/login_screen.dart';
 import '../screens/secreto/enigma_screen.dart';
 import '../screens/seller_profile_screen.dart';
 import '../services/api_service.dart';
@@ -24,7 +24,7 @@ const int _kLargoMaximo = 500;
 
 /// Sección de comentarios del detalle de producto: hilo paginado, borrado
 /// con permiso, comentarios en vivo por Socket.IO y el campo para escribir
-/// (o la invitación a verificarse, si la cuenta todavía no lo está).
+/// (o la invitación a iniciar sesión, si todavía no hay cuenta).
 class ProductCommentsSection extends StatefulWidget {
   const ProductCommentsSection({
     super.key,
@@ -208,13 +208,6 @@ class _ProductCommentsSectionState extends State<ProductCommentsSection> {
       });
       _focus.unfocus();
       await _abrirPuerta();
-    } on ComentarioNoVerificadoException catch (e) {
-      // La cuenta perdió la verificación entre que se pintó el input y el
-      // envío. Se rebota el estado para que aparezca la tarjeta correcta.
-      if (!mounted) return;
-      setState(() => _enviando = false);
-      _avisar(e.message);
-      await context.read<AuthProvider>().refrescarEstadoVerificacion();
     } catch (e) {
       if (!mounted) return;
       setState(() => _enviando = false);
@@ -348,10 +341,10 @@ class _ProductCommentsSectionState extends State<ProductCommentsSection> {
           ),
         ],
         const SizedBox(height: 20),
-        // Anónimo o sin verificar: no hay input, hay invitación. El backend
-        // rechaza igual (403), pero mostrar un campo que siempre falla es
-        // peor que no mostrarlo.
-        if (auth.isLoggedIn && auth.isVerified)
+        // Anónimo: no hay input, hay invitación. El backend rechaza igual
+        // (401), pero mostrar un campo que siempre falla es peor que no
+        // mostrarlo. Con sesión basta: la verificación ya no es requisito.
+        if (auth.isLoggedIn)
           _CampoComentario(
             controller: _controller,
             focus: _focus,
@@ -359,7 +352,7 @@ class _ProductCommentsSectionState extends State<ProductCommentsSection> {
             onEnviar: _enviar,
           )
         else
-          const TarjetaVerificaParaComentar(),
+          const TarjetaIniciaSesionParaComentar(),
       ],
     );
   }
@@ -656,17 +649,15 @@ class _CampoComentario extends StatelessWidget {
   }
 }
 
-/// Reemplaza al campo de texto cuando la cuenta no puede comentar.
+/// Reemplaza al campo de texto cuando no hay sesión.
 ///
 /// Sin borde ni sombra: la separa del hilo un tinte del color de marca, no
 /// una caja — la misma línea que el resto de la app.
-class TarjetaVerificaParaComentar extends StatelessWidget {
-  const TarjetaVerificaParaComentar({super.key});
+class TarjetaIniciaSesionParaComentar extends StatelessWidget {
+  const TarjetaIniciaSesionParaComentar({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
-
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -680,14 +671,14 @@ class TarjetaVerificaParaComentar extends StatelessWidget {
           Row(
             children: [
               Icon(
-                Icons.shield_outlined,
+                Icons.mode_comment_outlined,
                 size: 18,
                 color: context.colors.accent,
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'comments.verify_title'.tr(),
+                  'comments.login_title'.tr(),
                   style: AppTypography.heading(14.5, color: context.colors.ink),
                 ),
               ),
@@ -695,40 +686,26 @@ class TarjetaVerificaParaComentar extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'comments.verify_body'.tr(),
+            'comments.login_body'.tr(),
             style: TextStyle(fontSize: 13, color: context.colors.muted),
           ),
           const SizedBox(height: 4),
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
-              // Sin sesión no hay tipo de cuenta que verificar: primero hay
-              // que iniciarla, y de eso ya se encarga el resto de la app.
-              onPressed: !auth.isLoggedIn
-                  ? null
-                  : () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) =>
-                            VerificationScreen(tipo: auth.accountType),
-                      ),
-                    ),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+              ),
               style: TextButton.styleFrom(
                 foregroundColor: context.colors.accent,
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 visualDensity: VisualDensity.compact,
               ),
-              icon: Text('comments.verify_action'.tr()),
+              icon: Text('auth.login_button'.tr()),
               label: const Icon(Icons.arrow_forward_rounded, size: 16),
             ),
           ),
-          if (!auth.isLoggedIn)
-            Padding(
-              padding: const EdgeInsets.only(left: 8, bottom: 8),
-              child: Text(
-                'comments.verify_login'.tr(),
-                style: TextStyle(fontSize: 12, color: context.colors.muted),
-              ),
-            ),
+          const SizedBox(height: 8),
         ],
       ),
     );

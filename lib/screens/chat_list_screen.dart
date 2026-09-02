@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:easy_localization/easy_localization.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -20,7 +21,9 @@ import 'main_shell.dart';
 import 'seller_profile_screen.dart';
 
 class ChatListScreen extends StatefulWidget {
-  const ChatListScreen({super.key});
+  const ChatListScreen({super.key, this.refreshSignal});
+
+  final ValueListenable<int>? refreshSignal;
 
   @override
   State<ChatListScreen> createState() => _ChatListScreenState();
@@ -42,7 +45,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
   @override
   void initState() {
     super.initState();
+    widget.refreshSignal?.addListener(_refreshSilently);
     _initAsync();
+  }
+
+  void _refreshSilently() {
+    if (mounted) _load();
   }
 
   Future<void> _initAsync() async {
@@ -74,6 +82,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   @override
   void dispose() {
+    widget.refreshSignal?.removeListener(_refreshSilently);
     _convSub?.cancel();
     _msgSub?.cancel();
     ChatSocketService.instance.unsubscribePresence(_seguidos);
@@ -116,7 +125,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
     return AnonymousId.get();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool showLoading = false}) async {
+    if (showLoading && mounted) setState(() => _loading = true);
     try {
       // Refrescar userId por si cambió
       _userId = await _getChatUserId();

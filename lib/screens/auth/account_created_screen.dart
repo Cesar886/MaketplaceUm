@@ -16,6 +16,7 @@ class AccountCreatedScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final user = auth.currentUser;
+    final puedeVerificarse = auth.puedeVerificarse;
 
     return Scaffold(
       body: SafeArea(
@@ -63,50 +64,53 @@ class AccountCreatedScreen extends StatelessWidget {
                       label: 'auth.account_type'.tr(),
                       value: auth.accountTypeLabel,
                     ),
-                    const Divider(height: 20),
-                    _SummaryRow(
-                      label: 'auth.verification_status'.tr(),
-                      value: _verificationLabel(auth),
-                    ),
-                    const SizedBox(height: 12),
-                    _buildVerificationBadge(context, auth),
+                    if (puedeVerificarse) ...[
+                      const Divider(height: 20),
+                      _SummaryRow(
+                        label: 'auth.verification_status'.tr(),
+                        value: _verificationLabel(auth),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildVerificationBadge(context, auth),
+                    ],
                   ],
                 ),
               ),
               const Spacer(flex: 3),
 
               // ─── Tips ─────────────────────────────────────
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: context.colors.accent.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: context.colors.accent.withValues(alpha: 0.18),
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.lightbulb_rounded,
-                      color: context.colors.accent,
-                      size: 20,
+              if (puedeVerificarse)
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: context.colors.accent.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: context.colors.accent.withValues(alpha: 0.18),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'auth.verification_later_hint'.tr(),
-                        style: TextStyle(
-                          color: context.colors.accent,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.lightbulb_rounded,
+                        color: context.colors.accent,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'auth.verification_later_hint'.tr(),
+                          style: TextStyle(
+                            color: context.colors.accent,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,

@@ -1,10 +1,8 @@
 // Quién puede comentar.
 //
-// La regla es "cuenta verificada", sin importar por qué flujo pasó: alumnos y
-// personal verifican con OTP al correo institucional, negocios y externos con
-// OTP al teléfono. Los cuatro terminan con `sellers.verified = 1`, así que la
-// puerta es esa bandera y no `tipo_verificacion`, que solo se llena en el
-// flujo institucional y dejaría fuera a negocios y externos ya verificados.
+// La regla es "tener sesión", sin importar el tipo de cuenta ni si está
+// verificada: alumnos, personal, negocios y externos comentan igual, estén o
+// no verificados. Lo único que no puede comentar es un dispositivo anónimo.
 //
 // Los tests van contra el endpoint real y una base temporal (mismo patrón que
 // verificacion.test.js): lo que importa aquí es el permiso tal como lo aplica
@@ -101,7 +99,7 @@ async function comentar(productoId, token, texto = 'Muy buen producto, gracias.'
   return { status: res.status, body: await res.json() };
 }
 
-// ═══ Cuentas verificadas: pueden comentar ════════════════════
+// ═══ Con sesión: cualquier cuenta puede comentar ═════════════
 
 test('un alumno verificado puede comentar', async () => {
   const usuario = crearUsuario('estudiante', { verificado: true, tipoVerificacion: 'estudiante' });
@@ -143,17 +141,17 @@ test('un externo verificado puede comentar aunque no tenga tipo_verificacion', a
   assert.strictEqual(res.status, 201, JSON.stringify(res.body));
 });
 
-// ═══ Cuentas sin verificar: no pueden ════════════════════════
+// ═══ Cuentas sin verificar: también pueden ═══════════════════
 
 for (const tipo of ['estudiante', 'negocio', 'particular']) {
-  test(`una cuenta ${tipo} sin verificar recibe 403 NO_VERIFICADO`, async () => {
+  test(`una cuenta ${tipo} sin verificar también puede comentar`, async () => {
     const usuario = crearUsuario(tipo);
     const producto = crearProducto(usuario.id);
 
     const res = await comentar(producto.id, usuario.token);
 
-    assert.strictEqual(res.status, 403);
-    assert.strictEqual(res.body.code, 'NO_VERIFICADO');
+    assert.strictEqual(res.status, 201, JSON.stringify(res.body));
+    assert.strictEqual(res.body.comment.author.id, usuario.id);
   });
 }
 

@@ -71,6 +71,13 @@
     "feature_report": "El reporte de problemas",
     "feature_changelog": "El changelog"
   },
+  "report_problem": {
+    "title": "Reportar un problema",
+    "intro": "Envíale un mensaje a nuestra cuenta oficial de reporte de problemas. Te leemos y te respondemos por aquí mismo.",
+    "role_reports": "Cuenta oficial de reportes",
+    "role_admin": "Administrador",
+    "load_error": "No se pudieron cargar las cuentas de soporte. Intenta de nuevo."
+  },
   "my_data": {
     "title": "Mis datos",
     "header": "Información de tu cuenta",
@@ -518,7 +525,34 @@
     "more_from": "Más de {seller}",
     "rating_error": "No se pudo enviar tu calificación. Intenta de nuevo."
   },
+  "badge_visibility": {
+    "title": "Insignias del perfil",
+    "entry_hint": "Elige cuáles se muestran en tu perfil público",
+    "subtitle": "Apaga las que no quieras enseñar. Las que ganes más adelante aparecen solas.",
+    "count": "{n} visibles en tu perfil",
+    "section_elite": "ÉLITE",
+    "section_basic": "GENERALES",
+    "save_error": "No se pudo guardar el cambio. Intenta de nuevo.",
+    "load_error": "No se pudo cargar tu perfil. Intenta de nuevo.",
+    "req_legend": "100 ventas confirmadas",
+    "req_gold_seller": "$100,000 MXN facturados",
+    "req_flawless": "5.0 de promedio con 50 reseñas o más",
+    "req_hundred_five_stars": "100 calificaciones de 5 estrellas",
+    "req_always_answers": "Responder el 95% de tus preguntas (mínimo 20)",
+    "req_top_rated": "4.5 de promedio con 10 reseñas o más",
+    "req_instant_replies": "Contestar en menos de 10 minutos",
+    "req_fast_replies": "Contestar en menos de 1 hora",
+    "req_new_seller": "Tu primera venta en tus primeros 60 días",
+    "req_streak": "Publicar varias semanas seguidas",
+    "req_anniversary": "Cumplir un año en MarketplaceUm",
+    "req_enigma": "Resolver el enigma escondido"
+  },
   "badge": {
+    "legend": "Leyenda",
+    "gold_seller": "Vendedor de oro",
+    "flawless": "Impecable",
+    "hundred_five_stars": "100 cincos",
+    "always_answers": "Siempre responde",
     "featured": "Destacado",
     "offer": "Oferta",
     "fast_replies": "Responde rápido",
@@ -528,7 +562,20 @@
     "verified": "Verificado",
     "verified_student": "Estudiante verificado",
     "verified_business": "Negocio verificado",
-    "verified_account": "Cuenta verificada"
+    "verified_account": "Cuenta verificada",
+    "how_legend": "100 ventas confirmadas",
+    "how_gold_seller": "$100,000 MXN facturados",
+    "how_flawless": "5.0 de promedio con 50 reseñas o más",
+    "how_hundred_five_stars": "100 calificaciones de 5 estrellas",
+    "how_always_answers": "Responde el 95% de las preguntas que recibe",
+    "how_top_rated": "4.5 de promedio con 10 reseñas o más",
+    "how_instant_replies": "Contesta en menos de 10 minutos",
+    "how_fast_replies": "Contesta en menos de 1 hora",
+    "how_new_seller": "Su primera venta en los primeros 60 días",
+    "how_streak": "Semanas seguidas publicando",
+    "how_anniversary": "Años desde que se registró",
+    "how_founder": "Distinción que otorga el equipo",
+    "hidden": "Oculto"
   },
   "time": {
     "now": "Ahora",
@@ -725,6 +772,8 @@
     "up_to": "Hasta {price}"
   },
   "comments": {
+    "login_title": "Inicia sesión para comentar",
+    "login_body": "Con tu cuenta puedes dejar comentarios en cualquier publicación.",
     "load_error": "No se pudieron cargar los comentarios.",
     "load_more_error": "No se pudieron cargar más comentarios.",
     "title_count": "Comentarios ({n})",
@@ -734,10 +783,6 @@
     "be_first": "Sé el primero en comentar",
     "input_hint": "Escribe un comentario…",
     "post": "Publicar comentario",
-    "verify_title": "Verifica tu cuenta para comentar",
-    "verify_body": "Solo las cuentas verificadas —alumnos, personal UM, negocios y externos— pueden dejar comentarios.",
-    "verify_action": "Verificar mi cuenta",
-    "verify_login": "Inicia sesión para verificarte.",
     "listing_gone": "Esta publicación ya no está disponible.",
     "none_received": "Aún no has recibido comentarios",
     "seller_none": "Este vendedor aún no tiene comentarios",

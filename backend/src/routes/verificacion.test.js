@@ -22,6 +22,7 @@ process.env.VERIFICATION_STUDENT_DOMAINS = 'alumno.um.edu.mx';
 // comentario ahí). El test firma sus propios tokens, así que le basta un
 // secreto cualquiera, pero tiene que estar puesto ANTES del require.
 process.env.JWT_SECRET = 'secreto-de-prueba';
+process.env.REVISION_API_KEY = 'revision-prueba';
 // Verificar un negocio exige cuenta de pagos conectada, y guardarla cifra el
 // token. Sin esta clave, payments/crypto.js revienta al cargarse.
 process.env.PAYMENTS_ENCRYPTION_KEY = require('crypto').randomBytes(32).toString('hex');
@@ -35,6 +36,7 @@ const express = require('express');
 const db = require('../database');
 const { generateToken } = require('../auth');
 const { crearRutasVerificacion } = require('./verificacion');
+const { register: registerRevision } = require('./revision');
 const { CARRERAS_UM } = require('../validation/carreras');
 
 const CARRERA_VALIDA = CARRERAS_UM[0];
@@ -77,6 +79,7 @@ test.before(async () => {
       refrescarSellers: () => {},
     }),
   );
+  registerRevision(app);
   servidor = http.createServer(app);
   await new Promise(r => servidor.listen(0, '127.0.0.1', r));
   baseUrl = `http://127.0.0.1:${servidor.address().port}`;
@@ -145,6 +148,18 @@ async function pedir(ruta, token, cuerpo) {
  * exige en LOS TRES flujos: una cuenta verificada es una que puede cobrar
  * dentro de la app.
  */
+async function subirDocumento(token, tipo, contenido, nombre) {
+  const form = new FormData();
+  form.append('doc_type', tipo);
+  form.append('file', new Blob([contenido], { type: 'image/jpeg' }), nombre);
+  const res = await fetch(baseUrl + '/api/verificacion/negocio/documentos', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token },
+    body: form,
+  });
+  return { status: res.status, body: await res.json() };
+}
+
 function conectarPagos(usuarioId) {
   require('../payments/store').guardarCuentaVendedor(usuarioId, {
     mpUserId: `mp_${usuarioId}`,
@@ -627,28 +642,22 @@ test('rechaza un link de un dominio que no es red social ni Maps', async () => {
 
 // ═══ EXTERNO (particular) ════════════════════════════════════
 
-test('una cuenta externa se verifica con el código enviado por SMS', async () => {
+test('las cuentas externas no pueden iniciar ni completar una verificación', async () => {
   const usuario = crearUsuario('particular');
-  conectarPagos(usuario.id);
+  const smsAntes = enviados.sms.length;
 
   const solicitud = await pedir('/externo/solicitar', usuario.token, {
     telefono: '(443) 123-4567',
   });
-  assert.strictEqual(solicitud.status, 200);
-  assert.strictEqual(enviados.sms.at(-1).destino, '+524431234567');
+  assert.strictEqual(solicitud.status, 403);
 
   const confirmacion = await pedir('/externo/confirmar', usuario.token, {
-    codigo_otp: enviados.sms.at(-1).codigo,
+    codigo_otp: '123456',
   });
-  assert.strictEqual(confirmacion.status, 200);
-  assert.strictEqual(estaVerificado(usuario.id), true);
-  assert.strictEqual(filaVerificacion(usuario.id).telefono, '+524431234567');
-});
-
-test('rechaza un teléfono con menos de 10 dígitos', async () => {
-  const usuario = crearUsuario('particular');
-  const res = await pedir('/externo/solicitar', usuario.token, { telefono: '44312' });
-  assert.strictEqual(res.status, 400);
+  assert.strictEqual(confirmacion.status, 403);
+  assert.strictEqual(estaVerificado(usuario.id), false);
+  assert.strictEqual(filaVerificacion(usuario.id), undefined);
+  assert.strictEqual(enviados.sms.length, smsAntes);
 });
 
 // ═══ GUARDAS COMPARTIDAS ═════════════════════════════════════
@@ -732,7 +741,7 @@ test('reporta el estado inicial de una cuenta que nunca inició verificación', 
   // falta sin tener que intentar verificarse y fallar.
   assert.deepStrictEqual(
     requisitos.map(r => r.id),
-    ['horario', 'metodos_pago', 'mercadopago', 'stock_productos', 'foto_perfil'],
+    ['horario', 'metodos_pago', 'mercadopago', 'stock_productos'],
   );
   assert.ok(requisitos.every(r => typeof r.cumplido === 'boolean'));
 });
@@ -894,25 +903,6 @@ test('el estudiante se verifica al volver de conectar, sin un código nuevo', as
   assert.strictEqual(fila.carrera, CARRERA_VALIDA);
 });
 
-test('una cuenta externa SIN Mercado Pago tampoco llega a verificado', async () => {
-  const usuario = crearUsuario('particular');
-  aceptarTarjeta(usuario.id);
-  await pedir('/externo/solicitar', usuario.token, { telefono: '(443) 765-4321' });
-
-  const res = await pedir('/externo/confirmar', usuario.token, {
-    codigo_otp: enviados.sms.at(-1).codigo,
-  });
-  assert.strictEqual(res.status, 200);
-  assert.strictEqual(res.body.estado, 'pendiente');
-  assert.strictEqual(res.body.campo, 'mercadopago');
-  assert.strictEqual(estaVerificado(usuario.id), false);
-
-  conectarPagos(usuario.id);
-  const reintento = await pedir('/externo/confirmar', usuario.token, {});
-  assert.strictEqual(reintento.body.verificado, true);
-  assert.strictEqual(estaVerificado(usuario.id), true);
-});
-
 test('un OTP incorrecto no prueba la identidad ni deja retomar sin código', async () => {
   const usuario = crearUsuario('estudiante');
   await pedir('/estudiante/solicitar', usuario.token, {
@@ -1009,6 +999,23 @@ test('conectar la cuenta NO verifica a quien nunca confirmó su código', async 
   // identidad probada, y conectar una cuenta no puede ser un atajo.
   assert.strictEqual(completarVerificacionPendientePorPagos(usuario.id), false);
   assert.strictEqual(estaVerificado(usuario.id), false);
+});
+
+test('una verificación externa pendiente de antes no se completa al conectar pagos', () => {
+  const usuario = crearUsuario('particular');
+  db.getDb()
+    .prepare(
+      `INSERT INTO verificaciones
+       (usuario_id, tipo_cuenta, estado, identidad_confirmada_en, campo_rechazado, creado_en)
+       VALUES (?, 'particular', 'pendiente', datetime('now'), 'mercadopago', datetime('now'))`,
+    )
+    .run(usuario.id);
+
+  conectarPagos(usuario.id);
+
+  assert.strictEqual(completarVerificacionPendientePorPagos(usuario.id), false);
+  assert.strictEqual(estaVerificado(usuario.id), false);
+  assert.strictEqual(filaVerificacion(usuario.id).estado, 'pendiente');
 });
 
 test('conectar la cuenta no rescata una verificación rechazada por el link', async () => {
@@ -1183,6 +1190,95 @@ test('conectar Mercado Pago NO verifica si además falta el inventario', async (
 
   assert.strictEqual(completarVerificacionPendientePorPagos(usuario.id), false);
   assert.strictEqual(estaVerificado(usuario.id), false);
+});
+
+
+// ═══ NEGOCIO · REVISIÓN MANUAL ═════════════════════════════
+
+test('la solicitud manual guarda responsable y no duplica evidencia al reintentar', async t => {
+  const usuario = crearUsuario('negocio', { logoUrl: null });
+
+  t.after(() => {
+    const documentos = db.getDb().prepare(
+      'SELECT file_url FROM verification_documents WHERE usuario_id = ?',
+    ).all(usuario.id);
+    for (const documento of documentos) {
+      fs.rmSync(
+        path.join(__dirname, '..', '..', documento.file_url.slice(1)),
+        { force: true },
+      );
+    }
+  });
+
+  db.getDb().prepare(
+    'UPDATE sellers SET businessCategory = ? WHERE id = ?',
+  ).run('food', usuario.id);
+
+  const frente = await subirDocumento(
+    usuario.token,
+    'responsible_ine_front',
+    'imagen-frente',
+    'frente.jpg',
+  );
+  const reverso = await subirDocumento(
+    usuario.token,
+    'responsible_ine_back',
+    'imagen-reverso',
+    'reverso.jpg',
+  );
+  const evidencia1 = await subirDocumento(
+    usuario.token,
+    'additional_evidence',
+    'mismo-contenido',
+    'permiso.jpg',
+  );
+  const evidencia2 = await subirDocumento(
+    usuario.token,
+    'additional_evidence',
+    'mismo-contenido',
+    'permiso-reintento.jpg',
+  );
+
+  assert.strictEqual(frente.status, 201, JSON.stringify(frente.body));
+  assert.strictEqual(reverso.status, 201, JSON.stringify(reverso.body));
+  assert.strictEqual(evidencia1.status, 201, JSON.stringify(evidencia1.body));
+  assert.strictEqual(evidencia2.status, 200, JSON.stringify(evidencia2.body));
+  assert.strictEqual(evidencia2.body.duplicate, true);
+
+  const solicitud = await pedir('/negocio/solicitar-manual', usuario.token, {
+    responsable_nombre: 'María Responsable',
+  });
+  assert.strictEqual(solicitud.status, 201, JSON.stringify(solicitud.body));
+  assert.strictEqual(solicitud.body.estado, 'pendiente');
+  assert.strictEqual(estaVerificado(usuario.id), false);
+  assert.strictEqual(
+    filaVerificacion(usuario.id).responsable_negocio,
+    'María Responsable',
+  );
+
+  const adicionales = db.getDb().prepare(
+    "SELECT COUNT(*) AS n FROM verification_documents WHERE usuario_id = ? AND doc_type = 'additional_evidence'",
+  ).get(usuario.id).n;
+  assert.strictEqual(adicionales, 1);
+
+  const revision = await fetch(
+    baseUrl + '/api/revision/verificaciones?status=pending',
+    { headers: { 'x-revision-api-key': 'revision-prueba' } },
+  );
+  assert.strictEqual(revision.status, 200);
+  const cola = await revision.json();
+  const enRevision = cola.requests.find(item => item.id === usuario.id);
+  assert.ok(enRevision);
+  assert.strictEqual(enRevision.business.responsibleName, 'María Responsable');
+  assert.deepStrictEqual(
+    enRevision.documents.map(documento => documento.type),
+    [
+      'responsible_ine_front',
+      'responsible_ine_back',
+      'additional_evidence',
+    ],
+  );
+
 });
 
 // ═══ MERCADO_PAGO_HABILITADO=false (estado real de producción hoy) ═══

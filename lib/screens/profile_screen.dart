@@ -394,9 +394,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 16),
 
-            // ─── Card de verificación ───────────────────────
-            _VerificationCard(auth: auth, onVerificado: _loadListings),
-            const SizedBox(height: 16),
+            // Las cuentas externas no participan en la verificación.
+            if (auth.puedeVerificarse) ...[
+              _VerificationCard(auth: auth, onVerificado: _loadListings),
+              const SizedBox(height: 16),
+            ],
 
             // ─── Opciones del perfil ────────────────────────
             OptionTile(

@@ -180,14 +180,18 @@ test('un comentario normal sigue publicándose como siempre', async () => {
   assert.strictEqual(hilo.total, 1);
 });
 
-test('una cuenta sin verificar no puede ni comentar ni disparar el secreto', async () => {
+test('una cuenta sin verificar también dispara el secreto: basta la sesión', async () => {
   const usuario = crearUsuario({ verificado: false });
   const producto = crearProducto(usuario.id);
 
   const res = await comentar(producto.id, usuario.token, FRASE);
 
-  assert.strictEqual(res.status, 403);
-  assert.strictEqual(res.body.code, 'NO_VERIFICADO');
+  assert.strictEqual(res.status, 201);
+  assert.strictEqual(res.body.secreto, true);
+
+  // Y sigue sin dejar rastro en el hilo.
+  const hilo = await leerComentarios(producto.id);
+  assert.strictEqual(hilo.total, 0);
 });
 
 // ═══ El acertijo ═════════════════════════════════════════════

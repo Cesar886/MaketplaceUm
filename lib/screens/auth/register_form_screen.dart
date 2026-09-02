@@ -19,6 +19,7 @@ import '../../widgets/static_mini_map.dart';
 import '../legal/terms_screen.dart';
 import '../legal/privacy_screen.dart';
 import 'login_screen.dart';
+import 'account_created_screen.dart';
 import 'verification_screen.dart';
 
 class RegisterFormScreen extends StatefulWidget {
@@ -295,12 +296,13 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
         }
       }
 
+      if (!mounted) return;
+      final accountType = auth.accountType;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
-          builder: (_) => VerificationScreen(
-            tipo: context.read<AuthProvider>().accountType,
-            desdeRegistro: true,
-          ),
+          builder: (_) => accountType == AccountType.particular
+              ? const AccountCreatedScreen()
+              : VerificationScreen(tipo: accountType, desdeRegistro: true),
         ),
       );
     } catch (e, stack) {

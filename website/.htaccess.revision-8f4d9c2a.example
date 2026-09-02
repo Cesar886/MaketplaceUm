@@ -1,0 +1,4 @@
+AuthType Basic
+AuthName "Revision privada"
+AuthUserFile /RUTA/ABSOLUTA/A/website/.htpasswd.revision-8f4d9c2a
+Require user revision

@@ -3,6 +3,8 @@
 // en la edición de perfil (PATCH /api/sellers/:id), para que ambos
 // flujos acepten/rechacen exactamente los mismos valores.
 
+const { validarNombreProhibido } = require('./nombresProhibidos');
+
 const MIN_NAME_LENGTH = 2;
 const MAX_NAME_LENGTH = 60;
 const MAX_DESCRIPTION_LENGTH = 280;
@@ -33,6 +35,11 @@ function validateName(name) {
   if (trimmed.length > MAX_NAME_LENGTH) {
     return `El nombre no puede superar ${MAX_NAME_LENGTH} caracteres`;
   }
+  // Insultos y suplantación de cuentas oficiales (admin, soporte, reportes).
+  // Va aquí y no en cada ruta para que registro, registro con Google y
+  // edición de perfil compartan exactamente la misma lista.
+  const prohibido = validarNombreProhibido(trimmed);
+  if (prohibido) return prohibido;
   return null;
 }
 

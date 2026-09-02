@@ -35,21 +35,25 @@ class MainShellState extends State<MainShell> with WidgetsBindingObserver {
   int _unreadChatCount = 0;
   int _unreadNotifCount = 0;
 
+  final ValueNotifier<int> _favoritesRefreshSignal = ValueNotifier(0);
+  final ValueNotifier<int> _chatsRefreshSignal = ValueNotifier(0);
+
   StreamSubscription<Map<String, dynamic>>? _presenceSub;
   StreamSubscription<Map<String, List<String>>>? _snapshotSub;
 
-  final _pages = const [
-    HomeScreen(),
-    OffersScreen(),
-    PublishProductScreen(),
-    CartScreen(),
-    ChatListScreen(),
-    ProfileScreen(),
-  ];
+  late final List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
+    _pages = [
+      const HomeScreen(),
+      const OffersScreen(),
+      const PublishProductScreen(),
+      CartScreen(refreshSignal: _favoritesRefreshSignal),
+      ChatListScreen(refreshSignal: _chatsRefreshSignal),
+      const ProfileScreen(),
+    ];
     WidgetsBinding.instance.addObserver(this);
     recargarContadores();
     _abrirPresencia();
@@ -229,7 +233,9 @@ class MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
   void selectTab(int index) {
     setState(() => _currentIndex = index);
-    // Recargar contadores al navegar a chats o notificaciones
+    if (index == 3) _favoritesRefreshSignal.value++;
+    if (index == 4) _chatsRefreshSignal.value++;
+    // Recargar contadores al navegar a chats o inicio.
     if (index == 4 || index == 0) recargarContadores();
   }
 
@@ -238,6 +244,8 @@ class MainShellState extends State<MainShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _presenceSub?.cancel();
     _snapshotSub?.cancel();
+    _favoritesRefreshSignal.dispose();
+    _chatsRefreshSignal.dispose();
     // Limpiar callback para evitar memory leaks
     if (PushService.instance.onNotificationTap != null) {
       PushService.instance.onNotificationTap = null;

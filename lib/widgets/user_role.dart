@@ -16,7 +16,12 @@ import '../models.dart';
 /// aparecía tanto en una cuenta sin verificar como en una verificada a la que
 /// le falta la carrera, así que no distinguía nada y sugería un respaldo
 /// institucional que el backend no había comprobado.
-String? subtituloRol(Seller seller) {
+///
+/// [incluirEstudiante] a false deja fuera la carrera y 'role.um_staff': en los
+/// comentarios del detalle de producto solo interesa distinguir negocios y
+/// particulares del resto, no publicar qué estudia cada quien al pie de cada
+/// comentario.
+String? subtituloRol(Seller seller, {bool incluirEstudiante = true}) {
   // Negocio y particular conservan la etiqueta fija que se les asignó al
   // registrarse. `major` NO se toca ni se reescribe: hay tres lugares que
   // derivan datos de su contenido literal (`database.js` deduce tipo_cuenta
@@ -25,6 +30,8 @@ String? subtituloRol(Seller seller) {
   if (seller.tipoCuenta != 'estudiante') {
     return seller.major.isEmpty ? null : seller.major;
   }
+
+  if (!incluirEstudiante) return null;
 
   // De aquí para abajo, cuenta de estudiante: alumno y personal comparten
   // tipoCuenta y se distinguen por `tipoVerificacion`, que solo se llena al
@@ -47,16 +54,18 @@ class SubtituloRol extends StatelessWidget {
     this.style,
     this.espacioArriba = 0,
     this.maxLines,
+    this.incluirEstudiante = true,
   });
 
   final Seller seller;
   final TextStyle? style;
   final double espacioArriba;
   final int? maxLines;
+  final bool incluirEstudiante;
 
   @override
   Widget build(BuildContext context) {
-    final texto = subtituloRol(seller);
+    final texto = subtituloRol(seller, incluirEstudiante: incluirEstudiante);
     if (texto == null) return const SizedBox.shrink();
 
     return Padding(

@@ -1,16 +1,19 @@
-// Verificación de cuentas — 100% automática, sin revisión humana.
+// Verificación de cuentas.
 //
-// Tres flujos según el tipo de cuenta:
-//   estudiante → OTP al correo institucional (<matrícula>@alumno.um.edu.mx)
-//   negocio    → validación de nombre + pin de ubicación + link de red social,
-//                resuelta en la misma respuesta (sin cola de revisión)
-//   particular → OTP por SMS (lo que la UI llama cuenta "externa")
+// Dos flujos según el tipo de cuenta:
+//   estudiante → OTP al correo institucional (<matrícula>.um.edu.mx)
+//   negocio    → solicitud manual con INE y evidencias para revisión privada
+// Las cuentas particulares pueden usar el marketplace, pero no se verifican.
 //
 // `sellers.verified` es la bandera rápida que lee toda la app; la tabla
 // `verificaciones` guarda el detalle del flujo. Ambas se escriben en la misma
 // transacción para que nunca queden en desacuerdo.
 
+const crypto = require('crypto');
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
 const { requireAuth } = require('../auth');
 const {
   generarCodigo,
@@ -25,7 +28,6 @@ const {
   extraerMatriculaDeCorreo,
   validarNombreNegocio,
   validarLinkRedSocial,
-  normalizarTelefono,
 } = require('../validation/verificacion');
 const { validateLocation } = require('../validation/sellerProfile');
 const { validarCarrera } = require('../validation/carreras');
@@ -45,6 +47,17 @@ const VENTANA_ENVIO_MINUTOS = 15;
 const MAX_INTENTOS_CONFIRMACION = 5;
 
 const ahora = () => new Date().toISOString();
+const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
+const DOCUMENT_TYPES = new Set(['responsible_ine_front', 'responsible_ine_back', 'additional_evidence']);
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+const documentUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+    filename: (_req, file, cb) => cb(null, 'verification_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10) + path.extname(file.originalname).toLowerCase()),
+  }),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => cb(null, /\.(jpg|jpeg|png|webp|pdf)$/i.test(path.extname(file.originalname))),
+});
 
 /**
  * Rutas de verificación con sus dependencias inyectadas: así los tests pueden
@@ -570,6 +583,110 @@ function crearRutasVerificacion({
 
   // ═══ NEGOCIO ═════════════════════════════════════════════
 
+  router.post('/negocio/documentos', requireAuth, exigirTipo('negocio'), (req, res) => {
+    documentUpload.single('file')(req, res, error => {
+      if (error) {
+        return res.status(400).json({
+          error: 'No pudimos subir el documento: ' + error.message,
+        });
+      }
+
+      const descartarArchivo = () => {
+        if (req.file?.path) fs.unlink(req.file.path, () => {});
+      };
+      const docType = String(req.body.doc_type || '');
+      if (!DOCUMENT_TYPES.has(docType)) {
+        descartarArchivo();
+        return res.status(400).json({
+          error: 'Tipo de documento inválido.',
+          campo: 'doc_type',
+        });
+      }
+      if (!req.file) {
+        return res.status(400).json({
+          error: 'Selecciona un archivo válido.',
+          campo: 'file',
+        });
+      }
+      if (
+        docType !== 'additional_evidence'
+        && path.extname(req.file.originalname).toLowerCase() === '.pdf'
+      ) {
+        descartarArchivo();
+        return res.status(400).json({
+          error: 'La INE debe enviarse como fotografía.',
+          campo: 'file',
+        });
+      }
+
+      const db = getDb();
+      const contentHash = crypto
+        .createHash('sha256')
+        .update(fs.readFileSync(req.file.path))
+        .digest('hex');
+      const archivo = '/uploads/' + path.basename(req.file.path);
+
+      if (docType === 'additional_evidence') {
+        const existente = db.prepare(
+          'SELECT file_url FROM verification_documents '
+            + 'WHERE usuario_id = ? AND doc_type = ? AND content_hash = ? '
+            + 'ORDER BY id DESC LIMIT 1',
+        ).get(req.user.id, docType, contentHash);
+        if (existente) {
+          descartarArchivo();
+          return res.status(200).json({
+            doc_type: docType,
+            file_url: existente.file_url,
+            duplicate: true,
+          });
+        }
+      } else {
+        db.prepare(
+          'DELETE FROM verification_documents '
+            + 'WHERE usuario_id = ? AND doc_type = ?',
+        ).run(req.user.id, docType);
+      }
+
+      db.prepare(
+        'INSERT INTO verification_documents '
+          + '(usuario_id, doc_type, file_url, original_name, mime_type, '
+          + 'uploaded_at, content_hash) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      ).run(
+        req.user.id,
+        docType,
+        archivo,
+        path.basename(req.file.originalname),
+        req.file.mimetype || 'application/octet-stream',
+        ahora(),
+        contentHash,
+      );
+      return res.status(201).json({ doc_type: docType, file_url: archivo });
+    });
+  });
+
+  router.post('/negocio/solicitar-manual', requireAuth, exigirTipo('negocio'), (req, res) => {
+    const db = getDb();
+    const perfil = db.prepare('SELECT name, businessCategory FROM sellers WHERE id = ?').get(req.user.id);
+    const camposFaltantes = [];
+    const responsable = String(req.body.responsable_nombre || '').trim();
+    if (!responsable) camposFaltantes.push('responsable');
+    if (!perfil?.name?.trim()) camposFaltantes.push('nombre_negocio');
+    if (!perfil?.businessCategory?.trim()) camposFaltantes.push('categoria');
+    if (camposFaltantes.length) return res.status(400).json({ error: 'Completa los campos obligatorios del perfil de negocio.', campo: camposFaltantes[0], campos_faltantes: camposFaltantes });
+    const requisitoFaltante = primerFaltante(req.user.id);
+    if (requisitoFaltante) return res.status(400).json({ error: requisitoFaltante.detalle, campo: requisitoFaltante.id });
+    const documentos = db.prepare('SELECT doc_type FROM verification_documents WHERE usuario_id = ?').all(req.user.id);
+    const tipos = new Set(documentos.map(d => d.doc_type));
+    const faltantes = ['responsible_ine_front', 'responsible_ine_back'].filter(tipo => !tipos.has(tipo));
+    if (faltantes.length) return res.status(400).json({ error: 'Adjunta el frente y reverso de la INE del responsable.', campo: 'ine', documentos_faltantes: faltantes });
+    asegurarVerificacion(req.user.id, 'negocio');
+    db.prepare("UPDATE verificaciones SET estado = 'pendiente', responsable_negocio = ?, motivo_rechazo = NULL, campo_rechazado = NULL WHERE usuario_id = ?").run(responsable, req.user.id);
+    return res.status(201).json({ estado: 'pendiente', verificado: false });
+  });
+
+  // El endpoint histórico se conserva para clientes antiguos.
+
+
   router.post(
     '/negocio/solicitar',
     requireAuth,
@@ -655,54 +772,17 @@ function crearRutasVerificacion({
 
   // ═══ EXTERNO (particular) ════════════════════════════════
 
-  router.post(
-    '/externo/solicitar',
-    requireAuth,
-    exigirTipo('particular'),
-    async (req, res) => {
-      const telefono = normalizarTelefono(String(req.body.telefono ?? ''));
-      if (telefono.error) {
-        return res.status(400).json({ error: telefono.error, campo: 'telefono' });
-      }
+  // Las cuentas externas pueden usar el marketplace y publicar, pero la
+  // insignia de verificación queda reservada para estudiantes y negocios.
+  // Estas rutas se conservan para devolver una respuesta explícita a clientes
+  // antiguos en vez de dejar una vía de verificación por compatibilidad.
+  const externoNoVerificable = (_req, res) =>
+    res.status(403).json({
+      error: 'Las cuentas externas no pueden verificarse.',
+    });
 
-      const yaUsado = getDb()
-        .prepare(
-          `SELECT usuario_id FROM verificaciones
-           WHERE telefono = ? AND estado = 'verificado' AND usuario_id != ?`,
-        )
-        .get(telefono.valor, req.user.id);
-      if (yaUsado) {
-        return res.status(409).json({
-          error: 'Ese teléfono ya está registrado en otra cuenta.',
-          campo: 'telefono',
-        });
-      }
-
-      const verificacion = asegurarVerificacion(req.user.id, 'particular');
-      return solicitarOtp(res, {
-        verificacion,
-        destino: telefono.valor,
-        columnaDestino: 'telefono',
-        columnaCodigo: 'codigo_otp_sms',
-        columnaExpira: 'codigo_otp_sms_expira',
-        adaptador: sms,
-      });
-    },
-  );
-
-  router.post(
-    '/externo/confirmar',
-    requireAuth,
-    exigirTipo('particular'),
-    (req, res) => {
-      const verificacion = asegurarVerificacion(req.user.id, 'particular');
-      return confirmarOtp(res, {
-        verificacion,
-        columnaCodigo: 'codigo_otp_sms',
-        columnaExpira: 'codigo_otp_sms_expira',
-      });
-    },
-  );
+  router.post('/externo/solicitar', requireAuth, externoNoVerificable);
+  router.post('/externo/confirmar', requireAuth, externoNoVerificable);
 
   // ═══ ESTADO ══════════════════════════════════════════════
 
@@ -779,6 +859,8 @@ function completarVerificacionPendientePorPagos(usuarioId) {
     .get(usuarioId);
   if (!fila) return false;
   if (fila.estado === 'verificado') return false;
+  // Old external verification attempts can never be completed by payments.
+  if (fila.tipo_cuenta === 'particular') return false;
   if (!fila.identidad_confirmada_en) return false;
   if (fila.campo_rechazado !== 'mercadopago') return false;
 

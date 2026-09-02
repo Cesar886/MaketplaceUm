@@ -22,12 +22,13 @@ void main() {
     bool verified = true,
     String? carrera = 'Ingeniería en Mercadotecnia',
     String? tipoVerificacion = 'estudiante',
+    String major = 'Estudiante',
   }) {
     return Seller(
       id: 'u_1',
       name: name,
       avatarInitials: 'MP',
-      major: 'Estudiante',
+      major: major,
       rating: 0,
       reviews: 0,
       verified: verified,
@@ -79,11 +80,12 @@ void main() {
   }
 
   group('CommentTile', () {
-    testWidgets('pinta nombre, rol, texto y tiempo relativo', (tester) async {
+    testWidgets('pinta nombre, texto y tiempo relativo', (tester) async {
       await montar(tester, CommentTile(comment: comentario()));
 
       expect(find.text('Mariana Peña'), findsOneWidget);
-      expect(find.text('Ingeniería en Mercadotecnia'), findsOneWidget);
+      // La carrera NO se publica bajo el nombre en los comentarios.
+      expect(find.text('Ingeniería en Mercadotecnia'), findsNothing);
       expect(find.text('¿Todavía lo tienes? Me interesa.'), findsOneWidget);
       expect(find.text('hace 2 h'), findsOneWidget);
       expect(find.text('MP'), findsOneWidget);
@@ -216,7 +218,9 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('el personal UM se etiqueta como tal', (tester) async {
+    testWidgets('el rol de estudiante y personal UM no se muestra', (
+      tester,
+    ) async {
       await montar(
         tester,
         CommentTile(
@@ -224,7 +228,22 @@ void main() {
         ),
       );
 
-      expect(find.text('Personal UM'), findsOneWidget);
+      expect(find.text('Personal UM'), findsNothing);
+    });
+
+    testWidgets('negocios y particulares sí muestran su etiqueta', (
+      tester,
+    ) async {
+      await montar(
+        tester,
+        CommentTile(
+          comment: comentario(
+            de: autor(tipoCuenta: 'negocio', major: 'Negocio'),
+          ),
+        ),
+      );
+
+      expect(find.text('Negocio'), findsOneWidget);
     });
 
     testWidgets('se pinta igual en modo oscuro', (tester) async {

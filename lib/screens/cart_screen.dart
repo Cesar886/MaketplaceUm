@@ -1,4 +1,5 @@
 import 'package:easy_localization/easy_localization.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -17,7 +18,9 @@ import 'product_detail_screen.dart';
 /// Pantalla que muestra los productos favoritos del usuario.
 /// Hace las veces de "carrito" — es exclusiva por usuario.
 class CartScreen extends StatefulWidget {
-  const CartScreen({super.key});
+  const CartScreen({super.key, this.refreshSignal});
+
+  final ValueListenable<int>? refreshSignal;
 
   @override
   State<CartScreen> createState() => _CartScreenState();
@@ -30,14 +33,19 @@ class _CartScreenState extends State<CartScreen> with AutoRefreshMixin {
   @override
   void initState() {
     super.initState();
-    _loadFavorites();
+    widget.refreshSignal?.addListener(_refreshSilently);
+    _loadFavorites(showLoading: true);
   }
 
   @override
   Future<void> onAutoRefresh() => _loadFavorites();
 
-  Future<void> _loadFavorites() async {
-    setState(() => _loading = true);
+  void _refreshSilently() {
+    if (mounted) _loadFavorites();
+  }
+
+  Future<void> _loadFavorites({bool showLoading = false}) async {
+    if (showLoading && mounted) setState(() => _loading = true);
     try {
       final ids = await FavoriteProductsService.getFavoriteIds();
       if (ids.isEmpty) {
@@ -89,6 +97,12 @@ class _CartScreenState extends State<CartScreen> with AutoRefreshMixin {
   Future<void> _removeFavorite(String productId) async {
     await FavoriteProductsService.removeFavorite(productId);
     setState(() => _products.removeWhere((p) => p.id == productId));
+  }
+
+  @override
+  void dispose() {
+    widget.refreshSignal?.removeListener(_refreshSilently);
+    super.dispose();
   }
 
   @override

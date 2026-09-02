@@ -2,6 +2,8 @@ const db = require('./database');
 
 // ─── Inicializar base de datos (se ejecuta al importar) ────
 db.initDatabase();
+// Corrige también las cuentas oficiales que ya existían antes de esta regla.
+db.anularMetodosPagoCuentasDueno();
 
 // ─── Exportar datos como arrays (compatible con las rutas existentes) ────
 
@@ -46,6 +48,8 @@ function registerSeller(sellerData) {
     businessHours: JSON.stringify(sellerData.businessHours || {}),
     paymentMethods: JSON.stringify(sellerData.paymentMethods || []),
   });
+  // Las cuentas oficiales nunca anuncian métodos de pago.
+  db.anularMetodosPagoCuentasDueno();
   // Refrescar la lista en memoria desde DB
   sellers.length = 0;
   sellers.push(...db.getSellers());
@@ -74,9 +78,15 @@ function saveData() {
 }
 
 function updateSellerField(sellerId, field, value) {
+  // La regla está en la capa de escritura para que ningún flujo pueda
+  // restaurar métodos de pago en las cuentas del dueño.
+  const valorPersistido =
+    field === 'paymentMethods' && db.esUsuarioTodosLosBadges(sellerId)
+      ? null
+      : value;
   db.getDb().prepare(
     `UPDATE sellers SET ${field} = ? WHERE id = ?`
-  ).run(value, sellerId);
+  ).run(valorPersistido, sellerId);
   // Refrescar la lista en memoria desde DB
   sellers.length = 0;
   sellers.push(...db.getSellers());

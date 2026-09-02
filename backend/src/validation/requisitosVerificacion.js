@@ -36,7 +36,7 @@ const ESTADOS_FUERA_DE_VENTA = new Set(['sold', 'paused']);
 
 function obtenerSeller(usuarioId) {
   return db.getDb()
-    .prepare('SELECT id, isBusiness, tipo_cuenta, businessHours, paymentMethods, logoUrl, avatarUrl FROM sellers WHERE id = ?')
+    .prepare('SELECT id, isBusiness, tipo_cuenta, businessHours, paymentMethods FROM sellers WHERE id = ?')
     .get(usuarioId) || null;
 }
 
@@ -165,21 +165,6 @@ function requisitosDeVerificacion(usuarioId) {
         : `Define la cantidad disponible de: ${sinStock.map(p => p.title).join(', ')}.`,
       accion: 'revisar_productos',
       productos: sinStock,
-    },
-    {
-      id: 'foto_perfil',
-      titulo: 'Foto de perfil',
-      // Cuenta cualquier foto real: la que se sube a mano (`logoUrl`, mismo
-      // campo que usa el logo de negocio) o la de la cuenta de Google
-      // (`avatarUrl`) con la que alguien inició sesión. Exigir una segunda
-      // foto a quien ya entró con Google sería pedirle algo que no aporta
-      // nada nuevo. Aplica a los tres tipos de cuenta por igual: a diferencia
-      // del horario, no hay ningún tipo para el que subir una foto sea
-      // imposible.
-      cumplido: Boolean(seller?.logoUrl || seller?.avatarUrl),
-      detalle: 'Sube una foto de perfil en "Editar perfil". '
-        + 'Ayuda al comprador a confiar en con quién está tratando.',
-      accion: 'editar_perfil',
     },
   ];
 }

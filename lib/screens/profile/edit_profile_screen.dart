@@ -21,6 +21,7 @@ import '../../features/payments/connect_mp_screen.dart';
 import '../../features/payments/payment_models.dart';
 import '../../features/payments/payments_api.dart';
 import '../../features/payments/mercado_pago_flag.dart';
+import 'badges_visibility_screen.dart';
 
 const _kMaxBusinessDescriptionLength = 280;
 
@@ -212,6 +213,28 @@ class _EditProfileScreenState extends State<EditProfileScreen>
         _locationLat = picked.latitude;
         _locationLng = picked.longitude;
       });
+    }
+  }
+
+  /// Abre el selector de insignias con el perfil recién pedido al servidor.
+  ///
+  /// No se reusa `widget.seller`: `insigniasGanadas` solo viaja en el perfil
+  /// propio (GET /api/sellers/:id con sesión), y el Seller con el que se
+  /// entró a esta pantalla pudo venir de un listado que no lo trae.
+  Future<void> _abrirInsignias() async {
+    try {
+      final propio = await ApiService.getMyProfile(widget.seller.id);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => BadgesVisibilityScreen(seller: propio),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('badge_visibility.load_error'.tr())),
+      );
     }
   }
 
@@ -589,7 +612,22 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                       },
                     ),
                   ],
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 20),
+                  // Vive aquí y no en Ajustes porque es personalización del
+                  // perfil, como el color de acento: se decide mirando el
+                  // perfil, no la configuración de la cuenta.
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      Icons.workspace_premium_outlined,
+                      color: context.colors.accent,
+                    ),
+                    title: Text('badge_visibility.title'.tr()),
+                    subtitle: Text('badge_visibility.entry_hint'.tr()),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: _abrirInsignias,
+                  ),
+                  const SizedBox(height: 8),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(

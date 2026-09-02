@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
-/// Panel de color detrás de la foto de perfil.
+/// Panel de color detrás de la foto de perfil PROPIO (`profile_screen`).
+///
+/// El perfil público del vendedor ya no lo usa: su cabecera es
+/// `SellerProfileHeader`, con una banda de marca sólida y el avatar montado
+/// sobre ella en vez de este lavado detrás de todo el bloque.
 ///
 /// El color es SIEMPRE `context.colors.primary` — el mismo acento que ya se
 /// elige en Apariencia y pinta AppBar/botones — así que no hay un segundo
@@ -52,8 +56,8 @@ class ProfileBanner extends StatelessWidget {
 
   /// Si es true (default), el panel se estira al ancho que le da su padre
   /// — para eso hace falta envolverlo en algo que ya fije ese ancho, como
-  /// `SizedBox(width: double.infinity)` dentro de un `ListView` (caso del
-  /// banner de perfil de vendedor). Si es false, el panel se ENCOGE al
+  /// `SizedBox(width: double.infinity)` dentro de un `ListView`. Si es
+  /// false, el panel se ENCOGE al
   /// ancho natural de [child] — para cuando va suelto dentro de un `Row`
   /// junto a otro contenido (caso de la miniatura de foto en el perfil
   /// propio): con stretch ahí, el panel reclama todo el ancho disponible
@@ -64,8 +68,7 @@ class ProfileBanner extends StatelessWidget {
   /// redondeado de [borderRadius], y no agrega la franja de desvanecido.
   ///
   /// Es para cuando [child] YA es una foto circular sola (el avatar del
-  /// perfil propio), no el bloque banner+nombre+badges de un perfil de
-  /// vendedor: con el recorte rectangular por defecto, las cuatro esquinas
+  /// perfil propio), no un bloque de banner+nombre+badges: con el recorte rectangular por defecto, las cuatro esquinas
   /// del panel asomaban por fuera del círculo del avatar, y a 42% de alpha
   /// con las esquinas redondeadas de por medio se leía como una sombra o
   /// halo difuso pegado al borde de la foto — justo lo que este modo evita,
@@ -76,7 +79,9 @@ class ProfileBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final tint = color.withValues(alpha: 0.42);
     if (circular) {
-      return ClipOval(child: ColoredBox(color: tint, child: child));
+      return ClipOval(
+        child: ColoredBox(color: tint, child: child),
+      );
     }
     final column = Column(
       mainAxisSize: MainAxisSize.min,

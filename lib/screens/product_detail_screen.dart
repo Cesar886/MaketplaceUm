@@ -40,6 +40,7 @@ import '../widgets/views_counter.dart';
 import 'auth/login_screen.dart';
 import 'chat_screen.dart';
 import 'home_screen.dart';
+import 'profile/report_problem_screen.dart';
 import 'publish_product_screen.dart';
 import 'qr_display_screen.dart';
 import 'seller_profile_screen.dart';
@@ -758,11 +759,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   ],
                   const SizedBox(height: 20),
                   TextButton.icon(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('product.report_sent'.tr())),
-                      );
-                    },
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const ReportProblemScreen(),
+                      ),
+                    ),
                     style: TextButton.styleFrom(
                       foregroundColor: context.colors.muted,
                     ),

@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:easy_localization/easy_localization.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:provider/provider.dart';
 
@@ -23,12 +25,11 @@ import '../my_listings_screen.dart';
 import '../profile/edit_profile_screen.dart';
 import 'account_created_screen.dart';
 
-/// Pantalla única de verificación de cuenta para los tres tipos.
+/// Pantalla de verificación para estudiantes y negocios.
 ///
-/// La verificación es 100% automática: el backend valida y resuelve sin que
-/// intervenga ningún administrador. Estudiante y cuenta externa usan un
-/// código de 6 dígitos (correo institucional / SMS); negocio se resuelve en
-/// una sola llamada validando nombre, ubicación y link de red social.
+/// Estudiantes se verifican con un código de correo institucional. Los
+/// negocios envían una solicitud manual con su perfil e identificación para
+/// revisión; las cuentas particulares no participan en este flujo.
 ///
 /// Se abre desde dos lugares con el mismo comportamiento:
 ///  - durante el registro ([desdeRegistro] true, continúa a la pantalla de
@@ -110,6 +111,19 @@ class _VerificationScreenState extends State<VerificationScreen> {
   final _nombreNegocioController = TextEditingController();
   final _linkController = TextEditingController();
   ll.LatLng? _ubicacion;
+  String? _ineFrente;
+  String? _ineReverso;
+  Uint8List? _ineFrentePreview;
+  Uint8List? _ineReversoPreview;
+  bool _ineFrenteSubida = false;
+  bool _ineReversoSubida = false;
+  final List<String> _evidenciaAdicional = [];
+  final Set<String> _evidenciaAdicionalSubida = {};
+  final ImagePicker _imagePicker = ImagePicker();
+  bool _perfilNegocioCompleto = false;
+  bool _revisandoPerfilNegocio = true;
+  final Set<String> _camposPerfilFaltantes = {};
+  String? _responsableNegocio;
 
   // Externo
   final _telefonoController = TextEditingController();
@@ -133,6 +147,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
     // lo devuelve a la parte local para que el dominio sea inalcanzable.
     _matriculaController.addListener(_mantenerCursorEnParteLocal);
     _retomarDondeQuedo();
+    _revisarPerfilNegocio();
   }
 
   /// Si la persona ya confirmó su código en una sesión anterior y solo le
@@ -163,6 +178,81 @@ class _VerificationScreenState extends State<VerificationScreen> {
       _faltaMercadoPago = true;
       _campoConError = 'mercadopago';
       _error = _auth.motivoRechazo;
+    });
+  }
+
+  Future<void> _revisarPerfilNegocio() async {
+    if (widget.tipo != AccountType.negocio) return;
+    final perfil = await _auth.getBusinessProfileLocal();
+    if (!mounted) return;
+    final faltantes = <String>{};
+    _responsableNegocio = (perfil?['responsible_name'] as String?)?.trim();
+    if ((perfil?['business_name'] as String? ?? '').trim().isEmpty) {
+      faltantes.add('Nombre del negocio');
+    }
+    if ((perfil?['business_type'] as String? ?? '').trim().isEmpty) {
+      faltantes.add('Categoría');
+    }
+    if ((perfil?['responsible_name'] as String? ?? '').trim().isEmpty) {
+      faltantes.add('Responsable');
+    }
+    setState(() {
+      _camposPerfilFaltantes
+        ..clear()
+        ..addAll(faltantes);
+      _perfilNegocioCompleto = faltantes.isEmpty;
+      _revisandoPerfilNegocio = false;
+    });
+  }
+
+  Future<void> _seleccionarDocumento({required bool frente}) async {
+    try {
+      final foto = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 88,
+        maxWidth: 2000,
+      );
+      if (foto == null) return;
+      final preview = await foto.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        if (frente) {
+          _ineFrente = foto.path;
+          _ineFrentePreview = preview;
+          _ineFrenteSubida = false;
+        } else {
+          _ineReverso = foto.path;
+          _ineReversoPreview = preview;
+          _ineReversoSubida = false;
+        }
+        _campoConError = null;
+        _error = null;
+      });
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _campoConError = 'ine';
+        _error = error.code == 'camera_access_denied'
+            ? 'Necesitamos permiso para abrir la cámara y fotografiar la INE.'
+            : 'No pudimos abrir la cámara. Revisa el permiso e inténtalo de nuevo.';
+      });
+    }
+  }
+
+  Future<void> _seleccionarEvidenciaAdicional() async {
+    final resultado = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
+    );
+    if (resultado == null || !mounted) return;
+    setState(() {
+      final nuevas = resultado.files.map((f) => f.path).whereType<String>();
+      for (final path in nuevas) {
+        if (!_evidenciaAdicional.contains(path)) {
+          _evidenciaAdicional.add(path);
+        }
+      }
     });
   }
 
@@ -482,31 +572,43 @@ class _VerificationScreenState extends State<VerificationScreen> {
   }
 
   Future<void> _verificarNegocio() {
-    if (_ubicacion == null) {
+    if (!_perfilNegocioCompleto || _ineFrente == null || _ineReverso == null) {
       setState(() {
-        _error = 'verification.location_pin_required'.tr();
-        _campoConError = 'ubicacion';
+        _error = !_perfilNegocioCompleto
+            ? 'Completa los campos obligatorios de tu perfil de negocio antes de enviar la solicitud.'
+            : 'Adjunta el frente y reverso de la INE del responsable.';
+        _campoConError = !_perfilNegocioCompleto ? 'perfil_negocio' : 'ine';
       });
       return Future.value();
     }
     return _ejecutar(() async {
-      final verificado = await _auth.verificarNegocio(
-        nombreNegocio: _nombreNegocioController.text.trim(),
-        lat: _ubicacion!.latitude,
-        lng: _ubicacion!.longitude,
-        linkRedSocial: _linkController.text.trim(),
-      );
-      if (!mounted) return;
-      if (verificado) {
-        _terminar(verificado: true);
-      } else {
-        // Rechazo: el backend dice qué campo corregir y el usuario reintenta
-        // desde la misma pantalla, sin volver a empezar.
-        setState(() {
-          _error = _auth.motivoRechazo ?? 'verification.business_failed'.tr();
-          _campoConError = _auth.campoRechazado;
-        });
+      if (!_ineFrenteSubida) {
+        await ApiService.uploadBusinessVerificationDocument(
+          docType: 'responsible_ine_front',
+          filePath: _ineFrente!,
+        );
+        _ineFrenteSubida = true;
       }
+      if (!_ineReversoSubida) {
+        await ApiService.uploadBusinessVerificationDocument(
+          docType: 'responsible_ine_back',
+          filePath: _ineReverso!,
+        );
+        _ineReversoSubida = true;
+      }
+      for (final path in _evidenciaAdicional) {
+        if (_evidenciaAdicionalSubida.contains(path)) continue;
+        await ApiService.uploadBusinessVerificationDocument(
+          docType: 'additional_evidence',
+          filePath: path,
+        );
+        _evidenciaAdicionalSubida.add(path);
+      }
+      await ApiService.solicitarVerificacionManualNegocio(
+        responsableNombre: _responsableNegocio!,
+      );
+      await _auth.refrescarEstadoVerificacion();
+      if (mounted) _terminar(verificado: false);
     });
   }
 
@@ -601,6 +703,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.tipo == AccountType.particular) {
+      return const AccountCreatedScreen();
+    }
+
     // `watch` y no `read`: al volver de "Editar perfil" el provider notifica
     // con la lista nueva y esta pantalla se repinta sola — es lo que hace que
     // la ✗ pase a ✓ y que el botón se habilite sin tocar nada más.
@@ -923,6 +1029,393 @@ class _VerificationScreenState extends State<VerificationScreen> {
     );
   }
 
+  Widget _insigniaDocumento(String texto, {required bool requerido}) {
+    final colors = context.colors;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: requerido ? colors.accentTint : colors.surfaceMuted,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: requerido ? colors.accentTintBorder : colors.border,
+        ),
+      ),
+      child: Text(
+        texto,
+        style: TextStyle(
+          color: colors.ink,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.6,
+        ),
+      ),
+    );
+  }
+
+  Widget _capturaIne({
+    required String titulo,
+    required Uint8List? preview,
+    required VoidCallback onTap,
+  }) {
+    final colors = context.colors;
+    final capturada = preview != null;
+    return Material(
+      color: colors.surface,
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: _enviando ? null : onTap,
+        child: Container(
+          height: 176,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: capturada ? colors.success : colors.border,
+              width: capturada ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              Expanded(
+                child: SizedBox.expand(
+                  child: capturada
+                      ? Image.memory(preview, fit: BoxFit.cover)
+                      : ColoredBox(
+                          color: colors.surfaceMuted,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: colors.accentTint,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.photo_camera_rounded,
+                                  color: colors.ink,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Abrir cámara',
+                                style: TextStyle(
+                                  color: colors.mutedStrong,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        titulo,
+                        style: TextStyle(
+                          color: colors.ink,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      capturada
+                          ? Icons.check_circle_rounded
+                          : Icons.camera_alt_rounded,
+                      size: 20,
+                      color: capturada ? colors.success : colors.muted,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _seccionDocumentosNegocio() {
+    final colors = context.colors;
+    final conErrorIne = _campoConError == 'ine';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_revisandoPerfilNegocio)
+          const LinearProgressIndicator()
+        else if (!_perfilNegocioCompleto)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: colors.surfaceMuted,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: colors.danger),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.error_outline_rounded, color: colors.danger),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    [
+                      'Completa en tu perfil:',
+                      _camposPerfilFaltantes.join(', '),
+                    ].join(' '),
+                    style: TextStyle(
+                      color: colors.ink,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 14),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: conErrorIne ? colors.danger : colors.accentTintBorder,
+              width: conErrorIne ? 1.5 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 24,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: colors.accentTint,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(Icons.badge_outlined, color: colors.ink),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'INE del responsable',
+                          style: TextStyle(
+                            color: colors.ink,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Fotografía el documento original por ambos lados.',
+                          style: TextStyle(color: colors.muted, height: 1.35),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _insigniaDocumento('OBLIGATORIO', requerido: true),
+                ],
+              ),
+              const SizedBox(height: 16),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final ancho = constraints.maxWidth < 350
+                      ? constraints.maxWidth
+                      : (constraints.maxWidth - 12) / 2;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      SizedBox(
+                        width: ancho,
+                        child: _capturaIne(
+                          titulo: 'Frente',
+                          preview: _ineFrentePreview,
+                          onTap: () => _seleccionarDocumento(frente: true),
+                        ),
+                      ),
+                      SizedBox(
+                        width: ancho,
+                        child: _capturaIne(
+                          titulo: 'Reverso',
+                          preview: _ineReversoPreview,
+                          onTap: () => _seleccionarDocumento(frente: false),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 14),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.lock_outline_rounded,
+                    size: 17,
+                    color: colors.muted,
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      'La cámara es obligatoria para evitar imágenes alteradas. '
+                      'Tu identificación solo se usa para revisar la solicitud.',
+                      style: TextStyle(
+                        color: colors.muted,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: colors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: colors.surfaceMuted,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      Icons.collections_bookmark_outlined,
+                      color: colors.ink,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Evidencia adicional',
+                          style: TextStyle(
+                            color: colors.ink,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Permisos, fotos del negocio, menús, capturas de redes '
+                          'sociales o cualquier PDF que apoye tu solicitud.',
+                          style: TextStyle(color: colors.muted, height: 1.35),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _insigniaDocumento('OPCIONAL', requerido: false),
+                ],
+              ),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: _enviando ? null : _seleccionarEvidenciaAdicional,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Agregar imágenes o PDF'),
+              ),
+              if (_evidenciaAdicional.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                ..._evidenciaAdicional.map((path) {
+                  final nombre = path.split('/').last;
+                  final esPdf = nombre.toLowerCase().endsWith('.pdf');
+                  final subida = _evidenciaAdicionalSubida.contains(path);
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+                    decoration: BoxDecoration(
+                      color: colors.surfaceMuted,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          esPdf
+                              ? Icons.picture_as_pdf_outlined
+                              : Icons.image_outlined,
+                          color: colors.mutedStrong,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            nombre,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: colors.ink,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        if (subida)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Icon(
+                              Icons.cloud_done_outlined,
+                              size: 19,
+                              color: colors.success,
+                            ),
+                          )
+                        else
+                          IconButton(
+                            tooltip: 'Quitar archivo',
+                            onPressed: _enviando
+                                ? null
+                                : () => setState(
+                                    () => _evidenciaAdicional.remove(path),
+                                  ),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildFormNegocio({required bool bloqueado}) {
     final conErrorUbicacion = _campoConError == 'ubicacion';
     return Column(
@@ -994,10 +1487,19 @@ class _VerificationScreenState extends State<VerificationScreen> {
           const SizedBox(height: 18),
         ],
 
+        _seccionDocumentosNegocio(),
+        const SizedBox(height: 24),
         _BotonPrincipal(
-          etiqueta: 'verification.verify_business'.tr(),
+          etiqueta: 'Enviar solicitud de verificación',
           cargando: _enviando,
-          onPressed: bloqueado ? null : _verificarNegocio,
+          onPressed:
+              bloqueado ||
+                  _revisandoPerfilNegocio ||
+                  !_perfilNegocioCompleto ||
+                  _ineFrente == null ||
+                  _ineReverso == null
+              ? null
+              : _verificarNegocio,
         ),
         if (bloqueado) const _AvisoRequisitosPendientes(),
       ],

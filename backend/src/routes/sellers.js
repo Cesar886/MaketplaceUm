@@ -19,6 +19,11 @@ const {
   validateWhatsappNumber,
 } = require('../validation/sellerProfile');
 const { validarMetodosPermitidos } = require('../payments/methods');
+const {
+  validateInsigniasOcultas,
+  aplicarInsigniasOcultas,
+  insigniasGanadas,
+} = require('../validation/insignias');
 
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
 
@@ -39,6 +44,14 @@ const upload = multer({
 function register(app) {
   app.get('/api/sellers', (_req, res) => {
     res.json(sellers);
+  });
+
+  // Cuentas oficiales a las que "Reportar un problema" abre chat. Público
+  // como el resto de `rowToSeller` (mismos campos que ya se ven en un perfil
+  // o en la bandeja), sin requerir sesión: alguien sin cuenta también debe
+  // poder ver a quién le escribiría antes de decidir si inicia sesión.
+  app.get('/api/support/contacts', (_req, res) => {
+    res.json({ contacts: db.getCuentasSoporte() });
   });
 
   // El email es privado: solo se incluye en la respuesta si quien pide el
@@ -65,6 +78,27 @@ function register(app) {
     // `socioFundador`, que se resuelve en `rowToSeller` porque esos dos se
     // usan fuera de este endpoint también (tarjetas, comentarios...).
     const todosLosBadges = db.esUsuarioTodosLosBadges(seller.id);
+    // Métricas de las insignias élite. Se leen una vez aquí y no dentro del
+    // objeto para no disparar la consulta dos veces si una insignia futura
+    // necesita el mismo dato.
+    const montoFacturado = db.sumarVentasConfirmadas(seller.id);
+    const calificaciones = db.getEstadisticasCalificaciones(seller.id);
+    const preguntas = db.getEstadisticasPreguntasVendedor(seller.id);
+    // Las tres insignias de acumulado de por vida no se recalculan desde
+    // cero: se cumplen por la regla de hoy O ya están registradas de antes.
+    // Ver INSIGNIAS_PERMANENTES — subir un umbral no puede quitarle a nadie
+    // algo que ya se ganó con el umbral anterior.
+    const otorgadas = db.getInsigniasOtorgadas(seller.id);
+    function permanente(clave, cumpleLaRegla) {
+      // Se registra solo cuando la gana por la regla, y solo la primera vez.
+      // Las cuentas del dueño (`todosLosBadges`) quedan fuera a propósito:
+      // las llevan todas por excepción, no por haberlas ganado, y guardarlas
+      // ensuciaría el registro con concesiones que nadie cumplió.
+      if (cumpleLaRegla && !otorgadas.has(clave)) {
+        db.registrarInsigniaOtorgada(seller.id, clave);
+      }
+      return todosLosBadges || cumpleLaRegla || otorgadas.has(clave);
+    }
     return {
       ...seller,
       rachaSemanas: todosLosBadges
@@ -113,6 +147,50 @@ function register(app) {
         : diasDesdeAlta !== null
         ? Math.floor(diasDesdeAlta / 365)
         : 0,
+      // ─── Insignias élite ──────────────────────────────────────
+      // Todas siguen el mismo patrón que las de arriba: `todosLosBadges ||
+      // <regla>`, para que las cuentas del dueño las lleven siempre. Los
+      // umbrales viven en FEED_WEIGHTS, no aquí, por la misma razón que los
+      // pesos del feed: ajustarlos no debe implicar leer esta función.
+
+      // "Leyenda del Mercadito": volumen de ventas de por vida. No caduca ni
+      // se rompe con el tiempo, a diferencia de la racha: es historial
+      // acumulado, y esa permanencia es justo lo que la hace valiosa.
+      leyendaMercadito: permanente(
+        'leyenda',
+        ventasConfirmadas >= w.LEYENDA_MIN_VENTAS,
+      ),
+      // "Vendedor de oro": dinero facturado. Va aparte de la anterior porque
+      // mide otra cosa — cien ventas de $50 no son lo mismo que veinte de
+      // $5,000, y ninguna de las dos debería tapar a la otra.
+      vendedorDeOro: permanente(
+        'vendedor_de_oro',
+        montoFacturado >= w.ORO_MIN_FACTURADO,
+      ),
+      // "Impecable": promedio perfecto de verdad (cada reseña un cinco) con
+      // un piso alto de reseñas. Se compara contra el conteo crudo y no
+      // contra `seller.rating`, que está redondeado a un decimal y diría 5.0
+      // con un cuatro de por medio.
+      ratingPerfecto:
+        todosLosBadges ||
+        (calificaciones.total >= w.IMPECABLE_MIN_RESENAS &&
+          calificaciones.cincos === calificaciones.total),
+      // "Centenario": cien calificaciones de cinco estrellas, sin exigir que
+      // TODAS lo sean. Premia el volumen de gente contenta; "Impecable"
+      // premia no haber fallado nunca.
+      cienCincoEstrellas: permanente(
+        'centenario',
+        calificaciones.cincos >= w.CENTENARIO_MIN_CINCOS,
+      ),
+      // "Siempre responde": tasa de preguntas contestadas, con un mínimo de
+      // preguntas para que la proporción signifique algo — sin ese piso,
+      // 1 de 1 sería el 100%. Es distinta de "Responde rápido", que mide
+      // velocidad en el chat: aquí lo que se mide es no dejar a nadie sin
+      // respuesta.
+      siempreResponde:
+        todosLosBadges ||
+        (preguntas.total >= w.SIEMPRE_RESPONDE_MIN_PREGUNTAS &&
+          preguntas.respondidas / preguntas.total >= w.SIEMPRE_RESPONDE_MIN_TASA),
       // El producto fijado se verifica al leer: si se borró o ya no es del
       // vendedor, se devuelve null en vez de un ID colgante que el cliente
       // tendría que resolver a una tarjeta vacía.
@@ -128,6 +206,26 @@ function register(app) {
     return row && row.seller === seller.id ? seller.productoFijadoId : null;
   }
 
+  /**
+   * El perfil tal como se publica: con las insignias que su dueño decidió
+   * ocultar ya apagadas.
+   *
+   * El filtro corre en el servidor y no en el cliente porque un booleano en
+   * true en la respuesta ya es la información que se quería esconder. Y se
+   * aplica también cuando quien mira es el propio dueño, para que su perfil
+   * se vea exactamente como lo ve el resto; lo que necesita para editar el
+   * ajuste viaja aparte, en `insigniasGanadas`.
+   */
+  function perfilPublico(seller) {
+    const metricas = conMetricas(seller);
+    const filtradas = aplicarInsigniasOcultas(metricas, seller.insigniasOcultas);
+    // La lista de ocultas es privada: saber QUÉ escondió alguien es
+    // exactamente lo que se quería no enseñar. Solo se le devuelve a su
+    // dueño, junto al resto de campos privados del perfil.
+    delete filtradas.insigniasOcultas;
+    return filtradas;
+  }
+
   app.get('/api/sellers/:id', optionalAuth, (req, res) => {
     const seller = sellers.find(s => s.id === req.params.id);
     if (!seller) return res.status(404).json({ error: 'Vendedor no encontrado' });
@@ -137,9 +235,18 @@ function register(app) {
     const presencia = presenciaDe(req, req.user ? req.user.id : null, seller.id);
     if (req.user && req.user.id === seller.id) {
       const rawRow = db.getDb().prepare('SELECT email FROM sellers WHERE id = ?').get(seller.id);
-      return res.json({ ...conMetricas(seller), ...presencia, email: rawRow.email || null });
+      return res.json({
+        ...perfilPublico(seller),
+        ...presencia,
+        email: rawRow.email || null,
+        // Privado, como el email: qué insignias tiene realmente, ocultas
+        // incluidas. Es lo único con lo que la pantalla de selección puede
+        // saber qué switches ofrecer encendibles.
+        insigniasGanadas: insigniasGanadas(conMetricas(seller)),
+        insigniasOcultas: seller.insigniasOcultas,
+      });
     }
-    res.json({ ...conMetricas(seller), ...presencia });
+    res.json({ ...perfilPublico(seller), ...presencia });
   });
 
   // PATCH /api/sellers/:id — editar el propio perfil (usuario o negocio).
@@ -155,6 +262,7 @@ function register(app) {
     const {
       name, phone, businessDescription, businessCategory, businessHours,
       locationLat, locationLng, paymentMethods, colorAcento, productoFijadoId,
+      insigniasOcultas,
       facebookUrl, instagramUrl, whatsappNumber, tiktokUrl, twitterUrl,
     } = req.body;
 
@@ -189,6 +297,17 @@ function register(app) {
     // y fijar una publicación.
     const colorError = validateColorAcento(colorAcento);
     if (colorError) return res.status(400).json({ error: colorError });
+
+    // Qué insignias mostrar. No comprueba que las claves mandadas sean
+    // insignias que la cuenta ya tenga: ocultar una que todavía no se ha
+    // ganado es legítimo —queda lista para cuando llegue— y exigir lo
+    // contrario obligaría a recalcular todas las métricas en cada PATCH.
+    let normalizedInsigniasOcultas;
+    if (insigniasOcultas !== undefined) {
+      const resultado = validateInsigniasOcultas(insigniasOcultas);
+      if (resultado.error) return res.status(400).json({ error: resultado.error });
+      normalizedInsigniasOcultas = resultado.value;
+    }
 
     // Fijar exige ser dueño del producto. Sin esta comprobación, cualquiera
     // podría fijar la publicación de otro en su propio perfil y presentarla
@@ -276,6 +395,13 @@ function register(app) {
     }
     if (productoFijadoId !== undefined) {
       updateSellerField(seller.id, 'producto_fijado_id', productoFijadoId);
+    }
+    if (normalizedInsigniasOcultas !== undefined) {
+      updateSellerField(
+        seller.id,
+        'insignias_ocultas',
+        JSON.stringify(normalizedInsigniasOcultas),
+      );
     }
     if (seller.isBusiness) {
       if (businessDescription !== undefined) {

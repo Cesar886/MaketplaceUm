@@ -97,6 +97,11 @@ class AuthProvider extends ChangeNotifier {
   String? get backendToken => _backendToken;
   String? get backendSellerId => _backendSellerId;
 
+  Future<Map<String, dynamic>?> getBusinessProfileLocal() =>
+      _currentUser == null
+      ? Future.value(null)
+      : _db.getBusinessProfile(userId);
+
   int get userId => _currentUser!['id'] as int;
 
   /// Tipo de cuenta. Se prefiere el que reporta el backend (columna
@@ -131,6 +136,11 @@ class AuthProvider extends ChangeNotifier {
       _requisitos.where((r) => !r.cumplido).toList();
 
   bool get isVerified => _verificado;
+
+  /// Las cuentas particulares pueden iniciar sesión y usar el marketplace,
+  /// pero no participan en el programa de verificación ni reciben insignia.
+  bool get puedeVerificarse =>
+      _currentUser != null && accountType != AccountType.particular;
   String get estadoVerificacion => _estadoVerificacion;
 
   /// Mensaje del backend explicando por qué la verificación no se completó.

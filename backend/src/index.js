@@ -50,6 +50,7 @@ const routes = [
   require('./routes/wanted'),
   require('./routes/feed'),
   require('./routes/verificacion'),
+  require('./routes/revision'),
   require('./routes/public'),
   require('./routes/comments'),
   require('./routes/questions'),

@@ -236,7 +236,7 @@ class InsigniaSocioFundador extends StatelessWidget {
   Widget build(BuildContext context) {
     if (compact) {
       return Tooltip(
-        message: 'Socio Fundador',
+        message: 'Socio Fundador · ${'badge.how_founder'.tr()}',
         triggerMode: TooltipTriggerMode.tap,
         child: Icon(Icons.verified_rounded, size: size, color: _verde),
       );
@@ -245,6 +245,7 @@ class InsigniaSocioFundador extends StatelessWidget {
     return _Badge(
       icon: Icons.verified_rounded,
       label: 'Socio Fundador',
+      tooltip: 'badge.how_founder'.tr(),
       foreground: _verde,
       background: _verde.withValues(alpha: 0.10),
       compact: false,
@@ -491,6 +492,7 @@ class RespondeRapidoBadge extends StatelessWidget {
     return _Badge(
       icon: Icons.bolt_rounded,
       label: 'badge.fast_replies'.tr(),
+      tooltip: 'badge.how_fast_replies'.tr(),
       foreground: context.colors.success,
       background: context.colors.successBg,
       compact: compact,
@@ -516,6 +518,7 @@ class RespuestaInstantaneaBadge extends StatelessWidget {
     return _Badge(
       icon: Icons.electric_bolt_rounded,
       label: 'badge.instant_replies'.tr(),
+      tooltip: 'badge.how_instant_replies'.tr(),
       foreground: context.colors.success,
       background: context.colors.successBg,
       compact: compact,
@@ -540,6 +543,7 @@ class InsigniaVendedorConfiable extends StatelessWidget {
     return _Badge(
       icon: Icons.workspace_premium_rounded,
       label: 'badge.top_rated'.tr(),
+      tooltip: 'badge.how_top_rated'.tr(),
       foreground: context.colors.accent,
       background: context.colors.accentTint,
       border: context.colors.accentTintBorder,
@@ -568,6 +572,7 @@ class InsigniaVendedorNuevo extends StatelessWidget {
     return _Badge(
       icon: Icons.emoji_events_rounded,
       label: 'badge.new_seller'.tr(),
+      tooltip: 'badge.how_new_seller'.tr(),
       foreground: _celeste,
       background: _celeste.withValues(alpha: 0.10),
       compact: compact,
@@ -575,12 +580,16 @@ class InsigniaVendedorNuevo extends StatelessWidget {
   }
 }
 
-/// "N años en Mercadito": contador desde el alta de la cuenta
+/// "N años en MarketplaceUm": contador desde el alta de la cuenta
 /// (`aniversarioAnios` en el backend). Solo se pinta desde 1 año — el call
 /// site condiciona por `aniversarioAnios > 0`, igual que [RachaBadge]
 /// condiciona por `rachaSemanas > 1`.
 class AniversarioBadge extends StatelessWidget {
-  const AniversarioBadge({super.key, required this.anios, this.compact = false});
+  const AniversarioBadge({
+    super.key,
+    required this.anios,
+    this.compact = false,
+  });
 
   final int anios;
   final bool compact;
@@ -589,7 +598,8 @@ class AniversarioBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return _Badge(
       icon: Icons.cake_rounded,
-      label: '$anios ${anios == 1 ? 'año' : 'años'} en Mercadito',
+      label: '$anios ${anios == 1 ? 'año' : 'años'} en MarketplaceUm',
+      tooltip: 'badge.how_anniversary'.tr(),
       foreground: context.colors.mutedStrong,
       background: context.colors.surfaceMuted,
       compact: compact,
@@ -611,8 +621,139 @@ class RachaBadge extends StatelessWidget {
     return _Badge(
       icon: Icons.local_fire_department_rounded,
       label: '$semanas semanas activo',
+      tooltip: 'badge.how_streak'.tr(),
       foreground: context.colors.accent,
       background: context.colors.surfaceMuted,
+      compact: compact,
+    );
+  }
+}
+
+// ─── Insignias élite ──────────────────────────────────────────────
+//
+// El escalón de arriba de todo el sistema. Se distinguen de las básicas por
+// llevar borde además de tinte: una fila con "Novato" y "Leyenda" juntas
+// tiene que dejar claro de un vistazo cuál costó años. Los umbrales viven en
+// el backend (FEED_WEIGHTS en database.js), nunca aquí.
+
+/// "Leyenda del Mercadito": 100 ventas confirmadas de por vida.
+///
+/// Púrpura profundo, un color que no usa ninguna otra insignia: no es
+/// confianza (verde), ni conversión (oro), ni bienvenida (celeste) — es
+/// rango, y no debe confundirse con nada más de la fila.
+class InsigniaLeyenda extends StatelessWidget {
+  const InsigniaLeyenda({super.key, this.compact = false});
+
+  final bool compact;
+
+  static const _purpura = Color(0xFF6B3FA0);
+  static const _purpuraEnOscuro = Color(0xFFB794E6);
+
+  @override
+  Widget build(BuildContext context) {
+    final oscuro = Theme.of(context).brightness == Brightness.dark;
+    final color = oscuro ? _purpuraEnOscuro : _purpura;
+
+    return _Badge(
+      icon: Icons.military_tech_rounded,
+      label: 'badge.legend'.tr(),
+      tooltip: 'badge.how_legend'.tr(),
+      foreground: color,
+      background: color.withValues(alpha: oscuro ? 0.16 : 0.10),
+      border: color.withValues(alpha: 0.34),
+      compact: compact,
+    );
+  }
+}
+
+/// "Vendedor de oro": $100,000 MXN facturados en órdenes pagadas.
+///
+/// Va en el acento del sistema, como [InsigniaVendedorConfiable], porque las
+/// dos empujan hacia la compra; el borde es lo que la marca como élite y la
+/// separa de aquella cuando aparecen juntas.
+class InsigniaVendedorDeOro extends StatelessWidget {
+  const InsigniaVendedorDeOro({super.key, this.compact = false});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Badge(
+      icon: Icons.paid_rounded,
+      label: 'badge.gold_seller'.tr(),
+      tooltip: 'badge.how_gold_seller'.tr(),
+      foreground: context.colors.accent,
+      background: context.colors.accentTint,
+      border: context.colors.accentTintBorder,
+      compact: compact,
+    );
+  }
+}
+
+/// "Impecable": promedio perfecto (cada reseña un cinco) con 50 reseñas o
+/// más. Es el nivel superior de [InsigniaVendedorConfiable] y la sustituye
+/// en la fila, igual que [RespuestaInstantaneaBadge] sustituye a
+/// [RespondeRapidoBadge].
+class InsigniaImpecable extends StatelessWidget {
+  const InsigniaImpecable({super.key, this.compact = false});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Badge(
+      icon: Icons.auto_awesome_rounded,
+      label: 'badge.flawless'.tr(),
+      tooltip: 'badge.how_flawless'.tr(),
+      foreground: context.colors.accent,
+      background: context.colors.accentTint,
+      border: context.colors.accentTintBorder,
+      compact: compact,
+    );
+  }
+}
+
+/// "Centenario": 100 calificaciones de cinco estrellas, aunque haya otras
+/// más bajas de por medio. Convive con [InsigniaImpecable] a propósito —
+/// una mide volumen de gente contenta y la otra no haber fallado nunca, así
+/// que ninguna implica a la otra.
+class InsigniaCentenario extends StatelessWidget {
+  const InsigniaCentenario({super.key, this.compact = false});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Badge(
+      icon: Icons.stars_rounded,
+      label: 'badge.hundred_five_stars'.tr(),
+      tooltip: 'badge.how_hundred_five_stars'.tr(),
+      foreground: context.colors.accent,
+      background: context.colors.surfaceMuted,
+      border: context.colors.accentTintBorder,
+      compact: compact,
+    );
+  }
+}
+
+/// "Siempre responde": contestó al menos el 95% de las preguntas recibidas,
+/// con un mínimo de 20. Verde sage, la familia de la confianza, porque es la
+/// versión sostenida de la promesa que hace [RespondeRapidoBadge]: aquella
+/// dice qué tan rápido contesta, esta que no deja a nadie sin respuesta.
+class InsigniaSiempreResponde extends StatelessWidget {
+  const InsigniaSiempreResponde({super.key, this.compact = false});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Badge(
+      icon: Icons.mark_chat_read_rounded,
+      label: 'badge.always_answers'.tr(),
+      tooltip: 'badge.how_always_answers'.tr(),
+      foreground: context.colors.success,
+      background: context.colors.successBg,
+      border: context.colors.success.withValues(alpha: 0.30),
       compact: compact,
     );
   }
@@ -653,6 +794,10 @@ class InsigniaEnigma extends StatelessWidget {
 
     return _Badge(
       icon: Icons.vpn_key_rounded,
+      // La única que NO dice cómo se consigue: el enigma no se anuncia en
+      // ninguna parte de la app, y un globo explicándolo lo delataría a
+      // quien todavía no sabe que existe.
+      tooltip: 'badge.hidden'.tr(),
       label: 'Enigma #$posicion',
       foreground: color,
       background: color.withValues(alpha: oscuro ? 0.14 : 0.10),
@@ -742,6 +887,7 @@ class _Badge extends StatelessWidget {
     required this.background,
     required this.compact,
     this.border,
+    this.tooltip,
   });
 
   final IconData icon;
@@ -751,10 +897,19 @@ class _Badge extends StatelessWidget {
   final bool compact;
   final Color? border;
 
+  /// Qué dice el globo al tocar la insignia. Sin esto repetía [label], que ya
+  /// está a la vista al lado del ícono: en las insignias de logro se usa para
+  /// explicar CÓMO se consiguen, que es lo único que el nombre no dice.
+  ///
+  /// Sigue siendo opcional porque en las etiquetas de producto (destacado,
+  /// oferta, disponibilidad) el nombre ES la información, y ahí el globo solo
+  /// está para cuando el texto no cabe entero.
+  final String? tooltip;
+
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: label,
+      message: tooltip ?? label,
       triggerMode: TooltipTriggerMode.tap,
       child: Container(
         padding: EdgeInsets.symmetric(

@@ -1,3 +1,5 @@
+const crypto = require('crypto');
+const fs = require('fs');
 const Database = require('better-sqlite3');
 const path = require('path');
 
@@ -792,6 +794,21 @@ function runMigrations() {
     db.exec(`ALTER TABLE wanted_posts ADD COLUMN views INTEGER DEFAULT 0`);
   }
 
+  // Documentos de solicitudes manuales de negocio.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS verification_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      usuario_id TEXT NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+      doc_type TEXT NOT NULL CHECK(doc_type IN ('responsible_ine_front','responsible_ine_back','additional_evidence')),
+      file_url TEXT NOT NULL,
+      original_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      uploaded_at TEXT NOT NULL,
+      content_hash TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_verification_documents_user ON verification_documents(usuario_id, doc_type, uploaded_at);
+  `);
+
   // 24. Sistema de verificación de cuentas (100% automático, sin revisión
   //     humana). `sellers.verified` — que ya existía y que lee toda la app —
   //     sigue siendo la bandera rápida; la tabla `verificaciones` guarda el
@@ -829,6 +846,7 @@ function runMigrations() {
       codigo_otp_email_expira TEXT,
 
       nombre_negocio TEXT,
+      responsable_negocio TEXT,
       ubicacion_lat REAL,
       ubicacion_lng REAL,
       link_red_social TEXT,
@@ -1659,6 +1677,132 @@ function runMigrations() {
     `);
   }
 
+  // 43. Qué insignias muestra el perfil público.
+  //
+  //     Se guardan las OCULTAS (JSON array de claves), no las visibles, y
+  //     eso no es un detalle de forma: con la lista de visibles, toda cuenta
+  //     existente arrancaría con lista vacía —perfil sin insignias— y cada
+  //     logro nuevo nacería invisible hasta que su dueño fuera a marcarlo.
+  //     Con las ocultas, NULL significa "muéstralas todas", que es el
+  //     comportamiento que había antes de este ajuste, y una insignia recién
+  //     ganada aparece sola.
+  //
+  //     Sin CHECK de contenido: las claves válidas son un catálogo de
+  //     producto (validation/insignias.js) que cambia cada vez que se añade
+  //     una insignia, y un CHECK obligaría a migrar el schema por cada una.
+  //     La puerta real es el PATCH, que rechaza cualquier clave desconocida.
+  const sellerColsInsignias = db.prepare("PRAGMA table_info('sellers')").all();
+  if (!sellerColsInsignias.some(c => c.name === 'insignias_ocultas')) {
+    db.exec(`ALTER TABLE sellers ADD COLUMN insignias_ocultas TEXT`);
+  }
+
+  // 44. Insignias ya ganadas que no se pueden perder.
+  //
+  //     "Leyenda del Mercadito" pasó de 50 a 100 ventas confirmadas. La
+  //     insignia se calcula al vuelo en cada carga del perfil, así que sin
+  //     esto el cambio de umbral se la habría quitado de golpe a todo el que
+  //     la tenía entre 50 y 99 ventas: gente que la ganó cumpliendo la regla
+  //     que había, y que no hizo nada para perderla.
+  //
+  //     La tabla se crea aquí y no en el CREATE TABLE de initDatabase porque
+  //     el rescate de abajo tiene que correr UNA sola vez, y lo único que
+  //     distingue "primer arranque con esto" de los siguientes es que la
+  //     tabla todavía no exista. Si se sembrara en cada arranque, quien
+  //     llegara a 50 ventas MAÑANA quedaría condecorado también, y el umbral
+  //     nuevo no serviría de nada.
+  const tablaOtorgadas = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='insignias_otorgadas'",
+  ).get();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS insignias_otorgadas (
+      seller_id   TEXT NOT NULL,
+      clave       TEXT NOT NULL,
+      otorgada_en TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (seller_id, clave),
+      FOREIGN KEY (seller_id) REFERENCES sellers(id) ON DELETE CASCADE
+    );
+  `);
+  if (!tablaOtorgadas) {
+    // Los umbrales van escritos a mano y no leídos de FEED_WEIGHTS: son los
+    // que estaban VIGENTES el día de este cambio, un dato histórico. Leerlos
+    // de la config haría que el rescate se moviera solo con el próximo
+    // ajuste, que es justo lo contrario de lo que hace falta.
+    const VENTAS_VIEJO = 50;      // umbral de Leyenda antes de subirlo a 100
+    const ORO_VIGENTE = 100000;   // MXN facturados
+    const CINCOS_VIGENTE = 100;   // calificaciones de 5 estrellas
+    // Oro y Centenario no cambiaron de umbral, así que hoy esto no le da la
+    // insignia a nadie que no la tuviera ya. Se siembran igual para que el
+    // día que SÍ se muevan, quien las tenga hoy ya esté cubierto sin otra
+    // migración de rescate.
+    db.exec(`
+      INSERT OR IGNORE INTO insignias_otorgadas (seller_id, clave)
+        SELECT vendor_id, 'leyenda' FROM orders WHERE status = 'paid'
+         GROUP BY vendor_id HAVING COUNT(*) >= ${VENTAS_VIEJO};
+
+      INSERT OR IGNORE INTO insignias_otorgadas (seller_id, clave)
+        SELECT vendor_id, 'vendedor_de_oro' FROM orders WHERE status = 'paid'
+         GROUP BY vendor_id HAVING COALESCE(SUM(amount), 0) >= ${ORO_VIGENTE};
+
+      INSERT OR IGNORE INTO insignias_otorgadas (seller_id, clave)
+        SELECT p.seller, 'centenario'
+          FROM product_ratings pr JOIN products p ON p.id = pr.product_id
+         WHERE pr.stars = 5
+         GROUP BY p.seller HAVING COUNT(*) >= ${CINCOS_VIGENTE};
+    `);
+    const rescatadas = db.prepare(
+      'SELECT COUNT(*) AS n FROM insignias_otorgadas',
+    ).get().n;
+    if (rescatadas > 0) {
+      console.log(`🎖️  ${rescatadas} insignia(s) ya ganadas quedan registradas de por vida`);
+    }
+  }
+
+  // 45. Datos propios del flujo manual de verificación de negocios.
+  // El responsable queda en la solicitud (no en el perfil público) y el hash
+  // hace idempotentes las evidencias: reenviar el mismo archivo no crea otra
+  // fila aunque la app se haya cerrado entre un intento y el siguiente.
+  const verificacionColsManual = db
+    .prepare("PRAGMA table_info('verificaciones')")
+    .all();
+  if (!verificacionColsManual.some(c => c.name === 'responsable_negocio')) {
+    db.exec('ALTER TABLE verificaciones ADD COLUMN responsable_negocio TEXT');
+  }
+
+  const documentoColsHash = db
+    .prepare("PRAGMA table_info('verification_documents')")
+    .all();
+  if (!documentoColsHash.some(c => c.name === 'content_hash')) {
+    db.exec('ALTER TABLE verification_documents ADD COLUMN content_hash TEXT');
+  }
+
+  const documentosSinHash = db.prepare(
+    'SELECT id, file_url FROM verification_documents WHERE content_hash IS NULL',
+  ).all();
+  const guardarHashDocumento = db.prepare(
+    'UPDATE verification_documents SET content_hash = ? WHERE id = ?',
+  );
+  for (const documento of documentosSinHash) {
+    const archivo = path.join(
+      __dirname,
+      '..',
+      'uploads',
+      path.basename(documento.file_url),
+    );
+    try {
+      const hash = crypto
+        .createHash('sha256')
+        .update(fs.readFileSync(archivo))
+        .digest('hex');
+      guardarHashDocumento.run(hash, documento.id);
+    } catch {
+      // Un archivo histórico ausente no debe impedir que arranque el backend.
+    }
+  }
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_verification_documents_hash '
+      + 'ON verification_documents(usuario_id, doc_type, content_hash)',
+  );
+
   console.log('🔄 Migración de schema completada');
 }
 
@@ -1919,9 +2063,9 @@ function getCategories() {
 // jamás escribe el correo institucional en `sellers.email` — ahí vive el de
 // Google. La condición era falsa para todas las filas de la base.
 const CORREOS_DUENO = new Set([
-  'cesar8herrera@gmail.com',
   'cesar4herrera@gmail.com',
   '1220326@alumno.um.edu.mx',
+  'cesar8herrera@gmail.com',
 ]);
 
 function normalizarCorreo(email) {
@@ -1963,6 +2107,17 @@ function refrescarCuentasDueno() {
   return _cuentasDuenoIds;
 }
 
+/** Fuerza NULL como método de pago para las cuentas oficiales del dueño. */
+function anularMetodosPagoCuentasDueno() {
+  const ids = [...refrescarCuentasDueno()];
+  if (ids.length === 0) return 0;
+  const marcadores = ids.map(() => '?').join(', ');
+  return db.prepare(
+    `UPDATE sellers SET paymentMethods = NULL
+     WHERE id IN (${marcadores}) AND paymentMethods IS NOT NULL`,
+  ).run(...ids).changes;
+}
+
 /**
  * ¿`usuarioId` es una cuenta del dueño?
  *
@@ -1971,6 +2126,16 @@ function refrescarCuentasDueno() {
  * `row.socio_fundador` por su cuenta y tres de ellos ni se enteraban de la
  * regla, así que la palomita aparecía en el perfil y no en el chat.
  */
+function parsearInsigniasOcultas(valor) {
+  if (!valor) return [];
+  try {
+    const lista = JSON.parse(valor);
+    return Array.isArray(lista) ? lista.filter(c => typeof c === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 function esUsuarioTodosLosBadges(usuarioId) {
   if (!usuarioId) return false;
   if (!_cuentasDuenoIds || Date.now() - _cuentasDuenoAt > CUENTAS_DUENO_TTL_MS) {
@@ -1983,6 +2148,7 @@ function rowToSeller(row) {
   if (!row) return null;
   const todosLosBadges =
     esUsuarioTodosLosBadges(row.id) || esCuentaTodosLosBadges(row.email);
+  const tipoCuenta = row.tipo_cuenta || 'particular';
   return {
     id: row.id,
     name: row.name,
@@ -1997,7 +2163,7 @@ function rowToSeller(row) {
     logoUrl: row.logoUrl || null,
     rating: row.rating ?? 0,
     reviews: row.reviews ?? 0,
-    verified: todosLosBadges || !!row.verified,
+    verified: tipoCuenta !== 'particular' && (todosLosBadges || !!row.verified),
     // Insignia verde otorgada a mano por el admin. Separada de `verified` a
     // propósito: no la gana ningún dato ni trámite de la cuenta, así que no
     // comparte puerta con la verificación. Ver
@@ -2005,7 +2171,7 @@ function rowToSeller(row) {
     socioFundador: todosLosBadges || !!row.socio_fundador,
     // Determina el color/etiqueta de la insignia de verificación en la app.
     // 'particular' es lo que la UI llama "externo".
-    tipoCuenta: row.tipo_cuenta || 'particular',
+    tipoCuenta,
     // Solo se llena para cuentas de estudiante verificadas (ver
     // routes/verificacion.js). El perfil cae a "Estudiante" cuando es null.
     carrera: row.carrera || null,
@@ -2022,6 +2188,11 @@ function rowToSeller(row) {
     // ID del swatch elegido, no un hex — ver migración 27.
     colorAcento: row.colorAcento || null,
     productoFijadoId: row.producto_fijado_id || null,
+    // Claves de las insignias que su dueño decidió no mostrar. NULL en la
+    // columna = nunca tocó el ajuste = se muestran todas (migración 43).
+    // Un JSON corrupto se trata como "ninguna oculta" en vez de reventar el
+    // perfil entero: es una preferencia de presentación, no un dato crítico.
+    insigniasOcultas: parsearInsigniasOcultas(row.insignias_ocultas),
     // Mediana en minutos entre el mensaje de un comprador y la respuesta del
     // vendedor. null = todavía no hay respuestas suficientes para calcularla.
     medianResponseMinutes: row.median_response_minutes ?? null,
@@ -2035,6 +2206,23 @@ function rowToSeller(row) {
     // corrió la migración.
     createdAt: row.created_at,
   };
+}
+
+// Cuentas oficiales de soporte: a donde manda el botón "Reportar un
+// problema" del perfil. Mismos dos correos que `CORREOS_DUENO` (son las
+// cuentas de Daniel), pero es una lista aparte a propósito: una cosa es
+// "quién tiene todas las insignias" y otra "a quién se le reportan
+// problemas" — hoy coinciden, pero no tienen por qué seguir coincidiendo.
+const CORREOS_SOPORTE = ['cesar8herrera@gmail.com', 'cesar4herrera@gmail.com'];
+
+/** Las cuentas oficiales de soporte, en el orden de `CORREOS_SOPORTE`
+ *  (la de Reportes primero). Filtra las que no existan en esta base. */
+function getCuentasSoporte() {
+  return CORREOS_SOPORTE.map(correo =>
+    db.prepare('SELECT * FROM sellers WHERE lower(trim(email)) = ?').get(correo),
+  )
+    .filter(Boolean)
+    .map(rowToSeller);
 }
 
 /**
@@ -2513,6 +2701,91 @@ function countVentasConfirmadas(sellerId) {
     `SELECT COUNT(*) AS n FROM orders WHERE vendor_id = ? AND status = 'paid'`,
   ).get(sellerId);
   return row ? row.n : 0;
+}
+
+/**
+ * Qué insignias permanentes tiene registradas este vendedor.
+ *
+ * Devuelve un Set de claves del catálogo (`validation/insignias.js`), vacío
+ * si no tiene ninguna. Es lo que hace que subir un umbral no le quite la
+ * insignia a quien ya la había ganado con el umbral anterior.
+ */
+function getInsigniasOtorgadas(sellerId) {
+  const filas = db.prepare(
+    'SELECT clave FROM insignias_otorgadas WHERE seller_id = ?',
+  ).all(sellerId);
+  return new Set(filas.map(f => f.clave));
+}
+
+/**
+ * Deja registrado que este vendedor ganó una insignia permanente.
+ *
+ * INSERT OR IGNORE: se llama desde la lectura del perfil, que puede pasar
+ * muchas veces por el mismo caso; la primera escribe y el resto no hace
+ * nada. El llamador solo debe invocarla cuando la insignia se acaba de
+ * cumplir POR LA REGLA — nunca por la excepción de las cuentas del dueño,
+ * que la tienen siempre y no necesitan que nadie se la guarde.
+ */
+function registrarInsigniaOtorgada(sellerId, clave) {
+  db.prepare(
+    'INSERT OR IGNORE INTO insignias_otorgadas (seller_id, clave) VALUES (?, ?)',
+  ).run(sellerId, clave);
+}
+
+/**
+ * Dinero facturado de por vida, en MXN, para la insignia "Vendedor de oro".
+ *
+ * Suma `orders.amount` (el total cobrado) y no `order_items.unit_price`:
+ * `amount` es lo que realmente se acordó por la orden completa, y es la
+ * misma columna que el resto del sistema de pagos considera la verdad.
+ * Solo 'paid', igual que countVentasConfirmadas: una orden cancelada o
+ * pendiente no es dinero vendido.
+ */
+function sumarVentasConfirmadas(sellerId) {
+  const row = db.prepare(
+    `SELECT COALESCE(SUM(amount), 0) AS total
+       FROM orders WHERE vendor_id = ? AND status = 'paid'`,
+  ).get(sellerId);
+  return row ? row.total : 0;
+}
+
+/**
+ * Calificaciones del vendedor separadas en total y cincos perfectos.
+ *
+ * Las dos insignias de reseñas se calculan desde aquí y NO desde el caché
+ * `sellers.rating`, que está redondeado a un decimal: con 60 cincos y un
+ * cuatro el promedio real es 4.98 pero el caché dice 5.0, así que usarlo
+ * regalaría la insignia "Impecable" a quien no tiene el promedio perfecto.
+ * Con el conteo crudo, "perfecto" es literalmente cincos === total.
+ */
+function getEstadisticasCalificaciones(sellerId) {
+  const row = db.prepare(`
+    SELECT
+      COUNT(*) AS total,
+      COALESCE(SUM(CASE WHEN pr.stars = 5 THEN 1 ELSE 0 END), 0) AS cincos
+    FROM product_ratings pr
+    JOIN products p ON p.id = pr.product_id
+    WHERE p.seller = ?
+  `).get(sellerId);
+  return { total: row ? row.total : 0, cincos: row ? row.cincos : 0 };
+}
+
+/**
+ * Preguntas recibidas y respondidas, para la insignia "Siempre responde".
+ *
+ * Una sola consulta por `seller_id` (índice idx_product_questions_seller) en
+ * vez de dos: el perfil ya hace varias agregaciones al vuelo y esta se pide
+ * en cada visita.
+ */
+function getEstadisticasPreguntasVendedor(sellerId) {
+  const row = db.prepare(`
+    SELECT
+      COUNT(*) AS total,
+      COALESCE(SUM(CASE WHEN status = 'answered' THEN 1 ELSE 0 END), 0) AS respondidas
+    FROM product_questions
+    WHERE seller_id = ?
+  `).get(sellerId);
+  return { total: row ? row.total : 0, respondidas: row ? row.respondidas : 0 };
 }
 
 // Recalcula el caché de TODOS los vendedores desde product_ratings. Corre al
@@ -3606,6 +3879,16 @@ const FEED_WEIGHTS = {
   TOP_RATED_MIN_RATING: 4.5,   // rating mínimo para "vendedor confiable"
   TOP_RATED_MIN_REVIEWS: 10,   // reseñas mínimas para que el rating anterior cuente
   NOVATO_MAX_DIAS: 60,         // ventana desde el alta en la que la insignia de Novato puede mostrarse
+  // ── Insignias élite ────────────────────────────────────────────
+  // Umbrales pensados para que casi nadie las tenga: son el techo del
+  // sistema, no un escalón más. Si con el tiempo se vuelven comunes, lo que
+  // hay que subir es el número, no añadir otra insignia encima.
+  LEYENDA_MIN_VENTAS: 100,       // ventas confirmadas para "Leyenda del Mercadito"
+  ORO_MIN_FACTURADO: 100000,     // MXN facturados (órdenes pagadas) para "Vendedor de oro"
+  IMPECABLE_MIN_RESENAS: 50,     // reseñas mínimas para que un 5.0 perfecto cuente
+  CENTENARIO_MIN_CINCOS: 100,    // calificaciones de 5 estrellas para "Centenario"
+  SIEMPRE_RESPONDE_MIN_PREGUNTAS: 20,  // preguntas recibidas mínimas para que la tasa signifique algo
+  SIEMPRE_RESPONDE_MIN_TASA: 0.95,     // proporción de preguntas respondidas
   AFFINITY_MULTIPLIER: 1.3,    // multiplicador si la categoría es top-3 del device/usuario
   NO_STOCK_PENALTY_FACTOR: 0.01, // castigo drástico si no hay stock/está vendido
   POPULARITY_WINDOW_DAYS: 180, // ventana de interacciones que cuentan para popularidad
@@ -4265,7 +4548,9 @@ module.exports = {
   rowToSeller,
   esCuentaTodosLosBadges,
   esUsuarioTodosLosBadges,
+  getCuentasSoporte,
   refrescarCuentasDueno,
+  anularMetodosPagoCuentasDueno,
   insertSeller,
   getHighlightPlans,
   getAllProducts,
@@ -4305,6 +4590,11 @@ module.exports = {
   syncSellerResponseTime,
   computeRachaPublicaciones,
   countVentasConfirmadas,
+  sumarVentasConfirmadas,
+  getInsigniasOtorgadas,
+  registrarInsigniaOtorgada,
+  getEstadisticasCalificaciones,
+  getEstadisticasPreguntasVendedor,
   // Product comments
   COMENTARIOS_POR_PAGINA,
   COMENTARIOS_MAX_POR_PAGINA,

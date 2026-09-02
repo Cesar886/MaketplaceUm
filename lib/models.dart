@@ -184,9 +184,16 @@ class Seller {
     this.respuestaInstantanea = false,
     this.vendedorConfiable = false,
     this.esVendedorNuevo = false,
+    this.leyendaMercadito = false,
+    this.vendedorDeOro = false,
+    this.ratingPerfecto = false,
+    this.cienCincoEstrellas = false,
+    this.siempreResponde = false,
     this.aniversarioAnios = 0,
     this.rachaSemanas = 0,
     this.enigmaPosicion,
+    this.insigniasOcultas = const <String>{},
+    this.insigniasGanadas = const <String, bool>{},
     this.facebookUrl,
     this.instagramUrl,
     this.whatsappNumber,
@@ -232,9 +239,24 @@ class Seller {
       respuestaInstantanea: json['respuestaInstantanea'] as bool? ?? false,
       vendedorConfiable: json['vendedorConfiable'] as bool? ?? false,
       esVendedorNuevo: json['esVendedorNuevo'] as bool? ?? false,
+      leyendaMercadito: json['leyendaMercadito'] as bool? ?? false,
+      vendedorDeOro: json['vendedorDeOro'] as bool? ?? false,
+      ratingPerfecto: json['ratingPerfecto'] as bool? ?? false,
+      cienCincoEstrellas: json['cienCincoEstrellas'] as bool? ?? false,
+      siempreResponde: json['siempreResponde'] as bool? ?? false,
       aniversarioAnios: (json['aniversarioAnios'] as num?)?.toInt() ?? 0,
       rachaSemanas: (json['rachaSemanas'] as num?)?.toInt() ?? 0,
       enigmaPosicion: (json['enigmaPosicion'] as num?)?.toInt(),
+      insigniasOcultas: {
+        ...?(json['insigniasOcultas'] as List<dynamic>?)?.map(
+          (c) => c as String,
+        ),
+      },
+      insigniasGanadas: {
+        ...?(json['insigniasGanadas'] as Map<String, dynamic>?)?.map(
+          (clave, valor) => MapEntry(clave, valor as bool),
+        ),
+      },
       facebookUrl: json['facebookUrl'] as String?,
       instagramUrl: json['instagramUrl'] as String?,
       whatsappNumber: json['whatsappNumber'] as String?,
@@ -333,6 +355,32 @@ class Seller {
   /// ventas se mantengan.
   final bool esVendedorNuevo;
 
+  // ── Insignias élite ────────────────────────────────────────────
+  // Las cinco las calcula el backend en `conMetricas` (routes/sellers.js) a
+  // partir de historial acumulado, con umbrales altos a propósito. Llegan
+  // solo en el detalle del vendedor, como el resto: el default en false hace
+  // que un Seller armado desde una respuesta parcial simplemente no las
+  // pinte.
+
+  /// 50 o más ventas confirmadas de por vida.
+  final bool leyendaMercadito;
+
+  /// $100,000 MXN o más facturados en órdenes pagadas.
+  final bool vendedorDeOro;
+
+  /// Promedio perfecto (cada reseña un cinco) con al menos 50 reseñas.
+  /// Cuando es true, [vendedorConfiable] también lo es.
+  final bool ratingPerfecto;
+
+  /// 100 o más calificaciones de cinco estrellas, aunque haya otras más
+  /// bajas de por medio. Mide volumen; [ratingPerfecto] mide no fallar.
+  final bool cienCincoEstrellas;
+
+  /// Respondió al menos el 95% de las preguntas recibidas, con un mínimo de
+  /// 20 preguntas. Es constancia, no velocidad: eso lo mide
+  /// [respondeRapido].
+  final bool siempreResponde;
+
   /// Años completos desde el alta de la cuenta. 0 = todavía no cumple un
   /// año, así que no hay nada que mostrar.
   final int aniversarioAnios;
@@ -348,6 +396,21 @@ class Seller {
   /// ninguna parte: la insignia aparece en el perfil sin explicar de dónde
   /// salió. Ver [InsigniaEnigma] y backend/src/secreto/enigma.js.
   final int? enigmaPosicion;
+
+  /// Claves de las insignias que su dueño decidió no mostrar en el perfil.
+  ///
+  /// No hace falta consultarla para pintar: el backend ya manda apagados los
+  /// campos correspondientes, así que un perfil ajeno se dibuja igual que
+  /// siempre. Sirve para la pantalla que edita el ajuste.
+  final Set<String> insigniasOcultas;
+
+  /// Qué insignias tiene REALMENTE la cuenta, ocultas incluidas, por clave.
+  ///
+  /// Solo llega en el perfil propio (es privado, como el email): en
+  /// cualquier otro caso es un mapa vacío. Sin esto, la pantalla de
+  /// selección no podría distinguir "la escondí" de "no la tengo", porque
+  /// las dos llegan apagadas en el perfil.
+  final Map<String, bool> insigniasGanadas;
 
   /// Atajo para los call sites que solo preguntan si lleva la insignia.
   bool get resolvioElEnigma => enigmaPosicion != null;

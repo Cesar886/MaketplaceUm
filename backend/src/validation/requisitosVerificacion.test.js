@@ -90,7 +90,7 @@ test('un vendedor que cumple todo pasa los cuatro requisitos', () => {
 
   const lista = requisitosDeVerificacion(v);
 
-  assert.strictEqual(lista.length, 5, 'son cinco requisitos, ni más ni menos');
+  assert.strictEqual(lista.length, 4, 'son cuatro requisitos, ni más ni menos');
   assert.ok(lista.every(r => r.cumplido), JSON.stringify(lista, null, 2));
   assert.strictEqual(cumpleTodos(v), true);
   assert.strictEqual(primerFaltante(v), null);
@@ -172,40 +172,8 @@ test('el requisito de horario se sigue listando para todos, cumplido o no', () =
   // No se oculta: el checklist tiene el mismo largo para las tres cuentas,
   // así nadie ve aparecer un requisito nuevo al cambiar de tipo.
   const alumno = crearVendedor({ esNegocio: false, horario: null });
-  assert.strictEqual(requisitosDeVerificacion(alumno).length, 5);
+  assert.strictEqual(requisitosDeVerificacion(alumno).length, 4);
   assert.ok(req('horario', requisitosDeVerificacion(alumno)));
-});
-
-// ─── Foto de perfil ─────────────────────────────────────────────
-
-test('sin foto de perfil ni de Google no se puede verificar', () => {
-  const v = crearVendedor({ logoUrl: null, avatarUrl: null });
-  const r = req('foto_perfil', requisitosDeVerificacion(v));
-
-  assert.strictEqual(r.cumplido, false);
-  assert.ok(r.detalle, 'tiene que decir qué falta');
-  assert.strictEqual(r.accion, 'editar_perfil', 'la app usa esto para navegar');
-  assert.strictEqual(cumpleTodos(v), false);
-});
-
-test('una foto subida a mano cumple el requisito', () => {
-  const v = crearVendedor({ logoUrl: '/uploads/mi-foto.webp', avatarUrl: null });
-  assert.strictEqual(req('foto_perfil', requisitosDeVerificacion(v)).cumplido, true);
-});
-
-test('la foto de la cuenta de Google también cumple el requisito: no hace falta subir otra', () => {
-  const v = crearVendedor({ logoUrl: null, avatarUrl: 'https://lh3.googleusercontent.com/a/foo' });
-  assert.strictEqual(req('foto_perfil', requisitosDeVerificacion(v)).cumplido, true);
-});
-
-test('aplica a todos los tipos de cuenta, no solo a negocio', () => {
-  const v = crearVendedor({ esNegocio: false, logoUrl: null, avatarUrl: null });
-  assert.strictEqual(req('foto_perfil', requisitosDeVerificacion(v)).cumplido, false);
-});
-
-test('una cadena vacía no cuenta como foto', () => {
-  const v = crearVendedor({ logoUrl: '', avatarUrl: '' });
-  assert.strictEqual(req('foto_perfil', requisitosDeVerificacion(v)).cumplido, false);
 });
 
 // ─── Métodos de pago ────────────────────────────────────────────
@@ -322,13 +290,13 @@ test('el orden es estable: siempre se pide lo mismo primero', () => {
   const v = crearVendedor({ horario: null, metodos: null });
   assert.deepStrictEqual(
     requisitosDeVerificacion(v).map(r => r.id),
-    ['horario', 'metodos_pago', 'mercadopago', 'stock_productos', 'foto_perfil'],
+    ['horario', 'metodos_pago', 'mercadopago', 'stock_productos'],
   );
 });
 
 test('un vendedor que no existe no cumple nada y no revienta', () => {
   const lista = requisitosDeVerificacion('u_fantasma');
-  assert.strictEqual(lista.length, 5);
+  assert.strictEqual(lista.length, 4);
   assert.ok(lista.some(r => !r.cumplido));
   assert.strictEqual(cumpleTodos('u_fantasma'), false);
 });

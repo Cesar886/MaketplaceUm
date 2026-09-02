@@ -71,6 +71,13 @@
     "feature_report": "Problem reporting",
     "feature_changelog": "The changelog"
   },
+  "report_problem": {
+    "title": "Report a problem",
+    "intro": "Send a message to our official problem-reporting account. We read it and reply right here.",
+    "role_reports": "Official reports account",
+    "role_admin": "Administrator",
+    "load_error": "Couldn't load the support accounts. Try again."
+  },
   "my_data": {
     "title": "My data",
     "header": "Your account information",
@@ -518,7 +525,34 @@
     "more_from": "More from {seller}",
     "rating_error": "Couldn't submit your rating. Please try again."
   },
+  "badge_visibility": {
+    "title": "Profile badges",
+    "entry_hint": "Choose which ones show on your public profile",
+    "subtitle": "Turn off the ones you'd rather not show. Badges you earn later show up on their own.",
+    "count": "{n} visible on your profile",
+    "section_elite": "ELITE",
+    "section_basic": "GENERAL",
+    "save_error": "Couldn't save the change. Try again.",
+    "load_error": "Couldn't load your profile. Try again.",
+    "req_legend": "100 confirmed sales",
+    "req_gold_seller": "$100,000 MXN in sales",
+    "req_flawless": "5.0 average with 50 reviews or more",
+    "req_hundred_five_stars": "100 five-star ratings",
+    "req_always_answers": "Answer 95% of your questions (20 minimum)",
+    "req_top_rated": "4.5 average with 10 reviews or more",
+    "req_instant_replies": "Reply in under 10 minutes",
+    "req_fast_replies": "Reply in under 1 hour",
+    "req_new_seller": "Your first sale within your first 60 days",
+    "req_streak": "Post several weeks in a row",
+    "req_anniversary": "One year on MarketplaceUm",
+    "req_enigma": "Solve the hidden enigma"
+  },
   "badge": {
+    "legend": "Legend",
+    "gold_seller": "Gold Seller",
+    "flawless": "Flawless",
+    "hundred_five_stars": "100 five-star reviews",
+    "always_answers": "Always Answers",
     "featured": "Featured",
     "offer": "Deal",
     "fast_replies": "Replies fast",
@@ -528,7 +562,20 @@
     "verified": "Verified",
     "verified_student": "Verified student",
     "verified_business": "Verified business",
-    "verified_account": "Verified account"
+    "verified_account": "Verified account",
+    "how_legend": "100 confirmed sales",
+    "how_gold_seller": "$100,000 MXN in sales",
+    "how_flawless": "5.0 average with 50 reviews or more",
+    "how_hundred_five_stars": "100 five-star ratings",
+    "how_always_answers": "Answers 95% of the questions received",
+    "how_top_rated": "4.5 average with 10 reviews or more",
+    "how_instant_replies": "Replies in under 10 minutes",
+    "how_fast_replies": "Replies in under 1 hour",
+    "how_new_seller": "First sale within their first 60 days",
+    "how_streak": "Weeks in a row posting",
+    "how_anniversary": "Years since they joined",
+    "how_founder": "Awarded by the team",
+    "hidden": "Hidden"
   },
   "time": {
     "now": "Now",
@@ -725,6 +772,8 @@
     "up_to": "Up to {price}"
   },
   "comments": {
+    "login_title": "Sign in to comment",
+    "login_body": "With your account you can leave comments on any listing.",
     "load_error": "Couldn't load the comments.",
     "load_more_error": "Couldn't load more comments.",
     "title_count": "Comments ({n})",
@@ -734,10 +783,6 @@
     "be_first": "Be the first to comment",
     "input_hint": "Write a comment…",
     "post": "Post comment",
-    "verify_title": "Verify your account to comment",
-    "verify_body": "Only verified accounts —students, UM staff, businesses and external users— can leave comments.",
-    "verify_action": "Verify my account",
-    "verify_login": "Sign in to verify yourself.",
     "listing_gone": "This listing is no longer available.",
     "none_received": "You haven't received any comments yet",
     "seller_none": "This seller has no comments yet",

@@ -101,9 +101,7 @@ void main() {
       // Sin requisitos cargados (arranque sin conexión) el hueco de la caja
       // vacía se leería como "no falta nada", que es justo lo contrario.
       await tester.pumpWidget(
-        envolver(
-          VerificationChecklist(requisitos: const [], onAccion: (_) {}),
-        ),
+        envolver(VerificationChecklist(requisitos: const [], onAccion: (_) {})),
       );
 
       expect(find.byType(Container), findsNothing);
@@ -162,7 +160,11 @@ void main() {
           VerificationChecklist(
             requisitos: [
               req('horario', cumplido: false),
-              req('stock_productos', cumplido: false, accion: 'revisar_productos'),
+              req(
+                'stock_productos',
+                cumplido: false,
+                accion: 'revisar_productos',
+              ),
             ],
             onAccion: (r) => tocados.add('${r.id}:${r.accion}'),
           ),
@@ -198,7 +200,10 @@ void main() {
   // ─── Bloqueo del botón ─────────────────────────────────────
 
   group('VerificationScreen · bloqueo de "Enviar código"', () {
-    Widget pantalla(AuthProvider auth, {AccountType tipo = AccountType.estudiante}) {
+    Widget pantalla(
+      AuthProvider auth, {
+      AccountType tipo = AccountType.estudiante,
+    }) {
       return ChangeNotifierProvider<AuthProvider>.value(
         value: auth,
         child: MaterialApp(
@@ -258,15 +263,18 @@ void main() {
       );
     });
 
-    testWidgets('el bloqueo también aplica al SMS de la cuenta externa', (
+    testWidgets('una cuenta externa no entra al flujo de verificación', (
       tester,
     ) async {
-      final auth = _AuthDePrueba([req('metodos_pago', cumplido: false)]);
+      final auth = _AuthDePrueba([
+        req('metodos_pago', cumplido: false),
+      ], tipo: AccountType.particular);
 
       await tester.pumpWidget(pantalla(auth, tipo: AccountType.particular));
       await tester.pumpAndSettle();
 
-      expect(botonPrincipal(tester, 'Enviar código por SMS').onPressed, isNull);
+      expect(find.text('¡Cuenta creada!'), findsOneWidget);
+      expect(find.text('Enviar código por SMS'), findsNothing);
     });
 
     testWidgets('la cuenta de cobros no se lista mientras MP esté apagado', (
@@ -335,9 +343,16 @@ void main() {
 /// AuthProvider con los requisitos ya resueltos, para montar la pantalla sin
 /// backend: refrescar es un no-op y la lista es la que pide cada test.
 class _AuthDePrueba extends AuthProvider {
-  _AuthDePrueba(this._requisitosDePrueba);
+  _AuthDePrueba(this._requisitosDePrueba, {this.tipo = AccountType.estudiante});
 
   final List<VerificationRequirement> _requisitosDePrueba;
+  final AccountType tipo;
+
+  @override
+  Map<String, dynamic>? get currentUser => const {'name': 'Prueba'};
+
+  @override
+  AccountType get accountType => tipo;
 
   @override
   List<VerificationRequirement> get requisitos => _requisitosDePrueba;

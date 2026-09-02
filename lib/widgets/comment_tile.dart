@@ -145,6 +145,7 @@ class CommentTile extends StatelessWidget {
                 seller: autor,
                 espacioArriba: 2,
                 maxLines: 1,
+                incluirEstudiante: false,
                 style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,

@@ -245,6 +245,8 @@ function crearRutasAuthGoogle({
       google_sub: perfil.sub,
       avatarUrl: perfil.foto,
     });
+    // Misma regla que el registro con contraseña para cuentas oficiales.
+    dbModule.anularMetodosPagoCuentasDueno();
     refrescarSellers();
 
     if (deviceId) vincularDispositivo(deviceId, sellerId);

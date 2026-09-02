@@ -63,7 +63,7 @@ function seller(id) {
 // ═══ Reconocimiento de la cuenta ═════════════════════════════
 
 test('se reconoce por el correo de login de Google', () => {
-  const id = crearUsuario('cesar8herrera@gmail.com');
+  const id = crearUsuario('cesar4herrera@gmail.com');
   db.refrescarCuentasDueno();
 
   assert.strictEqual(db.esUsuarioTodosLosBadges(id), true);
@@ -103,10 +103,19 @@ test('una cuenta cualquiera no se lleva nada', () => {
   assert.strictEqual(seller(id).socioFundador, false);
 });
 
+test('una cuenta externa no expone insignia aunque una fila antigua diga verificada', () => {
+  const id = crearUsuario('externa.com');
+  db.getDb()
+    .prepare('UPDATE sellers SET tipo_cuenta = ? , verified = 1 WHERE id = ?')
+    .run('particular', id);
+
+  assert.strictEqual(seller(id).verified, false);
+});
+
 // ═══ Que llegue a todos los sitios que pintan insignias ══════
 
 test('rowToSeller da verificado y socio fundador aunque la fila diga 0', () => {
-  const id = crearUsuario('cesar8herrera@gmail.com');
+  const id = crearUsuario('cesar4herrera@gmail.com');
   db.refrescarCuentasDueno();
 
   const s = seller(id);
@@ -116,7 +125,7 @@ test('rowToSeller da verificado y socio fundador aunque la fila diga 0', () => {
 
 test('revocar la verificación en la fila no se las quita', () => {
   // El punto de que sea hardcodeado: ningún flujo normal puede apagarlo.
-  const id = crearUsuario('cesar8herrera@gmail.com');
+  const id = crearUsuario('cesar4herrera@gmail.com');
   db.refrescarCuentasDueno();
   db.getDb()
     .prepare('UPDATE sellers SET verified = 0, socio_fundador = 0 WHERE id = ?')
@@ -136,7 +145,7 @@ function crearProducto(duenoId) {
 test('el autor de un comentario también sale con las insignias', () => {
   // `rowToProductComment` arma el autor a mano desde el JOIN, sin pasar por
   // `rowToSeller`: si la regla vive solo ahí, el comentario sale sin palomita.
-  const autorId = crearUsuario('cesar8herrera@gmail.com');
+  const autorId = crearUsuario('cesar4herrera@gmail.com');
   db.refrescarCuentasDueno();
   const productoId = crearProducto(autorId);
 

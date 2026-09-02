@@ -3,7 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mercadito_um/app_theme.dart';
 import 'package:mercadito_um/models.dart';
 import 'package:mercadito_um/screens/seller_profile_screen.dart';
+import 'package:mercadito_um/utils/estado_conexion.dart';
 import 'package:mercadito_um/widgets/badges.dart';
+import 'package:mercadito_um/widgets/seller_profile_header.dart';
 
 Product _producto(String id) => Product(
   id: id,
@@ -174,6 +176,57 @@ void main() {
     });
   });
 
+  group('temaDeVendedor', () {
+    Seller conColor(String? color) => Seller(
+      id: 's_tema',
+      name: 'Tienda',
+      avatarInitials: 'T',
+      major: '',
+      rating: 0,
+      reviews: 0,
+      verified: false,
+      colorAcento: color,
+    );
+
+    // testWidgets y no test: armar el ThemeData pasa por google_fonts,
+    // que en un test pelado deja una carga de red huérfana que revienta el
+    // zone. El binding de widgets es lo que la absorbe.
+    testWidgets('toda la pantalla toma el acento del vendedor', (tester) async {
+      // No solo el banner: es el ThemeData que envuelve AppBar, botón de
+      // contactar y pestañas, así que lo que se comprueba es el acento del
+      // tema entero.
+      final tema = temaDeVendedor(conColor('wine'), Brightness.light);
+
+      expect(tema.extension<AppColorSet>()!.swatch, AccentSwatch.wine);
+      expect(tema.extension<AppColorSet>()!.primary, AccentSwatch.wine.fill);
+    });
+
+    testWidgets('el claro/oscuro sigue siendo el de quien mira', (
+      tester,
+    ) async {
+      // El acento es del vendedor; el brillo NO se hereda del perfil ajeno.
+      // Un visitante en modo oscuro no debe recibir un fondo claro por abrir
+      // la tienda de alguien.
+      final claro = temaDeVendedor(conColor('wine'), Brightness.light);
+      final oscuro = temaDeVendedor(conColor('wine'), Brightness.dark);
+
+      expect(claro.brightness, Brightness.light);
+      expect(oscuro.brightness, Brightness.dark);
+      expect(oscuro.extension<AppColorSet>()!.swatch, AccentSwatch.wine);
+    });
+
+    testWidgets('sin perfil cargado todavía usa el color de marca', (
+      tester,
+    ) async {
+      // Mientras carga no hay vendedor: el esqueleto se pinta con el acento
+      // de la app y no con el del visitante, que sería adelantar un color
+      // que a lo mejor no es el que llega.
+      final tema = temaDeVendedor(null, Brightness.light);
+
+      expect(tema.extension<AppColorSet>()!.swatch, AccentSwatch.defecto);
+    });
+  });
+
   group('Badges de perfil', () {
     testWidgets('RespondeRapidoBadge se pinta con el verde de disponible', (
       tester,
@@ -185,6 +238,44 @@ void main() {
       // mismo sin importar qué swatch tenga puesto quien mira.
       final icono = tester.widget<Icon>(find.byIcon(Icons.bolt_rounded));
       expect(icono.color, AppColors.success);
+    });
+
+    // El globo al tocar una insignia repetía su nombre, que ya está a la
+    // vista: ahora dice cómo se consigue, que es lo que el nombre no explica.
+    testWidgets('el globo dice cómo se consigue la insignia', (tester) async {
+      await tester.pumpWidget(
+        _app(
+          const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              InsigniaLeyenda(),
+              RespondeRapidoBadge(),
+              RachaBadge(semanas: 5),
+            ],
+          ),
+        ),
+      );
+
+      final globos = tester
+          .widgetList<Tooltip>(find.byType(Tooltip))
+          .map((t) => t.message)
+          .toList();
+      expect(globos, contains('100 ventas confirmadas'));
+      expect(globos, contains('Contesta en menos de 1 hora'));
+      expect(globos, contains('Semanas seguidas publicando'));
+      // Y ninguno se limita a repetir la etiqueta de al lado.
+      expect(globos, isNot(contains('Leyenda')));
+      expect(globos, isNot(contains('Responde rápido')));
+    });
+
+    // La excepción: el enigma no se explica en ninguna parte de la app, así
+    // que su globo tampoco puede delatarlo.
+    testWidgets('el enigma solo dice que está oculto', (tester) async {
+      await tester.pumpWidget(_app(const InsigniaEnigma(posicion: 3)));
+
+      final globo = tester.widget<Tooltip>(find.byType(Tooltip));
+      expect(globo.message, 'Oculto');
+      expect(find.text('Enigma #3'), findsOneWidget);
     });
 
     testWidgets('RachaBadge dice cuántas semanas', (tester) async {
@@ -210,6 +301,69 @@ void main() {
       // quedaría por debajo del contraste sobre la superficie oscura.
       final icono = tester.widget<Icon>(find.byIcon(Icons.bolt_rounded));
       expect(icono.color, AppColors.successOnDark);
+    });
+  });
+
+  // La banda de marca ya no termina donde empieza la AppBar: la pantalla la
+  // dibuja por detrás de ella para que el degradado y su brillo arranquen
+  // desde arriba del todo y no se vea la costura entre las dos. Eso solo
+  // funciona si la banda le reserva el hueco a lo que lleva encima.
+  group('espacioSuperior de la banda', () {
+    Seller vendedor() => const Seller(
+      id: 's_banda',
+      name: 'Tienda',
+      avatarInitials: 'T',
+      major: '',
+      rating: 0,
+      reviews: 0,
+      verified: false,
+    );
+
+    Future<Rect> montar(WidgetTester tester, double espacio) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SellerProfileHeader(
+              seller: vendedor(),
+              estadoConexion: EstadoConexion.desconocido,
+              colorBanner: const Color(0xFF7B2D3B),
+              espacioSuperior: espacio,
+            ),
+          ),
+        ),
+      );
+      return tester.getRect(find.text('Tienda'));
+    }
+
+    testWidgets('empuja el contenido hacia abajo sin recortarlo', (
+      tester,
+    ) async {
+      final sinEspacio = await montar(tester, 0);
+      final conEspacio = await montar(tester, 56);
+      // El nombre baja exactamente lo que se reservó: si bajara de menos, el
+      // avatar quedaría por debajo del título de la AppBar.
+      expect(conEspacio.top - sinEspacio.top, 56);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('montado suelto no reserva nada', (tester) async {
+      // El valor por defecto es 0 para que el header se pueda montar fuera de
+      // la pantalla (pruebas, capturas) sin un hueco de color arriba.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SellerProfileHeader(
+              seller: vendedor(),
+              estadoConexion: EstadoConexion.desconocido,
+              colorBanner: const Color(0xFF7B2D3B),
+            ),
+          ),
+        ),
+      );
+      final header = tester.widget<SellerProfileHeader>(
+        find.byType(SellerProfileHeader),
+      );
+      expect(header.espacioSuperior, 0);
     });
   });
 }

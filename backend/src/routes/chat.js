@@ -232,6 +232,23 @@ function register(app) {
     res.json({ conversations: enriched, unreadCount });
   });
 
+  // GET /api/chat/conversations/direct/:sellerId - id de la conversación
+  // directa (sin producto) que ya exista con ese vendedor, si existe.
+  //
+  // La usa el botón "Contactar por chat" del perfil público: sin este
+  // endpoint, ese botón siempre abría el chat con conversationId vacío y
+  // ChatScreen no carga mensajes hasta tener un id real, así que el
+  // historial de una charla previa con la misma persona no aparecía hasta
+  // mandar un mensaje nuevo (que ahí sí reutiliza el hilo, vía
+  // `findDirectConversation` en `resolveConversation`).
+  app.get('/api/chat/conversations/direct/:sellerId', requireAuth, (req, res) => {
+    const userId = req.user.id;
+    const { sellerId } = req.params;
+    if (userId === sellerId) return res.json({ conversationId: null });
+    const conversation = db.findDirectConversation(userId, sellerId);
+    res.json({ conversationId: conversation ? conversation.id : null });
+  });
+
   // GET /api/chat/conversations/:id/messages - obtener mensajes de una conversación
   app.get('/api/chat/conversations/:id/messages', requireAuth, (req, res) => {
     const userId = req.user.id;
