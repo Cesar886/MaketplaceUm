@@ -33,10 +33,17 @@ function mutationIsSameOrigin(request: NextRequest) {
 
 type ReviewRequestPayload = {
   business?: { logoUrl?: string | null };
+  account?: { logoUrl?: string | null; avatarUrl?: string | null };
   documents?: Array<{ url: string }>;
 };
 
 function proxyDocumentUrls(item: ReviewRequestPayload, pathname: string) {
+  for (const key of ['logoUrl', 'avatarUrl'] as const) {
+    const value = item.account?.[key];
+    if (value && /^\/uploads\/[a-zA-Z0-9._-]+$/.test(value)) {
+      item.account![key] = pathname + '?document=' + encodeURIComponent(value);
+    }
+  }
   if (item.business?.logoUrl
       && /^\/uploads\/[a-zA-Z0-9._-]+$/.test(item.business.logoUrl)) {
     item.business.logoUrl = pathname
@@ -102,12 +109,17 @@ export async function GET(request: NextRequest) {
     if (view === 'history') {
       endpoint = '/api/revision/historial';
     } else if (view === 'accounts') {
-      const query = new URLSearchParams();
-      for (const key of ['page', 'limit', 'type', 'verified', 'q']) {
-        const value = request.nextUrl.searchParams.get(key);
-        if (value !== null) query.set(key, value);
+      const accountId = request.nextUrl.searchParams.get('accountId');
+      if (accountId) {
+        endpoint = '/api/revision/cuentas/' + encodeURIComponent(accountId);
+      } else {
+        const query = new URLSearchParams();
+        for (const key of ['page', 'limit', 'type', 'verified', 'q']) {
+          const value = request.nextUrl.searchParams.get(key);
+          if (value !== null) query.set(key, value);
+        }
+        endpoint = '/api/revision/cuentas?' + query.toString();
       }
-      endpoint = '/api/revision/cuentas?' + query.toString();
     } else {
       endpoint = '/api/revision/verificaciones?status=pending';
     }
@@ -122,12 +134,16 @@ export async function GET(request: NextRequest) {
       entries?: Array<{ request?: ReviewRequestPayload | null }>;
     };
 
-    if (response.ok && view !== 'accounts') {
+    const isAccountDetail = view === 'accounts'
+      && request.nextUrl.searchParams.has('accountId');
+    if (response.ok && (view !== 'accounts' || isAccountDetail)) {
       const items = view === 'pending'
         ? payload.requests ?? []
-        : (payload.entries ?? []).flatMap(entry =>
-            entry.request ? [entry.request] : [],
-          );
+        : isAccountDetail
+          ? [payload as ReviewRequestPayload]
+          : (payload.entries ?? []).flatMap(entry =>
+              entry.request ? [entry.request] : [],
+            );
       for (const item of items) {
         proxyDocumentUrls(item, request.nextUrl.pathname);
       }

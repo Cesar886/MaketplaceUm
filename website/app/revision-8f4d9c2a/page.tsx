@@ -13,8 +13,8 @@ export default function RevisionPage() {
     <main className={styles.page}>
       <section className={styles.header}>
         <p className={styles.eyebrow}>Marketplace UM · acceso privado</p>
-        <h1>Solicitudes de verificación</h1>
-        <p>Revisa la documentación y decide cada solicitud pendiente.</p>
+        <h1>Control de verificaciones</h1>
+        <p>Revisa solicitudes y administra la palomita azul de todas las cuentas comprobadas.</p>
       </section>
       <RevisionQueue />
     </main>

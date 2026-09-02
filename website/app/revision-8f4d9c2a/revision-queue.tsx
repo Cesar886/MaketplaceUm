@@ -103,7 +103,20 @@ type AccountsPayload = {
 };
 type AccountTypeFilter = 'all' | 'business' | 'student' | 'employee';
 type AccountStatusFilter = 'all' | 'verified' | 'unverified';
-type AccountChange = { account: ManagedAccount; targetVerified: boolean };
+type AccountChange = {
+  account: ManagedAccount;
+  targetVerified: boolean;
+  requestId: string;
+};
+type AccountDetail = {
+  account: Record<string, unknown>;
+  verification: Record<string, unknown> | null;
+  documents: Document[];
+  badges: Array<Record<string, unknown>>;
+  activity: Record<string, unknown>;
+  verificationHistory: Array<Record<string, unknown>>;
+  adminHistory: Array<Record<string, unknown>>;
+};
 
 type Notice = { kind: 'error' | 'success'; text: string } | null;
 
@@ -144,6 +157,49 @@ function isImage(document: Document) {
 function formatDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : dateFormatter.format(date);
+}
+
+const fieldLabels: Record<string, string> = {
+  id: 'ID', name: 'Nombre', email: 'Correo', phone: 'Telefono', accountType: 'Tipo de cuenta',
+  verificationType: 'Tipo de verificacion', verified: 'Verificada', createdAt: 'Creada',
+  verifiedAt: 'Verificada el', institutionalEmail: 'Correo institucional', enrollment: 'Matricula',
+  carrera: 'Carrera', businessName: 'Nombre del negocio', responsibleName: 'Responsable',
+  businessCategory: 'Categoria', businessDescription: 'Descripcion', businessHours: 'Horario',
+  paymentMethods: 'Metodos de pago', locationLat: 'Latitud', locationLng: 'Longitud',
+  rating: 'Calificacion', reviews: 'Resenas', lastActive: 'Ultima actividad', authProvider: 'Acceso con',
+  status: 'Estado', rejectionReason: 'Motivo de rechazo', rejectedField: 'Campo rechazado',
+  identityConfirmedAt: 'Identidad confirmada', sendAttempts: 'Intentos de envio',
+  confirmationAttempts: 'Intentos de confirmacion', action: 'Accion', reason: 'Motivo', actor: 'Administrador',
+  decidedAt: 'Fecha', products: 'Productos', wantedPosts: 'Solicitudes', purchases: 'Compras',
+  sales: 'Ventas', comments: 'Comentarios', questions: 'Preguntas', conversations: 'Conversaciones',
+  notifications: 'Notificaciones', foundingPartner: 'Socio fundador', key: 'Insignia', awardedAt: 'Otorgada',
+};
+
+function detailValue(key: string, value: unknown) {
+  if (value === null || value === undefined || value === '') return 'Sin dato';
+  if (typeof value === 'boolean' || value === 0 || value === 1) {
+    if (typeof value === 'boolean' || ['verified', 'isBusiness', 'showOnlineStatus', 'foundingPartner', 'previousVerified', 'newVerified'].includes(key)) return value ? 'Si' : 'No';
+  }
+  if (typeof value === 'string' && /(At|created|fecha|active|en)$/i.test(key)) return formatDate(value);
+  if (typeof value === 'object') return JSON.stringify(value, null, 2);
+  return String(value);
+}
+
+function DetailSection({ title, data }: { title: string; data: Record<string, unknown> | null }) {
+  if (!data) return <section className={styles.detailSection}><h3>{title}</h3><p>Sin registros.</p></section>;
+  return (
+    <section className={styles.detailSection}>
+      <h3>{title}</h3>
+      <dl className={styles.detailGrid}>
+        {Object.entries(data).map(([key, value]) => (
+          <div key={key}>
+            <dt>{fieldLabels[key] ?? key.replace(/([A-Z])/g, ' $1')}</dt>
+            <dd className={typeof value === 'object' ? styles.longDetail : undefined}>{detailValue(key, value)}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
 }
 
 function normalizeSearch(value: string) {
@@ -366,8 +422,14 @@ function VerificationDossier({
 export default function RevisionQueue() {
   const [requests, setRequests] = useState<Request[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [view, setView] = useState<'pending' | 'history'>('pending');
+  const [accountsData, setAccountsData] = useState<AccountsPayload>({
+    accounts: [],
+    pagination: { page: 1, limit: 25, total: 0, totalPages: 1 },
+    summary: { total: 0, verified: 0, unverified: 0 },
+  });
+  const [view, setView] = useState<'pending' | 'accounts' | 'history'>('pending');
   const [loading, setLoading] = useState(true);
+  const [accountsLoading, setAccountsLoading] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
   const [rejecting, setRejecting] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -376,6 +438,15 @@ export default function RevisionQueue() {
   const [restoring, setRestoring] = useState<number | null>(null);
   const [expandedHistory, setExpandedHistory] = useState<number | null>(null);
   const [historyQuery, setHistoryQuery] = useState('');
+  const [accountQuery, setAccountQuery] = useState('');
+  const [accountType, setAccountType] = useState<AccountTypeFilter>('all');
+  const [accountStatus, setAccountStatus] = useState<AccountStatusFilter>('all');
+  const [accountPage, setAccountPage] = useState(1);
+  const [accountChange, setAccountChange] = useState<AccountChange | null>(null);
+  const [accountDetail, setAccountDetail] = useState<AccountDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState<string | null>(null);
+  const [accountReason, setAccountReason] = useState('');
+  const [accountConfirmed, setAccountConfirmed] = useState(false);
   const [working, setWorking] = useState<string | null>(null);
   const [preview, setPreview] = useState<Document | null>(null);
 
@@ -397,14 +468,73 @@ export default function RevisionQueue() {
     setHistory(data.entries ?? []);
   }
 
+  async function loadAccounts(page = accountPage, signal?: AbortSignal) {
+    setAccountsLoading(true);
+    const query = new URLSearchParams({
+      view: 'accounts',
+      page: String(page),
+      limit: '25',
+      type: accountType,
+      verified: accountStatus,
+    });
+    if (accountQuery.trim()) query.set('q', accountQuery.trim());
+    try {
+      const response = await fetch(`${apiBase}?${query.toString()}`, {
+        cache: 'no-store',
+        signal,
+      });
+      const data = await payloadOrError<AccountsPayload>(
+        response,
+        'No se pudo cargar el padrón de cuentas.',
+      );
+      setAccountsData(data);
+      if (data.pagination.page !== accountPage) {
+        setAccountPage(data.pagination.page);
+      }
+    } finally {
+      setAccountsLoading(false);
+    }
+  }
+
+  async function openAccountDetail(account: ManagedAccount) {
+    setDetailLoading(account.id);
+    setNotice(null);
+    try {
+      const response = await fetch(`${apiBase}?view=accounts&accountId=${encodeURIComponent(account.id)}`, { cache: 'no-store' });
+      setAccountDetail(await payloadOrError<AccountDetail>(response, 'No se pudo cargar el expediente.'));
+    } catch (error) {
+      setNotice({ kind: 'error', text: error instanceof Error ? error.message : 'No se pudo cargar el expediente.' });
+    } finally {
+      setDetailLoading(null);
+    }
+  }
+
   useEffect(() => {
-    Promise.all([loadPending(), loadHistory()])
+    Promise.all([loadPending(), loadHistory(), loadAccounts(1)])
       .catch(error => setNotice({
         kind: 'error',
         text: error instanceof Error ? error.message : 'Ocurrió un error.',
       }))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (view !== 'accounts' || loading) return undefined;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      loadAccounts(accountPage, controller.signal).catch(error => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setNotice({
+          kind: 'error',
+          text: error instanceof Error ? error.message : 'No se pudo cargar el padrón.',
+        });
+      });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [view, accountQuery, accountType, accountStatus, accountPage]);
 
   async function decide(
     id: string,
@@ -430,10 +560,11 @@ export default function RevisionQueue() {
         `${apiBase}?id=${encodeURIComponent(id)}&action=${action}`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: ['approve', 'restore'].includes(action)
-            ? undefined
-            : JSON.stringify({ reason: trimmedReason }),
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Revision-CSRF': '1',
+          },
+          body: JSON.stringify({ reason: trimmedReason }),
         },
       );
       await payloadOrError<ErrorPayload>(response, 'No se pudo guardar la decisión.');
@@ -448,7 +579,7 @@ export default function RevisionQueue() {
       setRestoring(null);
 
       try {
-        await loadHistory();
+        await Promise.all([loadHistory(), loadAccounts(accountPage)]);
         setNotice({
           kind: 'success',
           text: action === 'approve'
@@ -465,6 +596,80 @@ export default function RevisionQueue() {
           text: 'La decisión se guardó, pero no se pudo actualizar el historial. Recarga la página.',
         });
       }
+    } catch (error) {
+      setNotice({
+        kind: 'error',
+        text: error instanceof Error ? error.message : 'Ocurrió un error.',
+      });
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  function beginAccountChange(account: ManagedAccount, targetVerified: boolean) {
+    setAccountChange({
+      account,
+      targetVerified,
+      requestId: window.crypto.randomUUID(),
+    });
+    setAccountReason('');
+    setAccountConfirmed(false);
+    setNotice(null);
+  }
+
+  async function saveAccountVerification() {
+    if (!accountChange) return;
+    const reason = accountReason.trim();
+    if (reason.length < 10) {
+      setNotice({
+        kind: 'error',
+        text: 'Escribe un motivo de al menos 10 caracteres.',
+      });
+      return;
+    }
+    if (!accountConfirmed) {
+      setNotice({
+        kind: 'error',
+        text: 'Confirma que revisaste la cuenta y el cambio solicitado.',
+      });
+      return;
+    }
+
+    const { account, targetVerified, requestId } = accountChange;
+    const workKey = `account:${account.id}`;
+    setWorking(workKey);
+    setNotice(null);
+    try {
+      const response = await fetch(
+        `${apiBase}?id=${encodeURIComponent(account.id)}&action=set-verification`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Revision-CSRF': '1',
+          },
+          body: JSON.stringify({
+            verified: targetVerified,
+            expectedVerified: account.verified,
+            reason,
+            requestId,
+          }),
+        },
+      );
+      await payloadOrError<ErrorPayload>(
+        response,
+        'No se pudo actualizar la verificación.',
+      );
+      setAccountChange(null);
+      setAccountReason('');
+      setAccountConfirmed(false);
+      await loadAccounts(accountPage);
+      setNotice({
+        kind: 'success',
+        text: targetVerified
+          ? `La palomita azul de ${account.name} quedó activada y auditada.`
+          : `La palomita azul de ${account.name} quedó retirada y auditada.`,
+      });
     } catch (error) {
       setNotice({
         kind: 'error',
@@ -497,6 +702,15 @@ export default function RevisionQueue() {
           type="button"
         >
           Pendientes <span>{requests.length}</span>
+        </button>
+        <button
+          aria-selected={view === 'accounts'}
+          className={view === 'accounts' ? styles.activeTab : undefined}
+          onClick={() => setView('accounts')}
+          role="tab"
+          type="button"
+        >
+          Cuentas <span>{accountsData.summary.total}</span>
         </button>
         <button
           aria-selected={view === 'history'}
@@ -748,6 +962,201 @@ export default function RevisionQueue() {
         </div>
       )}
 
+      {view === 'accounts' && (
+        <div className={styles.accountsPanel} role="tabpanel">
+          <div className={styles.accountSummary}>
+            <div>
+              <span>Total administrables</span>
+              <strong>{accountsData.summary.total}</strong>
+            </div>
+            <div>
+              <span>Con palomita azul</span>
+              <strong>{accountsData.summary.verified}</strong>
+            </div>
+            <div>
+              <span>Sin verificación</span>
+              <strong>{accountsData.summary.unverified}</strong>
+            </div>
+          </div>
+
+          <div className={styles.accountFilters}>
+            <label className={styles.accountSearch}>
+              <span>Buscar cuenta</span>
+              <input
+                maxLength={100}
+                onChange={event => {
+                  setAccountQuery(event.target.value);
+                  setAccountPage(1);
+                }}
+                placeholder="Nombre, correo o ID"
+                type="search"
+                value={accountQuery}
+              />
+            </label>
+            <label>
+              <span>Tipo</span>
+              <select
+                onChange={event => {
+                  setAccountType(event.target.value as AccountTypeFilter);
+                  setAccountPage(1);
+                }}
+                value={accountType}
+              >
+                <option value="all">Todos</option>
+                <option value="business">Negocios</option>
+                <option value="student">Estudiantes</option>
+                <option value="employee">Empleados UM</option>
+              </select>
+            </label>
+            <label>
+              <span>Estado</span>
+              <select
+                onChange={event => {
+                  setAccountStatus(event.target.value as AccountStatusFilter);
+                  setAccountPage(1);
+                }}
+                value={accountStatus}
+              >
+                <option value="all">Todos</option>
+                <option value="verified">Verificados</option>
+                <option value="unverified">Sin verificar</option>
+              </select>
+            </label>
+          </div>
+
+          <div className={styles.accountTableWrap}>
+            <table className={styles.accountTable}>
+              <caption>
+                Cuentas con verificación actual o con un trámite previo comprobable
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Cuenta</th>
+                  <th scope="col">Tipo</th>
+                  <th scope="col">Verificación</th>
+                  <th scope="col">Último cambio</th>
+                  <th scope="col"><span className={styles.srOnly}>Acción</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {!accountsLoading && accountsData.accounts.length === 0 && (
+                  <tr>
+                    <td className={styles.emptyAccounts} colSpan={5}>
+                      No hay cuentas que coincidan con estos filtros.
+                    </td>
+                  </tr>
+                )}
+                {accountsData.accounts.map(account => {
+                  const canChange = account.verified
+                    ? account.canUnverify
+                    : account.canVerify;
+                  return (
+                    <tr key={account.id}>
+                      <td>
+                        <strong>{account.name}</strong>
+                        <span>{account.email ?? 'Sin correo visible'}</span>
+                        <code>{account.id}</code>
+                      </td>
+                      <td>
+                        <span className={`${styles.rolePill} ${styles[account.role]}`}>
+                          {accountRoleLabel[account.role]}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={
+                          account.verified ? styles.verifiedState : styles.unverifiedState
+                        }>
+                          <span aria-hidden="true">
+                            {account.verified ? '✓' : '—'}
+                          </span>
+                          {account.verified ? 'Verificada' : 'Sin verificar'}
+                        </span>
+                        {account.verifiedAt && (
+                          <small>{formatDate(account.verifiedAt)}</small>
+                        )}
+                      </td>
+                      <td>
+                        {account.lastChange ? (
+                          <>
+                            <span>
+                              {account.lastChange.action === 'verified'
+                                ? 'Palomita activada'
+                                : 'Palomita retirada'}
+                            </span>
+                            <small>
+                              {formatDate(account.lastChange.decidedAt)}
+                              {' · '}
+                              {account.lastChange.actor}
+                            </small>
+                          </>
+                        ) : (
+                          <span className={styles.mutedCell}>Sin ajuste manual</span>
+                        )}
+                      </td>
+                      <td className={styles.accountAction}>
+                        <button
+                          className={styles.viewAccount}
+                          disabled={detailLoading !== null}
+                          onClick={() => openAccountDetail(account)}
+                          type="button"
+                        >
+                          {detailLoading === account.id ? 'Cargando…' : 'Ver datos'}
+                        </button>
+                        <button
+                          className={account.verified
+                            ? styles.removeVerification
+                            : styles.addVerification}
+                          disabled={working !== null || !canChange}
+                          onClick={() => beginAccountChange(account, !account.verified)}
+                          title={!canChange
+                            ? account.verificationBlockedReason ?? 'Cambio no disponible'
+                            : undefined}
+                          type="button"
+                        >
+                          {account.verified ? 'Retirar' : 'Poner palomita'}
+                        </button>
+                        {!canChange && account.verificationBlockedReason && (
+                          <small>{account.verificationBlockedReason}</small>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {accountsLoading && (
+              <p className={styles.tableLoading}>Actualizando padrón…</p>
+            )}
+          </div>
+
+          <div className={styles.accountPagination}>
+            <span>
+              {accountsData.pagination.total} resultado(s) · Página{' '}
+              {accountsData.pagination.page} de {accountsData.pagination.totalPages}
+            </span>
+            <div>
+              <button
+                disabled={accountsLoading || accountPage <= 1}
+                onClick={() => setAccountPage(current => Math.max(1, current - 1))}
+                type="button"
+              >
+                Anterior
+              </button>
+              <button
+                disabled={
+                  accountsLoading
+                  || accountPage >= accountsData.pagination.totalPages
+                }
+                onClick={() => setAccountPage(current => current + 1)}
+                type="button"
+              >
+                Siguiente
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {view === 'history' && (
         <div className={styles.list} role="tabpanel">
           {history.length > 0 && (
@@ -921,6 +1330,128 @@ export default function RevisionQueue() {
               </article>
             );
           })}
+        </div>
+      )}
+
+      {accountDetail && (
+        <div aria-label="Datos completos de la cuenta" aria-modal="true" className={styles.modal} onClick={() => setAccountDetail(null)} role="dialog">
+          <article className={styles.accountDetail} onClick={event => event.stopPropagation()}>
+            <button aria-label="Cerrar" className={styles.close} onClick={() => setAccountDetail(null)} type="button">×</button>
+            <p className={styles.eyebrow}>Expediente de cuenta</p>
+            <h2>{String(accountDetail.account.name ?? accountDetail.account.id)}</h2>
+            <p className={styles.detailSafety}>Se muestran todos los datos administrativos consultables. Credenciales, codigos y tokens secretos no se exponen.</p>
+            <DetailSection data={accountDetail.account} title="Perfil y negocio" />
+            <DetailSection data={accountDetail.verification} title="Verificacion" />
+            <DetailSection data={accountDetail.activity} title="Actividad registrada" />
+            <DetailSection data={accountDetail.badges.length ? { badges: accountDetail.badges } : null} title="Insignias permanentes" />
+            <DetailSection data={accountDetail.adminHistory.length ? { changes: accountDetail.adminHistory } : null} title="Cambios administrativos" />
+            <DetailSection data={accountDetail.verificationHistory.length ? { decisions: accountDetail.verificationHistory } : null} title="Historial de verificacion" />
+            <section className={styles.detailSection}>
+              <h3>Documentos y evidencias</h3>
+              {accountDetail.documents.length ? (
+                <div className={styles.documents}>{accountDetail.documents.map(document => (
+                  <button className={styles.document} key={document.id} onClick={() => setPreview(document)} type="button">
+                    {isImage(document) ? <img alt={documentLabel[document.type] ?? 'Documento'} src={document.url} /> : <span className={styles.pdf}>PDF</span>}
+                    <span>{documentLabel[document.type] ?? document.type}</span>
+                  </button>
+                ))}</div>
+              ) : <p>Sin documentos registrados.</p>}
+            </section>
+          </article>
+        </div>
+      )}
+
+      {accountChange && (
+        <div
+          aria-label="Confirmar cambio de verificación"
+          aria-modal="true"
+          className={styles.modal}
+          onClick={() => {
+            if (!working) setAccountChange(null);
+          }}
+          role="dialog"
+        >
+          <form
+            className={styles.accountConfirmation}
+            onClick={event => event.stopPropagation()}
+            onSubmit={event => {
+              event.preventDefault();
+              saveAccountVerification();
+            }}
+          >
+            <p className={styles.eyebrow}>Acción administrativa protegida</p>
+            <h2>
+              {accountChange.targetVerified
+                ? 'Poner palomita azul'
+                : 'Retirar palomita azul'}
+            </h2>
+            <div className={styles.confirmAccount}>
+              <strong>{accountChange.account.name}</strong>
+              <span>
+                {accountRoleLabel[accountChange.account.role]}
+                {' · '}
+                {accountChange.account.email ?? accountChange.account.id}
+              </span>
+            </div>
+            <p className={styles.confirmWarning}>
+              {accountChange.targetVerified
+                ? 'La cuenta aparecerá públicamente como verificada de inmediato.'
+                : 'La cuenta perderá la insignia en todos sus perfiles y publicaciones.'}
+            </p>
+            <label className={styles.confirmReason}>
+              <span>Motivo obligatorio</span>
+              <textarea
+                autoFocus
+                maxLength={500}
+                minLength={10}
+                onChange={event => setAccountReason(event.target.value)}
+                placeholder={
+                  accountChange.targetVerified
+                    ? 'Explica por qué corresponde reactivar la verificación.'
+                    : 'Explica por qué debe retirarse la verificación.'
+                }
+                required
+                value={accountReason}
+              />
+              <small>{accountReason.trim().length}/500 · mínimo 10</small>
+            </label>
+            <label className={styles.confirmCheck}>
+              <input
+                checked={accountConfirmed}
+                onChange={event => setAccountConfirmed(event.target.checked)}
+                type="checkbox"
+              />
+              <span>
+                Confirmo que revisé la cuenta correcta y entiendo el cambio.
+              </span>
+            </label>
+            <div className={styles.actions}>
+              <button
+                disabled={working !== null}
+                onClick={() => setAccountChange(null)}
+                type="button"
+              >
+                Cancelar
+              </button>
+              <button
+                className={accountChange.targetVerified
+                  ? styles.addVerification
+                  : styles.removeVerification}
+                disabled={
+                  working !== null
+                  || accountReason.trim().length < 10
+                  || !accountConfirmed
+                }
+                type="submit"
+              >
+                {working
+                  ? 'Guardando…'
+                  : accountChange.targetVerified
+                    ? 'Confirmar palomita'
+                    : 'Confirmar retiro'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 

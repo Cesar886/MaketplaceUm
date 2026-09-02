@@ -1674,3 +1674,156 @@ test('reconciliarVerificacionesPendientesPorMercadoPago desatora, con el flag ap
     process.env.MERCADO_PAGO_HABILITADO = 'true';
   }
 });
+
+test('el padrón administra negocios, estudiantes y empleados con controles de seguridad', async () => {
+  const database = db.getDb();
+  const legacyBusiness = crearUsuario('negocio', { verificado: true });
+  const employee = crearUsuario('estudiante', { verificado: true });
+  const pendingStudent = crearUsuario('estudiante');
+  const external = crearUsuario('particular', { verificado: true });
+  const now = new Date().toISOString();
+
+  database.prepare(
+    `INSERT INTO verificaciones (
+       usuario_id, tipo_cuenta, estado, fecha_verificacion, creado_en,
+       correo_institucional, identidad_confirmada_en, tipo_verificacion
+     ) VALUES (?, 'estudiante', 'verificado', ?, ?, ?, ?, 'empleado')`,
+  ).run(
+    employee.id,
+    now,
+    now,
+    'personal@um.edu.mx',
+    now,
+  );
+  database.prepare(
+    `UPDATE sellers SET tipo_verificacion = 'empleado' WHERE id = ?`,
+  ).run(employee.id);
+  database.prepare(
+    `INSERT INTO verificaciones (
+       usuario_id, tipo_cuenta, estado, creado_en, tipo_verificacion
+     ) VALUES (?, 'estudiante', 'pendiente', ?, 'estudiante')`,
+  ).run(pendingStudent.id, now);
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'x-revision-api-key': 'revision-prueba',
+    'x-revision-actor': 'admin-prueba',
+  };
+  const listResponse = await fetch(
+    baseUrl + '/api/revision/cuentas?type=all&verified=all&page=1&limit=100',
+    { headers },
+  );
+  const listText = await listResponse.text();
+  assert.strictEqual(listResponse.status, 200, listText);
+  const list = JSON.parse(listText);
+  assert.ok(list.accounts.some(account => account.id === legacyBusiness.id));
+  assert.strictEqual(
+    list.accounts.find(account => account.id === employee.id).role,
+    'empleado',
+  );
+  assert.ok(list.accounts.some(account => account.id === pendingStudent.id));
+  assert.ok(!list.accounts.some(account => account.id === external.id));
+
+  const detailResponse = await fetch(
+    baseUrl + '/api/revision/cuentas/' + encodeURIComponent(employee.id),
+    { headers },
+  );
+  assert.strictEqual(detailResponse.status, 200);
+  const detail = await detailResponse.json();
+  assert.strictEqual(detail.account.id, employee.id);
+  assert.strictEqual(detail.verification.institutionalEmail, 'personal@um.edu.mx');
+  assert.ok(Object.hasOwn(detail, 'activity'));
+  assert.ok(Array.isArray(detail.adminHistory));
+  assert.ok(!Object.hasOwn(detail.account, 'password_hash'));
+  assert.ok(!JSON.stringify(detail).includes('codigo_otp'));
+
+  const employeeResponse = await fetch(
+    baseUrl
+      + '/api/revision/cuentas?type=employee&verified=verified&q='
+      + encodeURIComponent(employee.id),
+    { headers },
+  );
+  assert.strictEqual(employeeResponse.status, 200);
+  const employees = await employeeResponse.json();
+  assert.deepStrictEqual(employees.accounts.map(account => account.id), [employee.id]);
+
+  const withoutKey = await fetch(baseUrl + '/api/revision/cuentas');
+  assert.strictEqual(withoutKey.status, 401);
+
+  const change = (id, body) => fetch(
+    `${baseUrl}/api/revision/cuentas/${id}/verificacion`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    },
+  );
+  const removeRequestId = require('crypto').randomUUID();
+  const removeBody = {
+    verified: false,
+    expectedVerified: true,
+    reason: 'La documentación requiere una revisión administrativa nueva.',
+    requestId: removeRequestId,
+  };
+  const removed = await change(legacyBusiness.id, removeBody);
+  assert.strictEqual(removed.status, 200, await removed.text());
+  assert.strictEqual(estaVerificado(legacyBusiness.id), false);
+  const legacyVerification = filaVerificacion(legacyBusiness.id);
+  assert.strictEqual(legacyVerification.estado, 'rechazado');
+  assert.ok(legacyVerification.identidad_confirmada_en);
+
+  const audit = database.prepare(
+    'SELECT * FROM verification_admin_log WHERE request_id = ?',
+  ).get(removeRequestId);
+  assert.strictEqual(audit.usuario_id, legacyBusiness.id);
+  assert.strictEqual(audit.actor, 'admin-prueba');
+  assert.strictEqual(audit.previous_verified, 1);
+  assert.strictEqual(audit.new_verified, 0);
+  assert.strictEqual(audit.reason, removeBody.reason);
+
+  const retried = await change(legacyBusiness.id, removeBody);
+  const retriedText = await retried.text();
+  assert.strictEqual(retried.status, 200, retriedText);
+  assert.strictEqual(JSON.parse(retriedText).replayed, true);
+  assert.strictEqual(
+    database.prepare(
+      'SELECT COUNT(*) AS total FROM verification_admin_log WHERE request_id = ?',
+    ).get(removeRequestId).total,
+    1,
+  );
+
+  const stale = await change(legacyBusiness.id, {
+    verified: true,
+    expectedVerified: true,
+    reason: 'Intento con una versión obsoleta del estado de la cuenta.',
+    requestId: require('crypto').randomUUID(),
+  });
+  assert.strictEqual(stale.status, 409);
+
+  const restored = await change(legacyBusiness.id, {
+    verified: true,
+    expectedVerified: false,
+    reason: 'La documentación previa volvió a revisarse y continúa vigente.',
+    requestId: require('crypto').randomUUID(),
+  });
+  assert.strictEqual(restored.status, 200, await restored.text());
+  assert.strictEqual(estaVerificado(legacyBusiness.id), true);
+
+  const bypassPending = await change(pendingStudent.id, {
+    verified: true,
+    expectedVerified: false,
+    reason: 'No se debe omitir el proceso institucional todavía pendiente.',
+    requestId: require('crypto').randomUUID(),
+  });
+  assert.strictEqual(bypassPending.status, 409);
+  assert.strictEqual(estaVerificado(pendingStudent.id), false);
+
+  const externalChange = await change(external.id, {
+    verified: false,
+    expectedVerified: true,
+    reason: 'Las cuentas externas están fuera del programa de verificación.',
+    requestId: require('crypto').randomUUID(),
+  });
+  assert.strictEqual(externalChange.status, 403);
+  assert.strictEqual(estaVerificado(external.id), true);
+});

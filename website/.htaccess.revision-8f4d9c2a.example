@@ -2,3 +2,8 @@ AuthType Basic
 AuthName "Revision privada"
 AuthUserFile /RUTA/ABSOLUTA/A/website/.htpasswd.revision-8f4d9c2a
 Require user revision
+
+# Apache debe sobrescribir (no añadir) estos encabezados después de autenticar.
+# El secreto coincide con REVISION_PROXY_SECRET del .env de Next.js.
+RequestHeader set X-Revision-Proxy-Secret "CHANGE_ME_WITH_32_RANDOM_CHARACTERS"
+RequestHeader set X-Revision-Authenticated-User "expr=%{REMOTE_USER}"

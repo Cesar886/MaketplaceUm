@@ -142,8 +142,8 @@ function router() {
       'SELECT 1 FROM verification_documents WHERE file_url = ? LIMIT 1',
     ).get(fileUrl);
     const esLogo = database.prepare(
-      'SELECT 1 FROM sellers WHERE logoUrl = ? LIMIT 1',
-    ).get(fileUrl);
+      'SELECT 1 FROM sellers WHERE logoUrl = ? OR avatarUrl = ? LIMIT 1',
+    ).get(fileUrl, fileUrl);
     if (!esDocumento && !esLogo) {
       return res.status(404).json({ error: 'Documento no encontrado.' });
     }
@@ -185,13 +185,12 @@ function router() {
 
     const paginaPedida = Number.parseInt(String(req.query.page || '1'), 10);
     const limitePedido = Number.parseInt(String(req.query.limit || '25'), 10);
-    const page = Number.isSafeInteger(paginaPedida) && paginaPedida > 0
+    const requestedPage = Number.isSafeInteger(paginaPedida) && paginaPedida > 0
       ? paginaPedida
       : 1;
     const limit = Number.isSafeInteger(limitePedido)
       ? Math.min(100, Math.max(10, limitePedido))
       : 25;
-    const offset = (page - 1) * limit;
     const roleSql = `CASE
       WHEN s.tipo_cuenta = 'negocio' THEN 'negocio'
       WHEN COALESCE(v.tipo_verificacion, s.tipo_verificacion) = 'empleado'
@@ -234,6 +233,9 @@ function router() {
        LEFT JOIN verificaciones v ON v.usuario_id = s.id
        WHERE ${whereSql}`,
     ).get(...params).total;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const page = Math.min(requestedPage, totalPages);
+    const offset = (page - 1) * limit;
     const resumen = database.prepare(
       `SELECT COUNT(*) AS total,
          COALESCE(SUM(CASE WHEN COALESCE(s.verified, 0) = 1 THEN 1 ELSE 0 END), 0)
@@ -313,7 +315,7 @@ function router() {
         page,
         limit,
         total,
-        totalPages: Math.max(1, Math.ceil(total / limit)),
+        totalPages,
       },
       summary: {
         total: resumen.total,
@@ -321,6 +323,76 @@ function router() {
         unverified: resumen.total - resumen.verified,
       },
     });
+  });
+
+  // Expediente amplio bajo demanda. Nunca expone hashes, codigos OTP,
+  // identificadores de Google ni tokens de pago/push.
+  api.get('/cuentas/:id', (req, res) => {
+    const accountId = req.params.id;
+    if (!idCuentaValido(accountId)) return res.status(400).json({ error: 'Cuenta invalida.' });
+    const database = db.getDb();
+    const account = database.prepare(
+      `SELECT id, name, email, phone, avatarInitials, major, isBusiness,
+       logoUrl, avatarUrl, rating, reviews, verified, businessDescription,
+       businessCategory, businessHours, location_lat AS locationLat,
+       location_lng AS locationLng, paymentMethods, tipo_cuenta AS accountType,
+       carrera, tipo_verificacion AS verificationType, colorAcento AS accentColor,
+       producto_fijado_id AS pinnedProductId,
+       median_response_minutes AS medianResponseMinutes,
+       facebook_url AS facebook, instagram_url AS instagram,
+       whatsapp_number AS whatsapp, tiktok_url AS tiktok, twitter_url AS twitter,
+       last_active AS lastActive, show_online_status AS showOnlineStatus,
+       auth_provider AS authProvider, socio_fundador AS foundingPartner,
+       created_at AS createdAt, insignias_ocultas AS hiddenBadges
+       FROM sellers WHERE id = ?`,
+    ).get(accountId);
+    if (!account) return res.status(404).json({ error: 'Cuenta no encontrada.' });
+    const verification = database.prepare(
+      `SELECT id, tipo_cuenta AS accountType, estado AS status,
+       fecha_verificacion AS verifiedAt, creado_en AS createdAt,
+       correo_institucional AS institutionalEmail, matricula AS enrollment,
+       nombre_negocio AS businessName, responsable_negocio AS responsibleName,
+       ubicacion_lat AS locationLat, ubicacion_lng AS locationLng,
+       link_red_social AS submittedSocialLink, telefono AS phone,
+       motivo_rechazo AS rejectionReason, campo_rechazado AS rejectedField,
+       intentos_envio AS sendAttempts, ventana_envio_inicio AS sendingWindowStartedAt,
+       intentos_confirmacion AS confirmationAttempts, carrera,
+       tipo_verificacion AS verificationType,
+       identidad_confirmada_en AS identityConfirmedAt
+       FROM verificaciones WHERE usuario_id = ?`,
+    ).get(accountId) || null;
+    const documents = database.prepare(
+      `SELECT id, doc_type AS type, file_url AS url, original_name AS originalName,
+       mime_type AS mimeType, uploaded_at AS uploadedAt
+       FROM verification_documents WHERE usuario_id = ? ORDER BY uploaded_at DESC, id DESC`,
+    ).all(accountId);
+    const verificationHistory = database.prepare(
+      `SELECT id, accion AS action, motivo AS reason, nombre_negocio AS businessName,
+       categoria_negocio AS businessCategory, responsable_negocio AS responsibleName,
+       decidido_en AS decidedAt FROM verification_review_log
+       WHERE usuario_id = ? ORDER BY decidido_en DESC, id DESC`,
+    ).all(accountId);
+    const adminHistory = database.prepare(
+      `SELECT id, action, previous_verified AS previousVerified,
+       new_verified AS newVerified, reason, actor, decided_at AS decidedAt
+       FROM verification_admin_log WHERE usuario_id = ? ORDER BY decided_at DESC, id DESC`,
+    ).all(accountId);
+    const badges = database.prepare(
+      `SELECT clave AS key, otorgada_en AS awardedAt FROM insignias_otorgadas
+       WHERE seller_id = ? ORDER BY otorgada_en DESC`,
+    ).all(accountId);
+    const count = (sql, ...params) => database.prepare(sql).get(...params).total;
+    const activity = {
+      products: count('SELECT COUNT(*) AS total FROM products WHERE seller = ?', accountId),
+      wantedPosts: count('SELECT COUNT(*) AS total FROM wanted_posts WHERE user_id = ?', accountId),
+      purchases: count('SELECT COUNT(*) AS total FROM orders WHERE buyer_id = ?', accountId),
+      sales: count('SELECT COUNT(*) AS total FROM orders WHERE vendor_id = ?', accountId),
+      comments: count('SELECT COUNT(*) AS total FROM product_comments WHERE user_id = ?', accountId),
+      questions: count('SELECT COUNT(*) AS total FROM product_questions WHERE asked_by = ?', accountId),
+      conversations: count('SELECT COUNT(*) AS total FROM conversations WHERE buyer_id = ? OR seller_id = ?', accountId, accountId),
+      notifications: count('SELECT COUNT(*) AS total FROM notifications WHERE user_id = ?', accountId),
+    };
+    return res.json({ account, verification, documents, badges, activity, verificationHistory, adminHistory });
   });
 
   api.post('/cuentas/:id/verificacion', (req, res) => {

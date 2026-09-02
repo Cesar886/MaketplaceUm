@@ -121,3 +121,80 @@
   .historySearch > div { align-items: stretch; flex-direction: column; }
   .historySearch span { align-self: flex-end; }
 }
+
+.accountsPanel { display: grid; gap: 16px; min-width: 0; }
+.accountSummary { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.accountSummary > div { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; display: grid; gap: 4px; padding: 16px 18px; }
+.accountSummary span { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
+.accountSummary strong { color: var(--primary-dark); font-size: 26px; }
+.accountFilters { align-items: end; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; display: grid; gap: 12px; grid-template-columns: minmax(240px, 1fr) 180px 180px; padding: 14px 16px; }
+.accountFilters label { display: grid; gap: 6px; }
+.accountFilters label > span { color: var(--primary-dark); font-size: 12px; font-weight: 800; text-transform: uppercase; }
+.accountFilters input, .accountFilters select { background: var(--surface-muted); border: 1px solid transparent; border-radius: 10px; color: var(--ink); font: inherit; min-height: 44px; padding: 10px 12px; width: 100%; }
+.accountFilters input:focus, .accountFilters select:focus { background: var(--surface); border-color: var(--primary-dark); outline: 3px solid rgb(27 42 74 / 10%); }
+.accountTableWrap { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; min-width: 0; overflow-x: auto; position: relative; }
+.accountTable { border-collapse: collapse; min-width: 920px; width: 100%; }
+.accountTable caption { height: 1px; margin: -1px; overflow: hidden; position: absolute; width: 1px; clip: rect(0 0 0 0); }
+.accountTable th { background: var(--surface-muted); color: var(--muted); font-size: 11px; letter-spacing: .06em; padding: 12px 14px; text-align: left; text-transform: uppercase; }
+.accountTable th:last-child { text-align: right; }
+.accountTable td { border-top: 1px solid var(--border); padding: 14px; vertical-align: top; }
+.accountTable tbody tr:hover { background: rgb(27 42 74 / 2.5%); }
+.accountTable td:first-child { display: grid; gap: 3px; max-width: 290px; }
+.accountTable td:first-child > span, .accountTable td small { color: var(--muted); font-size: 12px; }
+.accountTable td code { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.rolePill, .verifiedState, .unverifiedState { align-items: center; border-radius: 999px; display: inline-flex; font-size: 12px; font-weight: 800; gap: 5px; padding: 6px 9px; white-space: nowrap; }
+.rolePill.negocio { background: #edf0f8; color: #304873; }
+.rolePill.estudiante { background: #eef7ef; color: #27623a; }
+.rolePill.empleado { background: #f5eefb; color: #70428f; }
+.verifiedState { background: #e7f3ff; color: #1265ad; }
+.verifiedState > span { align-items: center; background: #2487d8; border-radius: 50%; color: white; display: inline-flex; height: 18px; justify-content: center; width: 18px; }
+.unverifiedState { background: #f1f1ef; color: var(--muted); }
+.unverifiedState + small, .verifiedState + small { display: block; margin-top: 6px; }
+.mutedCell { color: var(--muted); font-size: 13px; }
+.accountAction { display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; text-align: right; width: 210px; }
+.accountAction button, .accountPagination button { border: 0; border-radius: 9px; cursor: pointer; font: inherit; font-size: 13px; font-weight: 800; padding: 9px 12px; }
+.accountAction button:disabled, .accountPagination button:disabled { cursor: not-allowed; opacity: .5; }
+.accountAction small { display: block; line-height: 1.3; margin: 7px 0 0 auto; max-width: 175px; }
+.addVerification { background: #1769aa; color: white; }
+.removeVerification { background: #7b2930; color: white; }
+.viewAccount { background: #e9eef6; color: var(--primary-dark); }
+.tableLoading { background: rgb(255 255 255 / 90%); color: var(--primary-dark); font-size: 13px; font-weight: 800; inset: 0; margin: 0; padding: 20px; position: absolute; text-align: center; }
+.emptyAccounts { color: var(--muted); padding: 28px !important; text-align: center; }
+.accountPagination { align-items: center; color: var(--muted); display: flex; font-size: 13px; gap: 16px; justify-content: space-between; }
+.accountPagination > div { display: flex; gap: 8px; }
+.accountPagination button { background: var(--surface); border: 1px solid var(--border); color: var(--ink); }
+.accountConfirmation { background: var(--surface); border-radius: 16px; box-shadow: 0 24px 80px rgb(0 0 0 / 30%); max-width: 540px; padding: 24px; width: 100%; }
+.accountConfirmation h2 { color: var(--primary-dark); font-size: 26px; margin: 0 0 16px; }
+.confirmAccount { background: var(--surface-muted); border: 1px solid var(--border); border-radius: 12px; display: grid; gap: 3px; padding: 13px 14px; }
+.confirmAccount span { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.confirmWarning { color: var(--danger); font-size: 13px; font-weight: 700; line-height: 1.45; }
+.confirmReason { display: grid; gap: 7px; }
+.confirmReason > span { font-size: 13px; font-weight: 800; }
+.confirmReason textarea { border: 1px solid var(--border); border-radius: 10px; font: inherit; min-height: 100px; padding: 10px 11px; resize: vertical; }
+.confirmReason textarea:focus { border-color: var(--primary-dark); outline: 3px solid rgb(27 42 74 / 10%); }
+.confirmReason small { color: var(--muted); justify-self: end; }
+.confirmCheck { align-items: flex-start; background: #f6f8fb; border: 1px solid #dce3ed; border-radius: 10px; cursor: pointer; display: flex; font-size: 13px; gap: 9px; line-height: 1.4; margin-top: 14px; padding: 11px; }
+.confirmCheck input { height: 17px; margin: 1px 0 0; width: 17px; }
+.srOnly { height: 1px; margin: -1px; overflow: hidden; position: absolute; width: 1px; clip: rect(0 0 0 0); }
+.accountDetail { background: var(--surface); border-radius: 16px; box-shadow: 0 24px 80px rgb(0 0 0 / 35%); max-height: 92vh; max-width: 980px; overflow-y: auto; padding: 26px; position: relative; width: 100%; }
+.accountDetail > h2 { color: var(--primary-dark); margin: 2px 42px 8px 0; }
+.detailSafety { background: #f4f7fb; border: 1px solid #dce4ef; border-radius: 10px; color: var(--muted); font-size: 13px; padding: 10px 12px; }
+.detailSection { border-top: 1px solid var(--border); margin-top: 20px; padding-top: 18px; }
+.detailSection h3 { color: var(--primary-dark); font-size: 17px; margin: 0 0 12px; }
+.detailSection > p { color: var(--muted); }
+.detailGrid { display: grid; gap: 1px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; overflow: hidden; }
+.detailGrid > div { background: var(--surface-muted); min-width: 0; padding: 10px 12px; }
+.detailGrid dt { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.detailGrid dd { font-size: 13px; margin: 4px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.detailGrid .longDetail { font-family: ui-monospace, monospace; font-size: 11px; max-height: 220px; overflow: auto; }
+
+@media (max-width: 760px) {
+  .accountSummary { grid-template-columns: 1fr; }
+  .accountSummary > div { align-items: center; display: flex; justify-content: space-between; }
+  .accountFilters { grid-template-columns: 1fr; }
+  .accountPagination { align-items: stretch; flex-direction: column; }
+  .accountPagination > div, .accountPagination button { flex: 1; }
+  .accountConfirmation { padding: 20px; }
+  .accountDetail { padding: 20px; }
+  .detailGrid { grid-template-columns: 1fr; }
+}
