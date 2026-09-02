@@ -34,6 +34,12 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const { generateToken, generateAnonToken, requireAuth, verificarToken, esCuentaDeGoogle } = require('./auth');
 const rateLimit = require('express-rate-limit');
+const {
+  corsOrigin,
+  securityHeaders,
+  createAuthLimiters,
+  configureProxy,
+} = require('./security');
 const { crearRegistroPresencia } = require('./presence');
 const { sellers, saveData, registerSeller, updateSellerField } = require('./data');
 const { validateName, validateEmail, validatePassword, validatePhone, validateBusinessHours, validatePaymentMethods } = require('./validation/sellerProfile');
@@ -81,19 +87,23 @@ const routes = [
 }
 
 const app = express();
+configureProxy(app);
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: corsOrigin,
     methods: ['GET', 'POST'],
+    credentials: false,
   },
 });
 
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors());
-app.use(express.json());
+app.disable('x-powered-by');
+app.use(securityHeaders);
+app.use(cors({ origin: corsOrigin, methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], maxAge: 86400 }));
+app.use(express.json({ limit: '1mb', strict: true }));
 // Los archivos de /uploads son inmutables por construcción: el nombre lo
 // genera multer como `product_${Date.now()}_${random}` en cada subida, así
 // que cambiar la foto de un producto produce un archivo NUEVO con otra URL y
@@ -179,8 +189,12 @@ io.on('connection', (socket) => {
   // La pertenencia se consulta a la BD en cada intento y no se cachea: una
   // conversación cambia de participantes cuando se crea, y un socket puede
   // vivir horas.
+  const validRealtimeId = value => typeof value === 'string'
+    && value.length > 0 && value.length <= 180
+    && !/[\u0000-\u001f\u007f]/.test(value);
+
   socket.on('join:conversation', (conversationId) => {
-    if (typeof conversationId !== 'string' || !conversationId) return;
+    if (!validRealtimeId(conversationId)) return;
     if (!db.esParticipanteDeConversacion(conversationId, socket.data.userId)) {
       console.warn(
         `[socket] ${socket.data.userId} intentó unirse a conv:${conversationId} sin participar en ella`,
@@ -193,6 +207,7 @@ io.on('connection', (socket) => {
 
   // Salir de una sala de conversación
   socket.on('leave:conversation', (conversationId) => {
+    if (!validRealtimeId(conversationId)) return;
     socket.leave(`conv:${conversationId}`);
     console.log(`  → ${socket.id} salió de conv:${conversationId}`);
   });
@@ -203,11 +218,17 @@ io.on('connection', (socket) => {
   //
   // No hace falta comprobar pertenencia aquí porque `socket.to(sala)` solo
   // alcanza a una sala en la que este socket ya está, y entrar exige serlo.
-  socket.on('typing:start', ({ conversationId }) => {
+  socket.on('typing:start', (payload = {}) => {
+    const { conversationId } = payload;
+    if (!validRealtimeId(conversationId)
+        || !db.esParticipanteDeConversacion(conversationId, socket.data.userId)) return;
     socket.to(`conv:${conversationId}`).emit('typing:start', { userId: socket.data.userId });
   });
 
-  socket.on('typing:stop', ({ conversationId }) => {
+  socket.on('typing:stop', (payload = {}) => {
+    const { conversationId } = payload;
+    if (!validRealtimeId(conversationId)
+        || !db.esParticipanteDeConversacion(conversationId, socket.data.userId)) return;
     socket.to(`conv:${conversationId}`).emit('typing:stop', { userId: socket.data.userId });
   });
 
@@ -216,11 +237,13 @@ io.on('connection', (socket) => {
   // patrón que las salas de conversación, con prefijo distinto para que un
   // id de producto y uno de conversación nunca colisionen en la misma sala.
   socket.on('join:product', (productId) => {
+    if (!validRealtimeId(productId)) return;
     socket.join(`product:${productId}`);
     console.log(`  → ${socket.id} se unió a product:${productId}`);
   });
 
   socket.on('leave:product', (productId) => {
+    if (!validRealtimeId(productId)) return;
     socket.leave(`product:${productId}`);
     console.log(`  → ${socket.id} salió de product:${productId}`);
   });
@@ -240,14 +263,14 @@ io.on('connection', (socket) => {
   // los dos oculta su estado, la suscripción simplemente no se concede y el
   // cliente nunca recibe eventos de esa persona.
   socket.on('presence:subscribe', (userIds) => {
-    const objetivos = Array.isArray(userIds) ? userIds : [userIds];
+    const objetivos = (Array.isArray(userIds) ? userIds : [userIds]).slice(0, 100);
     const visorId = socket.data.userId;
     if (!visorId || !db.getPresencia(visorId).comparteEstado) return;
 
     const suscritos = [];
     const enLinea = [];
     for (const objetivoId of objetivos) {
-      if (typeof objetivoId !== 'string' || !objetivoId) continue;
+      if (!validRealtimeId(objetivoId)) continue;
       if (!db.getPresencia(objetivoId).comparteEstado) continue;
       socket.join(`presence:${objetivoId}`);
       suscritos.push(objetivoId);
@@ -264,9 +287,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('presence:unsubscribe', (userIds) => {
-    const objetivos = Array.isArray(userIds) ? userIds : [userIds];
+    const objetivos = (Array.isArray(userIds) ? userIds : [userIds]).slice(0, 100);
     for (const objetivoId of objetivos) {
-      if (typeof objetivoId === 'string' && objetivoId) socket.leave(`presence:${objetivoId}`);
+      if (validRealtimeId(objetivoId)) socket.leave(`presence:${objetivoId}`);
     }
   });
 
@@ -298,7 +321,9 @@ const LOGIN_LOCKOUT_MINUTES = 15;
 // esto vivía solo en el SQLite local del dispositivo (sqflite), por lo que
 // una cuenta registrada en un dispositivo/instalación no podía loguearse
 // desde otro, aunque el email/password fueran correctos.
-app.post('/api/auth/login', (req, res) => {
+const authLimiters = createAuthLimiters();
+
+app.post('/api/auth/login', ...authLimiters, (req, res) => {
   const { email, password, deviceId } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'email y password son requeridos' });
@@ -382,7 +407,7 @@ app.post('/api/auth/login', (req, res) => {
 
 // Register: crea un perfil de vendedor en el backend (con password real)
 // y devuelve un JWT.
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', ...authLimiters, (req, res) => {
   const { name, email, phone, userType, password, deviceId, businessHours, paymentMethods } = req.body;
 
   if (!email) {
@@ -570,6 +595,20 @@ app.post(
 // Health check
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Respuestas uniformes: no filtrar stack traces, nombres de archivos ni
+// detalles del parser al cliente.
+app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada.' }));
+app.use((error, _req, res, _next) => {
+  const status = error.status === 403 ? 403
+    : error.type === 'entity.too.large' ? 413
+      : error instanceof SyntaxError && error.status === 400 ? 400 : 500;
+  if (status === 500) console.error('[api] Error no controlado:', error);
+  const message = status === 403 ? 'Origen no permitido.'
+    : status === 413 ? 'La solicitud supera el limite permitido.'
+      : status === 400 ? 'JSON invalido.' : 'Error interno del servidor.';
+  res.status(status).json({ error: message });
 });
 
 server.listen(PORT, '0.0.0.0', () => {
