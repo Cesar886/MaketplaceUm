@@ -32,6 +32,7 @@ import '../widgets/payment_methods.dart';
 import '../widgets/product_attributes_section.dart';
 import '../widgets/product_carousel_section.dart';
 import '../widgets/product_comments_section.dart';
+import '../widgets/more_products_section.dart';
 import '../widgets/product_questions_section.dart';
 import '../widgets/product_image_carousel.dart';
 import '../widgets/price_tag.dart';
@@ -43,6 +44,7 @@ import 'home_screen.dart';
 import 'report_product_sheet.dart';
 import 'publish_product_screen.dart';
 import 'qr_display_screen.dart';
+import 'search_screen.dart';
 import 'seller_profile_screen.dart';
 import 'wanted_post_screen.dart';
 
@@ -765,6 +767,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       key: _comentariosKey,
                       productId: product.id,
                       productOwnerId: product.seller.id,
+                    ),
+                    const SizedBox(height: 32),
+                    MoreProductsSection(
+                      currentProductId: product.id,
+                      excludedProductIds: _relacionados
+                          .map((item) => item.id)
+                          .toSet(),
+                      onProductTap: _abrirPublicacion,
+                      onCategoryTap: (category) => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) =>
+                              SearchScreen(initialCategoryId: category.id),
+                        ),
+                      ),
                     ),
                   ],
                   const SizedBox(height: 16),
