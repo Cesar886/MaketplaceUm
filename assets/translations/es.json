@@ -308,6 +308,10 @@
     "publish_wanted": "Publicar búsqueda",
     "publish_wanted_subtitle": "Di qué estás buscando y te notificamos"
   },
+  "publish_menu": {
+    "title": "¿Qué quieres publicar?",
+    "subtitle": "Elige el tipo de publicación para comenzar."
+  },
   "home": {
     "load_error": "No pudimos cargar el inicio. Revisa tu conexión e intenta de nuevo.",
     "search_placeholder": "Buscar en Marketplace UM...",
@@ -370,6 +374,11 @@
     "subtitle": "Completa la información básica para publicar tu producto en el marketplace.",
     "edit_title": "Editar producto",
     "photos": "Fotos",
+    "photos_help": "Agrega hasta 5 fotos claras de tu producto.",
+    "basic_info": "Información principal",
+    "basic_info_help": "Lo primero que verán las personas interesadas.",
+    "availability_title": "Disponibilidad e inventario",
+    "availability_help": "Define cuándo se ofrece y cuántas unidades tienes.",
     "upload_photos": "Subir fotos",
     "gallery": "Galería",
     "camera": "Cámara",
@@ -778,6 +787,13 @@
     "try_another_way": "Intentar de otra forma"
   },
   "wanted": {
+    "hero_subtitle": "Cuéntale a la comunidad lo que necesitas y recibe respuestas.",
+    "type_title": "¿Qué estás buscando?",
+    "type_help": "Elige una opción para mostrar tu búsqueda a las personas correctas.",
+    "details_title": "Detalles de la búsqueda",
+    "details_help": "Sé claro y breve para recibir mejores respuestas.",
+    "budget_title": "Presupuesto",
+    "budget_help": "Agrega un rango para orientar las propuestas.",
     "location_title": "Ubicación de esta búsqueda",
     "error_title_required": "Escribe qué estás buscando",
     "error_category_required": "Selecciona una categoría",

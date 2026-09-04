@@ -136,6 +136,14 @@ class AppColorSet extends ThemeExtension<AppColorSet> {
   factory AppColorSet.of(AccentSwatch swatch, Brightness brightness) {
     final oscuro = brightness == Brightness.dark;
     final base = oscuro ? AppColors.darkSurface : AppColors.surface;
+    // Los swatches sobrios necesitan separar el relleno del color secundario.
+    // Si el lavado nace del mismo navy casi negro de la barra, al mezclarlo
+    // con blanco se vuelve gris. Para Navy nace de su azul de línea: conserva
+    // la sobriedad del primario, pero chips, iconos y selecciones sí se leen
+    // inequívocamente azules.
+    final tintSource = swatch == AccentSwatch.navy
+        ? swatch.line(brightness)
+        : (oscuro ? swatch.darkFill : swatch.fill);
     return AppColorSet(
       swatch: swatch,
       brightness: brightness,
@@ -159,14 +167,18 @@ class AppColorSet extends ThemeExtension<AppColorSet> {
       // Lavado del color para fondos de chip/sección, derivado del relleno
       // de SU tema: en oscuro parte del tono oscuro, no del pastel.
       accentTint: Color.lerp(
-        oscuro ? swatch.darkFill : swatch.fill,
+        tintSource,
         base,
-        oscuro ? 0.72 : 0.62,
+        swatch == AccentSwatch.navy
+            ? (oscuro ? 0.76 : 0.82)
+            : (oscuro ? 0.72 : 0.62),
       )!,
       accentTintBorder: Color.lerp(
-        oscuro ? swatch.darkFill : swatch.fill,
+        tintSource,
         base,
-        oscuro ? 0.35 : 0.28,
+        swatch == AccentSwatch.navy
+            ? (oscuro ? 0.42 : 0.54)
+            : (oscuro ? 0.35 : 0.28),
       )!,
       success: oscuro ? AppColors.successOnDark : AppColors.success,
       successBg: oscuro ? AppColors.darkSuccessBg : AppColors.successBg,
@@ -487,14 +499,17 @@ class AccentSwatch {
   static const navy = AccentSwatch(
     id: 'navy',
     label: 'Navy',
-    fill: AppColors.primary,
-    darkFill: Color(0xFF314C85),
+    // Primario profundo y secundario azul definidos como una familia. El
+    // anterior #1B2A4A funcionaba como barra, pero al aclararlo producía
+    // grises azulados; estos tonos conservan más croma sin verse eléctricos.
+    fill: Color(0xFF142D57),
+    darkFill: Color(0xFF1E4F91),
     onFill: Colors.white,
-    lineLight: AppColors.primary,
+    lineLight: Color(0xFF2864B7),
     // Recalibrado tras aclarar el fondo oscuro (ver AppColors.darkSurface*):
     // el mismo tono a 3:1 contra la superficie MENOS favorable de cada
     // versión del tema — que ahora es más clara, así que el tono también.
-    lineDark: Color(0xFF6381C6),
+    lineDark: Color(0xFF78A9F2),
   );
   static const wine = AccentSwatch(
     id: 'wine',

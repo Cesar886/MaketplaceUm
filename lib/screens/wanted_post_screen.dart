@@ -67,10 +67,12 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
       _descriptionController.text = post.description ?? '';
       _type = post.type;
       _selectedCategoryId = post.categoryId;
-      if (post.priceMin != null)
+      if (post.priceMin != null) {
         _priceMinController.text = post.priceMin.toString();
-      if (post.priceMax != null)
+      }
+      if (post.priceMax != null) {
         _priceMaxController.text = post.priceMax.toString();
+      }
       _sellerPaymentMethods = post.sellerObj?.paymentMethods ?? [];
       if (post.paymentMethods != null) {
         _customizePaymentMethods = true;
@@ -285,47 +287,59 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
   /// Sección de ubicación puntual de la publicación — solo visible para
   /// cuentas de negocio (Nivel 2). Estudiantes/usuarios normales no ven
   /// nada aquí, ni siquiera la opción de agregar ubicación.
-  Widget _buildLocationSection() {
+  Widget _buildLocationSection({bool showTitle = true}) {
     final auth = context.watch<AuthProvider>();
     if (auth.accountType != AccountType.negocio) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'publish.location_optional'.tr(),
-          style: AppTypography.heading(15, color: context.colors.ink),
-        ),
-        const SizedBox(height: 10),
-        if (_hasSavedSellerLocation) ...[
-          RadioListTile<_LocationChoice>(
-            contentPadding: EdgeInsets.zero,
-            value: _LocationChoice.useSaved,
-            groupValue: _locationChoice,
-            onChanged: (v) => setState(() => _locationChoice = v!),
-            title: Text('publish.use_business_location'.tr()),
-            subtitle: Text('publish.use_business_location_hint'.tr()),
+        if (showTitle) ...[
+          Text(
+            'publish.location_optional'.tr(),
+            style: AppTypography.heading(15, color: context.colors.ink),
           ),
-          RadioListTile<_LocationChoice>(
-            contentPadding: EdgeInsets.zero,
-            value: _LocationChoice.custom,
+          const SizedBox(height: 10),
+        ],
+        if (_hasSavedSellerLocation)
+          RadioGroup<_LocationChoice>(
             groupValue: _locationChoice,
-            // No marca el radio de inmediato: solo cambia a "custom" si el
-            // usuario efectivamente confirma un punto en el selector (ver
-            // _pickCustomLocation). Si cancela, el estado no queda a medias
-            // (radio en "custom" pero sin coordenadas → se perdería la
-            // ubicación silenciosamente al publicar).
-            onChanged: (_) => _pickCustomLocation(),
-            title: Text('wanted.choose_other_location'.tr()),
-          ),
-          RadioListTile<_LocationChoice>(
-            contentPadding: EdgeInsets.zero,
-            value: _LocationChoice.none,
-            groupValue: _locationChoice,
-            onChanged: (v) => setState(() => _locationChoice = v!),
-            title: Text('publish.no_location'.tr()),
-          ),
-        ] else
+            onChanged: (value) {
+              if (value == null) return;
+              if (value == _LocationChoice.custom) {
+                _pickCustomLocation();
+              } else {
+                setState(() => _locationChoice = value);
+              }
+            },
+            child: Column(
+              children: [
+                RadioListTile<_LocationChoice>(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  value: _LocationChoice.useSaved,
+                  title: Text('publish.use_business_location'.tr()),
+                  subtitle: Text('publish.use_business_location_hint'.tr()),
+                ),
+                RadioListTile<_LocationChoice>(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  value: _LocationChoice.custom,
+                  title: Text('wanted.choose_other_location'.tr()),
+                ),
+                RadioListTile<_LocationChoice>(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  value: _LocationChoice.none,
+                  title: Text('publish.no_location'.tr()),
+                ),
+              ],
+            ),
+          )
+        else
           OutlinedButton.icon(
             onPressed: _pickCustomLocation,
             icon: const Icon(Icons.map_outlined),
@@ -352,15 +366,17 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
   /// Sección de métodos de pago de la publicación: por defecto hereda los
   /// del perfil; un toggle opcional permite personalizarlos solo para esta
   /// búsqueda.
-  Widget _buildPaymentMethodsSection() {
+  Widget _buildPaymentMethodsSection({bool showTitle = true}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'wanted.payment_methods_optional'.tr(),
-          style: AppTypography.heading(15, color: context.colors.ink),
-        ),
-        const SizedBox(height: 4),
+        if (showTitle) ...[
+          Text(
+            'wanted.payment_methods_optional'.tr(),
+            style: AppTypography.heading(15, color: context.colors.ink),
+          ),
+          const SizedBox(height: 4),
+        ],
         Text(
           _sellerPaymentMethods.isEmpty
               ? 'wanted.payment_from_profile'.tr()
@@ -375,12 +391,16 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
+          dense: true,
+          visualDensity: VisualDensity.compact,
           value: _customizePaymentMethods,
           onChanged: (value) => setState(() {
             _customizePaymentMethods = value;
             if (!value) _showPaymentMethodsError = false;
           }),
           title: Text('wanted.customize_payment_methods'.tr()),
+          activeThumbColor: context.colors.onPrimary,
+          activeTrackColor: context.colors.primary,
         ),
         if (_customizePaymentMethods) ...[
           const SizedBox(height: 6),
@@ -416,133 +436,487 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
         ),
       );
     }
+    final auth = context.watch<AuthProvider>();
     return Scaffold(
       appBar: AppBar(
         title: Text(
           _isEditing ? 'wanted.edit_title'.tr() : 'nav.publish_wanted'.tr(),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: Column(
         children: [
-          SegmentedButton<String>(
-            segments: [
-              ButtonSegment(
-                value: 'producto',
-                label: Text('wanted.type_product'.tr()),
-              ),
-              ButtonSegment(
-                value: 'servicio',
-                label: Text('wanted.type_service'.tr()),
-              ),
-            ],
-            selected: {_type},
-            onSelectionChanged: (s) => setState(() => _type = s.first),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _titleController,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: InputDecoration(
-              labelText: 'wanted.what_field'.tr(),
-              hintText: 'wanted.what_hint'.tr(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _descriptionController,
-            maxLines: 3,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: InputDecoration(
-              labelText: 'wanted.description_optional'.tr(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            value: _selectedCategoryId,
-            decoration: InputDecoration(
-              labelText: 'publish.field_category'.tr(),
-            ),
-            items: [
-              for (final category in _categories)
-                DropdownMenuItem(
-                  value: category.id,
-                  child: Row(
-                    children: [
-                      Icon(
-                        category.icon,
-                        color: normalizeCategoryColor(
-                          category.color,
-                          Theme.of(context).brightness,
+          Expanded(
+            child: ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+              children: [
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 720),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (!_isEditing) ...[
+                          const _WantedHero(),
+                          const SizedBox(height: 12),
+                        ],
+                        _WantedSectionCard(
+                          icon: Icons.tune_rounded,
+                          title: 'wanted.type_title'.tr(),
+                          subtitle: 'wanted.type_help'.tr(),
+                          child: _WantedTypeSelector(
+                            selected: _type,
+                            onChanged: (value) => setState(() => _type = value),
+                          ),
                         ),
-                        size: 20,
-                      ),
-                      const SizedBox(width: 10),
-                      Text(category.name),
-                    ],
-                  ),
-                ),
-            ],
-            onChanged: (value) => setState(() => _selectedCategoryId = value),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _priceMinController,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    prefixText: r'$ ',
-                    labelText: _type == 'servicio'
-                        ? 'wanted.min_quote'.tr()
-                        : 'wanted.min_price'.tr(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _priceMaxController,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    prefixText: r'$ ',
-                    labelText: _type == 'servicio'
-                        ? 'wanted.max_quote'.tr()
-                        : 'wanted.max_price'.tr(),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (!_isEditing) ...[
-            const SizedBox(height: 16),
-            _buildLocationSection(),
-          ],
-          const SizedBox(height: 16),
-          _buildPaymentMethodsSection(),
-          const SizedBox(height: 24),
-          FilledButton(
-            onPressed: _publishing ? null : _publish,
-            style: FilledButton.styleFrom(
-              backgroundColor: context.colors.primary,
-            ),
-            child: _publishing
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
+                        const SizedBox(height: 12),
+                        _WantedSectionCard(
+                          icon: Icons.manage_search_rounded,
+                          title: 'wanted.details_title'.tr(),
+                          subtitle: 'wanted.details_help'.tr(),
+                          child: Column(
+                            children: [
+                              TextField(
+                                controller: _titleController,
+                                textCapitalization:
+                                    TextCapitalization.sentences,
+                                decoration: InputDecoration(
+                                  labelText: 'wanted.what_field'.tr(),
+                                  hintText: 'wanted.what_hint'.tr(),
+                                  prefixIcon: const Icon(
+                                    Icons.search_rounded,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              _buildCategoryField(),
+                              const SizedBox(height: 10),
+                              TextField(
+                                controller: _descriptionController,
+                                minLines: 2,
+                                maxLines: 3,
+                                textCapitalization:
+                                    TextCapitalization.sentences,
+                                decoration: InputDecoration(
+                                  labelText: 'wanted.description_optional'.tr(),
+                                  alignLabelWithHint: true,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _WantedSectionCard(
+                          icon: Icons.payments_outlined,
+                          title: 'wanted.budget_title'.tr(),
+                          subtitle: 'wanted.budget_help'.tr(),
+                          trailing: _WantedOptionalPill(
+                            label: 'common.optional'.tr(),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _priceMinController,
+                                  keyboardType: TextInputType.number,
+                                  decoration: InputDecoration(
+                                    prefixText: r'$ ',
+                                    labelText: _type == 'servicio'
+                                        ? 'wanted.min_quote'.tr()
+                                        : 'wanted.min_price'.tr(),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: TextField(
+                                  controller: _priceMaxController,
+                                  keyboardType: TextInputType.number,
+                                  decoration: InputDecoration(
+                                    prefixText: r'$ ',
+                                    labelText: _type == 'servicio'
+                                        ? 'wanted.max_quote'.tr()
+                                        : 'wanted.max_price'.tr(),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (!_isEditing &&
+                            auth.accountType == AccountType.negocio) ...[
+                          const SizedBox(height: 12),
+                          _WantedSectionCard(
+                            icon: Icons.location_on_rounded,
+                            title: 'publish.location_optional'.tr(),
+                            trailing: _WantedOptionalPill(
+                              label: 'common.optional'.tr(),
+                            ),
+                            child: _buildLocationSection(showTitle: false),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        _WantedSectionCard(
+                          icon: Icons.account_balance_wallet_rounded,
+                          title: 'wanted.payment_methods_optional'.tr(),
+                          trailing: _WantedOptionalPill(
+                            label: 'common.optional'.tr(),
+                          ),
+                          child: _buildPaymentMethodsSection(showTitle: false),
+                        ),
+                      ],
                     ),
-                  )
-                : Text(
-                    _isEditing
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _buildSubmitBar(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryField() {
+    return DropdownButtonFormField<String>(
+      key: ValueKey(_selectedCategoryId),
+      initialValue: _selectedCategoryId,
+      isExpanded: true,
+      decoration: InputDecoration(labelText: 'publish.field_category'.tr()),
+      items: [
+        for (final category in _categories)
+          DropdownMenuItem(
+            value: category.id,
+            child: Row(
+              children: [
+                Icon(
+                  category.icon,
+                  color: normalizeCategoryColor(
+                    category.color,
+                    Theme.of(context).brightness,
+                  ),
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(category.name, overflow: TextOverflow.ellipsis),
+                ),
+              ],
+            ),
+          ),
+      ],
+      onChanged: (value) => setState(() => _selectedCategoryId = value),
+    );
+  }
+
+  Widget _buildSubmitBar() {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        border: Border(top: BorderSide(color: context.colors.border)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _publishing ? null : _publish,
+                  icon: _publishing
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: context.colors.onPrimary,
+                          ),
+                        )
+                      : Icon(
+                          _isEditing
+                              ? Icons.check_rounded
+                              : Icons.campaign_rounded,
+                        ),
+                  label: Text(
+                    _publishing
+                        ? 'publish.saving'.tr()
+                        : _isEditing
                         ? 'publish.save_changes'.tr()
                         : 'nav.publish_wanted'.tr(),
                   ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WantedHero extends StatelessWidget {
+  const _WantedHero();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: context.colors.accentTint,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: context.colors.accentTintBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: context.colors.surface,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.manage_search_rounded,
+              color: context.colors.accent,
+              size: 23,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'nav.publish_wanted'.tr(),
+                  style: AppTypography.heading(20, color: context.colors.ink),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'wanted.hero_subtitle'.tr(),
+                  style: AppTypography.body(
+                    12.5,
+                    color: context.colors.mutedStrong,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _WantedSectionCard extends StatelessWidget {
+  const _WantedSectionCard({
+    required this.child,
+    this.icon,
+    this.title,
+    this.subtitle,
+    this.trailing,
+  });
+
+  final Widget child;
+  final IconData? icon;
+  final String? title;
+  final String? subtitle;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final hasHeader = icon != null || title != null || trailing != null;
+    return Material(
+      color: context.colors.surface,
+      elevation: isDark ? 1 : 0.5,
+      shadowColor: Colors.black.withValues(alpha: isDark ? 0.28 : 0.10),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: context.colors.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (hasHeader) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (icon != null) ...[
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: context.colors.accentTint,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(icon, size: 18, color: context.colors.accent),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (title != null)
+                          Text(
+                            title!,
+                            style: AppTypography.heading(
+                              15,
+                              color: context.colors.ink,
+                            ),
+                          ),
+                        if (subtitle != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle!,
+                            style: AppTypography.body(
+                              12,
+                              color: context.colors.muted,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (trailing != null) ...[
+                    const SizedBox(width: 8),
+                    trailing!,
+                  ],
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WantedTypeSelector extends StatelessWidget {
+  const _WantedTypeSelector({required this.selected, required this.onChanged});
+
+  final String selected;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _WantedTypeOption(
+            icon: Icons.inventory_2_outlined,
+            label: 'wanted.type_product'.tr(),
+            selected: selected == 'producto',
+            onTap: () => onChanged('producto'),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _WantedTypeOption(
+            icon: Icons.handyman_outlined,
+            label: 'wanted.type_service'.tr(),
+            selected: selected == 'servicio',
+            onTap: () => onChanged('servicio'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _WantedTypeOption extends StatelessWidget {
+  const _WantedTypeOption({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? context.colors.accentTint : context.colors.surfaceMuted,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: selected
+              ? context.colors.accentTintBorder
+              : context.colors.border,
+          width: selected ? 1.5 : 1,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 19, color: context.colors.accent),
+              const SizedBox(width: 7),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.label(
+                    13,
+                    weight: selected ? FontWeight.w700 : FontWeight.w600,
+                    color: context.colors.ink,
+                  ),
+                ),
+              ),
+              if (selected) ...[
+                const SizedBox(width: 5),
+                Icon(
+                  Icons.check_circle_rounded,
+                  size: 16,
+                  color: context.colors.accent,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WantedOptionalPill extends StatelessWidget {
+  const _WantedOptionalPill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: context.colors.surfaceMuted,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: context.colors.mutedStrong,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

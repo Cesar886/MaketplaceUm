@@ -308,6 +308,10 @@
     "publish_wanted": "Post a request",
     "publish_wanted_subtitle": "Tell us what you're looking for and we'll notify you"
   },
+  "publish_menu": {
+    "title": "What do you want to post?",
+    "subtitle": "Choose a listing type to get started."
+  },
   "home": {
     "load_error": "We couldn't load the home feed. Check your connection and try again.",
     "search_placeholder": "Search in Marketplace UM...",
@@ -370,6 +374,11 @@
     "subtitle": "Fill in the basic information to post your product on the marketplace.",
     "edit_title": "Edit product",
     "photos": "Photos",
+    "photos_help": "Add up to 5 clear photos of your product.",
+    "basic_info": "Main information",
+    "basic_info_help": "The first thing interested buyers will see.",
+    "availability_title": "Availability and inventory",
+    "availability_help": "Set when it is offered and how many units you have.",
     "upload_photos": "Upload photos",
     "gallery": "Gallery",
     "camera": "Camera",
@@ -778,6 +787,13 @@
     "try_another_way": "Try another way"
   },
   "wanted": {
+    "hero_subtitle": "Tell the community what you need and receive responses.",
+    "type_title": "What are you looking for?",
+    "type_help": "Choose an option to show your request to the right people.",
+    "details_title": "Request details",
+    "details_help": "Keep it clear and concise to get better responses.",
+    "budget_title": "Budget",
+    "budget_help": "Add a range to guide proposals.",
     "location_title": "Location for this request",
     "error_title_required": "Write what you're looking for",
     "error_category_required": "Select a category",

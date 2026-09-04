@@ -49,7 +49,10 @@ class MainShellState extends State<MainShell> with WidgetsBindingObserver {
     _pages = [
       const HomeScreen(),
       const OffersScreen(),
-      const PublishProductScreen(),
+      // El índice se conserva para no desplazar carrito/chat/perfil. Publicar
+      // ya no vive dentro del shell: se abre como ruta independiente desde el
+      // FAB y por eso nunca se muestra junto a la navegación inferior.
+      const SizedBox.shrink(),
       CartScreen(refreshSignal: _favoritesRefreshSignal),
       ChatListScreen(refreshSignal: _chatsRefreshSignal),
       const ProfileScreen(),
@@ -134,36 +137,24 @@ class MainShellState extends State<MainShell> with WidgetsBindingObserver {
   void _showPublishMenu(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
-      builder: (sheetContext) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: Icon(Icons.sell_outlined, color: context.colors.primary),
-              title: Text('nav.publish_product'.tr()),
-              subtitle: Text('nav.publish_product_subtitle'.tr()),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                selectTab(2);
-              },
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.46),
+      isScrollControlled: true,
+      builder: (sheetContext) => _PublishChoiceSheet(
+        onProductTap: () {
+          Navigator.of(sheetContext).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const PublishProductScreen(),
             ),
-            ListTile(
-              leading: Icon(
-                Icons.search_rounded,
-                color: context.colors.primary,
-              ),
-              title: Text('nav.publish_wanted'.tr()),
-              subtitle: Text('nav.publish_wanted_subtitle'.tr()),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const WantedPostScreen(),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
+          );
+        },
+        onWantedTap: () {
+          Navigator.of(sheetContext).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const WantedPostScreen()),
+          );
+        },
       ),
     );
   }
@@ -413,6 +404,164 @@ class MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Selector compacto para el botón central. Ambas acciones tienen el mismo
+/// peso visual; el color sólido queda reservado al FAB y al CTA de cada
+/// formulario, mientras el sheet usa el lavado del tema elegido.
+class _PublishChoiceSheet extends StatelessWidget {
+  const _PublishChoiceSheet({
+    required this.onProductTap,
+    required this.onWantedTap,
+  });
+
+  final VoidCallback onProductTap;
+  final VoidCallback onWantedTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
+        decoration: BoxDecoration(
+          color: context.colors.surfaceElevated,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+          border: Border(top: BorderSide(color: context.colors.border)),
+        ),
+        child: Center(
+          heightFactor: 1,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Align(
+                  child: Container(
+                    width: 38,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: context.colors.border,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'publish_menu.title'.tr(),
+                  style: AppTypography.heading(21, color: context.colors.ink),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'publish_menu.subtitle'.tr(),
+                  style: AppTypography.body(12.5, color: context.colors.muted),
+                ),
+                const SizedBox(height: 14),
+                _PublishChoiceTile(
+                  icon: Icons.sell_rounded,
+                  title: 'nav.publish_product'.tr(),
+                  subtitle: 'nav.publish_product_subtitle'.tr(),
+                  onTap: onProductTap,
+                ),
+                const SizedBox(height: 10),
+                _PublishChoiceTile(
+                  icon: Icons.manage_search_rounded,
+                  title: 'nav.publish_wanted'.tr(),
+                  subtitle: 'nav.publish_wanted_subtitle'.tr(),
+                  onTap: onWantedTap,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PublishChoiceTile extends StatelessWidget {
+  const _PublishChoiceTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: context.colors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: context.colors.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        splashColor: context.colors.accent.withValues(alpha: 0.07),
+        child: Padding(
+          padding: const EdgeInsets.all(13),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: context.colors.accentTint,
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(icon, color: context.colors.accent, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: AppTypography.label(
+                        14.5,
+                        weight: FontWeight.w700,
+                        color: context.colors.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: AppTypography.body(
+                        11.5,
+                        color: context.colors.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: context.colors.surfaceMuted,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.arrow_forward_rounded,
+                  size: 17,
+                  color: context.colors.accent,
+                ),
+              ),
+            ],
           ),
         ),
       ),

@@ -16,6 +16,7 @@ import 'package:mercadito_um/providers/theme_provider.dart';
 import 'package:mercadito_um/screens/legal/privacy_screen.dart';
 import 'package:mercadito_um/screens/legal/terms_screen.dart';
 import 'package:mercadito_um/screens/profile/help_screen.dart';
+import 'package:mercadito_um/screens/profile/my_data_screen.dart';
 import 'package:mercadito_um/screens/profile/settings_screen.dart';
 import 'package:mercadito_um/widgets/option_tile.dart';
 
@@ -43,15 +44,16 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
   }
 
-  Widget pantalla() => appDePrueba(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        ChangeNotifierProvider(create: (_) => AccentProvider()),
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-      ],
-      child: const SettingsScreen(),
-    ),
+  // Los providers envuelven al Navigator, como en la app real. Así las
+  // pantallas abiertas desde Configuración heredan la misma sesión y las
+  // pruebas de navegación también detectan dependencias faltantes.
+  Widget pantalla() => MultiProvider(
+    providers: [
+      ChangeNotifierProvider(create: (_) => ThemeProvider()),
+      ChangeNotifierProvider(create: (_) => AccentProvider()),
+      ChangeNotifierProvider(create: (_) => AuthProvider()),
+    ],
+    child: appDePrueba(const SettingsScreen()),
   );
 
   /// La fila entera, no su texto: `find.text` es ambiguo para "Idioma" (que
@@ -90,7 +92,7 @@ void main() {
       'Política de Privacidad',
       'Aviso de Cookies',
       'Versión de la app',
-      'Descargar mis datos',
+      'Ver mis datos',
       'Eliminar cuenta',
     ]) {
       expect(find.text(fila), findsWidgets, reason: 'falta $fila');
@@ -122,6 +124,7 @@ void main() {
       'Centro de ayuda': HelpScreen,
       'Términos y Condiciones': TermsScreen,
       'Política de Privacidad': PrivacyScreen,
+      'Ver mis datos': MyDataScreen,
     };
 
     viewportAlto(tester);

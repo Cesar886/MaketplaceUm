@@ -390,20 +390,11 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           atributos: _atributos,
         );
         if (!mounted) return;
-        _titleController.clear();
-        _descriptionController.clear();
-        _priceController.clear();
-        setState(() {
-          _selectedImages.clear();
-          // El formulario queda listo para otra publicación: dejar las
-          // respuestas anteriores haría que la siguiente saliera con la
-          // talla del producto pasado sin que nadie lo note.
-          _atributos = {};
-          _atributosFaltantes = {};
-        });
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('publish.published_ok'.tr())));
+        final messenger = ScaffoldMessenger.of(context);
+        Navigator.of(context).pop(true);
+        messenger.showSnackBar(
+          SnackBar(content: Text('publish.published_ok'.tr())),
+        );
       }
     } catch (e, stack) {
       if (!mounted) return;
@@ -702,15 +693,20 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   /// mismos: son insumos de [computedStatus]. Ver [_buildStatusSection]
   /// para la intervención manual que sí sobreescribe el badge.
   Widget _buildAvailabilityRulesSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildDaySelector(),
-        const SizedBox(height: 12),
-        _buildStockSection(),
-        const SizedBox(height: 12),
-        _buildStatusPreview(),
-      ],
+    return _PublishSectionCard(
+      icon: Icons.event_available_rounded,
+      title: 'publish.availability_title'.tr(),
+      subtitle: 'publish.availability_help'.tr(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildDaySelector(),
+          const SizedBox(height: 10),
+          _buildStockSection(),
+          const SizedBox(height: 12),
+          _buildStatusPreview(),
+        ],
+      ),
     );
   }
 
@@ -718,9 +714,8 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: context.colors.border),
+        color: context.colors.surfaceMuted,
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -730,7 +725,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
               Icon(
                 Icons.calendar_month_rounded,
                 size: 16,
-                color: context.colors.muted,
+                color: context.colors.accent,
               ),
               const SizedBox(width: 6),
               Expanded(
@@ -764,13 +759,14 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                 ),
                 selected: selected,
                 showCheckmark: false,
-                selectedColor: context.colors.primary.withValues(alpha: 0.12),
+                selectedColor: context.colors.accentTint,
                 labelStyle: TextStyle(
-                  color: selected ? context.colors.primary : context.colors.ink,
+                  color: context.colors.ink,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 ),
                 side: BorderSide(
                   color: selected
-                      ? context.colors.primary.withValues(alpha: 0.4)
+                      ? context.colors.accentTintBorder
                       : context.colors.border,
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -795,11 +791,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
 
   Widget _buildStockSection() {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: context.colors.border),
+        color: context.colors.surfaceMuted,
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -809,12 +804,13 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: context.colors.surfaceMuted,
+                  color: context.colors.accentTint,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
                   Icons.inventory_2_rounded,
-                  color: context.colors.primary,
+                  color: context.colors.accent,
+                  size: 20,
                 ),
               ),
               const SizedBox(width: 10),
@@ -843,6 +839,8 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
           const SizedBox(height: 10),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
+            dense: true,
+            visualDensity: VisualDensity.compact,
             title: Text(
               'publish.stock_daily_reset'.tr(),
               style: const TextStyle(fontWeight: FontWeight.w600),
@@ -853,7 +851,8 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
             ),
             value: _autoResetStock,
             onChanged: (val) => setState(() => _autoResetStock = val),
-            activeColor: context.colors.primary,
+            activeThumbColor: context.colors.onPrimary,
+            activeTrackColor: context.colors.primary,
           ),
         ],
       ),
@@ -861,65 +860,14 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   }
 
   Widget _buildExtrasSection() {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: context.colors.border),
-      ),
+    return _PublishSectionCard(
+      icon: Icons.add_box_rounded,
+      title: 'publish.extras'.tr(),
+      subtitle: 'publish.extras_help'.tr(),
+      trailing: _OptionalPill(label: 'common.optional'.tr()),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: context.colors.surfaceMuted,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.add_box_rounded,
-                  color: context.colors.primary,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'publish.extras'.tr(),
-                  style: AppTypography.heading(15, color: context.colors.ink),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: context.colors.background,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'common.optional'.tr(),
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: context.colors.muted,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'publish.extras_help'.tr(),
-            style: TextStyle(
-              color: context.colors.muted,
-              fontWeight: FontWeight.w600,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 12),
           // Lista de extras agregados
           ...List.generate(_extras.length, (i) {
             final extra = _extras[i];
@@ -1001,7 +949,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
               Material(
                 color: _extras.length >= 8
                     ? context.colors.border
-                    : context.colors.primary.withValues(alpha: 0.08),
+                    : context.colors.accentTint,
                 borderRadius: BorderRadius.circular(8),
                 child: InkWell(
                   onTap: _extras.length >= 8 ? null : _addExtra,
@@ -1012,7 +960,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
                       Icons.add_rounded,
                       color: _extras.length >= 8
                           ? context.colors.muted
-                          : context.colors.primary,
+                          : context.colors.accent,
                       size: 22,
                     ),
                   ),
@@ -1053,21 +1001,17 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
       content = _buildForm();
     }
 
-    // El modo "publicar" vive embebido en la pestaña de MainShell, que ya
-    // provee su propio Scaffold/fondo. El modo "editar" en cambio se abre
-    // como ruta independiente desde ProductDetailScreen, así que necesita
-    // su propio Scaffold + AppBar (título, botón de regreso) y una barra
-    // de guardado fija para no perderla al final de un formulario largo.
-    if (!_isEditing) {
-      return SafeArea(child: content);
-    }
-
-    final showSaveBar = !_loading && auth.isLoggedIn;
+    // Publicar y editar son rutas independientes. Así el formulario siempre
+    // tiene encabezado, flecha de regreso y su propio fondo, y nunca comparte
+    // espacio con la navegación inferior de MainShell.
+    final showSaveBar = _isEditing && !_loading && auth.isLoggedIn;
 
     return Scaffold(
       backgroundColor: context.colors.background,
       appBar: AppBar(
-        title: Text('publish.edit_title'.tr()),
+        title: Text(
+          _isEditing ? 'publish.edit_title'.tr() : 'nav.publish_product'.tr(),
+        ),
         centerTitle: false,
       ),
       body: SafeArea(top: false, child: content),
@@ -1127,47 +1071,62 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   /// Sección de ubicación puntual de la publicación — solo visible para
   /// cuentas de negocio (Nivel 2). Estudiantes/usuarios normales no ven
   /// nada aquí, ni siquiera la opción de agregar ubicación.
-  Widget _buildLocationSection() {
+  Widget _buildLocationSection({bool showTitle = true}) {
     final auth = context.watch<AuthProvider>();
     if (auth.accountType != AccountType.negocio) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'publish.location_optional'.tr(),
-          style: AppTypography.heading(15, color: context.colors.ink),
-        ),
-        const SizedBox(height: 10),
-        if (_hasSavedSellerLocation) ...[
-          RadioListTile<_LocationChoice>(
-            contentPadding: EdgeInsets.zero,
-            value: _LocationChoice.useSaved,
-            groupValue: _locationChoice,
-            onChanged: (v) => setState(() => _locationChoice = v!),
-            title: Text('publish.use_business_location'.tr()),
-            subtitle: Text('publish.use_business_location_hint'.tr()),
+        if (showTitle) ...[
+          Text(
+            'publish.location_optional'.tr(),
+            style: AppTypography.heading(15, color: context.colors.ink),
           ),
-          RadioListTile<_LocationChoice>(
-            contentPadding: EdgeInsets.zero,
-            value: _LocationChoice.custom,
+          const SizedBox(height: 10),
+        ],
+        if (_hasSavedSellerLocation)
+          RadioGroup<_LocationChoice>(
             groupValue: _locationChoice,
-            // No marca el radio de inmediato: solo cambia a "custom" si el
-            // usuario efectivamente confirma un punto en el selector (ver
-            // _pickCustomLocation). Si cancela, el estado no queda a medias
-            // (radio en "custom" pero sin coordenadas → se perdería la
-            // ubicación silenciosamente al publicar).
-            onChanged: (_) => _pickCustomLocation(),
-            title: Text('publish.choose_other_location'.tr()),
-          ),
-          RadioListTile<_LocationChoice>(
-            contentPadding: EdgeInsets.zero,
-            value: _LocationChoice.none,
-            groupValue: _locationChoice,
-            onChanged: (v) => setState(() => _locationChoice = v!),
-            title: Text('publish.no_location'.tr()),
-          ),
-        ] else
+            onChanged: (value) {
+              if (value == null) return;
+              // "Otra ubicación" solo se confirma cuando el selector
+              // devuelve coordenadas. Si se cancela, el radio anterior se
+              // conserva y el formulario nunca queda en un estado inválido.
+              if (value == _LocationChoice.custom) {
+                _pickCustomLocation();
+              } else {
+                setState(() => _locationChoice = value);
+              }
+            },
+            child: Column(
+              children: [
+                RadioListTile<_LocationChoice>(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  value: _LocationChoice.useSaved,
+                  title: Text('publish.use_business_location'.tr()),
+                  subtitle: Text('publish.use_business_location_hint'.tr()),
+                ),
+                RadioListTile<_LocationChoice>(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  value: _LocationChoice.custom,
+                  title: Text('publish.choose_other_location'.tr()),
+                ),
+                RadioListTile<_LocationChoice>(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  value: _LocationChoice.none,
+                  title: Text('publish.no_location'.tr()),
+                ),
+              ],
+            ),
+          )
+        else
           OutlinedButton.icon(
             onPressed: _pickCustomLocation,
             icon: const Icon(Icons.map_outlined),
@@ -1198,15 +1157,17 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   /// ellos, es el único sitio donde el vendedor puede declararlos, así que
   /// aquí sí se eligen — y son obligatorios, porque publicar sin ninguno deja
   /// al comprador sin forma de pagar.
-  Widget _buildPaymentMethodsSection() {
+  Widget _buildPaymentMethodsSection({bool showTitle = true}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'register.section_payments'.tr(),
-          style: AppTypography.heading(15, color: context.colors.ink),
-        ),
-        const SizedBox(height: 4),
+        if (showTitle) ...[
+          Text(
+            'register.section_payments'.tr(),
+            style: AppTypography.heading(15, color: context.colors.ink),
+          ),
+          const SizedBox(height: 4),
+        ],
         Text(
           _eligeMetodosDePago
               ? 'publish.payment_none_yet'.tr()
@@ -1301,15 +1262,17 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   /// publicación (no expiran solos con el tiempo, el stock o el calendario).
   /// "Disponible"/"No disponible" ya NO son opciones aquí: son resultados
   /// automáticos de las reglas de "Reglas de disponibilidad" más abajo.
-  Widget _buildStatusSection() {
+  Widget _buildStatusSection({bool showTitle = true}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'publish.sale_management'.tr(),
-          style: AppTypography.heading(15, color: context.colors.ink),
-        ),
-        const SizedBox(height: 4),
+        if (showTitle) ...[
+          Text(
+            'publish.sale_management'.tr(),
+            style: AppTypography.heading(15, color: context.colors.ink),
+          ),
+          const SizedBox(height: 4),
+        ],
         Text(
           _currentStatus != null
               ? 'publish.status_override_on'.tr()
@@ -1372,198 +1335,456 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   }
 
   Widget _buildForm() {
-    return ListView(
-      padding: EdgeInsets.fromLTRB(18, 18, 18, _isEditing ? 12 : 24),
+    final form = ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: EdgeInsets.fromLTRB(16, 14, 16, _isEditing ? 18 : 12),
       children: [
-        if (!_isEditing) ...[
-          Text(
-            'nav.publish_product'.tr(),
-            style: AppTypography.heading(22, color: context.colors.ink),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'publish.subtitle'.tr(),
-            style: AppTypography.body(14, color: context.colors.muted),
-          ),
-          const SizedBox(height: 20),
-        ],
-
-        // ─── Fotos ──────────────────────────────────────
-        Text(
-          'publish.photos'.tr(),
-          style: AppTypography.heading(15, color: context.colors.ink),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: 110,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            children: [
-              _AddPhotoTile(
-                hasImages: _totalImageCount > 0,
-                onPickGallery: _pickImages,
-                onPickCamera: _pickCamera,
-              ),
-              const SizedBox(width: 10),
-              for (var i = 0; i < _existingImageUrls.length; i++) ...[
-                _ExistingImageThumbnail(
-                  url: '${ApiService.baseUrl}${_existingImageUrls[i]}',
-                  onRemove: () => _removeExistingImage(i),
-                ),
-                const SizedBox(width: 10),
-              ],
-              for (var i = 0; i < _selectedImages.length; i++) ...[
-                _ImageThumbnail(
-                  file: _selectedImages[i],
-                  onRemove: () => _removeImage(i),
-                ),
-                if (i < _selectedImages.length - 1) const SizedBox(width: 10),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 18),
-
-        TextField(
-          controller: _titleController,
-          textCapitalization: TextCapitalization.sentences,
-          decoration: InputDecoration(
-            labelText: 'publish.field_title'.tr(),
-            hintText: 'publish.field_title_hint'.tr(),
-          ),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _descriptionController,
-          minLines: 4,
-          maxLines: 5,
-          textCapitalization: TextCapitalization.sentences,
-          decoration: InputDecoration(
-            labelText: 'publish.field_description'.tr(),
-            hintText: 'publish.field_description_hint'.tr(),
-            alignLabelWithHint: true,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _priceController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  prefixText: r'$ ',
-                  labelText: 'publish.field_price'.tr(),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: DropdownButtonFormField<String>(
-                value: _selectedCategoryId,
-                decoration: InputDecoration(
-                  labelText: 'publish.field_category'.tr(),
-                ),
-                items: [
-                  for (final category in _categories)
-                    DropdownMenuItem(
-                      value: category.id,
-                      child: Row(
-                        children: [
-                          Icon(
-                            category.icon,
-                            color: normalizeCategoryColor(
-                              category.color,
-                              Theme.of(context).brightness,
-                            ),
-                            size: 20,
+        Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (!_isEditing) ...[
+                  const _PublishHero(),
+                  const SizedBox(height: 12),
+                ],
+                _PublishSectionCard(
+                  icon: Icons.photo_camera_rounded,
+                  title: 'publish.photos'.tr(),
+                  subtitle: 'publish.photos_help'.tr(),
+                  trailing: _CountPill(count: _totalImageCount, total: 5),
+                  child: SizedBox(
+                    height: 104,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        _AddPhotoTile(
+                          hasImages: _totalImageCount > 0,
+                          onPickGallery: _pickImages,
+                          onPickCamera: _pickCamera,
+                        ),
+                        const SizedBox(width: 10),
+                        for (var i = 0; i < _existingImageUrls.length; i++) ...[
+                          _ExistingImageThumbnail(
+                            url:
+                                '${ApiService.baseUrl}${_existingImageUrls[i]}',
+                            onRemove: () => _removeExistingImage(i),
                           ),
                           const SizedBox(width: 10),
-                          Text(category.name),
+                        ],
+                        for (var i = 0; i < _selectedImages.length; i++) ...[
+                          _ImageThumbnail(
+                            file: _selectedImages[i],
+                            onRemove: () => _removeImage(i),
+                          ),
+                          if (i < _selectedImages.length - 1)
+                            const SizedBox(width: 10),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _PublishSectionCard(
+                  icon: Icons.sell_rounded,
+                  title: 'publish.basic_info'.tr(),
+                  subtitle: 'publish.basic_info_help'.tr(),
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: _titleController,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: InputDecoration(
+                          labelText: 'publish.field_title'.tr(),
+                          hintText: 'publish.field_title_hint'.tr(),
+                          prefixIcon: const Icon(Icons.title_rounded, size: 20),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _descriptionController,
+                        minLines: 3,
+                        maxLines: 4,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: InputDecoration(
+                          labelText: 'publish.field_description'.tr(),
+                          hintText: 'publish.field_description_hint'.tr(),
+                          alignLabelWithHint: true,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _priceController,
+                              keyboardType: TextInputType.number,
+                              decoration: InputDecoration(
+                                prefixText: r'$ ',
+                                labelText: 'publish.field_price'.tr(),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(child: _buildCategoryField()),
                         ],
                       ),
-                    ),
+                    ],
+                  ),
+                ),
+                if (_isEditing) ...[
+                  const SizedBox(height: 12),
+                  _PublishSectionCard(
+                    icon: Icons.tune_rounded,
+                    title: 'publish.sale_management'.tr(),
+                    child: _buildStatusSection(showTitle: false),
+                  ),
                 ],
-                onChanged: (value) {
-                  if (value == null) return;
-                  setState(() {
-                    _selectedCategoryId = value;
-                    // Las respuestas que no existen en la categoría nueva se
-                    // caen aquí mismo, no al enviar: si el usuario vuelve a
-                    // la categoría original habiendo cambiado de opinión, no
-                    // deben reaparecer respuestas que ya no vio en pantalla.
-                    // Las generales sobreviven porque aplican a todas.
-                    _atributos = depurarRespuestas(_atributos, value);
-                    _atributosFaltantes = {};
-                  });
-                },
+                const SizedBox(height: 12),
+                _PublishSectionCard(
+                  child: CategoryAttributesForm(
+                    categoryId: _selectedCategoryId,
+                    respuestas: _atributos,
+                    faltantes: _atributosFaltantes,
+                    onChanged: (valores) => setState(() {
+                      _atributos = valores;
+                      _atributosFaltantes = _atributosFaltantes
+                          .where((k) => !valores.containsKey(k))
+                          .toSet();
+                    }),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _buildAvailabilityRulesSection(),
+                const SizedBox(height: 12),
+                _buildExtrasSection(),
+                const SizedBox(height: 12),
+                _PublishSectionCard(
+                  icon: Icons.payments_rounded,
+                  title: 'register.section_payments'.tr(),
+                  child: _buildPaymentMethodsSection(showTitle: false),
+                ),
+                if (!_isEditing &&
+                    context.watch<AuthProvider>().accountType ==
+                        AccountType.negocio) ...[
+                  const SizedBox(height: 12),
+                  _PublishSectionCard(
+                    icon: Icons.location_on_rounded,
+                    title: 'publish.location_optional'.tr(),
+                    trailing: _OptionalPill(label: 'common.optional'.tr()),
+                    child: _buildLocationSection(showTitle: false),
+                  ),
+                ],
+                // TODO: Destacar publicaciones pendiente para próxima actualización
+                // - no eliminar. La sección de planes del formulario (publicar Y
+                // editar) queda oculta mientras kDestacarHabilitado sea false; vuelve
+                // sola al poner la bandera en true
+                // (ver features/highlight/destacar_flag.dart).
+                if (kDestacarHabilitado && _plans.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _HighlightSection(
+                    plans: _plans,
+                    selectedPlanId: _selectedPlanId,
+                    // null = sin plan, que es el estado por defecto y gratis. La
+                    // sección lo manda tanto desde el chip "Sin plan" como al volver
+                    // a tocar el plan que ya estaba elegido.
+                    onSelectPlan: (planId) =>
+                        setState(() => _selectedPlanId = planId),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+
+    if (_isEditing) return form;
+
+    return Column(
+      children: [
+        Expanded(child: form),
+        _buildPublishBar(),
+      ],
+    );
+  }
+
+  Widget _buildCategoryField() {
+    return DropdownButtonFormField<String>(
+      key: ValueKey(_selectedCategoryId),
+      initialValue: _selectedCategoryId,
+      isExpanded: true,
+      decoration: InputDecoration(labelText: 'publish.field_category'.tr()),
+      items: [
+        for (final category in _categories)
+          DropdownMenuItem(
+            value: category.id,
+            child: Row(
+              children: [
+                Icon(
+                  category.icon,
+                  color: normalizeCategoryColor(
+                    category.color,
+                    Theme.of(context).brightness,
+                  ),
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(category.name, overflow: TextOverflow.ellipsis),
+                ),
+              ],
+            ),
+          ),
+      ],
+      onChanged: (value) {
+        if (value == null) return;
+        setState(() {
+          _selectedCategoryId = value;
+          _atributos = depurarRespuestas(_atributos, value);
+          _atributosFaltantes = {};
+        });
+      },
+    );
+  }
+
+  Widget _buildPublishBar() {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        border: Border(top: BorderSide(color: context.colors.border)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _publishing ? null : _publish,
+                  icon: _publishing
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: context.colors.onPrimary,
+                          ),
+                        )
+                      : const Icon(Icons.publish_rounded),
+                  label: Text(
+                    _publishing
+                        ? 'publish.saving'.tr()
+                        : 'publish.publish_now'.tr(),
+                  ),
+                ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PublishHero extends StatelessWidget {
+  const _PublishHero();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: context.colors.accentTint,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: context.colors.accentTintBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: context.colors.surface,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.storefront_rounded,
+              color: context.colors.accent,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'nav.publish_product'.tr(),
+                  style: AppTypography.heading(20, color: context.colors.ink),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'publish.subtitle'.tr(),
+                  style: AppTypography.body(
+                    12.5,
+                    color: context.colors.mutedStrong,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Superficie única para cada grupo del formulario. La jerarquía viene del
+/// ícono tintado y el aire interior; el color sólido queda reservado al CTA.
+class _PublishSectionCard extends StatelessWidget {
+  const _PublishSectionCard({
+    required this.child,
+    this.icon,
+    this.title,
+    this.subtitle,
+    this.trailing,
+  });
+
+  final Widget child;
+  final IconData? icon;
+  final String? title;
+  final String? subtitle;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasHeader = icon != null || title != null || trailing != null;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: context.colors.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.12 : 0.035),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (hasHeader) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (icon != null) ...[
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: context.colors.accentTint,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(icon, size: 18, color: context.colors.accent),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (title != null)
+                        Text(
+                          title!,
+                          style: AppTypography.heading(
+                            15,
+                            color: context.colors.ink,
+                          ),
+                        ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle!,
+                          style: AppTypography.body(
+                            12,
+                            color: context.colors.muted,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (trailing != null) ...[const SizedBox(width: 8), trailing!],
+              ],
+            ),
+            const SizedBox(height: 12),
           ],
-        ),
-        if (_isEditing) ...[const SizedBox(height: 12), _buildStatusSection()],
+          child,
+        ],
+      ),
+    );
+  }
+}
 
-        // ─── Preguntas dinámicas de la categoría ────────
-        // Van justo debajo del selector de categoría, que es donde el
-        // usuario acaba de decidir qué está vendiendo, y antes de la
-        // logística (disponibilidad, pago, ubicación): siguen hablando del
-        // producto, no de cómo se entrega.
-        const SizedBox(height: 26),
-        CategoryAttributesForm(
-          categoryId: _selectedCategoryId,
-          respuestas: _atributos,
-          faltantes: _atributosFaltantes,
-          onChanged: (valores) => setState(() {
-            _atributos = valores;
-            // El error se limpia en cuanto se responde, sin esperar a otro
-            // intento de publicar.
-            _atributosFaltantes = _atributosFaltantes
-                .where((k) => !valores.containsKey(k))
-                .toSet();
-          }),
-        ),
+class _OptionalPill extends StatelessWidget {
+  const _OptionalPill({required this.label});
 
-        const SizedBox(height: 8),
-        _buildAvailabilityRulesSection(),
-        const SizedBox(height: 12),
-        _buildExtrasSection(),
-        const SizedBox(height: 16),
-        _buildPaymentMethodsSection(),
-        if (!_isEditing) ...[
-          const SizedBox(height: 16),
-          _buildLocationSection(),
-        ],
-        // TODO: Destacar publicaciones pendiente para próxima actualización
-        // - no eliminar. La sección de planes del formulario (publicar Y
-        // editar) queda oculta mientras kDestacarHabilitado sea false; vuelve
-        // sola al poner la bandera en true
-        // (ver features/highlight/destacar_flag.dart).
-        if (kDestacarHabilitado && _plans.isNotEmpty) ...[
-          const SizedBox(height: 24),
-          _HighlightSection(
-            plans: _plans,
-            selectedPlanId: _selectedPlanId,
-            // null = sin plan, que es el estado por defecto y gratis. La
-            // sección lo manda tanto desde el chip "Sin plan" como al volver
-            // a tocar el plan que ya estaba elegido.
-            onSelectPlan: (planId) => setState(() => _selectedPlanId = planId),
-          ),
-        ],
-        if (!_isEditing) ...[
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: _publishing ? null : _publish,
-            icon: _publishing
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.publish_rounded),
-            label: Text('publish.publish_now'.tr()),
-          ),
-        ],
-      ],
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: context.colors.surfaceMuted,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: context.colors.mutedStrong,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _CountPill extends StatelessWidget {
+  const _CountPill({required this.count, required this.total});
+
+  final int count;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: count > 0
+            ? context.colors.accentTint
+            : context.colors.surfaceMuted,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '$count/$total',
+        style: TextStyle(
+          color: context.colors.ink,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 }
@@ -1592,7 +1813,7 @@ class _AddPhotoTile extends StatelessWidget {
           value: 'gallery',
           child: Row(
             children: [
-              Icon(Icons.photo_library_rounded, color: context.colors.primary),
+              Icon(Icons.photo_library_rounded, color: context.colors.accent),
               SizedBox(width: 10),
               Text('publish.gallery'.tr()),
             ],
@@ -1602,7 +1823,7 @@ class _AddPhotoTile extends StatelessWidget {
           value: 'camera',
           child: Row(
             children: [
-              Icon(Icons.camera_alt_rounded, color: context.colors.primary),
+              Icon(Icons.camera_alt_rounded, color: context.colors.accent),
               SizedBox(width: 10),
               Text('publish.camera'.tr()),
             ],
@@ -1612,11 +1833,9 @@ class _AddPhotoTile extends StatelessWidget {
       child: Container(
         width: 104,
         decoration: BoxDecoration(
-          color: context.colors.primary.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: context.colors.primary.withValues(alpha: 0.28),
-          ),
+          color: context.colors.accentTint,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: context.colors.accentTintBorder),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1625,7 +1844,7 @@ class _AddPhotoTile extends StatelessWidget {
               hasImages
                   ? Icons.add_photo_alternate_rounded
                   : Icons.add_a_photo_rounded,
-              color: context.colors.primary,
+              color: context.colors.accent,
             ),
             const SizedBox(height: 8),
             Padding(
@@ -1638,7 +1857,7 @@ class _AddPhotoTile extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: context.colors.primary,
+                  color: context.colors.ink,
                 ),
               ),
             ),
