@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../app_theme.dart';
 import '../../services/api_error.dart';
+import '../../widgets/app_shimmer.dart';
 import 'payment_models.dart';
 import 'payments_api.dart';
 
@@ -170,7 +171,7 @@ class _ConnectMpScreenState extends State<ConnectMpScreen>
 
   Widget _cuerpo() {
     if (_estado == null && _error == null) {
-      return const Center(child: CircularProgressIndicator());
+      return const AppFormSkeleton(sectionCount: 2);
     }
 
     return ListView(

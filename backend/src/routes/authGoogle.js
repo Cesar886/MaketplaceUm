@@ -22,7 +22,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 
 const dbModule = require('../database');
-const { generateToken } = require('../auth');
+const { generateSession } = require('../auth');
 const { calcularIniciales } = require('../utils/iniciales');
 const googleAuth = require('../services/googleAuth');
 const {
@@ -157,7 +157,7 @@ function crearRutasAuthGoogle({
 
       if (deviceId) vincularDispositivo(deviceId, existente.id);
       return res.json({
-        token: generateToken(existente.id),
+        ...generateSession(existente.id),
         seller: sellerParaCliente(existente),
         created: false,
       });
@@ -253,7 +253,7 @@ function crearRutasAuthGoogle({
 
     const creado = db.prepare('SELECT * FROM sellers WHERE id = ?').get(sellerId);
     return res.status(201).json({
-      token: generateToken(sellerId),
+      ...generateSession(sellerId),
       seller: sellerParaCliente(creado),
       created: true,
     });

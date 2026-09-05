@@ -6,6 +6,7 @@ import '../models.dart';
 import '../services/api_service.dart';
 import '../services/recent_products_service.dart';
 import '../widgets/mock_product_image.dart';
+import '../widgets/app_shimmer.dart';
 import 'product_detail_screen.dart';
 
 /// Pantalla que muestra los últimos productos que el usuario ha visto.
@@ -108,7 +109,7 @@ class _RecentProductsScreenState extends State<RecentProductsScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppListSkeleton()
           : _products.isEmpty
           ? Center(
               child: Padding(

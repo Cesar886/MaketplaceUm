@@ -67,7 +67,7 @@
                  arrastrara al otro deep link.
 
                  Para verificar en un dispositivo:
-                   adb shell pm get-app-links com.example.mercadito_um
+                   adb shell pm get-app-links site.marketplaceum.app
                    adb shell am start -a android.intent.action.VIEW \
                      -d "https://mercaditoum.site/producto/<id>" -->
             <intent-filter android:autoVerify="true">

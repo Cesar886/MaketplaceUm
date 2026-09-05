@@ -175,6 +175,8 @@ test('un correo ya registrado inicia sesión y no crea una cuenta nueva', async 
   assert.equal(body.created, false);
   assert.equal(body.seller.id, id);
   assert.equal(verificarToken(body.token), id);
+  assert.equal(typeof body.refreshToken, 'string');
+  assert.ok(body.refreshToken.length >= 40);
   // Sigue siendo una cuenta de contraseña: entrar con Google no debe
   // quitarle a nadie su forma de entrar de siempre.
   const fila = filaPorEmail('existente@ejemplo.com');
@@ -261,6 +263,8 @@ test('con los datos de registro crea la cuenta y devuelve sesión', async () => 
   assert.equal(body.seller.avatarInitials, 'AL');
   assert.equal(body.seller.major, 'Estudiante');
   assert.equal(verificarToken(body.token), body.seller.id);
+  assert.equal(typeof body.refreshToken, 'string');
+  assert.ok(body.refreshToken.length >= 40);
 
   const fila = filaPorEmail('creada@ejemplo.com');
   assert.equal(fila.auth_provider, 'google');

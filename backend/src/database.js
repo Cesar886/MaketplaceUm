@@ -39,6 +39,9 @@ function initDatabase() {
       logoUrl TEXT,
       rating REAL DEFAULT 0,
       reviews INTEGER DEFAULT 0,
+      -- Contador exclusivo de aperturas del perfil público. No comparte la
+      -- métrica de vistas de productos ni la de publicaciones solicitadas.
+      profile_views INTEGER NOT NULL DEFAULT 0,
       verified INTEGER DEFAULT 0,
       businessDescription TEXT,
       businessCategory TEXT,
@@ -792,6 +795,14 @@ function runMigrations() {
   }
   if (!wantedCols.some(c => c.name === 'views')) {
     db.exec(`ALTER TABLE wanted_posts ADD COLUMN views INTEGER DEFAULT 0`);
+  }
+
+  // 23b. Vistas del perfil público. Las bases existentes necesitan esta
+  // migración porque el DEFAULT de CREATE TABLE solo aplica a instalaciones
+  // nuevas.
+  const sellerColsProfileViews = db.prepare("PRAGMA table_info('sellers')").all();
+  if (!sellerColsProfileViews.some(c => c.name === 'profile_views')) {
+    db.exec(`ALTER TABLE sellers ADD COLUMN profile_views INTEGER NOT NULL DEFAULT 0`);
   }
 
   // Documentos de solicitudes manuales de negocio.
@@ -1958,6 +1969,22 @@ function runMigrations() {
     DELETE FROM revoked_sessions WHERE expires_at <= unixepoch();
   `);
 
+  // Sesiones persistentes. El cliente conserva el secreto en Keychain /
+  // Android Keystore y aquí solo vive su hash SHA-256. No tienen caducidad:
+  // siguen vigentes hasta que el usuario cierre sesión o se revoquen.
+  // El JWT de acceso sí caduca y se vuelve a emitir con esta credencial.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS refresh_sessions (
+      token_hash TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_used_at TEXT NOT NULL DEFAULT (datetime('now')),
+      revoked_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_refresh_sessions_user
+      ON refresh_sessions(user_id, revoked_at);
+  `);
+
   // Recoge estadisticas para que SQLite pueda elegir los indices nuevos desde
   // el primer arranque posterior al despliegue.
   db.pragma('optimize');
@@ -2322,6 +2349,7 @@ function rowToSeller(row) {
     logoUrl: row.logoUrl || null,
     rating: row.rating ?? 0,
     reviews: row.reviews ?? 0,
+    profileViews: row.profile_views ?? 0,
     verified: tipoCuenta !== 'particular' && (todosLosBadges || !!row.verified),
     // Insignia verde otorgada a mano por el admin. Separada de `verified` a
     // propósito: no la gana ningún dato ni trámite de la cuenta, así que no
@@ -2502,6 +2530,11 @@ function deleteProduct(id) {
 
 function incrementProductViews(id) {
   db.prepare('UPDATE products SET views = views + 3 WHERE id = ?').run(id);
+}
+
+/** Suma una apertura ajena al perfil, independiente de publicaciones. */
+function incrementSellerProfileViews(id) {
+  db.prepare('UPDATE sellers SET profile_views = profile_views + 1 WHERE id = ?').run(id);
 }
 
 // ─── Carrito ────────────────────────────────────────────────
@@ -4719,6 +4752,7 @@ module.exports = {
   updateProduct,
   deleteProduct,
   incrementProductViews,
+  incrementSellerProfileViews,
   // Carrito (siempre acotado por usuario)
   getCartItems,
   getCartItem,

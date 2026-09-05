@@ -9,15 +9,16 @@ import '../models.dart';
 import '../config/app_config.dart';
 import 'anonymous_id.dart';
 import 'api_error.dart';
+import 'secure_session_storage.dart';
 
 /// Cliente HTTP que vigila TODAS las respuestas del backend en busca de un
 /// 401 `SESSION_INVALIDATED`, sin que cada endpoint tenga que acordarse de
 /// comprobarlo, y que traduce los fallos de red antes de que salgan de aquí.
 ///
-/// Ese 401 significa que el JWT guardado se firmó con un `JWT_SECRET` que ya
-/// no es el vigente (ver `backend/src/auth.js`): la firma no valida y el
-/// token no es recuperable por ningún reintento. Se dispara una sola vez
-/// [ApiService.onSesionInvalidada], que cierra sesión y manda al login.
+/// Si un JWT caduca o cambia el `JWT_SECRET`, primero usa la sesión persistente
+/// para emitir otro y repite la petición. Solo dispara
+/// [ApiService.onSesionInvalidada] cuando esa credencial fue revocada o ya no
+/// existe; un fallo temporal de red nunca cierra la sesión local.
 ///
 /// La traducción de errores va AQUÍ y no en cada método porque este `send`
 /// es el único sitio por el que pasan las 50 y pico llamadas del servicio:
@@ -32,6 +33,20 @@ class _SessionAwareClient extends http.BaseClient {
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final llevaSesion = request.headers.containsKey('Authorization');
+    final esRutaAuth =
+        request.url.path.endsWith('/auth/refresh') ||
+        request.url.path.endsWith('/auth/refresh/bootstrap');
+    if (llevaSesion && !esRutaAuth) {
+      await ApiService.renovarSesionSiHaceFalta();
+      final vigente = ApiService.token;
+      if (vigente != null) request.headers['Authorization'] = 'Bearer $vigente';
+    }
+
+    // Las llamadas normales de `package:http` son Request y se pueden
+    // reconstruir. Guardar esta copia permite repetir UNA vez la operación
+    // si el servidor cambió su firma mientras la app seguía abierta.
+    final retry = request is http.Request ? _copiarRequest(request) : null;
     final http.StreamedResponse res;
     try {
       res = await _inner.send(request);
@@ -52,11 +67,21 @@ class _SessionAwareClient extends http.BaseClient {
     // Cualquier 401 con Authorization presente significa que el token que
     // mandamos ya no sirve — firma inválida (SESSION_INVALIDATED), expirado
     // (`requireAuth` en el backend), o corrupto. Antes solo se reaccionaba a
-    // SESSION_INVALIDATED, así que un JWT de cuenta real que expiraba a las
-    // 24h (a diferencia del anónimo, que sí se auto-renueva) se quedaba
-    // fallando en silencio hasta que el usuario cerraba sesión a mano.
-    if (request.headers.containsKey('Authorization')) {
-      ApiService.notificarSesionInvalidada();
+    // Con una sesión persistente este 401 se intenta reparar emitiendo otro
+    // JWT. Los clientes antiguos, que todavía no tienen refresh token, siguen
+    // el camino de cierre de sesión para no quedarse fallando en silencio.
+    if (llevaSesion && !esRutaAuth) {
+      final renovada = await ApiService.renovarSesionSiHaceFalta(force: true);
+      if (renovada && retry != null) {
+        retry.headers['Authorization'] = 'Bearer ${ApiService.token}';
+        return _inner.send(retry);
+      }
+      // Un fallo transitorio de red/servidor al renovar no borra una sesión
+      // persistente. Solo una credencial inexistente o revocada lo hace desde
+      // `renovarSesionSiHaceFalta`.
+      if (!ApiService.tieneSesionPersistente) {
+        ApiService.notificarSesionInvalidada();
+      }
     }
     return http.StreamedResponse(
       Stream.value(bytes),
@@ -68,6 +93,16 @@ class _SessionAwareClient extends http.BaseClient {
       persistentConnection: res.persistentConnection,
       reasonPhrase: res.reasonPhrase,
     );
+  }
+
+  static http.Request _copiarRequest(http.Request original) {
+    return http.Request(original.method, original.url)
+      ..headers.addAll(original.headers)
+      ..bodyBytes = original.bodyBytes
+      ..encoding = original.encoding
+      ..followRedirects = original.followRedirects
+      ..maxRedirects = original.maxRedirects
+      ..persistentConnection = original.persistentConnection;
   }
 }
 
@@ -177,6 +212,10 @@ class ApiService {
   // El token se asigna desde AuthProvider cuando el usuario inicia sesión.
   // Ya NO se hardcodea 's1' — cada usuario tiene su propio token.
   static String? _token;
+  static String? _refreshToken;
+  static Future<bool>? _renovacionEnCurso;
+
+  static bool get tieneSesionPersistente => _refreshToken != null;
 
   /// Asigna el token JWT del usuario autenticado para usarlo en requests.
   static void setToken(String token) {
@@ -186,14 +225,107 @@ class ApiService {
     _sesionYaInvalidada = false;
   }
 
+  static void setSession(String token, {String? refreshToken}) {
+    setToken(token);
+    _refreshToken = refreshToken;
+  }
+
   /// Limpia el token (logout).
   static void clearToken() {
     _token = null;
+    _refreshToken = null;
   }
 
   /// Token de la sesión actual, para quien no pasa por [_authHeaders]: el
   /// handshake de Socket.IO, que autentica por payload y no por cabecera.
   static String? get token => _token;
+
+  static bool _tokenVencePronto() {
+    final current = _token;
+    if (current == null) return true;
+    try {
+      final parts = current.split('.');
+      if (parts.length != 3) return true;
+      final payload =
+          jsonDecode(
+                utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+              )
+              as Map<String, dynamic>;
+      final exp = payload['exp'] as int?;
+      if (exp == null) return true;
+      final margin = DateTime.now().add(const Duration(days: 7));
+      return DateTime.fromMillisecondsSinceEpoch(exp * 1000).isBefore(margin);
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Renueva en segundo plano antes de que queden menos de siete días. Una
+  /// caída de red conserva las credenciales locales y se reintentará en la
+  /// siguiente petición; solo un 401 del endpoint de renovación cierra la
+  /// sesión porque significa revocación real.
+  static Future<bool> renovarSesionSiHaceFalta({bool force = false}) {
+    if (_refreshToken == null) return Future.value(false);
+    if (!force && !_tokenVencePronto()) return Future.value(true);
+    return _renovacionEnCurso ??= _renovarSesion().whenComplete(
+      () => _renovacionEnCurso = null,
+    );
+  }
+
+  static Future<bool> _renovarSesion() async {
+    final refreshToken = _refreshToken;
+    if (refreshToken == null) return false;
+    try {
+      final res = await _client.post(
+        _uri('/auth/refresh'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'refreshToken': refreshToken}),
+      );
+      if (res.statusCode == 200) {
+        final nuevo =
+            (jsonDecode(res.body) as Map<String, dynamic>)['token'] as String?;
+        if (nuevo == null || nuevo.isEmpty) return false;
+        setToken(nuevo);
+        await SecureSessionStorage.write('backend_token', nuevo);
+        return true;
+      }
+      if (res.statusCode == 401) {
+        await SecureSessionStorage.delete('backend_token');
+        await SecureSessionStorage.delete('backend_refresh_token');
+        _refreshToken = null;
+        notificarSesionInvalidada();
+      }
+    } catch (_) {
+      // Offline o backend temporalmente caído: nunca expulsar por esto.
+    }
+    return false;
+  }
+
+  /// Da refresh token a una sesión válida creada por una versión antigua.
+  static Future<bool> migrarSesionAnterior() async {
+    final current = _token;
+    if (current == null || _refreshToken != null) return _refreshToken != null;
+    try {
+      final res = await _client.post(
+        _uri('/auth/refresh/bootstrap'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $current',
+        },
+      );
+      if (res.statusCode != 200) return false;
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final token = body['token'] as String?;
+      final refresh = body['refreshToken'] as String?;
+      if (token == null || refresh == null) return false;
+      setSession(token, refreshToken: refresh);
+      await SecureSessionStorage.write('backend_token', token);
+      await SecureSessionStorage.write('backend_refresh_token', refresh);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
   static Map<String, String> get _authHeaders {
     final headers = <String, String>{'Content-Type': 'application/json'};
@@ -1320,7 +1452,13 @@ class ApiService {
   }
 
   static Future<Seller> getSeller(String id) async {
-    final res = await _getWithRetry(_uri('/sellers/$id'));
+    // Mandar la sesión permite que el servidor no cuente como visita cuando
+    // alguien abre SU propio perfil. Para perfiles ajenos sigue devolviendo
+    // únicamente los datos públicos y registra la visita correspondiente.
+    final res = await _getWithRetry(
+      _uri('/sellers/$id'),
+      headers: _authHeaders,
+    );
     if (res.statusCode != 200) throw Exception('Seller not found');
     return Seller.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
@@ -1663,8 +1801,15 @@ class ApiService {
 
   static Future<void> revokeCurrentSession() async {
     if (token == null) return;
+    final refreshToken = _refreshToken;
     try {
-      await _client.post(_uri('/auth/logout'), headers: _authHeaders);
+      await _client.post(
+        _uri('/auth/logout'),
+        headers: _authHeaders,
+        body: jsonEncode({
+          if (refreshToken != null) 'refreshToken': refreshToken,
+        }),
+      );
     } catch (_) {
       // El borrado local debe continuar aunque el dispositivo ya no tenga red.
     }

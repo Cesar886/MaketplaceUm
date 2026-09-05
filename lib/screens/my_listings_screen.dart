@@ -8,6 +8,7 @@ import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../widgets/auto_refresh.dart';
+import '../widgets/app_shimmer.dart';
 import '../widgets/badges.dart';
 import '../widgets/mock_product_image.dart';
 import 'profile/highlight_plans_screen.dart';
@@ -182,7 +183,7 @@ class _MyListingsScreenState extends State<MyListingsScreen>
       ),
       body: SafeArea(
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? const AppListSkeleton()
             : RefreshIndicator(
                 onRefresh: _loadListings,
                 child: _loadError

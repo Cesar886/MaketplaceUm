@@ -21,7 +21,7 @@ import 'product_detail_screen.dart';
 import 'profile/edit_profile_screen.dart';
 import 'profile/highlight_plans_screen.dart';
 import 'profile/my_comments_screen.dart';
-import 'profile/safety_tips_screen.dart';
+import 'profile/report_problem_screen.dart';
 import 'profile/settings_screen.dart';
 import 'recent_products_screen.dart';
 
@@ -37,6 +37,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<Product> _recentProducts = [];
   double _sellerRating = 0.0;
   int _sellerReviews = 0;
+  int _sellerProfileViews = 0;
   Seller? _seller;
   bool _loadingSellerForEdit = false;
 
@@ -53,7 +54,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final results = await Future.wait([
         ApiService.getProducts(seller: sellerId),
-        ApiService.getSeller(sellerId),
+        ApiService.getMyProfile(sellerId),
       ]);
       if (!mounted) return;
       final seller = results[1] as Seller;
@@ -61,6 +62,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _listings = results[0] as List<Product>;
         _sellerRating = seller.rating;
         _sellerReviews = seller.reviews;
+        _sellerProfileViews = seller.profileViews;
         _seller = seller;
       });
       // El perfil del backend manda sobre el caché local: es lo que hace que
@@ -391,6 +393,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           icon: Icons.store_rounded,
                         ),
                       ),
+                      Expanded(
+                        child: _ProfileMetric(
+                          value: '$_sellerProfileViews',
+                          label: 'profile.views'.tr(),
+                          icon: Icons.visibility_outlined,
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -432,12 +441,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
             OptionTile(
-              icon: Icons.shield_rounded,
-              title: 'profile.safety'.tr(),
-              subtitle: 'profile.safety_subtitle'.tr(),
+              icon: Icons.flag_rounded,
+              title: 'settings.report_problem'.tr(),
+              subtitle: 'settings.report_problem_subtitle'.tr(),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => const SafetyTipsScreen(),
+                  builder: (_) => const ReportProblemScreen(),
                 ),
               ),
             ),

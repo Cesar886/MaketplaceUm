@@ -151,6 +151,63 @@ img {
   background: var(--primary-dark);
 }
 
+.politica-privacidad {
+  padding-top: 44px;
+  padding-bottom: 96px;
+}
+
+.politica-privacidad h1 {
+  margin-top: 14px;
+  font-size: clamp(30px, 7vw, 42px);
+  line-height: 1.12;
+}
+
+.politica-actualizacion,
+.politica-intro {
+  color: var(--muted);
+}
+
+.politica-actualizacion {
+  margin: 10px 0 0;
+  font-size: 14px;
+}
+
+.politica-intro {
+  margin: 24px 0 0;
+  font-size: 17px;
+}
+
+.politica-seccion {
+  padding: 25px 0;
+  border-top: 1px solid var(--border);
+}
+
+.politica-seccion:first-of-type {
+  margin-top: 28px;
+}
+
+.politica-seccion h2 {
+  font-size: 21px;
+}
+
+.politica-seccion p,
+.politica-seccion ul {
+  margin: 13px 0 0;
+}
+
+.politica-seccion ul {
+  padding-left: 22px;
+}
+
+.politica-seccion li + li {
+  margin-top: 9px;
+}
+
+.politica-seccion a {
+  color: var(--primary);
+  font-weight: 600;
+}
+
 /* Respeta a quien pidió menos movimiento en su sistema. */
 @media (prefers-reduced-motion: reduce) {
   * {

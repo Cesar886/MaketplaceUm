@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../app_theme.dart';
 import '../../services/api_error.dart';
+import '../../widgets/app_shimmer.dart';
 import 'add_card_screen.dart';
 import 'checkout_methods.dart';
 import 'mp_tokenizer.dart';
@@ -469,7 +470,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
                 ),
               ),
             )
-          : const Center(child: CircularProgressIndicator());
+          : const AppFormSkeleton(sectionCount: 3);
     }
 
     return ListView(
@@ -518,7 +519,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
     if (tarjetas == null) {
       return const [
         SizedBox(height: 24),
-        Center(child: CircularProgressIndicator()),
+        AppShimmer(child: ShimmerBox(height: 72, borderRadius: 12)),
       ];
     }
 

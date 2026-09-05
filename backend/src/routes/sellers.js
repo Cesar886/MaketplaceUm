@@ -230,6 +230,15 @@ function register(app) {
   app.get('/api/sellers/:id', optionalAuth, (req, res) => {
     const seller = sellers.find(s => s.id === req.params.id);
     if (!seller) return res.status(404).json({ error: 'Vendedor no encontrado' });
+    // Es una métrica del PERFIL, no de sus publicaciones. Solo una visita
+    // ajena cuenta: al dueño se le devuelve el total sin aumentarlo cuando
+    // abre su propio perfil o su pantalla de configuración.
+    if (!req.user || req.user.id !== seller.id) {
+      db.incrementSellerProfileViews(seller.id);
+      // `sellers` es el caché que alimenta esta respuesta; reflejarlo evita
+      // que la cifra se quede una visita atrás hasta reiniciar el servidor.
+      seller.profileViews = (seller.profileViews || 0) + 1;
+    }
     // Un visitante sin sesión no tiene "visor", así que nunca ve presencia:
     // si no, bastaría con cerrar sesión para saltarse la reciprocidad del
     // ajuste de privacidad.

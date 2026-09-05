@@ -192,11 +192,17 @@ class AuthProvider extends ChangeNotifier {
   /// que se abra la app (ver tryAutoLogin).
   Future<void> _applyBackendAuthResult(Map<String, dynamic> result) async {
     _backendToken = result['token'] as String;
+    final refreshToken = result['refreshToken'] as String?;
     _backendSellerId = result['seller']['id'] as String;
-    ApiService.setToken(_backendToken!);
+    ApiService.setSession(_backendToken!, refreshToken: refreshToken);
 
     final prefs = await SharedPreferences.getInstance();
     await SecureSessionStorage.write('backend_token', _backendToken!);
+    if (refreshToken != null) {
+      await SecureSessionStorage.write('backend_refresh_token', refreshToken);
+    } else {
+      await SecureSessionStorage.delete('backend_refresh_token');
+    }
     await prefs.setString('backend_seller_id', _backendSellerId!);
 
     await _registerPushDevice();
@@ -688,6 +694,7 @@ class AuthProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_sessionKey);
     await SecureSessionStorage.delete('backend_token');
+    await SecureSessionStorage.delete('backend_refresh_token');
     await prefs.remove('backend_seller_id');
   }
 
@@ -713,9 +720,22 @@ class AuthProvider extends ChangeNotifier {
 
     // Restaurar token de backend si existe
     _backendToken = await SecureSessionStorage.read('backend_token');
+    final refreshToken = await SecureSessionStorage.read(
+      'backend_refresh_token',
+    );
     _backendSellerId = prefs.getString('backend_seller_id');
     if (_backendToken != null) {
-      ApiService.setToken(_backendToken!);
+      ApiService.setSession(_backendToken!, refreshToken: refreshToken);
+      if (refreshToken != null) {
+        // Cada arranque renueva el JWT. Esto hace que una actualización de
+        // la app o una rotación de la firma del backend no expulse al usuario.
+        await ApiService.renovarSesionSiHaceFalta(force: true);
+      } else {
+        // Migración transparente para usuarios que ya estaban logueados con
+        // una versión anterior, cuando todavía solo se guardaba el JWT.
+        await ApiService.migrarSesionAnterior();
+      }
+      _backendToken = ApiService.token;
     }
 
     notifyListeners();

@@ -15,6 +15,7 @@ import '../../services/api_service.dart';
 import '../../validation/social_links.dart';
 import '../../widgets/business_hours_editor.dart';
 import '../../widgets/location_picker.dart';
+import '../../widgets/app_shimmer.dart';
 import '../../widgets/payment_methods.dart';
 import '../../widgets/static_mini_map.dart';
 import '../../features/payments/connect_mp_screen.dart';
@@ -679,6 +680,10 @@ class _FilaConexionMercadoPago extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (cargando) {
+      return const AppShimmer(child: ShimmerBox(height: 68, borderRadius: 12));
+    }
+
     final colors = context.colors;
     final conectado = estado?.estaConectado ?? false;
     final desconocido = estado == EstadoCobros.desconocido;
@@ -749,19 +754,10 @@ class _FilaConexionMercadoPago extends StatelessWidget {
                 ],
               ),
             ),
-            if (cargando)
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            else
-              Icon(
-                desconocido
-                    ? Icons.refresh_rounded
-                    : Icons.chevron_right_rounded,
-                color: desconocido ? AppColors.danger : colors.muted,
-              ),
+            Icon(
+              desconocido ? Icons.refresh_rounded : Icons.chevron_right_rounded,
+              color: desconocido ? AppColors.danger : colors.muted,
+            ),
           ],
         ),
       ),

@@ -166,6 +166,7 @@ class Seller {
     this.phone,
     required this.rating,
     required this.reviews,
+    this.profileViews = 0,
     required this.verified,
     this.socioFundador = false,
     this.tipoCuenta = 'particular',
@@ -212,6 +213,7 @@ class Seller {
       phone: json['phone'] as String?,
       rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
       reviews: (json['reviews'] as num?)?.toInt() ?? 0,
+      profileViews: (json['profileViews'] as num?)?.toInt() ?? 0,
       verified: json['verified'] as bool? ?? false,
       socioFundador: json['socioFundador'] as bool? ?? false,
       // Backends viejos no mandan tipoCuenta: 'particular' es el tipo menos
@@ -274,6 +276,9 @@ class Seller {
   final String? phone;
   final double rating;
   final int reviews;
+
+  /// Visitas al perfil, separadas de las vistas de publicaciones.
+  final int profileViews;
   final bool verified;
 
   /// Insignia verde otorgada a mano por el admin. No la gana ningún dato de

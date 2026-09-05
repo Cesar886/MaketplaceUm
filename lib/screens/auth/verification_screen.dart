@@ -16,6 +16,7 @@ import '../../models/verification_requirement.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/location_picker.dart';
+import '../../widgets/app_shimmer.dart';
 import '../../widgets/otp_input.dart';
 import '../../widgets/static_mini_map.dart';
 import '../../widgets/verification_checklist.dart';
@@ -782,7 +783,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
     if (widget.tipo == AccountType.negocio && _revisandoEstadoSolicitud) {
       return Scaffold(
         appBar: AppBar(title: Text('verification.title'.tr())),
-        body: const Center(child: CircularProgressIndicator()),
+        body: const SafeArea(
+          top: false,
+          child: AppFormSkeleton(sectionCount: 4),
+        ),
       );
     }
     if (widget.tipo == AccountType.negocio && _solicitudPendiente) {
@@ -1283,7 +1287,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (_revisandoPerfilNegocio)
-          const LinearProgressIndicator()
+          const AppShimmer(child: ShimmerBox(height: 64, borderRadius: 14))
         else if (!_perfilNegocioCompleto)
           Container(
             width: double.infinity,

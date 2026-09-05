@@ -11,6 +11,7 @@ import '../services/api_service.dart';
 import '../widgets/location_picker.dart';
 import '../widgets/payment_methods.dart';
 import '../widgets/publish_auth_gate.dart';
+import '../widgets/publish_form_skeleton.dart';
 import '../widgets/static_mini_map.dart';
 
 /// Elección de ubicación para una publicación de negocio (Nivel 2): usar la
@@ -422,7 +423,17 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(
+            _isEditing ? 'wanted.edit_title'.tr() : 'nav.publish_wanted'.tr(),
+          ),
+        ),
+        body: const SafeArea(
+          top: false,
+          child: PublishFormSkeleton(showPhotos: false, showTypeSelector: true),
+        ),
+      );
     }
     // Publicar una búsqueda también requiere cuenta (igual que un producto);
     // ver/responder búsquedas de otros no la requiere.
@@ -457,10 +468,6 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (!_isEditing) ...[
-                          const _WantedHero(),
-                          const SizedBox(height: 12),
-                        ],
                         _WantedSectionCard(
                           icon: Icons.tune_rounded,
                           title: 'wanted.type_title'.tr(),
@@ -654,59 +661,6 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _WantedHero extends StatelessWidget {
-  const _WantedHero();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: context.colors.accentTint,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: context.colors.accentTintBorder),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: context.colors.surface,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.manage_search_rounded,
-              color: context.colors.accent,
-              size: 23,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'nav.publish_wanted'.tr(),
-                  style: AppTypography.heading(20, color: context.colors.ink),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'wanted.hero_subtitle'.tr(),
-                  style: AppTypography.body(
-                    12.5,
-                    color: context.colors.mutedStrong,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

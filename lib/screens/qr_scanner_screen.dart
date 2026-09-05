@@ -6,6 +6,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../app_theme.dart';
 import '../services/deep_link_parser.dart';
 import '../services/publicacion_lookup.dart';
+import '../widgets/app_shimmer.dart';
 import 'product_detail_screen.dart';
 
 /// Pantalla que escanea códigos QR de productos de Marketplace UM.
@@ -98,16 +99,33 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
           ),
           if (_processing)
             Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(color: Colors.white),
-                  const SizedBox(height: 16),
-                  Text(
-                    'qr.searching'.tr(),
-                    style: const TextStyle(color: Colors.white70),
-                  ),
-                ],
+              child: Container(
+                width: 220,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.82),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const AppShimmer(
+                      child: Column(
+                        children: [
+                          ShimmerBox(width: 52, height: 52, borderRadius: 14),
+                          SizedBox(height: 14),
+                          ShimmerBox(height: 13, borderRadius: 5),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'qr.searching'.tr(),
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ],
+                ),
               ),
             ),
         ],

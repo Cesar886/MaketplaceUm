@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../app_theme.dart';
 import '../models.dart';
 import '../services/api_service.dart';
+import '../utils/number_format.dart';
 import '../utils/estado_conexion.dart';
 import 'badges.dart';
 import 'online_status_avatar.dart';
@@ -309,6 +310,21 @@ class _FilaMetadatos extends StatelessWidget {
               seller.reviews > 0
                   ? '${seller.rating.toStringAsFixed(1)} (${seller.reviews})'
                   : 'home.no_ratings'.tr(),
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 13.5,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.visibility_outlined, color: color, size: 17),
+            const SizedBox(width: 4),
+            Text(
+              formatCompactNumber(seller.profileViews),
               style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 13.5,

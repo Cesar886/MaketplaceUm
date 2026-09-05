@@ -1,4 +1,4 @@
-package com.example.mercadito_um
+package site.marketplaceum.app
 
 import io.flutter.embedding.android.FlutterActivity
 

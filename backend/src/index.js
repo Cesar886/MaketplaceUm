@@ -32,7 +32,15 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
 const bcrypt = require('bcryptjs');
-const { generateToken, generateAnonToken, requireAuth, verificarToken, esCuentaDeGoogle } = require('./auth');
+const {
+  generateSession,
+  generateAnonToken,
+  refreshSession,
+  revokeRefreshToken,
+  requireAuth,
+  verificarToken,
+  esCuentaDeGoogle,
+} = require('./auth');
 const {
   corsOrigin,
   securityHeaders,
@@ -386,9 +394,9 @@ app.post('/api/auth/login', ...authLimiters, (req, res) => {
   }
 
   if (deviceId) db.linkDeviceToUser(deviceId, row.id);
-  const token = generateToken(row.id);
+  const session = generateSession(row.id);
   res.json({
-    token,
+    ...session,
     seller: {
       id: row.id,
       name: row.name,
@@ -468,9 +476,9 @@ app.post('/api/auth/register', ...authLimiters, (req, res) => {
     // Vincula el historial anónimo de este dispositivo a la cuenta existente
     // (p. ej. reinstaló la app y "registró" de nuevo el mismo email).
     if (deviceId) db.linkDeviceToUser(deviceId, existingRow.id);
-    const token = generateToken(existingRow.id);
+    const session = generateSession(existingRow.id);
     return res.json({
-      token,
+      ...session,
       seller: {
         id: existingRow.id,
         name: existingRow.name,
@@ -548,9 +556,9 @@ app.post('/api/auth/register', ...authLimiters, (req, res) => {
   // de feed acumulada mientras el usuario navegaba sin sesión.
   if (deviceId) db.linkDeviceToUser(deviceId, newSeller.id);
 
-  const token = generateToken(newSeller.id);
+  const session = generateSession(newSeller.id);
   res.status(201).json({
-    token,
+    ...session,
     seller: {
       id: newSeller.id,
       name: newSeller.name,
@@ -590,6 +598,27 @@ app.post(
   },
 );
 
+// Renueva el JWT de acceso usando la sesión persistente guardada en el
+// dispositivo. El refresh token no caduca: solo deja de funcionar por logout
+// o revocación explícita. Una rotación de JWT_SECRET no lo invalida.
+app.post('/api/auth/refresh', (req, res) => {
+  const renewed = refreshSession(req.body?.refreshToken);
+  if (!renewed) {
+    return res.status(401).json({
+      error: 'SESSION_INVALIDATED',
+      message: 'La sesión ya no está disponible.',
+    });
+  }
+  return res.json({ token: renewed.token });
+});
+
+// Migra sin fricción las sesiones emitidas por versiones anteriores de la
+// app: mientras su JWT viejo siga vigente, obtiene la credencial persistente
+// una sola vez y queda dentro del flujo nuevo.
+app.post('/api/auth/refresh/bootstrap', requireAuth, (req, res) => {
+  res.json(generateSession(req.user.id));
+});
+
 app.post('/api/auth/logout', requireAuth, (req, res) => {
   if (req.user.jti && req.user.exp) {
     db.getDb().prepare(
@@ -597,6 +626,7 @@ app.post('/api/auth/logout', requireAuth, (req, res) => {
        VALUES (?, ?, ?)`,
     ).run(req.user.jti, req.user.id, req.user.exp);
   }
+  revokeRefreshToken(req.body?.refreshToken, req.user.id);
   res.status(204).end();
 });
 

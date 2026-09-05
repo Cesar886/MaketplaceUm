@@ -19,6 +19,7 @@ import '../widgets/category_attributes_form.dart';
 import '../widgets/location_picker.dart';
 import '../widgets/payment_methods.dart';
 import '../widgets/publish_auth_gate.dart';
+import '../widgets/publish_form_skeleton.dart';
 import '../widgets/static_mini_map.dart';
 
 /// Elección de ubicación para una publicación de negocio (Nivel 2): usar la
@@ -990,7 +991,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
 
     Widget content;
     if (_loading) {
-      content = const Center(child: CircularProgressIndicator());
+      content = const PublishFormSkeleton(
+        showPhotos: true,
+        showTypeSelector: false,
+      );
     } else if (!auth.isLoggedIn) {
       content = PublishAuthGate(
         icon: Icons.add_circle_outline_rounded,
@@ -1346,10 +1350,6 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (!_isEditing) ...[
-                  const _PublishHero(),
-                  const SizedBox(height: 12),
-                ],
                 _PublishSectionCard(
                   icon: Icons.photo_camera_rounded,
                   title: 'publish.photos'.tr(),
@@ -1587,59 +1587,6 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _PublishHero extends StatelessWidget {
-  const _PublishHero();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: context.colors.accentTint,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: context.colors.accentTintBorder),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: context.colors.surface,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.storefront_rounded,
-              color: context.colors.accent,
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'nav.publish_product'.tr(),
-                  style: AppTypography.heading(20, color: context.colors.ink),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'publish.subtitle'.tr(),
-                  style: AppTypography.body(
-                    12.5,
-                    color: context.colors.mutedStrong,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

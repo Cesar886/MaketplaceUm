@@ -70,6 +70,21 @@ async function get(id, token) {
   return { status: res.status, body: await res.json() };
 }
 
+test('las visitas del perfil son independientes y no cuenta al propio dueño', async () => {
+  const vendedor = crearVendedor({ isBusiness: false });
+
+  const primeraVisita = await get(vendedor.id);
+  assert.strictEqual(primeraVisita.status, 200);
+  assert.strictEqual(primeraVisita.body.profileViews, 1);
+
+  const vistaDelDueno = await get(vendedor.id, vendedor.token);
+  assert.strictEqual(vistaDelDueno.status, 200);
+  assert.strictEqual(vistaDelDueno.body.profileViews, 1);
+
+  const segundaVisita = await get(vendedor.id);
+  assert.strictEqual(segundaVisita.body.profileViews, 2);
+});
+
 test('un negocio guarda sus redes sociales y las ve reflejadas en su perfil público', async () => {
   const negocio = crearVendedor({ isBusiness: true });
 

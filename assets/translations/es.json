@@ -312,6 +312,22 @@
     "title": "¿Qué quieres publicar?",
     "subtitle": "Elige el tipo de publicación para comenzar."
   },
+  "offers": {
+    "title": "Descuentos",
+    "browse_category": "Explora por categoría",
+    "all": "Todas",
+    "results": {
+      "one": "{} oferta",
+      "other": "{} ofertas"
+    },
+    "empty_title": "Todavía no hay descuentos",
+    "empty_body": "Las nuevas ofertas aparecerán aquí cuando se publiquen.",
+    "empty_category_title": "Sin ofertas en esta categoría",
+    "empty_category_body": "Prueba con otra categoría o vuelve a ver todas las ofertas.",
+    "view_all": "Ver todas",
+    "load_error_title": "No pudimos cargar las ofertas",
+    "load_error_body": "Revisa tu conexión e intenta nuevamente."
+  },
   "home": {
     "load_error": "No pudimos cargar el inicio. Revisa tu conexión e intenta de nuevo.",
     "search_placeholder": "Buscar en Marketplace UM...",
@@ -1099,6 +1115,7 @@
     "login_prompt": "Inicia sesión para ver tu perfil",
     "rating": "Calificación",
     "reviews": "Opiniones",
+    "views": "Vistas",
     "active_listings": "Activas",
     "my_listings": "Mis publicaciones",
     "my_listings_subtitle": "Administra lo que estás vendiendo",

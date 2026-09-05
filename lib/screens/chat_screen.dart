@@ -18,6 +18,7 @@ import '../services/presence_service.dart';
 import '../utils/estado_conexion.dart';
 import '../utils/fecha_monterrey.dart';
 import '../widgets/badges.dart';
+import '../widgets/app_shimmer.dart';
 import '../widgets/online_status_avatar.dart';
 import 'product_detail_screen.dart';
 import 'seller_profile_screen.dart';
@@ -613,7 +614,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             ),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const AppChatSkeleton()
                 : _loadError
                 ? Center(
                     child: Column(
@@ -1378,13 +1379,11 @@ class _MessageBubble extends StatelessWidget {
                             loadingBuilder: (_, child, progress) =>
                                 progress == null
                                 ? child
-                                : const SizedBox(
-                                    width: 220,
-                                    height: 220,
-                                    child: Center(
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
+                                : const AppShimmer(
+                                    child: ShimmerBox(
+                                      width: 220,
+                                      height: 220,
+                                      borderRadius: 12,
                                     ),
                                   ),
                             errorBuilder: (_, _, _) => const SizedBox(

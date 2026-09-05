@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { randomUUID } = require('crypto');
+const { createHash, randomBytes, randomUUID } = require('crypto');
 const db = require('./database');
 
 // Sin fallback: un valor por defecto silencioso (`|| 'algo-fijo'`) es
@@ -14,13 +14,11 @@ if (!JWT_SECRET) {
     'y que PM2 lo esté cargando (pm2 restart mercadito-backend --update-env).',
   );
 }
-// Mitigación temporal (auditoría 2026-08, hallazgo M-04) mientras el
-// tráfico siga viajando en HTTP plano (C-03): un token capturado en la red
-// del campus vale 24 h en vez de una semana. NO sustituye a la revocación en
-// logout ni a los refresh tokens — sin ellos, este TTL es lo único que acota
-// la ventana de un token robado, y por eso no puede volver a subir hasta que
-// exista una lista de revocación.
-const JWT_EXPIRES_IN = '24h';
+// El JWT de acceso dura bastante más de una semana para que la app siga
+// funcionando incluso si pasa varios días sin poder renovar. La continuidad
+// indefinida no depende de alargarlo eternamente: la da la sesión persistente
+// revocable que emite uno nuevo antes de que éste caduque.
+const JWT_EXPIRES_IN = '30d';
 
 // Se fija el algoritmo en la VERIFICACIÓN, no solo al firmar. `jwt.verify`
 // sin esta opción acepta cualquier algoritmo compatible con la clave, y deja
@@ -54,6 +52,61 @@ function generateToken(userId) {
     expiresIn: JWT_EXPIRES_IN,
     algorithm: ALGORITMO,
   });
+}
+
+function hashRefreshToken(token) {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+/**
+ * Crea una credencial persistente de alta entropía. El valor en claro solo
+ * sale una vez hacia el dispositivo; la base conserva únicamente su hash.
+ */
+function generateRefreshToken(userId) {
+  const refreshToken = randomBytes(48).toString('base64url');
+  db.getDb().prepare(
+    `INSERT INTO refresh_sessions (token_hash, user_id)
+     VALUES (?, ?)`,
+  ).run(hashRefreshToken(refreshToken), userId);
+  return refreshToken;
+}
+
+function generateSession(userId) {
+  return {
+    token: generateToken(userId),
+    refreshToken: generateRefreshToken(userId),
+  };
+}
+
+/** Renueva el JWT sin contraseña y sin límite temporal. */
+function refreshSession(refreshToken) {
+  if (typeof refreshToken !== 'string' || refreshToken.length < 40) return null;
+  const database = db.getDb();
+  const tokenHash = hashRefreshToken(refreshToken);
+  const row = database.prepare(
+    `SELECT rs.user_id
+       FROM refresh_sessions rs
+       JOIN sellers s ON s.id = rs.user_id
+      WHERE rs.token_hash = ? AND rs.revoked_at IS NULL`,
+  ).get(tokenHash);
+  if (!row) return null;
+  database.prepare(
+    `UPDATE refresh_sessions SET last_used_at = datetime('now')
+      WHERE token_hash = ?`,
+  ).run(tokenHash);
+  return { token: generateToken(row.user_id), userId: row.user_id };
+}
+
+function revokeRefreshToken(refreshToken, expectedUserId = null) {
+  if (typeof refreshToken !== 'string' || refreshToken.length < 40) return;
+  const params = [hashRefreshToken(refreshToken)];
+  let sql = `UPDATE refresh_sessions SET revoked_at = datetime('now')
+              WHERE token_hash = ? AND revoked_at IS NULL`;
+  if (expectedUserId) {
+    sql += ' AND user_id = ?';
+    params.push(expectedUserId);
+  }
+  db.getDb().prepare(sql).run(...params);
 }
 
 // Los invitados conservan sus conversaciones entre sesiones (era justo lo que
@@ -184,6 +237,9 @@ function esCuentaDeGoogle(row) {
 
 module.exports = {
   generateToken,
+  generateSession,
+  refreshSession,
+  revokeRefreshToken,
   esCuentaDeGoogle,
   generateAnonToken,
   requireAuth,

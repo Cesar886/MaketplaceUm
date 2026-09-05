@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import '../../app_theme.dart';
 import '../../models.dart';
 import '../../services/api_service.dart';
+import '../../widgets/app_shimmer.dart';
 
 class HighlightPlansScreen extends StatefulWidget {
   const HighlightPlansScreen({super.key});
@@ -54,7 +55,7 @@ class _HighlightPlansScreenState extends State<HighlightPlansScreen> {
       );
     }
     if (_plans == null) {
-      return const Center(child: CircularProgressIndicator());
+      return const AppListSkeleton(itemCount: 3, showLeading: false);
     }
     if (_plans!.isEmpty) {
       return Center(

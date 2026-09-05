@@ -8,6 +8,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/presence_service.dart';
 import '../../widgets/badges.dart';
+import '../../widgets/app_shimmer.dart';
 import '../../widgets/online_status_avatar.dart';
 import '../chat_screen.dart';
 
@@ -67,7 +68,7 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
         future: _contactos,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
+            return const AppListSkeleton(itemCount: 3);
           }
           if (snapshot.hasError || !snapshot.hasData) {
             return Center(
@@ -131,7 +132,10 @@ class _ContactoSoporteTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final enLinea = context.watch<PresenceService>().estadoDe(contacto.id).enLinea;
+    final enLinea = context
+        .watch<PresenceService>()
+        .estadoDe(contacto.id)
+        .enLinea;
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
@@ -155,7 +159,8 @@ class _ContactoSoporteTile extends StatelessWidget {
                 OnlineStatusAvatar(
                   radius: 24,
                   iniciales: contacto.avatarInitials,
-                  imageUrl: contacto.logoUrl != null && contacto.logoUrl!.isNotEmpty
+                  imageUrl:
+                      contacto.logoUrl != null && contacto.logoUrl!.isNotEmpty
                       ? '${ApiService.baseUrl}${contacto.logoUrl}'
                       : null,
                   enLinea: enLinea,

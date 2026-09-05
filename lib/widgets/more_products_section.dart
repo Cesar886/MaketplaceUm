@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
+import 'app_shimmer.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/anonymous_id.dart';
@@ -201,13 +202,8 @@ class _MoreProductsSectionState extends State<MoreProductsSection> {
           if (_visibleCount < products.length) ...[
             const SizedBox(height: 18),
             Center(
-              child: SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: context.colors.primary,
-                ),
+              child: AppShimmer(
+                child: ShimmerBox(width: 124, height: 12, borderRadius: 6),
               ),
             ),
           ] else ...[

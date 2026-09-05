@@ -101,43 +101,46 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     final hayNoLeidas = _notifications.any((n) => !n.read);
 
-    return SafeArea(
-      child: Scaffold(
-        appBar: AppBar(
-          // El título se queda con el estilo del `appBarTheme` (Baloo 2 sobre
-          // `onPrimary`): sobrescribirlo aquí rompería el contraste con el
-          // swatch elegido, que es justo lo que el tema ya resuelve.
-          title: Text('nav.notifications'.tr()),
-          actions: [
-            // Antes el botón entraba y salía de golpe al marcar todas, lo que
-            // se leía como un parpadeo. Se desvanece, pero deja de recibir
-            // toques en cuanto ya no hay nada que marcar.
-            AnimatedOpacity(
-              opacity: hayNoLeidas ? 1 : 0,
-              duration: AppAnimations.fast,
-              child: IgnorePointer(
-                ignoring: !hayNoLeidas,
-                child: TextButton.icon(
-                  onPressed: _marcarTodasLeidas,
-                  icon: const Icon(Icons.done_all_rounded, size: 18),
-                  label: Text('notifications.mark_all_read'.tr()),
-                  style: TextButton.styleFrom(
-                    foregroundColor: context.colors.onPrimary,
-                    // El color va también en el `textStyle` porque el estilo
-                    // explícito gana sobre `foregroundColor` al resolverse.
-                    textStyle: AppTypography.label(
-                      13.5,
-                      color: context.colors.onPrimary,
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+    return Scaffold(
+      appBar: AppBar(
+        // El título se queda con el estilo del `appBarTheme` (Baloo 2 sobre
+        // `onPrimary`): sobrescribirlo aquí rompería el contraste con el
+        // swatch elegido, que es justo lo que el tema ya resuelve.
+        title: Text('nav.notifications'.tr()),
+        actions: [
+          // Antes el botón entraba y salía de golpe al marcar todas, lo que
+          // se leía como un parpadeo. Se desvanece, pero deja de recibir
+          // toques en cuanto ya no hay nada que marcar.
+          AnimatedOpacity(
+            opacity: hayNoLeidas ? 1 : 0,
+            duration: AppAnimations.fast,
+            child: IgnorePointer(
+              ignoring: !hayNoLeidas,
+              child: TextButton.icon(
+                onPressed: _marcarTodasLeidas,
+                icon: const Icon(Icons.done_all_rounded, size: 18),
+                label: Text('notifications.mark_all_read'.tr()),
+                style: TextButton.styleFrom(
+                  foregroundColor: context.colors.onPrimary,
+                  // El color va también en el `textStyle` porque el estilo
+                  // explícito gana sobre `foregroundColor` al resolverse.
+                  textStyle: AppTypography.label(
+                    13.5,
+                    color: context.colors.onPrimary,
                   ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                 ),
               ),
             ),
-            const SizedBox(width: 4),
-          ],
-        ),
-        body: RefreshIndicator(
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
+      body: SafeArea(
+        // El AppBar debe pintar detrás de la barra de estado; solo el
+        // contenido necesita respetar el área segura inferior del teléfono.
+        top: false,
+        child: RefreshIndicator(
           onRefresh: _load,
           child: _loading
               ? const _NotificationsSkeleton()

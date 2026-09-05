@@ -16,7 +16,7 @@ import '../legal/terms_screen.dart';
 import 'help_screen.dart';
 import 'language_screen.dart';
 import 'my_data_screen.dart';
-import 'report_problem_screen.dart';
+import 'safety_tips_screen.dart';
 
 /// Preferencias de la app: apariencia, sonido, idioma, soporte legal y
 /// acciones sobre la cuenta.
@@ -245,10 +245,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: () => _abrir(const HelpScreen()),
             ),
             OptionTile(
-              icon: Icons.flag_rounded,
-              title: 'settings.report_problem'.tr(),
-              subtitle: 'settings.report_problem_subtitle'.tr(),
-              onTap: () => _abrir(const ReportProblemScreen()),
+              icon: Icons.shield_rounded,
+              title: 'profile.safety'.tr(),
+              subtitle: 'profile.safety_subtitle'.tr(),
+              onTap: () => _abrir(const SafetyTipsScreen()),
             ),
             OptionTile(
               icon: Icons.description_rounded,

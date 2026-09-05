@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app_theme.dart';
+import '../widgets/app_shimmer.dart';
 import '../providers/accent_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/anonymous_id.dart';
@@ -133,10 +134,7 @@ class _SplashScreenState extends State<SplashScreen> {
                   ),
                 ),
                 const Spacer(),
-                const LinearProgressIndicator(
-                  minHeight: 5,
-                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                ),
+                const AppShimmer(child: ShimmerBox(height: 5, borderRadius: 8)),
               ],
             ),
           ),

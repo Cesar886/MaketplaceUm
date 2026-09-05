@@ -5,6 +5,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
+import 'app_shimmer.dart';
 import '../features/highlight/destacar_flag.dart';
 import '../models.dart';
 import '../services/api_service.dart';
@@ -216,12 +217,8 @@ class _RemoteProductImageState extends State<_RemoteProductImage> {
               fit: BoxFit.cover,
             );
           },
-          placeholder: (_, _) => Container(
-            height: widget.height,
-            color: context.colors.surfaceMuted,
-            child: const Center(
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
+          placeholder: (_, _) => AppShimmer(
+            child: ShimmerBox(height: widget.height, borderRadius: 0),
           ),
         );
       },

@@ -30,10 +30,9 @@ final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 /// pida.
 final mainShellKey = GlobalKey<MainShellState>();
 
-/// El backend respondió `SESSION_INVALIDATED` en algún endpoint: el JWT
-/// guardado se firmó con un secreto que ya no es el vigente y no hay forma de
-/// recuperarlo. Se cierra sesión y se manda al login con un mensaje humano,
-/// nunca con el error técnico.
+/// La renovación persistente fue rechazada: la sesión fue revocada o ya no
+/// existe. Un JWT vencido o firmado con una clave anterior se renueva antes
+/// de llegar aquí; solo este rechazo definitivo manda de nuevo al login.
 Future<void> _cerrarSesionExpirada() async {
   final contexto = navigatorKey.currentContext;
   if (contexto == null) return;

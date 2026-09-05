@@ -8,6 +8,7 @@ import '../app_theme.dart';
 import '../models.dart';
 import '../services/api_service.dart';
 import '../widgets/auto_refresh.dart';
+import '../widgets/app_shimmer.dart';
 import '../widgets/product_card.dart';
 import '../widgets/product_grid_metrics.dart';
 import 'product_detail_screen.dart';
@@ -467,12 +468,7 @@ class _SearchScreenState extends State<SearchScreen> with AutoRefreshMixin {
 
           // ─── Lista de resultados ────────────────────────────
           if (_loading)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: CircularProgressIndicator(),
-              ),
-            )
+            const AppInlineListSkeleton()
           else if (results.isEmpty)
             Padding(
               padding: EdgeInsets.all(32),

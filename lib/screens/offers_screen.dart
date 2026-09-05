@@ -6,6 +6,7 @@ import '../models.dart';
 import '../services/api_service.dart';
 import '../widgets/auto_refresh.dart';
 import '../widgets/product_card.dart';
+import '../widgets/product_card_skeleton.dart';
 import '../widgets/product_grid_metrics.dart';
 import 'product_detail_screen.dart';
 
@@ -21,6 +22,7 @@ class _OffersScreenState extends State<OffersScreen> with AutoRefreshMixin {
   List<Product> _offers = [];
   List<MarketplaceCategory> _categories = [];
   bool _loading = true;
+  bool _loadFailed = false;
 
   @override
   void initState() {
@@ -43,10 +45,14 @@ class _OffersScreenState extends State<OffersScreen> with AutoRefreshMixin {
         _offers = results[0] as List<Product>;
         _categories = results[1] as List<MarketplaceCategory>;
         _loading = false;
+        _loadFailed = false;
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _loadFailed = _offers.isEmpty;
+      });
     }
   }
 
@@ -60,48 +66,111 @@ class _OffersScreenState extends State<OffersScreen> with AutoRefreshMixin {
     }).toList();
 
     return SafeArea(
-      child: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _MaxDiscountHeader(offers: filtered),
-                  _OfferCategoryChips(
-                    categories: _categories,
-                    selectedCategoryId: _selectedCategoryId,
-                    onSelected: (id) =>
-                        setState(() => _selectedCategoryId = id),
-                  ),
-                ],
+      child: RefreshIndicator(
+        onRefresh: _loadData,
+        color: context.colors.accent,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'offers.title'.tr(),
+                      style: AppTypography.heading(
+                        24,
+                        color: context.colors.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'offers.browse_category'.tr(),
+                            style: AppTypography.heading(
+                              15,
+                              color: context.colors.ink,
+                            ),
+                          ),
+                        ),
+                        if (!_loading) _ResultsCount(count: filtered.length),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _OfferCategoryChips(
+                      categories: _categories,
+                      selectedCategoryId: _selectedCategoryId,
+                      onSelected: (id) =>
+                          setState(() => _selectedCategoryId = id),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
-            sliver: _loading
-                ? const SliverFillRemaining(
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                : SliverList.separated(
-                    itemCount: filtered.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      final product = filtered[index];
-                      return SizedBox(
-                        height: ProductGridMetrics.horizontalCardHeight,
-                        child: ProductCard(
+            if (_loading)
+              const _OffersSkeletonGrid()
+            else if (_loadFailed)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _OffersState(
+                  icon: Icons.cloud_off_rounded,
+                  title: 'offers.load_error_title'.tr(),
+                  subtitle: 'offers.load_error_body'.tr(),
+                  actionLabel: 'common.retry'.tr(),
+                  onAction: _loadData,
+                ),
+              )
+            else if (filtered.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _OffersState(
+                  icon: Icons.local_offer_outlined,
+                  title: _selectedCategoryId == null
+                      ? 'offers.empty_title'.tr()
+                      : 'offers.empty_category_title'.tr(),
+                  subtitle: _selectedCategoryId == null
+                      ? 'offers.empty_body'.tr()
+                      : 'offers.empty_category_body'.tr(),
+                  actionLabel: _selectedCategoryId == null
+                      ? null
+                      : 'offers.view_all'.tr(),
+                  actionIcon: Icons.grid_view_rounded,
+                  onAction: _selectedCategoryId == null
+                      ? null
+                      : () => setState(() => _selectedCategoryId = null),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                sliver: SliverLayoutBuilder(
+                  builder: (context, constraints) {
+                    final columns = ProductGridMetrics.columnsFor(
+                      constraints.crossAxisExtent,
+                    );
+                    return SliverGrid.builder(
+                      gridDelegate: ProductGridMetrics.delegateFor(columns),
+                      itemCount: filtered.length,
+                      itemBuilder: (context, index) {
+                        final product = filtered[index];
+                        // La misma tarjeta vertical y las mismas métricas que
+                        // usa el feed de Home. Cualquier ajuste futuro al card
+                        // o al grid se refleja aquí automáticamente.
+                        return ProductCard(
                           product: product,
-                          horizontal: true,
                           onTap: () => _openDetail(context, product),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -117,65 +186,25 @@ class _OffersScreenState extends State<OffersScreen> with AutoRefreshMixin {
   }
 }
 
-/// Header con el mayor descuento real de las ofertas visibles.
-///
-/// Se calcula sobre la lista ya filtrada, no sobre el catálogo completo: si
-/// el usuario filtra por una categoría, el porcentaje que anuncia el header
-/// tiene que ser uno que de verdad pueda encontrar ahí abajo. Un "-40%"
-/// mostrado sobre una lista donde el mejor descuento es del 10% es publicidad
-/// engañosa, aunque el 40% exista en otra categoría.
-class _MaxDiscountHeader extends StatelessWidget {
-  const _MaxDiscountHeader({required this.offers});
+class _ResultsCount extends StatelessWidget {
+  const _ResultsCount({required this.count});
 
-  final List<Product> offers;
-
-  /// Mayor descuento en porcentaje entero, o null si ninguna oferta visible
-  /// tiene un precio anterior mayor al actual (sin descuento comprobable).
-  int? get _maxDiscountPercent {
-    int? best;
-    for (final product in offers) {
-      final previous = product.previousPrice;
-      if (previous == null || previous <= 0 || product.price >= previous) {
-        continue;
-      }
-      final percent = (((previous - product.price) / previous) * 100).round();
-      if (percent <= 0) continue;
-      if (best == null || percent > best) best = percent;
-    }
-    return best;
-  }
+  final int count;
 
   @override
   Widget build(BuildContext context) {
-    final maxDiscount = _maxDiscountPercent;
-    if (maxDiscount == null) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: context.colors.accent.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: context.colors.accent.withValues(alpha: 0.18),
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.local_offer_rounded, color: context.colors.accent),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'home.up_to_discount'.tr(namedArgs: {'percent': '$maxDiscount'}),
-                style: TextStyle(
-                  color: context.colors.accent,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: context.colors.surfaceMuted,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        'offers.results'.plural(count),
+        style: TextStyle(
+          color: context.colors.mutedStrong,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
@@ -200,6 +229,19 @@ class _OfferCategoryChips extends StatelessWidget {
       child: ListView(
         scrollDirection: Axis.horizontal,
         children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              selected: selectedCategoryId == null,
+              label: Text('offers.all'.tr()),
+              avatar: Icon(
+                Icons.grid_view_rounded,
+                size: 17,
+                color: context.colors.accent,
+              ),
+              onSelected: (_) => onSelected(null),
+            ),
+          ),
           for (final category in categories)
             Padding(
               padding: const EdgeInsets.only(right: 8),
@@ -223,6 +265,90 @@ class _OfferCategoryChips extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _OffersSkeletonGrid extends StatelessWidget {
+  const _OffersSkeletonGrid();
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      sliver: SliverLayoutBuilder(
+        builder: (context, constraints) {
+          final columns = ProductGridMetrics.columnsFor(
+            constraints.crossAxisExtent,
+          );
+          return SliverGrid.builder(
+            gridDelegate: ProductGridMetrics.delegateFor(columns),
+            itemCount: columns * 2,
+            itemBuilder: (_, _) => const ProductCardSkeleton(),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _OffersState extends StatelessWidget {
+  const _OffersState({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.actionLabel,
+    this.actionIcon = Icons.refresh_rounded,
+    this.onAction,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String? actionLabel;
+  final IconData actionIcon;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(28, 12, 28, 72),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                color: context.colors.accentTint,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: context.colors.accent, size: 28),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: AppTypography.heading(18, color: context.colors.ink),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: AppTypography.body(13, color: context.colors.muted),
+            ),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: onAction,
+                icon: Icon(actionIcon, size: 18),
+                label: Text(actionLabel!),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

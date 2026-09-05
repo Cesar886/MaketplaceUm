@@ -10,7 +10,7 @@
  * el navegador, sin ningún error visible.
  */
 
-export const PAQUETE_ANDROID = 'com.example.mercadito_um';
+export const PAQUETE_ANDROID = 'site.marketplaceum.app';
 
 export const BUNDLE_ID_IOS = 'com.example.mercaditoUm';
 

@@ -312,6 +312,22 @@
     "title": "What do you want to post?",
     "subtitle": "Choose a listing type to get started."
   },
+  "offers": {
+    "title": "Deals",
+    "browse_category": "Browse by category",
+    "all": "All",
+    "results": {
+      "one": "{} deal",
+      "other": "{} deals"
+    },
+    "empty_title": "No deals yet",
+    "empty_body": "New deals will appear here as they are posted.",
+    "empty_category_title": "No deals in this category",
+    "empty_category_body": "Try another category or go back to all deals.",
+    "view_all": "View all",
+    "load_error_title": "We couldn't load the deals",
+    "load_error_body": "Check your connection and try again."
+  },
   "home": {
     "load_error": "We couldn't load the home feed. Check your connection and try again.",
     "search_placeholder": "Search in Marketplace UM...",
@@ -1099,6 +1115,7 @@
     "login_prompt": "Sign in to see your profile",
     "rating": "Rating",
     "reviews": "Reviews",
+    "views": "Views",
     "active_listings": "Active",
     "my_listings": "My listings",
     "my_listings_subtitle": "Manage what you're selling",

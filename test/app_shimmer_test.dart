@@ -30,4 +30,21 @@ void main() {
     final decoration = container.decoration as BoxDecoration;
     expect(decoration.borderRadius, BorderRadius.circular(12));
   });
+
+  for (final entry in <String, Widget>{
+    'list': const AppListSkeleton(itemCount: 3),
+    'inline list': const AppInlineListSkeleton(itemCount: 2),
+    'form': const AppFormSkeleton(sectionCount: 2),
+    'chat': const AppChatSkeleton(),
+  }.entries) {
+    testWidgets('${entry.key} skeleton renders inside AppShimmer', (
+      tester,
+    ) async {
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: entry.value)));
+
+      expect(find.byType(Shimmer), findsOneWidget);
+      expect(find.byType(ShimmerBox), findsWidgets);
+      expect(tester.takeException(), isNull);
+    });
+  }
 }

@@ -12,6 +12,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_error.dart';
 import '../../services/api_service.dart';
 import '../../widgets/business_hours_editor.dart';
+import '../../widgets/app_shimmer.dart';
 import '../../widgets/google_sign_in_button.dart';
 import '../../widgets/location_picker.dart';
 import '../../widgets/payment_methods.dart';
@@ -506,7 +507,7 @@ class _RegisterFormScreenState extends State<RegisterFormScreen> {
       ),
       const SizedBox(height: 14),
       _loadingCategories
-          ? const LinearProgressIndicator()
+          ? const AppShimmer(child: ShimmerBox(height: 52, borderRadius: 10))
           : DropdownButtonFormField<String>(
               initialValue: _selectedBusinessCategory,
               decoration: InputDecoration(

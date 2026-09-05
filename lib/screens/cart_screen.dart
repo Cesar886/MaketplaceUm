@@ -9,6 +9,7 @@ import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../services/favorite_products_service.dart';
 import '../widgets/auto_refresh.dart';
+import '../widgets/app_shimmer.dart';
 import '../widgets/badges.dart';
 import '../widgets/mock_product_image.dart';
 import 'auth/login_screen.dart';
@@ -110,8 +111,9 @@ class _CartScreenState extends State<CartScreen> with AutoRefreshMixin {
     final auth = context.watch<AuthProvider>();
 
     if (_loading) {
-      return const Scaffold(
-        body: SafeArea(child: Center(child: CircularProgressIndicator())),
+      return Scaffold(
+        appBar: AppBar(title: Text('nav.favorites'.tr())),
+        body: const SafeArea(top: false, child: AppListSkeleton()),
       );
     }
 

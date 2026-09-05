@@ -1,7 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
-import '../app_theme.dart';
+import 'app_shimmer.dart';
 import '../features/highlight/destacar_flag.dart';
 import '../models.dart';
 import '../services/api_service.dart';
@@ -186,12 +186,8 @@ class _ZoomableProductImageState extends State<_ZoomableProductImage> {
                 product: widget.product,
                 borderRadius: BorderRadius.zero,
               ),
-              placeholder: (_, _) => Container(
-                color: context.colors.surfaceMuted,
-                child: const Center(
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
+              placeholder: (_, _) =>
+                  const AppShimmer(child: ShimmerBox(borderRadius: 0)),
             );
           },
         ),

@@ -386,16 +386,7 @@ class _ProductQuestionsScreenState extends State<ProductQuestionsScreen> {
       ),
       itemBuilder: (context, index) {
         if (index >= _preguntas.length) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 20),
-            child: Center(
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
-          );
+          return const QuestionTileSkeleton();
         }
 
         final pregunta = _preguntas[index];

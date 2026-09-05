@@ -15,6 +15,7 @@ import '../services/chat_socket_service.dart';
 import '../services/notification_cleaner.dart';
 import '../services/presence_service.dart';
 import '../widgets/badges.dart';
+import '../widgets/app_shimmer.dart';
 import '../widgets/online_status_avatar.dart';
 import 'chat_screen.dart';
 import 'main_shell.dart';
@@ -289,7 +290,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
       body: RefreshIndicator(
         onRefresh: _load,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? const AppListSkeleton()
             : _conversations.isEmpty
             ? ListView(
                 children: [
