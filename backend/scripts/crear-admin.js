@@ -25,8 +25,9 @@ async function main() {
       'ADMIN_CREATE_USERNAME debe tener 3-64 caracteres: letras, numeros, punto, guion o guion bajo.',
     );
   }
-  if (password.length < 14 || password.length > 128) {
-    throw new Error('ADMIN_CREATE_PASSWORD debe tener entre 14 y 128 caracteres.');
+  const passwordBytes = Buffer.byteLength(password, 'utf8');
+  if (passwordBytes < 14 || passwordBytes > 72) {
+    throw new Error('ADMIN_CREATE_PASSWORD debe tener entre 14 y 72 bytes UTF-8.');
   }
 
   db.initDatabase();

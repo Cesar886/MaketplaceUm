@@ -1,10 +1,24 @@
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 process.env.JWT_SECRET = 'secreto-de-prueba';
+process.env.MERCADITO_DB_PATH = path.join(
+  fs.mkdtempSync(path.join(os.tmpdir(), 'mercadito-auth-unit-')),
+  'test.db',
+);
 
 const jwt = require('jsonwebtoken');
+const db = require('./database');
 const { generateToken, verificarToken } = require('./auth');
+
+db.initDatabase();
+db.getDb().prepare(
+  `INSERT INTO sellers (id, name, email, avatarInitials)
+   VALUES ('u1', 'Usuario Uno', 'u1@example.com', 'UU')`,
+).run();
 
 // `verificarToken` existe para el handshake de Socket.IO, que no pasa por
 // middlewares de Express y necesita resolver un token a un userId a secas.

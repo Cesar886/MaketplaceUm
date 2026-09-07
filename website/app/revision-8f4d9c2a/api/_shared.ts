@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHmac } from 'node:crypto';
 
 // El prefijo __Secure- hace que navegadores compatibles rechacen la cookie si
 // alguna regresión intentara emitirla sin HTTPS/Secure.
@@ -6,6 +7,7 @@ export const ADMIN_COOKIE_NAME = '__Secure-mercadito_admin_session';
 export const ADMIN_PATH = '/revision-8f4d9c2a';
 
 const backend = (process.env.API_URL ?? 'http://127.0.0.1:3000').replace(/\/$/, '');
+const MAX_ADMIN_JSON_BYTES = 16 * 1024;
 
 export function json(payload: unknown, status = 200) {
   const response = NextResponse.json(payload, { status });
@@ -33,6 +35,67 @@ export function mutationIsSameOrigin(request: NextRequest) {
     && (!fetchSite || fetchSite === 'same-origin')
     && request.headers.get('x-revision-csrf') === '1'
     && request.headers.get('content-type')?.toLowerCase().startsWith('application/json');
+}
+
+export async function readAdminJson<T>(request: NextRequest): Promise<T> {
+  const declaredLength = Number(request.headers.get('content-length') || '0');
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_ADMIN_JSON_BYTES) {
+    throw new Error('PAYLOAD_TOO_LARGE');
+  }
+  if (!request.body) throw new Error('INVALID_JSON');
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_ADMIN_JSON_BYTES) {
+        await reader.cancel();
+        throw new Error('PAYLOAD_TOO_LARGE');
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder().decode(body)) as T;
+  } catch {
+    throw new Error('INVALID_JSON');
+  }
+}
+
+function normalizedClientIp(request: NextRequest) {
+  // Apache debe sobrescribir X-Real-IP con REMOTE_ADDR. No se usa
+  // X-Forwarded-For porque el cliente puede anteponer valores arbitrarios.
+  const value = String(request.headers.get('x-real-ip') || '').trim();
+  return /^[0-9a-f:.]{2,64}$/i.test(value) ? value : '127.0.0.1';
+}
+
+export function signedClientHeaders(request: NextRequest) {
+  const sharedSecret = String(process.env.ADMIN_BFF_SHARED_SECRET || '');
+  if (sharedSecret.length < 32) {
+    throw new Error('ADMIN_BFF_SHARED_SECRET no está configurado.');
+  }
+  const ip = normalizedClientIp(request);
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  return {
+    'X-Admin-Client-IP': ip,
+    'X-Admin-Client-Time': timestamp,
+    'X-Admin-Client-Signature': createHmac('sha256', sharedSecret)
+      .update(`${timestamp}.${ip}`)
+      .digest('hex'),
+  };
 }
 
 export function adminToken(request: NextRequest) {

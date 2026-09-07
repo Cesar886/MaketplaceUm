@@ -7,7 +7,9 @@ import {
   backendUrl,
   json,
   mutationIsSameOrigin,
+  readAdminJson,
   setAdminCookie,
+  signedClientHeaders,
 } from '../../_shared';
 
 type LoginBody = {
@@ -23,8 +25,11 @@ export async function POST(request: NextRequest) {
 
   let body: LoginBody;
   try {
-    body = await request.json() as LoginBody;
-  } catch {
+    body = await readAdminJson<LoginBody>(request);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'PAYLOAD_TOO_LARGE') {
+      return json({ error: 'La solicitud supera el límite permitido.' }, 413);
+    }
     return json({ error: 'El cuerpo JSON es obligatorio.' }, 400);
   }
 
@@ -44,7 +49,10 @@ export async function POST(request: NextRequest) {
   try {
     const response = await fetch(backendUrl('/api/admin/auth/login'), {
       method: 'POST',
-      headers: backendHeaders(null, true),
+      headers: {
+        ...Object.fromEntries(backendHeaders(null, true)),
+        ...signedClientHeaders(request),
+      },
       body: JSON.stringify({ username, password, totp }),
       cache: 'no-store',
       signal: AbortSignal.timeout(10_000),

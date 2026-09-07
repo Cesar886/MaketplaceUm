@@ -9,6 +9,7 @@ import {
   clearAdminCookie,
   json,
   mutationIsSameOrigin,
+  readAdminJson,
 } from './_shared';
 
 type ReviewRequestPayload = {
@@ -151,8 +152,11 @@ export async function POST(request: NextRequest) {
 
   let body: unknown;
   try {
-    body = await request.json();
-  } catch {
+    body = await readAdminJson(request);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'PAYLOAD_TOO_LARGE') {
+      return json({ error: 'La solicitud supera el límite permitido.' }, 413);
+    }
     return json({ error: 'El cuerpo JSON es obligatorio.' }, 400);
   }
 

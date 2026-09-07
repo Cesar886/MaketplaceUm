@@ -16,6 +16,38 @@ process.env.TZ = 'America/Monterrey';
 // Si el archivo no existe, dotenv no falla: se usan los valores por defecto.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
+function assertProductionSecurityConfig() {
+  if (process.env.NODE_ENV !== 'production') return;
+  const secretNames = [
+    'JWT_SECRET',
+    'ADMIN_JWT_SECRET',
+    'ADMIN_TOTP_ENCRYPTION_KEY',
+    'ADMIN_BFF_SHARED_SECRET',
+  ];
+  const values = secretNames.map(name => String(process.env[name] || ''));
+  const missing = secretNames.filter((_, index) => values[index].length < 32);
+  if (missing.length) {
+    throw new Error(`[boot] Secretos de produccion ausentes o cortos: ${missing.join(', ')}`);
+  }
+  if (new Set(values).size !== values.length) {
+    throw new Error('[boot] Cada secreto JWT/TOTP/BFF debe ser distinto.');
+  }
+  let adminOrigin;
+  try {
+    adminOrigin = new URL(String(process.env.ADMIN_PANEL_ORIGIN || ''));
+  } catch {
+    throw new Error('[boot] ADMIN_PANEL_ORIGIN debe ser un origen HTTPS exacto.');
+  }
+  if (
+    adminOrigin.protocol !== 'https:'
+    || adminOrigin.origin !== String(process.env.ADMIN_PANEL_ORIGIN).replace(/\/$/, '')
+  ) {
+    throw new Error('[boot] ADMIN_PANEL_ORIGIN debe ser un origen HTTPS exacto.');
+  }
+}
+
+assertProductionSecurityConfig();
+
 // Confirmación de que el .env llegó al proceso. Va ANTES del require de
 // auth.js a propósito: si JWT_SECRET falta, auth.js lanza al cargarse y sin
 // esta línea el log no diría por qué. Nunca imprime el secreto, solo si está.
@@ -128,7 +160,13 @@ app.use(securityHeaders);
 app.use('/api/admin', cors({
   origin: adminCorsOrigin,
   methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
-  allowedHeaders: ['Authorization', 'Content-Type'],
+  allowedHeaders: [
+    'Authorization',
+    'Content-Type',
+    'X-Admin-Client-IP',
+    'X-Admin-Client-Time',
+    'X-Admin-Client-Signature',
+  ],
   credentials: false,
   maxAge: 600,
 }));

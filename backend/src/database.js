@@ -2134,6 +2134,55 @@ function runMigrations() {
     }
   })(Object.entries(DEFAULT_PUBLICATION_POLICIES));
 
+  // 50. Moderacion no destructiva de publicaciones y cortes administrativos
+  // de cupos diarios. Las filas moderadas permanecen como evidencia, pero
+  // todas las lecturas publicas las excluyen.
+  const productModerationCols = db.prepare("PRAGMA table_info('products')").all();
+  if (!productModerationCols.some(column => column.name === 'moderation_status')) {
+    db.exec(`ALTER TABLE products ADD COLUMN moderation_status TEXT NOT NULL DEFAULT 'visible'
+      CHECK(moderation_status IN ('visible', 'removed', 'spam'))`);
+  }
+  if (!productModerationCols.some(column => column.name === 'moderation_reason')) {
+    db.exec('ALTER TABLE products ADD COLUMN moderation_reason TEXT');
+  }
+  if (!productModerationCols.some(column => column.name === 'moderated_at')) {
+    db.exec('ALTER TABLE products ADD COLUMN moderated_at TEXT');
+  }
+  if (!productModerationCols.some(column => column.name === 'moderated_by_admin_id')) {
+    db.exec('ALTER TABLE products ADD COLUMN moderated_by_admin_id INTEGER REFERENCES admins(id)');
+  }
+
+  const wantedModerationCols = db.prepare("PRAGMA table_info('wanted_posts')").all();
+  if (!wantedModerationCols.some(column => column.name === 'moderation_status')) {
+    db.exec(`ALTER TABLE wanted_posts ADD COLUMN moderation_status TEXT NOT NULL DEFAULT 'visible'
+      CHECK(moderation_status IN ('visible', 'removed', 'spam'))`);
+  }
+  if (!wantedModerationCols.some(column => column.name === 'moderation_reason')) {
+    db.exec('ALTER TABLE wanted_posts ADD COLUMN moderation_reason TEXT');
+  }
+  if (!wantedModerationCols.some(column => column.name === 'moderated_at')) {
+    db.exec('ALTER TABLE wanted_posts ADD COLUMN moderated_at TEXT');
+  }
+  if (!wantedModerationCols.some(column => column.name === 'moderated_by_admin_id')) {
+    db.exec('ALTER TABLE wanted_posts ADD COLUMN moderated_by_admin_id INTEGER REFERENCES admins(id)');
+  }
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_products_moderation_created
+      ON products(moderation_status, created_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_wanted_moderation_created
+      ON wanted_posts(moderation_status, created_at DESC, id DESC);
+
+    CREATE TABLE IF NOT EXISTS publication_limit_resets (
+      user_id TEXT PRIMARY KEY,
+      products_reset_at TEXT,
+      wanted_reset_at TEXT,
+      updated_by_admin_id INTEGER NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (updated_by_admin_id) REFERENCES admins(id) ON DELETE RESTRICT
+    );
+  `);
+
   // Recoge estadisticas para que SQLite pueda elegir los indices nuevos desde
   // el primer arranque posterior al despliegue.
   db.pragma('optimize');
@@ -2279,6 +2328,7 @@ function rowToProduct(row) {
     stock_updated_at: row.stock_updated_at || null,
     created_at: row.created_at || null,
     expiresAt: row.expires_at || null,
+    moderationStatus: row.moderation_status || 'visible',
     availableDays: JSON.parse(row.availableDays || '[]'),
     updated_at: row.updated_at || null,
     locationLat: row.location_lat ?? null,
@@ -2374,6 +2424,7 @@ function rowToWantedPost(row) {
     paymentMethods: row.paymentMethods ? JSON.parse(row.paymentMethods) : null,
     views: row.views ?? 0,
     expiresAt: row.expires_at || null,
+    moderationStatus: row.moderation_status || 'visible',
   };
 }
 
@@ -2609,13 +2660,44 @@ function getHighlightPlans() {
 }
 
 function getAllProducts() {
-  const rows = db.prepare('SELECT * FROM products').all();
+  const rows = db.prepare("SELECT * FROM products WHERE moderation_status = 'visible'").all();
   return rows.map(rowToProduct);
 }
 
 function getProductById(id) {
-  const row = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+  const row = db.prepare(`SELECT * FROM products p
+    WHERE p.id = ? AND p.moderation_status = 'visible'
+      AND EXISTS (
+        SELECT 1 FROM sellers s WHERE s.id = p.seller AND (
+          s.admin_status = 'active'
+          OR (s.admin_status = 'suspended' AND s.admin_status_until IS NOT NULL
+            AND datetime(s.admin_status_until) <= datetime('now'))
+        )
+      )`).get(id);
   return rowToProduct(row);
+}
+
+function isSellerPubliclyActive(userId) {
+  return !!db.prepare(`SELECT 1 FROM sellers
+    WHERE id = ? AND (
+      admin_status = 'active'
+      OR (admin_status = 'suspended' AND admin_status_until IS NOT NULL
+        AND datetime(admin_status_until) <= datetime('now'))
+    )`).get(userId);
+}
+
+function getPublicationLimitSince(userId, kind, fallbackIso) {
+  if (!['products', 'wanted'].includes(kind)) return fallbackIso;
+  const column = kind === 'products' ? 'products_reset_at' : 'wanted_reset_at';
+  const row = db.prepare(`SELECT ${column} AS reset_at
+    FROM publication_limit_resets WHERE user_id = ?`).get(userId);
+  return row?.reset_at && row.reset_at > fallbackIso ? row.reset_at : fallbackIso;
+}
+
+function countProductsSince(userId, isoTimestamp) {
+  return db.prepare(
+    'SELECT COUNT(*) AS count FROM products WHERE seller = ? AND created_at >= ?',
+  ).get(userId, isoTimestamp)?.count ?? 0;
 }
 
 function insertProduct(product) {
@@ -3979,12 +4061,27 @@ function createWantedPost(post) {
 }
 
 function getWantedPostById(id) {
-  const row = db.prepare('SELECT * FROM wanted_posts WHERE id = ?').get(id);
+  const row = db.prepare(`SELECT * FROM wanted_posts w
+    WHERE w.id = ? AND w.moderation_status = 'visible'
+      AND EXISTS (
+        SELECT 1 FROM sellers s WHERE s.id = w.user_id AND (
+          s.admin_status = 'active'
+          OR (s.admin_status = 'suspended' AND s.admin_status_until IS NOT NULL
+            AND datetime(s.admin_status_until) <= datetime('now'))
+        )
+      )`).get(id);
   return rowToWantedPost(row);
 }
 
 function listWantedPosts({ categoryId, status, type } = {}) {
-  let query = 'SELECT * FROM wanted_posts WHERE 1=1';
+  let query = `SELECT * FROM wanted_posts w WHERE moderation_status = 'visible'
+    AND EXISTS (
+      SELECT 1 FROM sellers s WHERE s.id = w.user_id AND (
+        s.admin_status = 'active'
+        OR (s.admin_status = 'suspended' AND s.admin_status_until IS NOT NULL
+          AND datetime(s.admin_status_until) <= datetime('now'))
+      )
+    )`;
   const params = [];
   if (categoryId) {
     query += ' AND category_id = ?';
@@ -4053,6 +4150,7 @@ function countWantedPostsSince(userId, isoTimestamp) {
 function countActiveWantedPosts(userId) {
   return db.prepare(`SELECT COUNT(*) AS count FROM wanted_posts
     WHERE user_id = ? AND status = 'abierta'
+      AND moderation_status = 'visible'
       AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))`).get(userId)?.count ?? 0;
 }
 
@@ -4418,6 +4516,17 @@ function getFeedRanked({ deviceId, userId, limit = 60, offset = 0 }) {
  * producto vuelve a estar disponible.
  */
 const SQL_PRODUCTO_ACTIVO = `
+  p.moderation_status = 'visible'
+  AND EXISTS (
+    SELECT 1 FROM sellers visible_seller
+    WHERE visible_seller.id = p.seller AND (
+      visible_seller.admin_status = 'active'
+      OR (visible_seller.admin_status = 'suspended'
+        AND visible_seller.admin_status_until IS NOT NULL
+        AND datetime(visible_seller.admin_status_until) <= datetime('now'))
+    )
+  )
+  AND
   (p.manual_status IS NULL OR p.manual_status NOT IN ('sold', 'paused'))
   AND (p.status IS NULL OR p.status != 'sold')
   AND (p.stock_quantity IS NULL OR p.stock_quantity > 0)
