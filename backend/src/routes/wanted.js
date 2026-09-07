@@ -94,7 +94,8 @@ function register(app) {
     const metodosPermitidos = validarMetodosPermitidos(userId, paymentMethodsResult.value);
     if (metodosPermitidos.error) return res.status(400).json({ error: metodosPermitidos.error });
 
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+    const rollingWindow = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const since = db.getPublicationLimitSince(userId, 'wanted', rollingWindow);
     const countToday = db.countWantedPostsSince(userId, since);
     if (countToday >= policy.wantedDaily) {
       return res.status(429).json({ error: `Ya publicaste el máximo de ${policy.wantedDaily} búsquedas hoy`, code: 'WANTED_DAILY_LIMIT', limits: policy });

@@ -265,7 +265,9 @@ function attachRelations(productsList, userId, { includeExpired = false } = {}) 
   let modified = false;
   const todayStr = new Date().toDateString();
 
-  const mapped = productsList.filter(p => includeExpired || !isExpired(p)).map(p => {
+  const mapped = productsList.filter(p =>
+    (includeExpired || !isExpired(p)) && db.isSellerPubliclyActive(p.seller),
+  ).map(p => {
     // 1. Reset diario de stock si aplica
     if (p.stock_reset_daily && p.stock_updated_at && p.stock_initial !== null) {
       const lastUpdateStr = new Date(p.stock_updated_at).toDateString();
@@ -389,6 +391,9 @@ function register(app) {
   app.get('/api/products/:id', (req, res) => {
     const product = products.find(p => p.id === req.params.id);
     if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+    if (!db.isSellerPubliclyActive(product.seller)) {
+      return res.status(404).json({ error: 'Producto no encontrado' });
+    }
     if (isExpired(product)) return res.status(410).json({ error: 'Esta publicación expiró' });
 
     const userId = req.query.userId;
@@ -442,9 +447,9 @@ function register(app) {
     const now = Date.now();
     const activeProducts = products.filter(p =>
       p.seller === sellerId && !isExpired(p, now) && p.manual_status !== 'sold');
-    const since = now - 86400000;
-    const productsToday = products.filter(p =>
-      p.seller === sellerId && new Date(p.created_at || 0).getTime() >= since).length;
+    const rollingWindow = new Date(now - 86400000).toISOString();
+    const since = db.getPublicationLimitSince(sellerId, 'products', rollingWindow);
+    const productsToday = db.countProductsSince(sellerId, since);
     if (productsToday >= policy.productsDaily) {
       return res.status(429).json({ error: `Ya publicaste el máximo de ${policy.productsDaily} productos hoy`, code: 'PRODUCT_DAILY_LIMIT', limits: policy });
     }

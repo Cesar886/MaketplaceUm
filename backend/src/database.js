@@ -4469,6 +4469,10 @@ function getFeedRanked({ deviceId, userId, limit = 60, offset = 0 }) {
     LEFT JOIN product_stats ps ON ps.product_id = p.id
     LEFT JOIN sellers s ON s.id = p.seller
     LEFT JOIN device_top_categories dtc ON dtc.category = p.category
+    WHERE p.moderation_status = 'visible'
+      AND (s.admin_status = 'active'
+        OR (s.admin_status = 'suspended' AND s.admin_status_until IS NOT NULL
+          AND datetime(s.admin_status_until) <= datetime('now')))
     ORDER BY score DESC
     LIMIT @limit OFFSET @offset
   `).all({
@@ -5019,6 +5023,9 @@ module.exports = {
   getHighlightPlans,
   getAllProducts,
   getProductById,
+  isSellerPubliclyActive,
+  getPublicationLimitSince,
+  countProductsSince,
   insertProduct,
   updateProduct,
   deleteProduct,
