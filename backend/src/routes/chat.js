@@ -7,6 +7,7 @@ const db = require('../database');
 const { sendPush } = require('../push');
 const { presenciaDe } = require('./presenciaHttp');
 const { requireAuth } = require('../auth');
+const { createChatMessageLimiter } = require('../security');
 
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
 
@@ -164,6 +165,7 @@ function notifyNewMessage(app, conversation, senderId, previewText) {
 }
 
 function register(app) {
+  const chatMessageLimiter = createChatMessageLimiter();
   // GET /api/chat/conversations - listar conversaciones de un usuario (anónimo o no)
   app.get('/api/chat/conversations', requireAuth, (req, res) => {
     // La bandeja es la del token, punto. Antes el `userId` venía en la query,
@@ -272,7 +274,7 @@ function register(app) {
   });
 
   // POST /api/chat/send - enviar un mensaje de texto (anónimo, no requiere auth)
-  app.post('/api/chat/send', requireAuth, (req, res) => {
+  app.post('/api/chat/send', requireAuth, chatMessageLimiter, (req, res) => {
     const { productId, sellerId, text, conversationId, replyToMessageId } = req.body;
     // `senderId` ya no se lee del cuerpo: era lo que permitía enviar mensajes
     // firmados con el nombre de otra persona.
@@ -299,7 +301,7 @@ function register(app) {
   // POST /api/chat/send-image - enviar un mensaje con una imagen (multipart).
   // La imagen se convierte a WebP antes de guardarse para que pese menos,
   // igual que se hace con las fotos de producto y el logo de negocio.
-  app.post('/api/chat/send-image', requireAuth, (req, res) => {
+  app.post('/api/chat/send-image', requireAuth, chatMessageLimiter, (req, res) => {
     upload.single('image')(req, res, async (err) => {
       if (err) {
         return res.status(400).json({ error: 'Error al procesar la imagen: ' + err.message });

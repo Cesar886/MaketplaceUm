@@ -111,6 +111,21 @@ function createAnonymousSessionLimiter() {
   });
 }
 
+function createChatMessageLimiter() {
+  return rateLimit({
+    windowMs: 5 * 60 * 1000,
+    limit: 40,
+    // Se monta después de requireAuth. Así cada cuenta o invitado firmado
+    // tiene su propio cupo y una red universitaria compartida no se bloquea.
+    keyGenerator: req => fingerprint(`chat:${req.user?.id || 'missing'}`),
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: {
+      error: 'Demasiados mensajes enviados. Espera unos minutos antes de continuar.',
+    },
+  });
+}
+
 function configureProxy(app) {
   // Evita el parser anidado `qs`: la API solo usa pares clave=valor. Ademas
   // elimina de la superficie los objetos profundos y arrays construidos con
@@ -133,5 +148,6 @@ module.exports = {
   authIdentity,
   createAuthLimiters,
   createAnonymousSessionLimiter,
+  createChatMessageLimiter,
   configureProxy,
 };
