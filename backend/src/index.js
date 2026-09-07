@@ -43,6 +43,7 @@ const {
 } = require('./auth');
 const {
   corsOrigin,
+  adminCorsOrigin,
   securityHeaders,
   createAuthLimiters,
   createAnonymousSessionLimiter,
@@ -64,7 +65,13 @@ const routes = [
   require('./routes/wanted'),
   require('./routes/feed'),
   require('./routes/verificacion'),
-  require('./routes/revision'),
+  require('./routes/admin'),
+  // El router heredado `/api/revision/*` aceptaba una llave compartida y
+  // permitia evitar JWT, TOTP y la auditoria administrativa. La pagina
+  // historica `/revision-8f4d9c2a` ya pasa por el BFF de Next y por
+  // `/api/admin/revision/*`, asi que no se monta este segundo acceso en el
+  // servidor de produccion. El modulo se conserva para reutilizar su logica
+  // dentro de routes/admin.js y para las pruebas del flujo existente.
   require('./routes/public'),
   require('./routes/comments'),
   require('./routes/questions'),
@@ -106,10 +113,24 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 3000;
+const API_BIND_HOST = String(process.env.API_BIND_HOST || '127.0.0.1').trim();
+if (!API_BIND_HOST || /[\u0000-\u001f\u007f/\\]/.test(API_BIND_HOST)) {
+  throw new Error('API_BIND_HOST no es valido.');
+}
 
 // Middleware
 app.disable('x-powered-by');
 app.use(securityHeaders);
+// El namespace administrativo tiene una política más estrecha que la API de
+// la app. Se monta antes del CORS general para que hasta los preflight fallen
+// cerrados salvo que el origen sea exactamente ADMIN_PANEL_ORIGIN.
+app.use('/api/admin', cors({
+  origin: adminCorsOrigin,
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Authorization', 'Content-Type'],
+  credentials: false,
+  maxAge: 600,
+}));
 app.use(cors({ origin: corsOrigin, methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], maxAge: 86400 }));
 app.use(express.json({ limit: '1mb', strict: true }));
 // Los archivos de /uploads son inmutables por construcción: el nombre lo
@@ -649,8 +670,8 @@ app.use((error, _req, res, _next) => {
   res.status(status).json({ error: message });
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Marketplace UM API corriendo en http://localhost:${PORT}`);
+server.listen(PORT, API_BIND_HOST, () => {
+  console.log(`🚀 Marketplace UM API corriendo en http://${API_BIND_HOST}:${PORT}`);
 });
 
 // Node cierra los sockets keep-alive inactivos a los 5s por defecto

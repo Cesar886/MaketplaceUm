@@ -2,11 +2,39 @@ const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
 
 function allowedOrigins() {
-  return new Set([process.env.ALLOWED_ORIGINS, process.env.APP_PUBLIC_URL]
+  return new Set([
+    process.env.ALLOWED_ORIGINS,
+    process.env.APP_PUBLIC_URL,
+    process.env.ADMIN_PANEL_ORIGIN,
+  ]
     .filter(Boolean).join(',')
     .split(',').map(value => value.trim()).filter(Boolean).map(value => {
       try { return new URL(value).origin; } catch { return null; }
     }).filter(Boolean));
+}
+
+function configuredAdminOrigin() {
+  const raw = String(process.env.ADMIN_PANEL_ORIGIN || '').trim();
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.origin !== raw.replace(/\/$/, '')) return null;
+    if (process.env.NODE_ENV === 'production' && parsed.protocol !== 'https:') return null;
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+// El panel habla con Express desde su BFF de Next y siempre envia su Origin
+// configurado. A diferencia del CORS general (que admite apps moviles sin
+// Origin), el namespace administrativo falla cerrado si falta o no coincide.
+function adminCorsOrigin(origin, callback) {
+  const allowed = configuredAdminOrigin();
+  if (allowed && origin === allowed) return callback(null, true);
+  const error = new Error('Origen administrativo no permitido.');
+  error.status = 403;
+  return callback(error);
 }
 
 // Las apps moviles y las llamadas servidor-a-servidor no mandan Origin.
@@ -96,4 +124,14 @@ function configureProxy(app) {
   app.set('trust proxy', Number(raw));
 }
 
-module.exports = { allowedOrigins, corsOrigin, securityHeaders, authIdentity, createAuthLimiters, createAnonymousSessionLimiter, configureProxy };
+module.exports = {
+  allowedOrigins,
+  configuredAdminOrigin,
+  corsOrigin,
+  adminCorsOrigin,
+  securityHeaders,
+  authIdentity,
+  createAuthLimiters,
+  createAnonymousSessionLimiter,
+  configureProxy,
+};

@@ -5,14 +5,16 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "find src -name '*.test.js' -print0 | xargs -0 node --test"
+    "test": "find src -name '*.test.js' -print0 | xargs -0 node --test",
+    "admin:create": "node scripts/crear-admin.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "overrides": {
-    "uuid": "11.1.1"
+    "uuid": "11.1.1",
+    "qs": "6.16.0"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -26,8 +28,10 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "nodemailer": "^9.0.4",
+    "qrcode": "^1.5.4",
     "sharp": "^0.35.3",
     "socket.io": "^4.8.3",
+    "speakeasy": "^2.0.0",
     "twilio": "^6.0.2"
   }
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 
+import AdminAuthGate from './admin-auth-gate';
 import RevisionQueue from './revision-queue';
 import styles from './revision.module.css';
 
@@ -16,7 +17,9 @@ export default function RevisionPage() {
         <h1>Control de verificaciones</h1>
         <p>Revisa solicitudes y administra la palomita azul de todas las cuentas comprobadas.</p>
       </section>
-      <RevisionQueue />
+      <AdminAuthGate>
+        <RevisionQueue />
+      </AdminAuthGate>
     </main>
   );
 }

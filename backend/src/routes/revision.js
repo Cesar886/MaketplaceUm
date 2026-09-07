@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const { registrarAuditoriaAdmin } = require('../adminAudit');
 const { refrescarSellers } = require('../data');
 const db = require('../database');
 const {
@@ -54,6 +55,7 @@ function leerMotivoAdmin(req) {
 }
 
 function actorRevision(req) {
+  if (req.admin?.username) return req.admin.username;
   const actor = String(req.get('x-revision-actor') || 'panel-revision').trim();
   if (!actor || actor.length > MAX_ACTOR || /[\u0000-\u001f\u007f]/.test(actor)) {
     return 'panel-revision';
@@ -113,7 +115,7 @@ function registrarDecision(database, solicitud, accion, motivo, decididoEn) {
   );
 }
 
-function router() {
+function router({ authenticate = requireRevisionKey } = {}) {
   const api = express.Router();
   api.use(rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -122,7 +124,7 @@ function router() {
     legacyHeaders: false,
     message: { error: 'Demasiadas solicitudes al panel. Intenta más tarde.' },
   }));
-  api.use(requireRevisionKey);
+  api.use(authenticate);
   api.use((_req, res, next) => {
     res.set({
       'Cache-Control': 'private, no-store',
@@ -585,6 +587,21 @@ function router() {
         actor,
         decidedAt,
       );
+      if (req.admin) {
+        registrarAuditoriaAdmin(database, req, {
+          action: 'verification.set',
+          entityType: 'account',
+          entityId: accountId,
+          details: {
+            requestId,
+            role,
+            previousVerified: currentVerified,
+            newVerified: targetVerified,
+            reason,
+          },
+          createdAt: decidedAt,
+        });
+      }
       return { changed: true, replayed: false };
     })();
 
@@ -782,6 +799,21 @@ function router() {
       ).run(decididoEn, decididoEn, solicitud.id);
       database.prepare('UPDATE sellers SET verified = 1 WHERE id = ?').run(solicitud.id);
       registrarDecision(database, solicitud, 'approved', motivo, decididoEn);
+      if (req.admin) {
+        registrarAuditoriaAdmin(database, req, {
+          action: 'verification.approve',
+          entityType: 'verification',
+          entityId: solicitud.id,
+          details: {
+            previousStatus: 'pendiente',
+            newStatus: 'verificado',
+            previousVerified: false,
+            newVerified: true,
+            reason: motivo,
+          },
+          createdAt: decididoEn,
+        });
+      }
       return true;
     })();
 
@@ -809,6 +841,21 @@ function router() {
       ).run(motivo, solicitud.id);
       database.prepare('UPDATE sellers SET verified = 0 WHERE id = ?').run(solicitud.id);
       registrarDecision(database, solicitud, 'rejected', motivo, decididoEn);
+      if (req.admin) {
+        registrarAuditoriaAdmin(database, req, {
+          action: 'verification.reject',
+          entityType: 'verification',
+          entityId: solicitud.id,
+          details: {
+            previousStatus: 'pendiente',
+            newStatus: 'rechazado',
+            previousVerified: false,
+            newVerified: false,
+            reason: motivo,
+          },
+          createdAt: decididoEn,
+        });
+      }
       return true;
     })();
 
@@ -837,6 +884,21 @@ function router() {
       ).run(motivo, solicitud.id);
       database.prepare('UPDATE sellers SET verified = 0 WHERE id = ?').run(solicitud.id);
       registrarDecision(database, solicitud, 'revoked', motivo, decididoEn);
+      if (req.admin) {
+        registrarAuditoriaAdmin(database, req, {
+          action: 'verification.revoke',
+          entityType: 'verification',
+          entityId: solicitud.id,
+          details: {
+            previousStatus: 'verificado',
+            newStatus: 'rechazado',
+            previousVerified: true,
+            newVerified: false,
+            reason: motivo,
+          },
+          createdAt: decididoEn,
+        });
+      }
       return true;
     })();
 
@@ -867,6 +929,21 @@ function router() {
       ).run(decididoEn, decididoEn, solicitud.id);
       database.prepare('UPDATE sellers SET verified = 1 WHERE id = ?').run(solicitud.id);
       registrarDecision(database, solicitud, 'restored', motivo, decididoEn);
+      if (req.admin) {
+        registrarAuditoriaAdmin(database, req, {
+          action: 'verification.restore',
+          entityType: 'verification',
+          entityId: solicitud.id,
+          details: {
+            previousStatus: 'rechazado',
+            newStatus: 'verificado',
+            previousVerified: false,
+            newVerified: true,
+            reason: motivo,
+          },
+          createdAt: decididoEn,
+        });
+      }
       return true;
     })();
 
@@ -886,4 +963,4 @@ function register(app) {
   app.use('/api/revision', router());
 }
 
-module.exports = { register };
+module.exports = { register, router };

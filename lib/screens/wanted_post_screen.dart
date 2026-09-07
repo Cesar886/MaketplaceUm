@@ -12,6 +12,7 @@ import '../widgets/location_picker.dart';
 import '../widgets/payment_methods.dart';
 import '../widgets/publish_auth_gate.dart';
 import '../widgets/publish_form_skeleton.dart';
+import '../widgets/publication_limit_notice.dart';
 import '../widgets/static_mini_map.dart';
 
 /// Elección de ubicación para una publicación de negocio (Nivel 2): usar la
@@ -255,10 +256,25 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
               : null,
         );
         if (!mounted) return;
+        final days = publicationLimitsFor(auth, wanted: true).days;
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('wanted.published'.tr())));
+        messenger.showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Row(
+              children: [
+                const Icon(Icons.auto_awesome_rounded, color: Colors.white),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '¡Publicado! Tu búsqueda estará activa $days días.',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
       }
     } catch (e, stack) {
       if (!mounted) return;
@@ -468,6 +484,10 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (!_isEditing) ...[
+                          PublicationLimitNotice(auth: auth, wanted: true),
+                          const SizedBox(height: 12),
+                        ],
                         _WantedSectionCard(
                           icon: Icons.tune_rounded,
                           title: 'wanted.type_title'.tr(),

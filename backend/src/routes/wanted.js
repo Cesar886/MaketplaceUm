@@ -6,7 +6,7 @@ const { validateLocation, validatePaymentMethods } = require('../validation/sell
 const { validarMetodosPermitidos } = require('../payments/methods');
 
 const VALID_TYPES = ['producto', 'servicio'];
-const DAILY_LIMIT = 3;
+const { getPublicationPolicy, expiresAtFromNow, isExpired } = require('../publicationPolicy');
 
 /**
  * Junta sellerObj/categoryObj a una publicación "se busca", con el mismo
@@ -79,6 +79,7 @@ function register(app) {
 
     // Ubicación puntual de la búsqueda (Nivel 2): solo cuentas de negocio.
     const sellerRecord = sellers.find(s => s.id === userId);
+    const policy = getPublicationPolicy(sellerRecord);
     let postLocation = null;
     if (sellerRecord?.isBusiness) {
       const locationResult = validateLocation(req.body?.locationLat, req.body?.locationLng);
@@ -95,8 +96,11 @@ function register(app) {
 
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
     const countToday = db.countWantedPostsSince(userId, since);
-    if (countToday >= DAILY_LIMIT) {
-      return res.status(429).json({ error: `Ya publicaste el máximo de ${DAILY_LIMIT} búsquedas hoy` });
+    if (countToday >= policy.wantedDaily) {
+      return res.status(429).json({ error: `Ya publicaste el máximo de ${policy.wantedDaily} búsquedas hoy`, code: 'WANTED_DAILY_LIMIT', limits: policy });
+    }
+    if (db.countActiveWantedPosts(userId) >= policy.wantedActive) {
+      return res.status(409).json({ error: `Ya tienes el máximo de ${policy.wantedActive} búsquedas activas`, code: 'WANTED_ACTIVE_LIMIT', limits: policy });
     }
 
     const id = `wanted_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -112,6 +116,7 @@ function register(app) {
       locationLat: postLocation ? postLocation.lat : null,
       locationLng: postLocation ? postLocation.lng : null,
       paymentMethods: paymentMethodsResult.value,
+      expiresAt: expiresAtFromNow(policy.durationDays),
     });
 
     // Notificar a los interesados en esta categoría (mismo patrón que products.js)
@@ -150,6 +155,7 @@ function register(app) {
   app.get('/api/wanted/:id', (req, res) => {
     const post = db.getWantedPostById(req.params.id);
     if (!post) return res.status(404).json({ error: 'Publicación no encontrada' });
+    if (isExpired(post)) return res.status(410).json({ error: 'Esta búsqueda expiró' });
     res.json(attachWantedRelations(post));
   });
 

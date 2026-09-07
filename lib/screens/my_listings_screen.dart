@@ -7,6 +7,7 @@ import '../features/highlight/destacar_flag.dart';
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../services/api_error.dart';
 import '../widgets/auto_refresh.dart';
 import '../widgets/app_shimmer.dart';
 import '../widgets/badges.dart';
@@ -54,7 +55,7 @@ class _MyListingsScreenState extends State<MyListingsScreen>
     }
     try {
       final results = await Future.wait([
-        ApiService.getProducts(seller: sellerId),
+        ApiService.getListings(),
         ApiService.getSeller(sellerId),
       ]);
       if (!mounted) return;
@@ -166,6 +167,38 @@ class _MyListingsScreenState extends State<MyListingsScreen>
     }
   }
 
+  Future<void> _renewListing(Product product) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final renewed = await ApiService.renewProduct(product.id);
+      if (!mounted) return;
+      setState(() {
+        final index = _listings.indexWhere((p) => p.id == product.id);
+        if (index >= 0) _listings[index] = renewed.product;
+      });
+      messenger.showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Row(
+            children: [
+              const Icon(Icons.auto_awesome_rounded, color: Colors.white),
+              const SizedBox(width: 10),
+              Expanded(child: Text(renewed.message)),
+            ],
+          ),
+        ),
+      );
+    } catch (error, stack) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(mensajeDeError(error, stack: stack)),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -214,6 +247,7 @@ class _MyListingsScreenState extends State<MyListingsScreen>
                               onEdit: () =>
                                   _openPublish(editingProduct: product),
                               onDelete: () => _deleteListing(product),
+                              onRenew: () => _renewListing(product),
                               onHighlight: _openHighlightPlans,
                             ),
                             const SizedBox(height: 14),
@@ -476,6 +510,7 @@ class _MyListingTile extends StatelessWidget {
     required this.onFijar,
     required this.onEdit,
     required this.onDelete,
+    required this.onRenew,
     required this.onHighlight,
   });
 
@@ -487,6 +522,7 @@ class _MyListingTile extends StatelessWidget {
   final VoidCallback? onFijar;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onRenew;
   final VoidCallback onHighlight;
 
   @override
@@ -665,11 +701,24 @@ class _MyListingTile extends StatelessWidget {
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: onEdit,
-                        icon: const Icon(Icons.edit_rounded, size: 18),
-                        label: Text('listings.edit_action'.tr()),
-                      ),
+                      child: status == ListingStatus.expired
+                          ? FilledButton.icon(
+                              onPressed: onRenew,
+                              icon: const Icon(
+                                Icons.auto_awesome_rounded,
+                                size: 18,
+                              ),
+                              label: const Text('Renovar'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: context.colors.accent,
+                                foregroundColor: Colors.white,
+                              ),
+                            )
+                          : OutlinedButton.icon(
+                              onPressed: onEdit,
+                              icon: const Icon(Icons.edit_rounded, size: 18),
+                              label: Text('listings.edit_action'.tr()),
+                            ),
                     ),
                     // TODO: Destacar publicaciones pendiente para próxima
                     // actualización - no eliminar. El botón

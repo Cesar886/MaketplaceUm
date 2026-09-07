@@ -13,6 +13,7 @@ const {
   atributosDestacados,
 } = require('../validation/atributosCategoria');
 const { validarMetodosPermitidos } = require('../payments/methods');
+const { getPublicationPolicy, expiresAtFromNow, isExpired } = require('../publicationPolicy');
 
 // Configuración anti-abuso de ofertas
 const COOLDOWN_HOURS = 72;
@@ -260,11 +261,11 @@ function cumpleAtributos(atributos, criterios) {
   });
 }
 
-function attachRelations(productsList, userId) {
+function attachRelations(productsList, userId, { includeExpired = false } = {}) {
   let modified = false;
   const todayStr = new Date().toDateString();
 
-  const mapped = productsList.map(p => {
+  const mapped = productsList.filter(p => includeExpired || !isExpired(p)).map(p => {
     // 1. Reset diario de stock si aplica
     if (p.stock_reset_daily && p.stock_updated_at && p.stock_initial !== null) {
       const lastUpdateStr = new Date(p.stock_updated_at).toDateString();
@@ -312,6 +313,7 @@ function attachRelations(productsList, userId) {
 
     return {
       ...p,
+      status: isExpired(p) ? 'expired' : p.status,
       atributos,
       atributosDestacados: atributosDestacados(atributos, p.category),
       postType: 'producto',
@@ -332,10 +334,17 @@ function attachRelations(productsList, userId) {
 }
 
 function register(app) {
+  // Listado privado del dueño. Incluye vencidos porque esta es la pantalla
+  // desde la que se administran y renuevan; nunca se mezclan con el feed.
+  app.get('/api/products/mine', requireAuth, (req, res) => {
+    const mine = products.filter(p => p.seller === req.user.id);
+    res.json(attachRelations(mine, req.user.id, { includeExpired: true }));
+  });
+
   // GET /api/products – listar con filtros
   app.get('/api/products', (req, res) => {
     const { category, featured, offer, search, seller } = req.query;
-    let filtered = [...products];
+    let filtered = products.filter(p => !isExpired(p));
 
     if (category) filtered = filtered.filter(p => p.category === category);
     // TODO: Destacar publicaciones pendiente para próxima actualización - no
@@ -380,6 +389,7 @@ function register(app) {
   app.get('/api/products/:id', (req, res) => {
     const product = products.find(p => p.id === req.params.id);
     if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+    if (isExpired(product)) return res.status(410).json({ error: 'Esta publicación expiró' });
 
     const userId = req.query.userId;
     const detalle = attachRelations([product], userId)[0];
@@ -424,6 +434,24 @@ function register(app) {
   // POST /api/products – crear nuevo producto (con imágenes opcionales)
   // Requiere autenticación; el vendedor se obtiene del JWT, no del body
   app.post('/api/products', requireAuth, (req, res) => {
+    // Se valida antes de que multer escriba fotos temporales: una solicitud
+    // rechazada por cupo no debe dejar archivos huérfanos en uploads/.
+    const sellerId = req.user.id;
+    const sellerRecord = sellers.find(s => s.id === sellerId);
+    const policy = getPublicationPolicy(sellerRecord);
+    const now = Date.now();
+    const activeProducts = products.filter(p =>
+      p.seller === sellerId && !isExpired(p, now) && p.manual_status !== 'sold');
+    const since = now - 86400000;
+    const productsToday = products.filter(p =>
+      p.seller === sellerId && new Date(p.created_at || 0).getTime() >= since).length;
+    if (productsToday >= policy.productsDaily) {
+      return res.status(429).json({ error: `Ya publicaste el máximo de ${policy.productsDaily} productos hoy`, code: 'PRODUCT_DAILY_LIMIT', limits: policy });
+    }
+    if (activeProducts.length >= policy.productsActive) {
+      return res.status(409).json({ error: `Ya tienes el máximo de ${policy.productsActive} productos activos`, code: 'PRODUCT_ACTIVE_LIMIT', limits: policy });
+    }
+
     upload.any()(req, res, (err) => {
       if (err) {
         return res.status(400).json({ error: 'Error al procesar imágenes: ' + err.message });
@@ -440,13 +468,11 @@ function register(app) {
       const textos = validarTextos(title, description);
       if (textos.error) return res.status(400).json({ error: textos.error });
 
-      const sellerId = req.user.id;
       const productId = `p${Date.now()}`;
 
       // Ubicación puntual de la publicación (Nivel 2): solo cuentas de
       // negocio pueden asociarla, sin importar lo que mande el cliente —
       // defensa en profundidad además del control en la UI.
-      const sellerRecord = sellers.find(s => s.id === sellerId);
       let productLocation = null;
       if (sellerRecord?.isBusiness) {
         const locationResult = validateLocation(req.body?.locationLat, req.body?.locationLng);
@@ -512,6 +538,28 @@ function register(app) {
 
       Promise.all(conversionPromises)
         .then((images) => {
+          // Segunda comprobación después del trabajo asíncrono de imágenes.
+          // Dos publicaciones simultáneas pueden pasar juntas el chequeo
+          // inicial; esta barrera serial (JS ejecuta este bloque de una en
+          // una) impide que ambas rebasen el último lugar disponible.
+          const finalNow = Date.now();
+          const finalActive = products.filter(p =>
+            p.seller === sellerId && !isExpired(p, finalNow) && p.manual_status !== 'sold').length;
+          const finalToday = products.filter(p =>
+            p.seller === sellerId && new Date(p.created_at || 0).getTime() >= finalNow - 86400000).length;
+          if (finalToday >= policy.productsDaily || finalActive >= policy.productsActive) {
+            for (const imagePath of images) {
+              fs.unlink(path.join(UPLOADS_DIR, path.basename(imagePath)), () => {});
+            }
+            const dailyReached = finalToday >= policy.productsDaily;
+            return res.status(dailyReached ? 429 : 409).json({
+              error: dailyReached
+                ? `Ya publicaste el máximo de ${policy.productsDaily} productos hoy`
+                : `Ya tienes el máximo de ${policy.productsActive} productos activos`,
+              code: dailyReached ? 'PRODUCT_DAILY_LIMIT' : 'PRODUCT_ACTIVE_LIMIT',
+              limits: policy,
+            });
+          }
           const priceNum = Number(price);
 
           const extrasInput = normalizeExtras(req.body?.extras);
@@ -543,6 +591,8 @@ function register(app) {
             locationLng: productLocation ? productLocation.lng : null,
             paymentMethods: productPaymentMethods,
             atributos: productAtributos || {},
+            created_at: new Date().toISOString(),
+            expiresAt: expiresAtFromNow(policy.durationDays),
           };
 
           products.unshift(newProduct);
@@ -566,6 +616,45 @@ function register(app) {
           console.error('Error en POST /api/products:', err);
           res.status(500).json({ error: err.message });
         });
+    });
+  });
+
+  // Renovar equivale a una publicación nueva para el cupo diario y la
+  // recencia del feed. Solo se permite cuando la vigencia realmente acabó.
+  app.post('/api/products/:id/renew', requireAuth, (req, res) => {
+    const product = products.find(p => p.id === req.params.id);
+    if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+    if (product.seller !== req.user.id) {
+      return res.status(403).json({ error: 'No tienes permiso para renovar este producto' });
+    }
+    if (!isExpired(product)) {
+      return res.status(400).json({ error: 'Este producto todavía está vigente' });
+    }
+
+    const seller = sellers.find(s => s.id === req.user.id);
+    const policy = getPublicationPolicy(seller);
+    const now = Date.now();
+    const active = products.filter(p =>
+      p.seller === req.user.id && p.id !== product.id && !isExpired(p, now) && p.manual_status !== 'sold').length;
+    const publishedToday = products.filter(p =>
+      p.seller === req.user.id && p.id !== product.id && new Date(p.created_at || 0).getTime() >= now - 86400000).length;
+    if (publishedToday >= policy.productsDaily) {
+      return res.status(429).json({ error: `Ya alcanzaste el máximo de ${policy.productsDaily} publicaciones nuevas o renovadas hoy`, code: 'PRODUCT_DAILY_LIMIT', limits: policy });
+    }
+    if (active >= policy.productsActive) {
+      return res.status(409).json({ error: `Ya tienes el máximo de ${policy.productsActive} productos activos`, code: 'PRODUCT_ACTIVE_LIMIT', limits: policy });
+    }
+
+    product.created_at = new Date(now).toISOString();
+    product.expiresAt = expiresAtFromNow(policy.durationDays);
+    product.status = null;
+    product.manual_status = null;
+    product.publishedAgo = 'Ahora mismo';
+    saveData();
+    res.json({
+      product: attachRelations([product], req.user.id)[0],
+      message: `Producto renovado por ${policy.durationDays} días`,
+      durationDays: policy.durationDays,
     });
   });
 

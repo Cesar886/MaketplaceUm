@@ -1005,8 +1005,7 @@ class ApiService {
         if (paymentMethods != null) 'paymentMethods': paymentMethods,
       }),
     );
-    if (res.statusCode != 201)
-      throw Exception('${res.statusCode}: ${res.body}');
+    if (res.statusCode != 201) throw excepcionDeRespuesta(res);
     return WantedPost.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
@@ -1237,7 +1236,7 @@ class ApiService {
         throw Exception('errors.session_expired'.tr());
       }
     }
-    throw Exception('${res.statusCode}: ${res.body}');
+    throw excepcionDeRespuesta(res);
   }
 
   /// Edita los campos generales de un producto ya existente (solo el dueño):
@@ -1633,12 +1632,30 @@ class ApiService {
 
   // ─── Listings ───────────────────────────────────────────
   static Future<List<Product>> getListings() async {
-    final res = await _getWithRetry(_uri('/listings'));
+    final res = await _getWithRetry(
+      _uri('/products/mine'),
+      headers: _authHeaders,
+    );
     if (res.statusCode != 200) throw Exception('Error fetching listings');
     final List<dynamic> data = jsonDecode(res.body) as List<dynamic>;
     return data
         .map((e) => Product.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  static Future<({Product product, String message})> renewProduct(
+    String productId,
+  ) async {
+    final res = await _client.post(
+      _uri('/products/$productId/renew'),
+      headers: _authHeaders,
+    );
+    if (res.statusCode != 200) _throwProductAuthAwareError(res);
+    final json = jsonDecode(res.body) as Map<String, dynamic>;
+    return (
+      product: Product.fromJson(json['product'] as Map<String, dynamic>),
+      message: json['message'] as String? ?? 'Producto renovado',
+    );
   }
 
   // ─── Highlight Plans ────────────────────────────────────

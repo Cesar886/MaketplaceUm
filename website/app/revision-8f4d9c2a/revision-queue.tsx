@@ -255,7 +255,12 @@ function businessHourEntries(request: Request) {
 
 async function payloadOrError<T>(response: Response, fallback: string): Promise<T> {
   const payload = await response.json() as T & ErrorPayload;
-  if (!response.ok) throw new Error(payload.error || fallback);
+  if (!response.ok) {
+    if (response.status === 401) {
+      window.dispatchEvent(new Event('mercadito:admin-session-expired'));
+    }
+    throw new Error(payload.error || fallback);
+  }
   return payload;
 }
 

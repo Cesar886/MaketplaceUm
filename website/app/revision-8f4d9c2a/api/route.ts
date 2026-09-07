@@ -1,35 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const backend = (process.env.API_URL ?? 'http://127.0.0.1:3000').replace(/\/$/, '');
-
-function json(payload: unknown, status = 200) {
-  const response = NextResponse.json(payload, { status });
-  response.headers.set('Cache-Control', 'private, no-store');
-  response.headers.set('X-Content-Type-Options', 'nosniff');
-  return response;
-}
-
-function trustedOrigin(request: NextRequest) {
-  const configured = process.env.NEXT_PUBLIC_SITE_URL;
-  if (configured) {
-    try {
-      return new URL(configured).origin;
-    } catch {
-      return null;
-    }
-  }
-  return process.env.NODE_ENV === 'production' ? null : request.nextUrl.origin;
-}
-
-function mutationIsSameOrigin(request: NextRequest) {
-  const origin = request.headers.get('origin');
-  const fetchSite = request.headers.get('sec-fetch-site');
-  return !!origin
-    && origin === trustedOrigin(request)
-    && (!fetchSite || fetchSite === 'same-origin')
-    && request.headers.get('x-revision-csrf') === '1'
-    && request.headers.get('content-type')?.toLowerCase().startsWith('application/json');
-}
+import {
+  adminToken,
+  backendError,
+  backendHeaders,
+  backendPayload,
+  backendUrl,
+  clearAdminCookie,
+  json,
+  mutationIsSameOrigin,
+} from './_shared';
 
 type ReviewRequestPayload = {
   business?: { logoUrl?: string | null };
@@ -56,17 +36,10 @@ function proxyDocumentUrls(item: ReviewRequestPayload, pathname: string) {
   }
 }
 
-function authHeaders(actor?: string | null) {
-  const key = process.env.REVISION_API_KEY;
-  if (!key) throw new Error('REVISION_API_KEY no está configurada.');
-  return {
-    'content-type': 'application/json',
-    'x-revision-api-key': key,
-    ...(actor ? { 'x-revision-actor': actor } : {}),
-  };
-}
-
 export async function GET(request: NextRequest) {
+  const token = adminToken(request);
+  if (!token) return json({ error: 'Sesión administrativa requerida.' }, 401);
+
   const documentPath = request.nextUrl.searchParams.get('document');
   if (documentPath) {
     if (!/^\/uploads\/[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(documentPath)) {
@@ -74,15 +47,17 @@ export async function GET(request: NextRequest) {
     }
     try {
       const response = await fetch(
-        backend + '/api/revision/documento?path=' + encodeURIComponent(documentPath),
+        backendUrl('/api/admin/revision/documento?path=' + encodeURIComponent(documentPath)),
         {
-          headers: authHeaders(),
+          headers: backendHeaders(token),
           cache: 'no-store',
           signal: AbortSignal.timeout(10_000),
         },
       );
       if (!response.ok || !response.body) {
-        return json({ error: 'Documento no encontrado.' }, response.status);
+        const result = json({ error: 'Documento no encontrado.' }, response.status);
+        if (response.status === 401 || response.status === 403) clearAdminCookie(result);
+        return result;
       }
       return new NextResponse(response.body, {
         status: response.status,
@@ -107,29 +82,29 @@ export async function GET(request: NextRequest) {
   try {
     let endpoint: string;
     if (view === 'history') {
-      endpoint = '/api/revision/historial';
+      endpoint = '/api/admin/revision/historial';
     } else if (view === 'accounts') {
       const accountId = request.nextUrl.searchParams.get('accountId');
       if (accountId) {
-        endpoint = '/api/revision/cuentas/' + encodeURIComponent(accountId);
+        endpoint = '/api/admin/revision/cuentas/' + encodeURIComponent(accountId);
       } else {
         const query = new URLSearchParams();
         for (const key of ['page', 'limit', 'type', 'verified', 'q']) {
           const value = request.nextUrl.searchParams.get(key);
           if (value !== null) query.set(key, value);
         }
-        endpoint = '/api/revision/cuentas?' + query.toString();
+        endpoint = '/api/admin/revision/cuentas?' + query.toString();
       }
     } else {
-      endpoint = '/api/revision/verificaciones?status=pending';
+      endpoint = '/api/admin/revision/verificaciones?status=pending';
     }
 
-    const response = await fetch(backend + endpoint, {
-      headers: authHeaders(),
+    const response = await fetch(backendUrl(endpoint), {
+      headers: backendHeaders(token),
       cache: 'no-store',
       signal: AbortSignal.timeout(10_000),
     });
-    const payload = await response.json() as {
+    const payload = await backendPayload(response) as {
       requests?: ReviewRequestPayload[];
       entries?: Array<{ request?: ReviewRequestPayload | null }>;
     };
@@ -148,7 +123,9 @@ export async function GET(request: NextRequest) {
         proxyDocumentUrls(item, request.nextUrl.pathname);
       }
     }
-    return json(payload, response.status);
+    const result = json(payload, response.status);
+    if (response.status === 401 || response.status === 403) clearAdminCookie(result);
+    return result;
   } catch {
     return json({ error: 'No se pudo conectar al backend de revisión.' }, 502);
   }
@@ -158,6 +135,9 @@ export async function POST(request: NextRequest) {
   if (!mutationIsSameOrigin(request)) {
     return json({ error: 'Solicitud administrativa no autorizada.' }, 403);
   }
+
+  const token = adminToken(request);
+  if (!token) return json({ error: 'Sesión administrativa requerida.' }, 401);
 
   const id = request.nextUrl.searchParams.get('id');
   const action = request.nextUrl.searchParams.get('action');
@@ -178,16 +158,21 @@ export async function POST(request: NextRequest) {
 
   try {
     const endpoint = action === 'set-verification'
-      ? `${backend}/api/revision/cuentas/${encodeURIComponent(id)}/verificacion`
-      : `${backend}/api/revision/verificaciones/${encodeURIComponent(id)}/${action}`;
-    const response = await fetch(endpoint, {
+      ? `/api/admin/revision/cuentas/${encodeURIComponent(id)}/verificacion`
+      : `/api/admin/revision/verificaciones/${encodeURIComponent(id)}/${action}`;
+    const response = await fetch(backendUrl(endpoint), {
       method: 'POST',
-      headers: authHeaders(request.headers.get('x-revision-admin')),
+      headers: backendHeaders(token, true),
       body: JSON.stringify(body),
       cache: 'no-store',
       signal: AbortSignal.timeout(10_000),
     });
-    return json(await response.json(), response.status);
+    const payload = await backendPayload(response);
+    const result = response.ok
+      ? json(payload, response.status)
+      : json({ error: backendError(payload, 'No se pudo guardar la decisión.') }, response.status);
+    if (response.status === 401 || response.status === 403) clearAdminCookie(result);
+    return result;
   } catch {
     return json({ error: 'No se pudo conectar al backend de revisión.' }, 502);
   }

@@ -20,6 +20,7 @@ import '../widgets/location_picker.dart';
 import '../widgets/payment_methods.dart';
 import '../widgets/publish_auth_gate.dart';
 import '../widgets/publish_form_skeleton.dart';
+import '../widgets/publication_limit_notice.dart';
 import '../widgets/static_mini_map.dart';
 
 /// Elección de ubicación para una publicación de negocio (Nivel 2): usar la
@@ -392,9 +393,21 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
         );
         if (!mounted) return;
         final messenger = ScaffoldMessenger.of(context);
+        final days = publicationLimitsFor(auth, wanted: false).days;
         Navigator.of(context).pop(true);
         messenger.showSnackBar(
-          SnackBar(content: Text('publish.published_ok'.tr())),
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Row(
+              children: [
+                const Icon(Icons.auto_awesome_rounded, color: Colors.white),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('¡Publicado! Estará activo durante $days días.'),
+                ),
+              ],
+            ),
+          ),
         );
       }
     } catch (e, stack) {
@@ -1339,6 +1352,7 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
   }
 
   Widget _buildForm() {
+    final auth = context.watch<AuthProvider>();
     final form = ListView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: EdgeInsets.fromLTRB(16, 14, 16, _isEditing ? 18 : 12),
@@ -1350,6 +1364,10 @@ class _PublishProductScreenState extends State<PublishProductScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (!_isEditing) ...[
+                  PublicationLimitNotice(auth: auth, wanted: false),
+                  const SizedBox(height: 12),
+                ],
                 _PublishSectionCard(
                   icon: Icons.photo_camera_rounded,
                   title: 'publish.photos'.tr(),

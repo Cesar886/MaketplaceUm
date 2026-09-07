@@ -2,6 +2,10 @@ const crypto = require('crypto');
 const fs = require('fs');
 const Database = require('better-sqlite3');
 const path = require('path');
+const {
+  DEFAULT_PUBLICATION_POLICIES,
+  PUBLICATION_POLICY_RANGES,
+} = require('./publicationPolicy');
 
 // Configurable para que los tests puedan correr contra una base temporal con
 // el schema y las migraciones REALES, en vez de recrear a mano un schema
@@ -87,7 +91,8 @@ function initDatabase() {
       stock_initial INTEGER,
       stock_updated_at TEXT,
       availableDays TEXT DEFAULT '[]',
-      manual_status TEXT DEFAULT NULL
+      manual_status TEXT DEFAULT NULL,
+      expires_at TEXT DEFAULT NULL
     );
 
     CREATE TABLE IF NOT EXISTS price_history (
@@ -165,7 +170,8 @@ function initDatabase() {
       status TEXT NOT NULL DEFAULT 'abierta',
       resolved_with_user_id TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      resolved_at TEXT
+      resolved_at TEXT,
+      expires_at TEXT DEFAULT NULL
     );
 
     CREATE INDEX IF NOT EXISTS idx_wanted_posts_category ON wanted_posts(category_id, status);
@@ -796,6 +802,18 @@ function runMigrations() {
   if (!wantedCols.some(c => c.name === 'views')) {
     db.exec(`ALTER TABLE wanted_posts ADD COLUMN views INTEGER DEFAULT 0`);
   }
+  if (!cols.some(c => c.name === 'expires_at')) {
+    db.exec(`ALTER TABLE products ADD COLUMN expires_at TEXT DEFAULT NULL`);
+  }
+  if (!wantedCols.some(c => c.name === 'expires_at')) {
+    db.exec(`ALTER TABLE wanted_posts ADD COLUMN expires_at TEXT DEFAULT NULL`);
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_products_seller_expiry
+      ON products(seller, expires_at, created_at);
+    CREATE INDEX IF NOT EXISTS idx_wanted_user_expiry
+      ON wanted_posts(user_id, status, expires_at, created_at);
+  `);
 
   // 23b. Vistas del perfil público. Las bases existentes necesitan esta
   // migración porque el DEFAULT de CREATE TABLE solo aplica a instalaciones
@@ -1985,6 +2003,137 @@ function runMigrations() {
       ON refresh_sessions(user_id, revoked_at);
   `);
 
+  // 48. Moderacion administrativa de cuentas. Se migra con columnas
+  // aditivas para conservar todas las cuentas y sesiones existentes.
+  // auth_invalid_before usa epoch en milisegundos: el iat estandar de JWT
+  // solo tiene precision de segundos y dejaria una ventana de reutilizacion
+  // al suspender una cuenta en el mismo segundo en que obtuvo su token.
+  const sellerColsModeration = db.prepare("PRAGMA table_info('sellers')").all();
+  if (!sellerColsModeration.some(column => column.name === 'admin_status')) {
+    db.exec(`
+      ALTER TABLE sellers ADD COLUMN admin_status TEXT NOT NULL DEFAULT 'active'
+        CHECK(admin_status IN ('active', 'suspended', 'banned'))
+    `);
+  }
+  if (!sellerColsModeration.some(column => column.name === 'admin_status_reason')) {
+    db.exec('ALTER TABLE sellers ADD COLUMN admin_status_reason TEXT');
+  }
+  if (!sellerColsModeration.some(column => column.name === 'admin_status_until')) {
+    db.exec('ALTER TABLE sellers ADD COLUMN admin_status_until TEXT');
+  }
+  if (!sellerColsModeration.some(column => column.name === 'auth_invalid_before')) {
+    db.exec(`
+      ALTER TABLE sellers ADD COLUMN auth_invalid_before INTEGER NOT NULL DEFAULT 0
+        CHECK(auth_invalid_before >= 0)
+    `);
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_sellers_admin_status
+      ON sellers(admin_status, admin_status_until, id)
+  `);
+
+  // 49. Identidades administrativas separadas de las cuentas del marketplace.
+  // El secreto TOTP se cifra en la capa de autenticacion antes de persistirlo;
+  // nunca se guarda el JWT ni la contrasena en texto plano. token_version
+  // permite invalidar de inmediato todas las sesiones de un admin.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS admins (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL COLLATE NOCASE UNIQUE
+        CHECK(length(username) BETWEEN 3 AND 64),
+      password_hash TEXT NOT NULL,
+      totp_secret_encrypted TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
+      token_version INTEGER NOT NULL DEFAULT 0,
+      last_totp_step INTEGER,
+      last_login_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_admins_active ON admins(active, id);
+
+    CREATE TABLE IF NOT EXISTS admin_revoked_tokens (
+      jti TEXT PRIMARY KEY,
+      admin_id INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      revoked_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (admin_id) REFERENCES admins(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_admin_revoked_tokens_expiry
+      ON admin_revoked_tokens(expires_at);
+    DELETE FROM admin_revoked_tokens WHERE expires_at <= unixepoch();
+
+    -- Bitacora transversal de acciones administrativas. A diferencia de los
+    -- historiales de dominio, conserva la identidad autenticada que ejecuto
+    -- cada cambio. No se hace backfill: solo registra acciones nuevas.
+    CREATE TABLE IF NOT EXISTS admin_audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      admin_id INTEGER NOT NULL,
+      action TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      details_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (admin_id) REFERENCES admins(id) ON DELETE RESTRICT
+    );
+    CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin_date
+      ON admin_audit_log(admin_id, created_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_admin_audit_log_entity_date
+      ON admin_audit_log(entity_type, entity_id, created_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_admin_audit_log_date
+      ON admin_audit_log(created_at DESC, id DESC);
+
+    -- Cinco niveles fijos de limites de publicacion. Los valores efectivos
+    -- viven aqui; el codigo solo conserva sus defaults para seed/reset y para
+    -- tests que deliberadamente no inicializan SQLite.
+    CREATE TABLE IF NOT EXISTS config (
+      key TEXT PRIMARY KEY CHECK(key IN (
+        'negocio_verificado',
+        'negocio_sin_verificar',
+        'um_verificado',
+        'um_sin_verificar',
+        'externo'
+      )),
+      products_active INTEGER NOT NULL
+        CHECK(products_active BETWEEN ${PUBLICATION_POLICY_RANGES.productsActive.min}
+          AND ${PUBLICATION_POLICY_RANGES.productsActive.max}),
+      products_daily INTEGER NOT NULL
+        CHECK(products_daily BETWEEN ${PUBLICATION_POLICY_RANGES.productsDaily.min}
+          AND ${PUBLICATION_POLICY_RANGES.productsDaily.max}),
+      wanted_active INTEGER NOT NULL
+        CHECK(wanted_active BETWEEN ${PUBLICATION_POLICY_RANGES.wantedActive.min}
+          AND ${PUBLICATION_POLICY_RANGES.wantedActive.max}),
+      wanted_daily INTEGER NOT NULL
+        CHECK(wanted_daily BETWEEN ${PUBLICATION_POLICY_RANGES.wantedDaily.min}
+          AND ${PUBLICATION_POLICY_RANGES.wantedDaily.max}),
+      duration_days INTEGER NOT NULL
+        CHECK(duration_days BETWEEN ${PUBLICATION_POLICY_RANGES.durationDays.min}
+          AND ${PUBLICATION_POLICY_RANGES.durationDays.max}),
+      updated_by_admin_id INTEGER,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (updated_by_admin_id) REFERENCES admins(id) ON DELETE SET NULL
+    );
+  `);
+
+  const insertDefaultConfig = db.prepare(
+    `INSERT OR IGNORE INTO config (
+       key, products_active, products_daily, wanted_active, wanted_daily,
+       duration_days
+     ) VALUES (?, ?, ?, ?, ?, ?)`,
+  );
+  db.transaction(entries => {
+    for (const [key, policy] of entries) {
+      insertDefaultConfig.run(
+        key,
+        policy.productsActive,
+        policy.productsDaily,
+        policy.wantedActive,
+        policy.wantedDaily,
+        policy.durationDays,
+      );
+    }
+  })(Object.entries(DEFAULT_PUBLICATION_POLICIES));
+
   // Recoge estadisticas para que SQLite pueda elegir los indices nuevos desde
   // el primer arranque posterior al despliegue.
   db.pragma('optimize');
@@ -2129,6 +2278,7 @@ function rowToProduct(row) {
     stock_initial: row.stock_initial ?? null,
     stock_updated_at: row.stock_updated_at || null,
     created_at: row.created_at || null,
+    expiresAt: row.expires_at || null,
     availableDays: JSON.parse(row.availableDays || '[]'),
     updated_at: row.updated_at || null,
     locationLat: row.location_lat ?? null,
@@ -2192,6 +2342,7 @@ function productToRow(product) {
     location_lat: product.locationLat ?? null,
     location_lng: product.locationLng ?? null,
     paymentMethods: product.paymentMethods ? JSON.stringify(product.paymentMethods) : null,
+    expires_at: product.expiresAt || null,
     // Se guarda NULL, no '{}', cuando no hay ninguna respuesta: así la
     // columna distingue "sin contestar" de "contestó y quedó vacío" sin
     // ocupar espacio en cada fila del histórico.
@@ -2222,6 +2373,7 @@ function rowToWantedPost(row) {
     locationLng: row.location_lng ?? null,
     paymentMethods: row.paymentMethods ? JSON.parse(row.paymentMethods) : null,
     views: row.views ?? 0,
+    expiresAt: row.expires_at || null,
   };
 }
 
@@ -2478,12 +2630,12 @@ function insertProduct(product) {
       images, imageIcon, imageColor, previousPrice, discountLabel,
       isFeatured, isOffer, isFavorite, status, manual_status, offerExpiresAt, extras,
       stock_quantity, stock_reset_daily, stock_initial, stock_updated_at, created_at, availableDays, updated_at,
-      location_lat, location_lng, paymentMethods, atributos_categoria)
+      location_lat, location_lng, paymentMethods, atributos_categoria, expires_at)
     VALUES (@id, @title, @price, @priceNum, @category, @description, @publishedAgo, @seller,
       @images, @imageIcon, @imageColor, @previousPrice, @discountLabel,
       @isFeatured, @isOffer, @isFavorite, @status, @manual_status, @offerExpiresAt, @extras,
       @stock_quantity, @stock_reset_daily, @stock_initial, @stock_updated_at, @created_at, @availableDays, @updated_at,
-      @location_lat, @location_lng, @paymentMethods, @atributos_categoria)
+      @location_lat, @location_lng, @paymentMethods, @atributos_categoria, @expires_at)
     ON CONFLICT(id) DO UPDATE SET
       title = excluded.title, price = excluded.price, priceNum = excluded.priceNum,
       category = excluded.category, description = excluded.description,
@@ -2494,10 +2646,11 @@ function insertProduct(product) {
       status = excluded.status, manual_status = excluded.manual_status, offerExpiresAt = excluded.offerExpiresAt, extras = excluded.extras,
       stock_quantity = excluded.stock_quantity, stock_reset_daily = excluded.stock_reset_daily,
       stock_initial = excluded.stock_initial, stock_updated_at = excluded.stock_updated_at,
-      availableDays = excluded.availableDays, updated_at = excluded.updated_at,
+      created_at = excluded.created_at, availableDays = excluded.availableDays, updated_at = excluded.updated_at,
       location_lat = excluded.location_lat, location_lng = excluded.location_lng,
       paymentMethods = excluded.paymentMethods,
-      atributos_categoria = excluded.atributos_categoria
+      atributos_categoria = excluded.atributos_categoria,
+      expires_at = excluded.expires_at
   `).run(row);
 }
 
@@ -3806,8 +3959,8 @@ function getUnreadMessageCount(userId) {
 
 function createWantedPost(post) {
   db.prepare(`
-    INSERT INTO wanted_posts (id, user_id, title, description, category_id, type, price_min, price_max, status, created_at, location_lat, location_lng, paymentMethods)
-    VALUES (@id, @userId, @title, @description, @categoryId, @type, @priceMin, @priceMax, 'abierta', datetime('now'), @location_lat, @location_lng, @paymentMethods)
+    INSERT INTO wanted_posts (id, user_id, title, description, category_id, type, price_min, price_max, status, created_at, location_lat, location_lng, paymentMethods, expires_at)
+    VALUES (@id, @userId, @title, @description, @categoryId, @type, @priceMin, @priceMax, 'abierta', datetime('now'), @location_lat, @location_lng, @paymentMethods, @expires_at)
   `).run({
     id: post.id,
     userId: post.userId,
@@ -3820,6 +3973,7 @@ function createWantedPost(post) {
     location_lat: post.locationLat ?? null,
     location_lng: post.locationLng ?? null,
     paymentMethods: post.paymentMethods ? JSON.stringify(post.paymentMethods) : null,
+    expires_at: post.expiresAt || null,
   });
   return getWantedPostById(post.id);
 }
@@ -3838,6 +3992,7 @@ function listWantedPosts({ categoryId, status, type } = {}) {
   }
   query += ' AND status = ?';
   params.push(status || 'abierta');
+  query += " AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))";
   if (type) {
     query += ' AND type = ?';
     params.push(type);
@@ -3893,6 +4048,12 @@ function countWantedPostsSince(userId, isoTimestamp) {
     'SELECT COUNT(*) as count FROM wanted_posts WHERE user_id = ? AND created_at >= ?'
   ).get(userId, isoTimestamp);
   return row?.count ?? 0;
+}
+
+function countActiveWantedPosts(userId) {
+  return db.prepare(`SELECT COUNT(*) AS count FROM wanted_posts
+    WHERE user_id = ? AND status = 'abierta'
+      AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))`).get(userId)?.count ?? 0;
 }
 
 function createWantedConversation(id, wantedPostId, buyerId, sellerId) {
@@ -4260,6 +4421,7 @@ const SQL_PRODUCTO_ACTIVO = `
   (p.manual_status IS NULL OR p.manual_status NOT IN ('sold', 'paused'))
   AND (p.status IS NULL OR p.status != 'sold')
   AND (p.stock_quantity IS NULL OR p.stock_quantity > 0)
+  AND (p.expires_at IS NULL OR datetime(p.expires_at) > datetime('now'))
 `;
 
 /**
@@ -4851,6 +5013,7 @@ module.exports = {
   incrementWantedPostViews,
   resolveWantedPost,
   countWantedPostsSince,
+  countActiveWantedPosts,
   createWantedConversation,
   findWantedConversation,
   // Push Tokens
