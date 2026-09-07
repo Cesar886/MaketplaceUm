@@ -18,6 +18,7 @@ const {
   rowToPublicationPolicy,
 } = require('../publicationPolicy');
 const revision = require('./revision');
+const adminOperations = require('./adminOperations');
 
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const CONFIG_SELECT = `SELECT key, products_active, products_daily,
@@ -284,6 +285,8 @@ function router() {
       message: 'La fila se conservo y sus limites se restablecieron a los valores predeterminados.',
     });
   });
+
+  api.use(adminOperations.router());
 
   // Se reutiliza el router probado de revisión; la autenticación ya ocurrió en
   // el padre, por lo que no se duplica la lógica ni se reescribe la función.
