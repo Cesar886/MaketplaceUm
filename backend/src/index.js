@@ -52,6 +52,7 @@ const {
 const { crearRegistroPresencia } = require('./presence');
 const { sellers, saveData, registerSeller, updateSellerField } = require('./data');
 const { validateName, validateEmail, validatePassword, validatePhone, validateBusinessHours, validatePaymentMethods } = require('./validation/sellerProfile');
+const { getSellerAccess, sendSellerAccessError } = require('./sellerAccess');
 
 const routes = [
   require('./routes/categories'),
@@ -407,6 +408,13 @@ app.post('/api/auth/login', ...authLimiters, (req, res) => {
     return res.status(401).json({ error: 'Correo o contraseña incorrectos' });
   }
 
+  // La contraseña correcta prueba la identidad, pero no concede acceso por
+  // sí sola: suspensión/baneo se valida justo antes de emitir una sesión.
+  // Hacerlo después de bcrypt evita revelar por correo el estado de cuentas
+  // a quien no demostró conocer su credencial.
+  const accountAccess = getSellerAccess(db.getDb(), row.id);
+  if (!accountAccess.allowed) return sendSellerAccessError(res, accountAccess);
+
   // Login exitoso: resetear el contador de intentos fallidos y el bloqueo.
   if (row.failed_login_attempts || row.locked_until) {
     db.getDb()
@@ -483,7 +491,15 @@ app.post('/api/auth/register', ...authLimiters, (req, res) => {
         error: 'GOOGLE_ACCOUNT',
         message: 'Esa cuenta usa Google. Entra con el botón "Continuar con Google".',
       });
-    } else {
+    }
+
+    // Esta rama tambien funciona como login para cuentas existentes. Debe
+    // compartir exactamente la misma puerta administrativa que /auth/login;
+    // de lo contrario /auth/register seria un bypass de una suspension.
+    const accountAccess = getSellerAccess(db.getDb(), existingRow.id);
+    if (!accountAccess.allowed) return sendSellerAccessError(res, accountAccess);
+
+    if (!existingRow.password_hash) {
       // Cuenta legacy: se creó antes de que el backend guardara password
       // (bug de auth anterior). Se backfillea con el password recién dado.
       const hash = bcrypt.hashSync(password, 10);

@@ -1,6 +1,11 @@
 const jwt = require('jsonwebtoken');
 const { createHash, randomBytes, randomUUID } = require('crypto');
 const db = require('./database');
+const {
+  getSellerAccess,
+  getSellerTokenAccess,
+  sendSellerAccessError,
+} = require('./sellerAccess');
 
 // Sin fallback: un valor por defecto silencioso (`|| 'algo-fijo'`) es
 // exactamente lo que enmascaró el incidente de 2026-08 — cuando el .env no
@@ -47,7 +52,9 @@ function sesionRevocada(decoded) {
  * @returns {string} token JWT
  */
 function generateToken(userId) {
-  return jwt.sign({ sub: userId }, JWT_SECRET, {
+  // `iat` solo tiene precision de segundos. Este claim permite cortar una
+  // sesion en el mismo segundo en que se emitio, sin una ventana reutilizable.
+  return jwt.sign({ sub: userId, auth_time_ms: Date.now() }, JWT_SECRET, {
     jwtid: randomUUID(),
     expiresIn: JWT_EXPIRES_IN,
     algorithm: ALGORITMO,
@@ -90,6 +97,12 @@ function refreshSession(refreshToken) {
       WHERE rs.token_hash = ? AND rs.revoked_at IS NULL`,
   ).get(tokenHash);
   if (!row) return null;
+
+  // No basta con hacer JOIN: una fila suspendida sigue existiendo. Se usa la
+  // misma puerta que REST, sockets y login para que refresh no sea un bypass.
+  const access = getSellerAccess(database, row.user_id);
+  if (!access.allowed) return null;
+
   database.prepare(
     `UPDATE refresh_sessions SET last_used_at = datetime('now')
       WHERE token_hash = ?`,
@@ -161,11 +174,9 @@ function requireAuth(req, res, next) {
 
   const token = parts[1];
 
+  let decoded;
   try {
-    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: [ALGORITMO] });
-    if (sesionRevocada(decoded)) return res.status(401).json({ error: 'SESSION_INVALIDATED', message: 'Sesión cerrada.' });
-    req.user = { id: decoded.sub, anon: decoded.anon === true, jti: decoded.jti, exp: decoded.exp };
-    next();
+    decoded = jwt.verify(token, JWT_SECRET, { algorithms: [ALGORITMO] });
   } catch (err) {
     if (err.name === 'TokenExpiredError') {
       return res.status(401).json({ error: 'Token expirado. Vuelve a iniciar sesión.' });
@@ -179,6 +190,40 @@ function requireAuth(req, res, next) {
     }
     return res.status(401).json({ error: 'Token inválido.' });
   }
+
+  if (sesionRevocada(decoded)) {
+    return res.status(401).json({ error: 'SESSION_INVALIDATED', message: 'Sesión cerrada.' });
+  }
+
+  const isAnonymous = decoded.anon === true;
+  if (isAnonymous) {
+    // Un token de invitado sigue siendo valido sin una fila en sellers.
+    // Se comprueba el formato emitido por generateAnonToken para que el claim
+    // anon no pueda convertir otra identidad firmada por error en invitado.
+    if (typeof decoded.sub !== 'string' || !/^anon_[0-9a-f-]{36}$/i.test(decoded.sub)) {
+      return res.status(401).json({ error: 'Token inválido.' });
+    }
+  } else {
+    let access;
+    try {
+      access = getSellerTokenAccess(db.getDb(), decoded);
+    } catch (error) {
+      console.error('[auth] no se pudo validar el estado de la cuenta:', error.message);
+      return res.status(503).json({
+        error: 'AUTHORIZATION_UNAVAILABLE',
+        message: 'No se pudo validar la sesión. Intenta de nuevo.',
+      });
+    }
+    if (!access.allowed) return sendSellerAccessError(res, access);
+  }
+
+  req.user = {
+    id: decoded.sub,
+    anon: isAnonymous,
+    jti: decoded.jti,
+    exp: decoded.exp,
+  };
+  return next();
 }
 
 /**
@@ -198,7 +243,15 @@ function optionalAuth(req, _res, next) {
   try {
     const decoded = jwt.verify(parts[1], JWT_SECRET, { algorithms: [ALGORITMO] });
     if (sesionRevocada(decoded)) return next();
-    req.user = { id: decoded.sub, anon: decoded.anon === true };
+    if (decoded.anon === true) {
+      if (typeof decoded.sub !== 'string' || !/^anon_[0-9a-f-]{36}$/i.test(decoded.sub)) {
+        return next();
+      }
+      req.user = { id: decoded.sub, anon: true };
+      return next();
+    }
+    const access = getSellerTokenAccess(db.getDb(), decoded);
+    if (access.allowed) req.user = { id: decoded.sub, anon: false };
   } catch (err) {
     // Token ausente/expirado/inválido: se ignora, el request sigue como anónimo.
   }
@@ -217,6 +270,13 @@ function verificarToken(token) {
   try {
     const decoded = jwt.verify(token, JWT_SECRET, { algorithms: [ALGORITMO] });
     if (sesionRevocada(decoded)) return null;
+    if (decoded.anon === true) {
+      return typeof decoded.sub === 'string' && /^anon_[0-9a-f-]{36}$/i.test(decoded.sub)
+        ? decoded.sub
+        : null;
+    }
+    const access = getSellerTokenAccess(db.getDb(), decoded);
+    if (!access.allowed) return null;
     return decoded.sub || null;
   } catch (err) {
     return null;

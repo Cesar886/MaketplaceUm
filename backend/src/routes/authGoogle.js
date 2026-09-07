@@ -23,6 +23,7 @@ const rateLimit = require('express-rate-limit');
 
 const dbModule = require('../database');
 const { generateSession } = require('../auth');
+const { getSellerAccess, sendSellerAccessError } = require('../sellerAccess');
 const { calcularIniciales } = require('../utils/iniciales');
 const googleAuth = require('../services/googleAuth');
 const {
@@ -138,6 +139,12 @@ function crearRutasAuthGoogle({
       db.prepare('SELECT * FROM sellers WHERE email = ? COLLATE NOCASE').get(email);
 
     if (existente) {
+      // Google ya probó la identidad. Antes de vincular el sub, actualizar
+      // foto, asociar dispositivo o emitir tokens se aplica la misma puerta
+      // de suspensión/baneo que al login con contraseña.
+      const accountAccess = getSellerAccess(db, existente.id);
+      if (!accountAccess.allowed) return sendSellerAccessError(res, accountAccess);
+
       // Primera vez que esta cuenta entra con Google: se guarda el `sub`
       // para reconocerla después. NO se cambia `auth_provider`: una cuenta
       // que ya tenía contraseña la conserva y puede seguir entrando con
