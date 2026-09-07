@@ -11,6 +11,25 @@ import 'anonymous_id.dart';
 import 'api_error.dart';
 import 'secure_session_storage.dart';
 
+/// Sanción administrativa visible únicamente para el dueño autenticado de
+/// la cuenta. [motivo] es el texto que escribió el administrador y nunca se
+/// obtiene desde endpoints públicos.
+class RestriccionCuentaException implements Exception {
+  const RestriccionCuentaException({
+    required this.codigo,
+    required this.mensaje,
+    this.motivo,
+    this.suspendidaHasta,
+  });
+
+  final String codigo;
+  final String mensaje;
+  final String? motivo;
+  final DateTime? suspendidaHasta;
+
+  bool get esBaneo => codigo == 'ACCOUNT_BANNED';
+}
+
 /// Cliente HTTP que vigila TODAS las respuestas del backend en busca de un
 /// 401 `SESSION_INVALIDATED`, sin que cada endpoint tenga que acordarse de
 /// comprobarlo, y que traduce los fallos de red antes de que salgan de aquí.
@@ -57,6 +76,38 @@ class _SessionAwareClient extends http.BaseClient {
       // todo eso muere aquí y se convierte en un mensaje seguro. El detalle
       // real queda en el log de debug.
       throw ApiException.deRed(error, stack: stack);
+    }
+    if (res.statusCode == 403 && llevaSesion && !esRutaAuth) {
+      final bytes = await res.stream.toBytes();
+      try {
+        final body = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+        final codigo = body['error'] as String? ?? '';
+        if (codigo == 'ACCOUNT_BANNED' || codigo == 'ACCOUNT_SUSPENDED') {
+          final until = body['suspendedUntil'] as String?;
+          ApiService.notificarCuentaRestringida(
+            RestriccionCuentaException(
+              codigo: codigo,
+              mensaje: body['message'] as String? ?? 'Esta cuenta no está disponible.',
+              motivo: body['reason'] as String?,
+              suspendidaHasta: until == null
+                  ? null
+                  : DateTime.tryParse(until)?.toLocal(),
+            ),
+          );
+        }
+      } catch (_) {
+        // El consumidor original aún recibe intacta una respuesta inesperada.
+      }
+      return http.StreamedResponse(
+        Stream.value(bytes),
+        res.statusCode,
+        contentLength: bytes.length,
+        request: res.request,
+        headers: res.headers,
+        isRedirect: res.isRedirect,
+        persistentConnection: res.persistentConnection,
+        reasonPhrase: res.reasonPhrase,
+      );
     }
     if (res.statusCode != 401) return res;
 
@@ -193,16 +244,27 @@ class ApiService {
   /// al login. Se deja como callback y no como navegación directa para que
   /// esta capa siga sin depender de Flutter.
   static void Function()? onSesionInvalidada;
+  static void Function(RestriccionCuentaException)? onCuentaRestringida;
 
   /// Evita que varias peticiones en paralelo que fallan con el mismo token
   /// muerto disparen varios logout y varios push al login encimados.
   static bool _sesionYaInvalidada = false;
+  static bool _restriccionYaNotificada = false;
 
   static void notificarSesionInvalidada() {
     if (_sesionYaInvalidada) return;
     _sesionYaInvalidada = true;
     clearToken();
     onSesionInvalidada?.call();
+  }
+
+  static void notificarCuentaRestringida(
+    RestriccionCuentaException restriccion,
+  ) {
+    if (_restriccionYaNotificada) return;
+    _restriccionYaNotificada = true;
+    clearToken();
+    onCuentaRestringida?.call(restriccion);
   }
 
   /// Override programático (alternativa a la constante _backendHost).
@@ -228,6 +290,7 @@ class ApiService {
   static void setSession(String token, {String? refreshToken}) {
     setToken(token);
     _refreshToken = refreshToken;
+    _restriccionYaNotificada = false;
   }
 
   /// Limpia el token (logout).
@@ -435,6 +498,28 @@ class ApiService {
       }),
     );
     if (res.statusCode == 401) return null;
+    if (res.statusCode == 403) {
+      try {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        final codigo = body['error'] as String? ?? '';
+        if (codigo == 'ACCOUNT_BANNED' || codigo == 'ACCOUNT_SUSPENDED') {
+          final until = body['suspendedUntil'] as String?;
+          throw RestriccionCuentaException(
+            codigo: codigo,
+            mensaje:
+                body['message'] as String? ?? 'Esta cuenta no está disponible.',
+            motivo: body['reason'] as String?,
+            suspendidaHasta: until == null
+                ? null
+                : DateTime.tryParse(until)?.toLocal(),
+          );
+        }
+      } on RestriccionCuentaException {
+        rethrow;
+      } catch (_) {
+        // Una respuesta 403 malformada cae en el error genérico inferior.
+      }
+    }
     if (res.statusCode != 200) {
       throw Exception('errors.login_failed'.tr());
     }

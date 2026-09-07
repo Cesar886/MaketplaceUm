@@ -102,14 +102,21 @@ function getSellerAccess(database, userId, { nowMs = Date.now() } = {}) {
   }
 
   if (status === ACCOUNT_STATUSES.BANNED) {
-    return denied('ACCOUNT_BANNED', 'Esta cuenta fue inhabilitada.');
+    return denied(
+      'ACCOUNT_BANNED',
+      'Esta cuenta fue inhabilitada por el equipo de Marketplace UM.',
+      { reason: row.admin_status_reason || null },
+    );
   }
 
   if (status === ACCOUNT_STATUSES.SUSPENDED) {
     return denied(
       'ACCOUNT_SUSPENDED',
       'Esta cuenta esta suspendida temporalmente.',
-      { suspendedUntil: row.admin_status_until || null },
+      {
+        reason: row.admin_status_reason || null,
+        suspendedUntil: row.admin_status_until || null,
+      },
     );
   }
 
@@ -179,6 +186,9 @@ function sendSellerAccessError(res, access) {
     message: access?.message || 'La sesion ya no esta disponible.',
   };
   if (access?.suspendedUntil) payload.suspendedUntil = access.suspendedUntil;
+  // El motivo solo se entrega después de que el usuario probó su identidad
+  // (login con contraseña válida o JWT). Nunca se expone en búsquedas públicas.
+  if (access?.reason) payload.reason = access.reason;
   return res.status(forbidden ? 403 : 401).json(payload);
 }
 

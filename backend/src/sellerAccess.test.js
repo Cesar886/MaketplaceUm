@@ -92,8 +92,10 @@ test('active permite acceso; banned y suspension vigente fallan cerrados', () =>
 
   assert.equal(getSellerAccess(database, active).allowed, true);
   assert.equal(getSellerAccess(database, banned).code, 'ACCOUNT_BANNED');
+  assert.equal(getSellerAccess(database, banned).reason, 'fraude confirmado');
   const suspendedAccess = getSellerAccess(database, suspended);
   assert.equal(suspendedAccess.code, 'ACCOUNT_SUSPENDED');
+  assert.equal(suspendedAccess.reason, 'revision temporal');
   assert.ok(suspendedAccess.suspendedUntil);
 });
 

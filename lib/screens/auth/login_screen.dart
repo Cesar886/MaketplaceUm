@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../app_theme.dart';
 import '../../providers/accent_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/api_service.dart';
 import '../../config/google_auth_config.dart';
 import '../../widgets/app_logo.dart';
 import '../../widgets/google_sign_in_button.dart';
@@ -26,6 +27,64 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscure = true;
+
+  Future<void> _mostrarRestriccion(RestriccionCuentaException restriccion) {
+    final hasta = restriccion.suspendidaHasta;
+    final fecha = hasta == null
+        ? null
+        : '${hasta.day.toString().padLeft(2, '0')}/'
+              '${hasta.month.toString().padLeft(2, '0')}/${hasta.year} a las '
+              '${hasta.hour.toString().padLeft(2, '0')}:'
+              '${hasta.minute.toString().padLeft(2, '0')}';
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        icon: Icon(
+          restriccion.esBaneo ? Icons.block_rounded : Icons.schedule_rounded,
+          color: restriccion.esBaneo
+              ? Theme.of(context).colorScheme.error
+              : Theme.of(context).colorScheme.primary,
+          size: 34,
+        ),
+        title: Text(
+          restriccion.esBaneo ? 'Cuenta inhabilitada' : 'Cuenta suspendida',
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(restriccion.mensaje),
+            if (restriccion.motivo?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 18),
+              Text('Motivo', style: Theme.of(context).textTheme.labelLarge),
+              const SizedBox(height: 4),
+              Text(restriccion.motivo!.trim()),
+            ],
+            if (fecha != null) ...[
+              const SizedBox(height: 18),
+              Text(
+                'Acceso disponible de nuevo',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+              const SizedBox(height: 4),
+              Text(fecha),
+            ],
+            const SizedBox(height: 18),
+            const Text(
+              'Si consideras que fue un error, comunícate con soporte de Marketplace UM.',
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -108,10 +167,20 @@ class _LoginScreenState extends State<LoginScreen> {
                           ? null
                           : () async {
                               if (!_formKey.currentState!.validate()) return;
-                              final ok = await auth.login(
-                                _emailController.text.trim(),
-                                _passwordController.text,
-                              );
+                              bool ok;
+                              try {
+                                ok = await auth.login(
+                                  _emailController.text.trim(),
+                                  _passwordController.text,
+                                );
+                              } on RestriccionCuentaException catch (
+                                restriccion
+                              ) {
+                                if (context.mounted) {
+                                  await _mostrarRestriccion(restriccion);
+                                }
+                                return;
+                              }
                               if (!context.mounted) return;
                               if (ok) {
                                 // Iniciar sesión puede traer un perfil con
@@ -126,7 +195,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                 }
                                 Navigator.of(context).pushAndRemoveUntil(
                                   MaterialPageRoute<void>(
-                                    builder: (_) => MainShell(key: mainShellKey),
+                                    builder: (_) =>
+                                        MainShell(key: mainShellKey),
                                   ),
                                   (_) => false,
                                 );
