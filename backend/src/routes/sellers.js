@@ -44,7 +44,7 @@ const upload = multer({
 
 function register(app) {
   app.get('/api/sellers', (_req, res) => {
-    res.json(sellers);
+    res.json(sellers.filter(seller => db.isSellerPubliclyActive(seller.id)));
   });
 
   // Cuentas oficiales a las que "Reportar un problema" abre chat. Público
@@ -229,7 +229,9 @@ function register(app) {
 
   app.get('/api/sellers/:id', optionalAuth, (req, res) => {
     const seller = sellers.find(s => s.id === req.params.id);
-    if (!seller) return res.status(404).json({ error: 'Vendedor no encontrado' });
+    if (!seller || !db.isSellerPubliclyActive(seller.id)) {
+      return res.status(404).json({ error: 'Vendedor no encontrado' });
+    }
     // Es una métrica del PERFIL, no de sus publicaciones. Solo una visita
     // ajena cuenta: al dueño se le devuelve el total sin aumentarlo cuando
     // abre su propio perfil o su pantalla de configuración.

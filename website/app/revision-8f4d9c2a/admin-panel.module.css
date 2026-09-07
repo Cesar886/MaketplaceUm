@@ -72,7 +72,7 @@
 .primaryButton { background: var(--admin-brand) !important; color: #fff !important; }
 .dangerButton { background: var(--admin-danger) !important; color: #fff !important; }
 .dangerText { color: var(--admin-danger) !important; }
-button:disabled { cursor: wait !important; opacity: .58; }
+.shell button:disabled { cursor: wait !important; opacity: .58; }
 
 .selectionBar { align-items: center; background: var(--admin-brand); border-radius: 12px; color: #fff; display: flex; flex-wrap: wrap; gap: 10px; padding: 11px 13px; }
 .selectionBar strong { font-size: 13px; }
