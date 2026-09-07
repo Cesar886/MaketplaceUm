@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 
 import { detectarPlataforma, urlTienda, type Plataforma } from '@/lib/tiendas';
 
@@ -19,6 +20,7 @@ const CLAVE_DESCARTADO = 'mum-banner-descartado';
  * ya cubre ese caso.
  */
 export default function SmartBanner() {
+  const pathname = usePathname();
   const [plataforma, setPlataforma] = useState<Plataforma | null>(null);
   const [visible, setVisible] = useState(false);
 
@@ -34,7 +36,8 @@ export default function SmartBanner() {
     }
   }, []);
 
-  if (!visible || !plataforma || plataforma === 'escritorio') return null;
+  if (pathname.startsWith('/revision-8f4d9c2a')
+      || !visible || !plataforma || plataforma === 'escritorio') return null;
 
   const destino = urlTienda(plataforma);
 

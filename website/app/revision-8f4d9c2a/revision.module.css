@@ -1,4 +1,4 @@
-.page { max-width: 1040px; margin: 0 auto; padding: 44px 22px 72px; }
+.page { max-width: 1320px; margin: 0 auto; padding: 30px 22px 72px; }
 .header { margin-bottom: 26px; }
 .header h1 { font-size: clamp(30px, 6vw, 48px); color: var(--primary-dark); }
 .header > p:last-child { color: var(--muted); margin: 6px 0 0; }
