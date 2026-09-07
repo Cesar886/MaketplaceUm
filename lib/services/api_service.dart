@@ -87,7 +87,9 @@ class _SessionAwareClient extends http.BaseClient {
           ApiService.notificarCuentaRestringida(
             RestriccionCuentaException(
               codigo: codigo,
-              mensaje: body['message'] as String? ?? 'Esta cuenta no está disponible.',
+              mensaje:
+                  body['message'] as String? ??
+                  'Esta cuenta no está disponible.',
               motivo: body['reason'] as String?,
               suspendidaHasta: until == null
                   ? null

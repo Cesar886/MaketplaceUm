@@ -51,6 +51,72 @@ Future<void> _cerrarSesionExpirada() async {
   );
 }
 
+Future<void> _mostrarCuentaRestringida(
+  RestriccionCuentaException restriccion,
+) async {
+  final contexto = navigatorKey.currentContext;
+  if (contexto == null) return;
+  final auth = contexto.read<AuthProvider>();
+  await auth.logout();
+  navigatorKey.currentState?.pushAndRemoveUntil(
+    MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+    (_) => false,
+  );
+  await Future<void>.delayed(Duration.zero);
+  final dialogContext = navigatorKey.currentContext;
+  if (dialogContext == null) return;
+  final hasta = restriccion.suspendidaHasta;
+  final fecha = hasta == null
+      ? null
+      : '${hasta.day.toString().padLeft(2, '0')}/'
+            '${hasta.month.toString().padLeft(2, '0')}/${hasta.year} '
+            '${hasta.hour.toString().padLeft(2, '0')}:'
+            '${hasta.minute.toString().padLeft(2, '0')}';
+  await showDialog<void>(
+    context: dialogContext,
+    barrierDismissible: false,
+    builder: (context) => AlertDialog(
+      icon: Icon(
+        restriccion.esBaneo ? Icons.block_rounded : Icons.schedule_rounded,
+        color: restriccion.esBaneo
+            ? Theme.of(context).colorScheme.error
+            : Theme.of(context).colorScheme.primary,
+      ),
+      title: Text(
+        restriccion.esBaneo ? 'Cuenta inhabilitada' : 'Cuenta suspendida',
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(restriccion.mensaje),
+          if (restriccion.motivo?.trim().isNotEmpty == true) ...[
+            const SizedBox(height: 16),
+            const Text('Motivo', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text(restriccion.motivo!.trim()),
+          ],
+          if (fecha != null) ...[
+            const SizedBox(height: 16),
+            const Text(
+              'Acceso disponible de nuevo',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(fecha),
+          ],
+        ],
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Entendido'),
+        ),
+      ],
+    ),
+  );
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -60,6 +126,7 @@ void main() async {
   await EasyLocalization.ensureInitialized();
 
   ApiService.onSesionInvalidada = _cerrarSesionExpirada;
+  ApiService.onCuentaRestringida = _mostrarCuentaRestringida;
 
   // Inicializar Firebase (necesario antes de usar cualquier servicio Firebase)
   await Firebase.initializeApp();
