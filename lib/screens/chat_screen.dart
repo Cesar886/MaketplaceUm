@@ -31,6 +31,7 @@ class ChatScreen extends StatefulWidget {
     this.sellerId,
     this.product,
     this.otherUser,
+    this.initialDraft,
   });
 
   final String conversationId;
@@ -43,6 +44,7 @@ class ChatScreen extends StatefulWidget {
   /// ejemplo): en ese caso el AppBar cae al título genérico, sin inventar un
   /// interlocutor.
   final ChatUser? otherUser;
+  final String? initialDraft;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -85,6 +87,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    if (widget.initialDraft?.trim().isNotEmpty == true) {
+      _textController.text = widget.initialDraft!.trim();
+      _textController.selection = TextSelection.collapsed(
+        offset: _textController.text.length,
+      );
+    }
     WidgetsBinding.instance.addObserver(this);
     _currentConvId = widget.conversationId;
     _displayProduct = widget.product;

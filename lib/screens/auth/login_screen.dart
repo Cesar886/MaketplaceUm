@@ -4,14 +4,17 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../app_theme.dart';
+import '../../models.dart';
 import '../../providers/accent_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
+import '../../services/support_conversation.dart';
 import '../../config/google_auth_config.dart';
 import '../../widgets/app_logo.dart';
 import '../../widgets/google_sign_in_button.dart';
 import '../../main.dart' show mainShellKey;
 import '../main_shell.dart';
+import '../chat_screen.dart';
 import 'google_auth_flow.dart';
 import 'register_type_screen.dart';
 
@@ -77,6 +80,38 @@ class _LoginScreenState extends State<LoginScreen> {
           ],
         ),
         actions: [
+          TextButton.icon(
+            icon: const Icon(Icons.support_agent_rounded),
+            label: const Text('Hablar con soporte'),
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              try {
+                final support = await prepareReportsConversation();
+                if (!mounted) return;
+                await Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => ChatScreen(
+                      conversationId: support.conversationId,
+                      sellerId: support.contact.id,
+                      otherUser: ChatUser.deSeller(support.contact),
+                      initialDraft:
+                          'Hola, quiero solicitar una revisión de la medida aplicada a mi cuenta. '
+                          'El motivo que recibí fue: ${restriccion.motivo?.trim().isNotEmpty == true ? restriccion.motivo!.trim() : 'no especificado'}.',
+                    ),
+                  ),
+                );
+              } catch (_) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'No pudimos abrir el chat de soporte. Intenta nuevamente.',
+                    ),
+                  ),
+                );
+              }
+            },
+          ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('Entendido'),
