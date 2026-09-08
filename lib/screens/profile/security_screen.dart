@@ -128,13 +128,21 @@ class _SecurityScreenState extends State<SecurityScreen> {
                           children: [
                             FilterChip(
                               selected: blocked,
-                              label: Text('chat.block_user'.tr()),
+                              label: Text(
+                                (blocked
+                                        ? 'chat.unblock_user'
+                                        : 'chat.block_user')
+                                    .tr(),
+                              ),
                               avatar: const Icon(Icons.block_rounded),
                               onSelected: (value) => _setBlocked(id, value),
                             ),
                             FilterChip(
                               selected: muted,
-                              label: Text('chat.mute_user'.tr()),
+                              label: Text(
+                                (muted ? 'chat.unmute_user' : 'chat.mute_user')
+                                    .tr(),
+                              ),
                               avatar: const Icon(
                                 Icons.notifications_off_outlined,
                               ),

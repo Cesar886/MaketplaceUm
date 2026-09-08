@@ -66,10 +66,17 @@
     "delete_account": "Delete account",
     "delete_account_subtitle": "Erase your account and all its content",
     "delete_account_confirm_title": "Delete your account?",
-    "delete_account_confirm_body": "Your listings, comments and conversations will be erased. This action can't be undone.",
+    "delete_account_confirm_body": "Your personal data will be removed, your session will be closed, and your listings will stop being visible. This action can't be undone.",
+    "delete_account_error": "Couldn't delete your account. Please try again.",
+    "security_error": "Couldn't load security. Please try again.",
     "feature_delete_account": "Account deletion",
     "feature_report": "Problem reporting",
     "feature_changelog": "The changelog"
+  },
+  "security_center": {
+    "title": "Security center",
+    "subtitle": "Blocked users and muted chats",
+    "empty": "You don't have blocked users or muted chats."
   },
   "report_problem": {
     "title": "Report a problem",
@@ -96,9 +103,9 @@
     "other_hint": "Briefly describe what happened…",
     "send": "Send report",
     "sending": "Sending…",
-    "sent": "Report sent to the official Reports account.",
+    "sent": "Report sent. The team will review it from the reports inbox.",
     "send_error": "The report could not be sent. Please try again.",
-    "privacy": "Your report will be sent through internal chat only to the official Reports account.",
+    "privacy": "Your report will be stored privately for the Reports team to review.",
     "message_template": "🛡️ {target} REPORT\n\nReason: {reason}\n\nListing: {title}\nID: {productId}\nSeller: {seller}\nSeller ID: {sellerId}\nLink: {url}"
   },
   "my_data": {
@@ -558,7 +565,10 @@
     "first_contact_remaining": "You have {count} messages left until {user} replies.",
     "awaiting_reply": "You've sent {count} messages. You can continue when {user} replies.",
     "blocked_by_me": "Unblock {user} to send messages.",
-    "blocked_by_them": "You can't send messages to this account."
+    "blocked_by_them": "You can't send messages to this account.",
+    "scam_warning_title": "Sensitive message",
+    "scam_warning_body": "This message mentions payments, deposits, leaving the app, or external links. Check that you're not sharing data or accepting a risky deal.",
+    "scam_warning_send": "Send anyway"
   },
   "report_user": {
     "title": "Report user",

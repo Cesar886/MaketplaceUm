@@ -432,6 +432,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _sendMessage() async {
     final text = _textController.text.trim();
     if (text.isEmpty || _sending || _relationship?.canSend == false) return;
+    final continuar = await _confirmarMensajeRiesgoso(text);
+    if (!continuar) return;
 
     // Se captura y se limpia ANTES de la petición: el campo de texto ya se
     // vació, y dejar la barra de "respondiendo a" colgada mientras vuela el
@@ -481,6 +483,32 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+
+  Future<bool> _confirmarMensajeRiesgoso(String text) async {
+    final riesgo = RegExp(
+      r'(dep[oó]sito|anticipo|transferencia|fuera de la app|fuera de mercadito|paga por fuera|adelanto|se[ñn]al|whatsapp|wa\.me|bit\.ly|tinyurl|t\.me|telegram|http://|https://)',
+      caseSensitive: false,
+    ).hasMatch(text);
+    if (!riesgo) return true;
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('chat.scam_warning_title'.tr()),
+        content: Text('chat.scam_warning_body'.tr()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text('common.cancel'.tr()),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text('chat.scam_warning_send'.tr()),
+          ),
+        ],
+      ),
+    );
+    return result == true;
   }
 
   /// Elige una imagen de la galería y la envía al chat. El backend la

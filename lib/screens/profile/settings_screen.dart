@@ -675,7 +675,8 @@ class _SwatchDot extends StatelessWidget {
       selected: seleccionado,
       label: swatch.label,
       child: InkWell(
-        onTap: onTapOverride ??
+        onTap:
+            onTapOverride ??
             () async {
               await _seleccionar(context);
               onTap?.call();

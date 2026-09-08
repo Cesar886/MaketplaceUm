@@ -370,6 +370,14 @@ test('la bandeja entrega perfil publico del invitado para abrir, bloquear y repo
     },
     { id: invitado.anonId, name: 'Usuario invitado', isGuest: true },
   );
+
+  const bloqueo = await pedir(`/api/chat/users/${invitado.anonId}/block`, {
+    token: vendedor.token,
+    metodo: 'PUT',
+    cuerpo: { blocked: true },
+  });
+  assert.strictEqual(bloqueo.status, 200);
+  assert.strictEqual(bloqueo.body.relationship.blockedByMe, true);
 });
 
 test('un invitado no puede leer la conversación de otro invitado', async () => {

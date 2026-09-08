@@ -66,10 +66,17 @@
     "delete_account": "Eliminar cuenta",
     "delete_account_subtitle": "Borra tu cuenta y todo su contenido",
     "delete_account_confirm_title": "¿Eliminar tu cuenta?",
-    "delete_account_confirm_body": "Se borrarán tus publicaciones, comentarios y conversaciones. Esta acción no se puede deshacer.",
+    "delete_account_confirm_body": "Se eliminarán tus datos personales, se cerrará tu sesión y tus publicaciones dejarán de estar visibles. Esta acción no se puede deshacer.",
+    "delete_account_error": "No se pudo eliminar tu cuenta. Intenta de nuevo.",
+    "security_error": "No se pudo cargar seguridad. Intenta de nuevo.",
     "feature_delete_account": "La eliminación de cuenta",
     "feature_report": "El reporte de problemas",
     "feature_changelog": "El changelog"
+  },
+  "security_center": {
+    "title": "Centro de seguridad",
+    "subtitle": "Usuarios bloqueados y chats silenciados",
+    "empty": "No tienes usuarios bloqueados ni chats silenciados."
   },
   "report_problem": {
     "title": "Reportar un problema",
@@ -96,9 +103,9 @@
     "other_hint": "Describe brevemente lo que ocurrió…",
     "send": "Enviar reporte",
     "sending": "Enviando…",
-    "sent": "Reporte enviado a la cuenta oficial de Reportes.",
+    "sent": "Reporte enviado. El equipo lo revisará desde la bandeja de reportes.",
     "send_error": "No se pudo enviar el reporte. Intenta de nuevo.",
-    "privacy": "Tu reporte se enviará por el chat interno únicamente a la cuenta oficial de Reportes.",
+    "privacy": "Tu reporte se guardará de forma privada para revisión del equipo de Reportes.",
     "message_template": "🛡️ REPORTE DE {target}\n\nMotivo: {reason}\n\nPublicación: {title}\nID: {productId}\nVendedor: {seller}\nID del vendedor: {sellerId}\nEnlace: {url}"
   },
   "my_data": {
@@ -558,7 +565,10 @@
     "first_contact_remaining": "Te quedan {count} mensajes hasta que {user} responda.",
     "awaiting_reply": "Ya enviaste {count} mensajes. Podrás continuar cuando {user} responda.",
     "blocked_by_me": "Desbloquea a {user} para poder enviar mensajes.",
-    "blocked_by_them": "No puedes enviar mensajes a esta cuenta."
+    "blocked_by_them": "No puedes enviar mensajes a esta cuenta.",
+    "scam_warning_title": "Mensaje sensible",
+    "scam_warning_body": "Este mensaje menciona pagos, anticipos, salir de la app o enlaces externos. Revisa que no estés compartiendo datos o aceptando una operación riesgosa.",
+    "scam_warning_send": "Enviar de todos modos"
   },
   "report_user": {
     "title": "Reportar usuario",

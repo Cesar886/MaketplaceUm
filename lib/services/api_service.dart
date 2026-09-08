@@ -929,7 +929,10 @@ class ApiService {
   }
 
   static Future<List<Map<String, dynamic>>> getSecurityUsers() async {
-    final res = await _getWithRetry(_uri('/me/security'), headers: _authHeaders);
+    final res = await _getWithRetry(
+      _uri('/me/security'),
+      headers: _authHeaders,
+    );
     if (res.statusCode != 200) {
       throw excepcionDeRespuesta(res, fallback: 'settings.security_error'.tr());
     }
@@ -940,7 +943,10 @@ class ApiService {
   }
 
   static Future<void> deleteMyAccount() async {
-    final res = await _client.delete(_uri('/me/account'), headers: _authHeaders);
+    final res = await _client.delete(
+      _uri('/me/account'),
+      headers: _authHeaders,
+    );
     if (res.statusCode != 200) {
       throw excepcionDeRespuesta(
         res,

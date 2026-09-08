@@ -18,6 +18,7 @@ import 'package:mercadito_um/screens/legal/terms_screen.dart';
 import 'package:mercadito_um/screens/profile/help_screen.dart';
 import 'package:mercadito_um/screens/profile/my_data_screen.dart';
 import 'package:mercadito_um/screens/profile/safety_tips_screen.dart';
+import 'package:mercadito_um/screens/profile/security_screen.dart';
 import 'package:mercadito_um/screens/profile/settings_screen.dart';
 import 'package:mercadito_um/widgets/option_tile.dart';
 
@@ -89,6 +90,7 @@ void main() {
       'Idioma',
       'Centro de ayuda',
       'Seguridad',
+      'Centro de seguridad',
       'Términos y Condiciones',
       'Política de Privacidad',
       'Aviso de Cookies',
@@ -124,6 +126,7 @@ void main() {
     final destinos = <String, Type>{
       'Centro de ayuda': HelpScreen,
       'Seguridad': SafetyTipsScreen,
+      'Centro de seguridad': SecurityScreen,
       'Términos y Condiciones': TermsScreen,
       'Política de Privacidad': PrivacyScreen,
       'Ver mis datos': MyDataScreen,
@@ -150,7 +153,7 @@ void main() {
     }
   });
 
-  testWidgets('eliminar cuenta pide confirmación y no borra nada', (
+  testWidgets('eliminar cuenta pide confirmación antes de borrar', (
     tester,
   ) async {
     viewportAlto(tester);
@@ -166,12 +169,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('¿Eliminar tu cuenta?'), findsNothing);
 
-    // Confirmar tampoco borra: por ahora solo avisa que no está disponible.
-    await tester.tap(fila('Eliminar cuenta'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Eliminar'));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('próximamente'), findsOneWidget);
+    // La llamada real al backend se cubre en reports_privacy.test.js; esta
+    // prueba solo protege la fricción de UI antes de una acción irreversible.
   });
 }

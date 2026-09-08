@@ -4199,11 +4199,34 @@ function anonymizeSellerAccount(userId) {
     db.prepare('DELETE FROM push_tokens WHERE user_id = ?').run(userId);
     db.prepare('UPDATE refresh_sessions SET revoked_at = datetime(\'now\') WHERE user_id = ? AND revoked_at IS NULL').run(userId);
     db.prepare('DELETE FROM category_interests WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM cart WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM chat_user_settings WHERE owner_id = ? OR target_id = ?').run(userId, userId);
+    db.prepare('DELETE FROM conversations WHERE buyer_id = ? OR seller_id = ?').run(userId, userId);
     db.prepare('DELETE FROM verification_documents WHERE usuario_id = ?').run(userId);
     db.prepare('DELETE FROM verificaciones WHERE usuario_id = ?').run(userId);
-    db.prepare("UPDATE products SET manual_status = 'paused', moderation_status = 'removed', moderation_reason = 'Cuenta eliminada por el usuario', updated_at = datetime('now') WHERE seller = ?").run(userId);
-    db.prepare("UPDATE wanted_posts SET status = 'cerrada', moderation_status = 'removed', moderation_reason = 'Cuenta eliminada por el usuario' WHERE user_id = ?").run(userId);
+    db.prepare('DELETE FROM product_ratings WHERE user_id = ?').run(userId);
+    db.prepare("UPDATE product_comments SET texto = '[Comentario eliminado]', deleted_at = datetime('now'), deleted_by = ? WHERE user_id = ? AND deleted_at IS NULL").run(userId, userId);
+    db.prepare("UPDATE product_questions SET question_text = '[Pregunta eliminada]' WHERE asked_by = ?").run(userId);
+    db.prepare("UPDATE product_questions SET answer_text = '[Respuesta eliminada]' WHERE seller_id = ? AND answer_text IS NOT NULL").run(userId);
+    db.prepare(`UPDATE products SET
+      title = '[Publicacion eliminada]',
+      description = '',
+      images = '[]',
+      imageIcon = NULL,
+      imageColor = NULL,
+      extras = '[]',
+      manual_status = 'paused',
+      moderation_status = 'removed',
+      moderation_reason = 'Cuenta eliminada por el usuario',
+      updated_at = datetime('now')
+      WHERE seller = ?`).run(userId);
+    db.prepare(`UPDATE wanted_posts SET
+      title = '[Busqueda eliminada]',
+      description = '',
+      status = 'cerrada',
+      moderation_status = 'removed',
+      moderation_reason = 'Cuenta eliminada por el usuario'
+      WHERE user_id = ?`).run(userId);
     db.prepare(`
       UPDATE sellers SET
         name = ?,
