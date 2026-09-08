@@ -174,23 +174,27 @@ class _UserReportSheetState extends State<_UserReportSheet> {
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
-              ..._reasons.map(
-                (reason) => RadioListTile<String>(
-                  value: reason,
-                  groupValue: _reason,
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  title: Text(reason.tr()),
-                  onChanged: (value) => setState(() => _reason = value),
-                ),
-              ),
-              RadioListTile<String>(
-                value: 'other',
+              RadioGroup<String>(
                 groupValue: _reason,
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                title: Text('report_listing.reason_other'.tr()),
                 onChanged: (value) => setState(() => _reason = value),
+                child: Column(
+                  children: [
+                    ..._reasons.map(
+                      (reason) => RadioListTile<String>(
+                        value: reason,
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Text(reason.tr()),
+                      ),
+                    ),
+                    RadioListTile<String>(
+                      value: 'other',
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text('report_listing.reason_other'.tr()),
+                    ),
+                  ],
+                ),
               ),
               if (_isOther) ...[
                 const SizedBox(height: 6),
