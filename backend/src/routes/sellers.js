@@ -231,8 +231,7 @@ function register(app) {
    * se vea exactamente como lo ve el resto; lo que necesita para editar el
    * ajuste viaja aparte, en `insigniasGanadas`.
    */
-  function perfilPublico(seller) {
-    const metricas = conMetricas(seller);
+  function perfilPublico(seller, metricas = conMetricas(seller)) {
     const filtradas = aplicarInsigniasOcultas(metricas, seller.insigniasOcultas);
     // La lista de ocultas es privada: saber QUÉ escondió alguien es
     // exactamente lo que se quería no enseñar. Solo se le devuelve a su
@@ -260,7 +259,7 @@ function register(app) {
     // ajena cuenta: al dueño se le devuelve el total sin aumentarlo cuando
     // abre su propio perfil o su pantalla de configuración.
     if (!req.user || req.user.id !== seller.id) {
-      const counted = db.recordSellerProfileView(seller.id, profileViewerKey(req));
+      db.recordSellerProfileView(seller.id, profileViewerKey(req));
       // El acumulado se guarda directamente en SQLite. Ya no forma parte del
       // objeto publico cacheado: solo se devuelve al propio dueño y al admin.
     }
@@ -269,18 +268,19 @@ function register(app) {
     // ajuste de privacidad.
     const presencia = presenciaDe(req, req.user ? req.user.id : null, seller.id);
     if (req.user && req.user.id === seller.id) {
+      const metricas = conMetricas(seller);
       const rawRow = db.getDb()
         .prepare('SELECT email, profile_views FROM sellers WHERE id = ?')
         .get(seller.id);
       return res.json({
-        ...perfilPublico(seller),
+        ...perfilPublico(seller, metricas),
         ...presencia,
         email: rawRow.email || null,
         profileViews: rawRow.profile_views ?? 0,
         // Privado, como el email: qué insignias tiene realmente, ocultas
         // incluidas. Es lo único con lo que la pantalla de selección puede
         // saber qué switches ofrecer encendibles.
-        insigniasGanadas: insigniasGanadas(conMetricas(seller)),
+        insigniasGanadas: insigniasGanadas(metricas),
         insigniasOcultas: seller.insigniasOcultas,
       });
     }
