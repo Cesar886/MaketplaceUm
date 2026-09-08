@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../app_theme.dart';
+import '../../models.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/api_service.dart';
 
 /// Muestra la información de cuenta que tenemos guardada del usuario
 /// (correo, nombre, teléfono, tipo de cuenta, verificación).
@@ -12,8 +14,27 @@ import '../../providers/auth_provider.dart';
 /// endpoint de exportación detrás: en vez de simularlo con un
 /// próximamente, se lee lo que ya vive en [AuthProvider.currentUser] y se
 /// muestra tal cual.
-class MyDataScreen extends StatelessWidget {
+class MyDataScreen extends StatefulWidget {
   const MyDataScreen({super.key});
+
+  @override
+  State<MyDataScreen> createState() => _MyDataScreenState();
+}
+
+class _MyDataScreenState extends State<MyDataScreen> {
+  String? _loadedSellerId;
+  Future<Seller>? _profileFuture;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final sellerId = context.read<AuthProvider>().backendSellerId;
+    if (_loadedSellerId == sellerId) return;
+    _loadedSellerId = sellerId;
+    _profileFuture = sellerId == null
+        ? null
+        : ApiService.getMyProfile(sellerId);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,6 +92,17 @@ class MyDataScreen extends StatelessWidget {
                   _DataRow(
                     label: 'my_data.member_since'.tr(),
                     value: _fecha(user['created_at'] as String?),
+                  ),
+                  FutureBuilder<Seller>(
+                    future: _profileFuture,
+                    builder: (context, snapshot) => _DataRow(
+                      label: 'my_data.profile_views'.tr(),
+                      value: snapshot.hasData
+                          ? '${snapshot.data!.profileViews}'
+                          : snapshot.connectionState == ConnectionState.waiting
+                          ? '…'
+                          : '—',
+                    ),
                   ),
                 ],
               ),
