@@ -290,6 +290,13 @@ io.on('connection', (socket) => {
     const { conversationId } = payload;
     if (!validRealtimeId(conversationId)
         || !db.esParticipanteDeConversacion(conversationId, socket.data.userId)) return;
+    const conv = db.getDb().prepare(
+      'SELECT buyer_id, seller_id FROM conversations WHERE id = ?',
+    ).get(conversationId);
+    const otherId = conv?.buyer_id === socket.data.userId
+      ? conv?.seller_id
+      : conv?.buyer_id;
+    if (db.areUsersBlocked(socket.data.userId, otherId)) return;
     socket.to(`conv:${conversationId}`).emit('typing:start', { userId: socket.data.userId });
   });
 
@@ -297,6 +304,13 @@ io.on('connection', (socket) => {
     const { conversationId } = payload;
     if (!validRealtimeId(conversationId)
         || !db.esParticipanteDeConversacion(conversationId, socket.data.userId)) return;
+    const conv = db.getDb().prepare(
+      'SELECT buyer_id, seller_id FROM conversations WHERE id = ?',
+    ).get(conversationId);
+    const otherId = conv?.buyer_id === socket.data.userId
+      ? conv?.seller_id
+      : conv?.buyer_id;
+    if (db.areUsersBlocked(socket.data.userId, otherId)) return;
     socket.to(`conv:${conversationId}`).emit('typing:stop', { userId: socket.data.userId });
   });
 

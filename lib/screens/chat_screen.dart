@@ -638,9 +638,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _messageKeys.clear();
         _replyingTo = null;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('chat.clear_chat_success'.tr())),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('chat.clear_chat_success'.tr())));
     } catch (e, stack) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -698,9 +698,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: Text(
-            'chat.block_confirm'.tr(
-              namedArgs: {'user': other?.name ?? ''},
-            ),
+            'chat.block_confirm'.tr(namedArgs: {'user': other?.name ?? ''}),
           ),
           content: Text('chat.block_explanation'.tr()),
           actions: [
@@ -725,6 +723,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       setState(() {
         _relationship = relationship;
         _replyingTo = null;
+        if (block) _otherTyping = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -860,7 +859,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 ),
                 PopupMenuItem(
                   value: 'clear',
-                  enabled: _currentConvId?.isNotEmpty == true &&
+                  enabled:
+                      _currentConvId?.isNotEmpty == true &&
                       _messages.isNotEmpty,
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,

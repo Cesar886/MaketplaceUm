@@ -354,6 +354,20 @@ function register(app) {
       return res.status(400).json({ error: 'El mensaje no puede estar vacío' });
     }
 
+    // Si es un hilo nuevo, revisar el cupo ANTES de crearlo. Sin esta
+    // comprobación, el cuarto intento sería rechazado pero dejaría una
+    // conversación vacía por cada publicación usada para evadir el límite.
+    if (!conversationId && sellerId && sellerId !== userId) {
+      const earlyRelationshipError = validarRelacionParaEnvio(userId, sellerId);
+      if (earlyRelationshipError) {
+        return res.status(earlyRelationshipError.status).json({
+          error: earlyRelationshipError.error,
+          code: earlyRelationshipError.code,
+          relationship: earlyRelationshipError.relationship,
+        });
+      }
+    }
+
     const { conversation, error } = resolveConversation({ conversationId, productId, sellerId, userId });
     if (error) return res.status(error.status).json({ error: error.error });
 
@@ -397,6 +411,18 @@ function register(app) {
       const { productId, sellerId, conversationId, replyToMessageId } = req.body;
       const userId = req.user.id;
 
+      if (!conversationId && sellerId && sellerId !== userId) {
+        const earlyRelationshipError = validarRelacionParaEnvio(userId, sellerId);
+        if (earlyRelationshipError) {
+          fs.unlink(req.file.path, () => {});
+          return res.status(earlyRelationshipError.status).json({
+            error: earlyRelationshipError.error,
+            code: earlyRelationshipError.code,
+            relationship: earlyRelationshipError.relationship,
+          });
+        }
+      }
+
       const { conversation, error } = resolveConversation({ conversationId, productId, sellerId, userId });
       if (error) {
         fs.unlink(req.file.path, () => {});
@@ -427,6 +453,19 @@ function register(app) {
         console.error('Error convirtiendo imagen de chat a WebP:', convErr);
         fs.unlink(req.file.path, () => {});
         return res.status(400).json({ error: 'La imagen no tiene un formato válido.' });
+      }
+
+      // La conversión es asíncrona: otro envío pudo consumir el último lugar
+      // del cupo mientras Sharp trabajaba. Se revalida justo antes del INSERT
+      // y se retira el WebP si ya no corresponde guardarlo.
+      const finalRelationshipError = validarRelacionParaEnvio(userId, recipientId);
+      if (finalRelationshipError) {
+        fs.unlink(path.join(UPLOADS_DIR, path.basename(imageUrl)), () => {});
+        return res.status(finalRelationshipError.status).json({
+          error: finalRelationshipError.error,
+          code: finalRelationshipError.code,
+          relationship: finalRelationshipError.relationship,
+        });
       }
 
       const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;

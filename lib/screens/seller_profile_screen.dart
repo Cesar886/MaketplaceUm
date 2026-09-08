@@ -223,9 +223,9 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
       );
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('chat.relationship_error'.tr())),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('chat.relationship_error'.tr())));
       }
     }
   }
@@ -273,9 +273,9 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
       );
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('chat.relationship_error'.tr())),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('chat.relationship_error'.tr())));
       }
     }
   }
@@ -378,6 +378,9 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
           builder: (context) {
             final fondo = hayBanda ? colorBanda : colores.surface;
             final tinta = hayBanda ? sobreBanda : colores.ink;
+            final isOwnProfile =
+                seller != null &&
+                context.read<AuthProvider>().backendSellerId == seller.id;
             // El título y los íconos se pasan uno por uno y no solo con
             // foregroundColor: el AppBarTheme de la app ya trae un
             // titleTextStyle y un iconTheme con color propio (el onPrimary
@@ -391,6 +394,76 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
               titleTextStyle: estiloTitulo?.copyWith(color: tinta),
               iconTheme: IconThemeData(color: tinta),
               actionsIconTheme: IconThemeData(color: tinta),
+              actions: [
+                if (seller != null && !isOwnProfile)
+                  PopupMenuButton<String>(
+                    tooltip: 'chat.more_options'.tr(),
+                    icon: const Icon(Icons.more_vert_rounded),
+                    onSelected: _onProfileMenuAction,
+                    itemBuilder: (menuContext) => [
+                      PopupMenuItem(
+                        value: 'message',
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(
+                            Icons.chat_bubble_outline_rounded,
+                          ),
+                          title: Text('product.contact_chat'.tr()),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'mute',
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            _relationship?.mutedByMe == true
+                                ? Icons.notifications_active_outlined
+                                : Icons.notifications_off_outlined,
+                          ),
+                          title: Text(
+                            (_relationship?.mutedByMe == true
+                                    ? 'chat.unmute_user'
+                                    : 'chat.mute_user')
+                                .tr(),
+                          ),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'report',
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.flag_outlined),
+                          title: Text('chat.report_user'.tr()),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'block',
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            _relationship?.blockedByMe == true
+                                ? Icons.lock_open_rounded
+                                : Icons.block_rounded,
+                            color: _relationship?.blockedByMe == true
+                                ? null
+                                : menuContext.colors.danger,
+                          ),
+                          title: Text(
+                            (_relationship?.blockedByMe == true
+                                    ? 'chat.unblock_user'
+                                    : 'chat.block_user')
+                                .tr(),
+                            style: TextStyle(
+                              color: _relationship?.blockedByMe == true
+                                  ? null
+                                  : menuContext.colors.danger,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
               elevation: 0,
               // Sin la sombra ni el tinte que Material le pone sola a la
               // barra al pasarle contenido por debajo: los dos volverían a

@@ -416,6 +416,7 @@ test('el cupo se comparte entre publicaciones y una respuesta lo desbloquea para
   const beto = crearUsuario();
   const productoA = crearProducto(beto.id);
   const productoB = crearProducto(beto.id);
+  const productoC = crearProducto(beto.id);
 
   const primero = await pedir('/api/chat/send', {
     token: ana.token,
@@ -437,9 +438,17 @@ test('el cupo se comparte entre publicaciones y una respuesta lo desbloquea para
   const cuarto = await pedir('/api/chat/send', {
     token: ana.token,
     metodo: 'POST',
-    cuerpo: { conversationId: primero.body.conversationId, text: 'Cuatro' },
+    cuerpo: {
+      productId: productoC.id,
+      sellerId: beto.id,
+      text: 'Cuatro',
+    },
   });
   assert.strictEqual(cuarto.status, 429, 'otro hilo no debe renovar el cupo');
+  const hiloVacio = db.getDb().prepare(
+    'SELECT 1 FROM conversations WHERE product_id = ? AND buyer_id = ? AND seller_id = ?',
+  ).get(productoC.id, ana.id, beto.id);
+  assert.strictEqual(hiloVacio, undefined, 'el intento bloqueado no debe dejar un chat vacío');
 
   const respuesta = await pedir('/api/chat/send', {
     token: beto.token,
