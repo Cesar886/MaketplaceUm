@@ -77,27 +77,60 @@ test('las visitas del perfil son independientes y no cuenta al propio dueño', a
 
   const primeraVisita = await get(vendedor.id);
   assert.strictEqual(primeraVisita.status, 200);
-  assert.strictEqual(primeraVisita.body.profileViews, 1);
+  assert.strictEqual('profileViews' in primeraVisita.body, false);
 
   const recargaAnonima = await get(vendedor.id);
   assert.strictEqual(recargaAnonima.status, 200);
-  assert.strictEqual(recargaAnonima.body.profileViews, 1);
+  assert.strictEqual('profileViews' in recargaAnonima.body, false);
 
   const vistaDelDueno = await get(vendedor.id, vendedor.token);
   assert.strictEqual(vistaDelDueno.status, 200);
   assert.strictEqual(vistaDelDueno.body.profileViews, 1);
 
   const segundaVisita = await get(vendedor.id, visitante.token);
-  assert.strictEqual(segundaVisita.body.profileViews, 2);
+  assert.strictEqual('profileViews' in segundaVisita.body, false);
 
   const recargaDelVisitante = await get(vendedor.id, visitante.token);
-  assert.strictEqual(recargaDelVisitante.body.profileViews, 2);
+  assert.strictEqual('profileViews' in recargaDelVisitante.body, false);
 
   const visitaInvitado = await get(vendedor.id, invitado.token);
-  assert.strictEqual(visitaInvitado.body.profileViews, 3);
+  assert.strictEqual('profileViews' in visitaInvitado.body, false);
 
   const recargaInvitado = await get(vendedor.id, invitado.token);
-  assert.strictEqual(recargaInvitado.body.profileViews, 3);
+  assert.strictEqual('profileViews' in recargaInvitado.body, false);
+
+  const totalPrivado = await get(vendedor.id, vendedor.token);
+  assert.strictEqual(totalPrivado.body.profileViews, 3);
+});
+
+test('el perfil publico suma en SQL las vistas de todo el historico de productos', async () => {
+  const vendedor = crearVendedor({ isBusiness: false });
+  const insertar = db.getDb().prepare(`
+    INSERT INTO products
+      (id, title, price, seller, views, manual_status, expires_at, moderation_status)
+    VALUES (?, ?, '10', ?, ?, ?, ?, ?)
+  `);
+  insertar.run(`activo_${contador}`, 'Producto activo', vendedor.id, 2, null, null, 'visible');
+  insertar.run(`vendido_${contador}`, 'Producto vendido', vendedor.id, 5, 'sold', null, 'visible');
+  insertar.run(
+    `archivado_${contador}`,
+    'Producto archivado',
+    vendedor.id,
+    7,
+    null,
+    '2025-01-01 00:00:00',
+    'visible',
+  );
+  insertar.run(`retirado_${contador}`, 'Producto retirado', vendedor.id, 11, null, null, 'removed');
+
+  const publico = await get(vendedor.id);
+  assert.strictEqual(publico.status, 200);
+  assert.strictEqual(publico.body.productViews, 25);
+  assert.strictEqual('profileViews' in publico.body, false);
+
+  const propio = await get(vendedor.id, vendedor.token);
+  assert.strictEqual(propio.body.productViews, 25);
+  assert.strictEqual(typeof propio.body.profileViews, 'number');
 });
 
 test('un invitado tiene un perfil publico minimo aunque no exista en sellers', async () => {

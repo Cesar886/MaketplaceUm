@@ -231,3 +231,13 @@ test('listados de usuarios, publicaciones y auditoría son paginados', async () 
     assert.equal(typeof payload.total, 'number');
   }
 });
+
+test('el detalle administrativo expone las visitas acumuladas del perfil', async () => {
+  const id = seller();
+  database.prepare('UPDATE sellers SET profile_views = 37 WHERE id = ?').run(id);
+
+  const response = await request(`/api/admin/users/${id}`);
+  assert.equal(response.status, 200, await response.text());
+  const payload = await response.json();
+  assert.equal(payload.user.profileViews, 37);
+});
