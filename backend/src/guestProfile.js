@@ -28,7 +28,7 @@ function guestPublicProfile(id) {
     phone: null,
     rating: 0,
     reviews: 0,
-    profileViews: 0,
+    productViews: 0,
     verified: false,
     socioFundador: false,
     tipoCuenta: 'particular',

@@ -113,6 +113,9 @@ function register(app) {
     }
     return {
       ...seller,
+      // Actividad publica del vendedor: una sola agregacion SQL sobre todos
+      // sus productos conservados, sin limitarla a lo que hoy esta publicado.
+      productViews: db.getSellerProductViews(seller.id),
       rachaSemanas: todosLosBadges
         ? Math.max(2, db.computeRachaPublicaciones(seller.id))
         : db.computeRachaPublicaciones(seller.id),
@@ -258,20 +261,22 @@ function register(app) {
     // abre su propio perfil o su pantalla de configuración.
     if (!req.user || req.user.id !== seller.id) {
       const counted = db.recordSellerProfileView(seller.id, profileViewerKey(req));
-      // `sellers` es el caché que alimenta esta respuesta; reflejarlo evita
-      // que la cifra se quede una visita atrás hasta reiniciar el servidor.
-      if (counted) seller.profileViews = (seller.profileViews || 0) + 1;
+      // El acumulado se guarda directamente en SQLite. Ya no forma parte del
+      // objeto publico cacheado: solo se devuelve al propio dueño y al admin.
     }
     // Un visitante sin sesión no tiene "visor", así que nunca ve presencia:
     // si no, bastaría con cerrar sesión para saltarse la reciprocidad del
     // ajuste de privacidad.
     const presencia = presenciaDe(req, req.user ? req.user.id : null, seller.id);
     if (req.user && req.user.id === seller.id) {
-      const rawRow = db.getDb().prepare('SELECT email FROM sellers WHERE id = ?').get(seller.id);
+      const rawRow = db.getDb()
+        .prepare('SELECT email, profile_views FROM sellers WHERE id = ?')
+        .get(seller.id);
       return res.json({
         ...perfilPublico(seller),
         ...presencia,
         email: rawRow.email || null,
+        profileViews: rawRow.profile_views ?? 0,
         // Privado, como el email: qué insignias tiene realmente, ocultas
         // incluidas. Es lo único con lo que la pantalla de selección puede
         // saber qué switches ofrecer encendibles.

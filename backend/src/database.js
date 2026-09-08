@@ -2629,7 +2629,6 @@ function rowToSeller(row) {
     logoUrl: row.logoUrl || null,
     rating: row.rating ?? 0,
     reviews: row.reviews ?? 0,
-    profileViews: row.profile_views ?? 0,
     verified: tipoCuenta !== 'particular' && (todosLosBadges || !!row.verified),
     // Insignia verde otorgada a mano por el admin. Separada de `verified` a
     // propósito: no la gana ningún dato ni trámite de la cuenta, así que no
@@ -2842,6 +2841,25 @@ function deleteProduct(id) {
 
 function incrementProductViews(id) {
   db.prepare('UPDATE products SET views = views + 3 WHERE id = ?').run(id);
+}
+
+/**
+ * Total historico de vistas de todos los productos que aun conserva la base
+ * para un vendedor. No filtra por disponibilidad, vencimiento ni moderacion:
+ * vendido, archivado y retirado siguen siendo actividad real acumulada.
+ *
+ * La agregacion ocurre enteramente en SQLite y usa idx_products_seller; nunca
+ * carga la coleccion para sumarla en JavaScript.
+ */
+function getSellerProductViews(sellerId) {
+  const row = db.prepare(`
+    SELECT COALESCE(SUM(COALESCE(p.views, 0)), 0) AS total
+      FROM sellers s
+      LEFT JOIN products p ON p.seller = s.id
+     WHERE s.id = ?
+     GROUP BY s.id
+  `).get(sellerId);
+  return row?.total ?? 0;
 }
 
 /**
@@ -5391,6 +5409,7 @@ module.exports = {
   updateProduct,
   deleteProduct,
   incrementProductViews,
+  getSellerProductViews,
   incrementSellerProfileViews,
   // Carrito (siempre acotado por usuario)
   getCartItems,

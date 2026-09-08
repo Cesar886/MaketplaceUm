@@ -59,6 +59,7 @@ function userRow(database, id) {
       s.admin_status_reason AS adminStatusReason,
       s.admin_status_until AS adminStatusUntil,
       s.created_at AS createdAt, s.last_active AS lastActive,
+      s.profile_views AS profileViews,
       (SELECT COUNT(*) FROM products p WHERE p.seller = s.id) AS productCount,
       (SELECT COUNT(*) FROM wanted_posts w WHERE w.user_id = s.id) AS wantedCount,
       (SELECT COUNT(*) FROM conversations c
