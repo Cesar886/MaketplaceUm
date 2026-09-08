@@ -98,13 +98,18 @@ function pedir(ruta, { token, metodo = 'GET', cuerpo } = {}) {
 
 // ═══ Sin token no se entra a ningún endpoint ═════════════════
 
-test('los seis endpoints rechazan una petición sin token', async () => {
+test('todos los endpoints de chat rechazan una petición sin token', async () => {
   const rutas = [
     ['/api/chat/conversations', 'GET'],
+    ['/api/chat/conversations/direct/u_x', 'GET'],
     ['/api/chat/conversations/conv_x/messages', 'GET'],
     ['/api/chat/send', 'POST'],
     ['/api/chat/send-image', 'POST'],
+    ['/api/chat/conversations/conv_x', 'DELETE'],
     ['/api/chat/messages/msg_x', 'DELETE'],
+    ['/api/chat/users/u_x/relationship', 'GET'],
+    ['/api/chat/users/u_x/block', 'PUT'],
+    ['/api/chat/users/u_x/mute', 'PUT'],
   ];
   for (const [ruta, metodo] of rutas) {
     const res = await pedir(ruta, { metodo, cuerpo: metodo === 'POST' ? {} : undefined });

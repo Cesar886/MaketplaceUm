@@ -470,6 +470,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _applySendResult(result);
     } catch (e, stack) {
       if (!mounted) return;
+      unawaited(_loadRelationship());
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -510,6 +511,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _applySendResult(result);
     } catch (e, stack) {
       if (!mounted) return;
+      unawaited(_loadRelationship());
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
