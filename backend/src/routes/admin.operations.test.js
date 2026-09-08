@@ -237,7 +237,8 @@ test('el detalle administrativo expone las visitas acumuladas del perfil', async
   database.prepare('UPDATE sellers SET profile_views = 37 WHERE id = ?').run(id);
 
   const response = await request(`/api/admin/users/${id}`);
-  assert.equal(response.status, 200, await response.text());
-  const payload = await response.json();
+  const responseText = await response.text();
+  assert.equal(response.status, 200, responseText);
+  const payload = JSON.parse(responseText);
   assert.equal(payload.user.profileViews, 37);
 });
