@@ -12,6 +12,14 @@ process.env.MERCADITO_DB_PATH = path.join(
 const db = require('./database');
 db.initDatabase();
 
+// Desde la moderación administrativa una publicación solo es pública si
+// pertenece a una cuenta existente y activa. La fila no deja de existir al
+// vencer; esta cuenta evita que el test confunda "vencida" con "huérfana".
+db.getDb().prepare(`
+  INSERT INTO sellers (id, name, avatarInitials, admin_status)
+  VALUES ('seller_1', 'Seller de prueba', 'SP', 'active')
+`).run();
+
 test('un producto vencido conserva íntegra su fila', () => {
   db.insertProduct({
     id: 'expired_product',

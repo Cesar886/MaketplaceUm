@@ -29,6 +29,10 @@ const { register } = require('./products');
 const { generateToken } = require('../auth');
 
 const DUENO = 's_dueno';
+db.getDb().prepare(`
+  INSERT INTO sellers (id, name, avatarInitials, admin_status)
+  VALUES (?, 'Dueño de prueba', 'DP', 'active')
+`).run(DUENO);
 let baseUrl;
 let servidor;
 let token;

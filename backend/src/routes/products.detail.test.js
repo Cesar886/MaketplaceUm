@@ -61,6 +61,10 @@ function sembrarProducto({ id, category = 'cat_x', seller = 's_x' } = {}) {
   const n = ++contador;
   const productId = id || `d_${n}`;
   db.getDb().prepare(`
+    INSERT OR IGNORE INTO sellers (id, name, avatarInitials, admin_status)
+    VALUES (?, ?, 'DP', 'active')
+  `).run(seller, `Detalle ${seller}`);
+  db.getDb().prepare(`
     INSERT INTO products (id, title, price, priceNum, category, description, seller, created_at)
     VALUES (@id, @title, '100', 100, @category, 'desc', @seller, datetime('now'))
   `).run({ id: productId, title: `Xilofono${n}`, category, seller });

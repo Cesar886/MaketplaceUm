@@ -5,7 +5,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "find src -name '*.test.js' -print0 | xargs -0 node --test",
+    "test": "find src -name '*.test.js' -print0 | xargs -0 node --test --test-concurrency=1",
     "admin:create": "node scripts/crear-admin.js"
   },
   "keywords": [],

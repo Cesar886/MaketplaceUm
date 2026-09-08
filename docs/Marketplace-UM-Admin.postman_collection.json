@@ -1,0 +1,266 @@
+{
+  "info": {
+    "name": "Marketplace UM - Admin (BFF seguro)",
+    "description": "Colección para probar el panel administrativo sin exponer ni copiar el JWT. Postman conserva automáticamente la cookie __Secure-mercadito_admin_session recibida en Login. Ejecuta primero Login y reemplaza el TOTP cada vez. Las carpetas de escritura modifican datos reales.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "https://mercaditoum.site" },
+    { "key": "admin_origin", "value": "https://mercaditoum.site" },
+    { "key": "username", "value": "" },
+    { "key": "password", "value": "" },
+    { "key": "totp", "value": "" },
+    { "key": "account_id", "value": "" },
+    { "key": "publication_kind", "value": "product" },
+    { "key": "publication_id", "value": "" },
+    { "key": "verification_id", "value": "" },
+    { "key": "config_key", "value": "um_sin_verificar" },
+    { "key": "request_id", "value": "00000000-0000-4000-8000-000000000000" },
+    { "key": "suspend_until", "value": "2026-12-31T23:59:59.000Z" }
+  ],
+  "item": [
+    {
+      "name": "1. Autenticación",
+      "item": [
+        {
+          "name": "Login (contraseña + TOTP)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "{{admin_origin}}" },
+              { "key": "X-Revision-CSRF", "value": "1" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\",\n  \"totp\": \"{{totp}}\"\n}"
+            },
+            "url": "{{base_url}}/revision-8f4d9c2a/api/auth/login",
+            "description": "Devuelve datos del admin y coloca el JWT en una cookie Secure, HttpOnly, SameSite=Strict. No devuelve el JWT al cliente. El TOTP solo puede usarse una vez."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Login exitoso', () => pm.response.to.have.status(200));",
+                  "pm.test('El JSON no expone el JWT', () => pm.expect(pm.response.json()).not.to.have.property('token'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Validar sesión",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/revision-8f4d9c2a/api/auth/session"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Sesión vigente', () => pm.response.to.have.status(200));"] } }]
+        },
+        {
+          "name": "Cerrar sesión (revoca token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "{{admin_origin}}" },
+              { "key": "X-Revision-CSRF", "value": "1" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{base_url}}/revision-8f4d9c2a/api/auth/logout"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Consultas seguras (no modifican datos)",
+      "item": [
+        { "name": "Dashboard", "request": { "method": "GET", "header": [], "url": "{{base_url}}/revision-8f4d9c2a/api/admin/dashboard" } },
+        { "name": "Usuarios", "request": { "method": "GET", "header": [], "url": "{{base_url}}/revision-8f4d9c2a/api/admin/users?q=&status=all&page=1&limit=25" } },
+        { "name": "Detalle de usuario", "request": { "method": "GET", "header": [], "url": "{{base_url}}/revision-8f4d9c2a/api/admin/users/{{account_id}}" } },
+        { "name": "Publicaciones", "request": { "method": "GET", "header": [], "url": "{{base_url}}/revision-8f4d9c2a/api/admin/publications?q=&kind=all&status=all&page=1&limit=25" } },
+        { "name": "Configuración de cupos", "request": { "method": "GET", "header": [], "url": "{{base_url}}/revision-8f4d9c2a/api/admin/config" } },
+        { "name": "Bitácora de auditoría", "request": { "method": "GET", "header": [], "url": "{{base_url}}/revision-8f4d9c2a/api/admin/audit-log?page=1&limit=25" } },
+        { "name": "Verificaciones pendientes", "request": { "method": "GET", "header": [], "url": "{{base_url}}/revision-8f4d9c2a/api?view=pending" } },
+        { "name": "Cuentas verificadas/no verificadas", "request": { "method": "GET", "header": [], "url": "{{base_url}}/revision-8f4d9c2a/api?view=accounts&type=all&verified=all&page=1&limit=25&q=" } },
+        { "name": "Expediente de cuenta", "request": { "method": "GET", "header": [], "url": "{{base_url}}/revision-8f4d9c2a/api?view=accounts&accountId={{account_id}}" } },
+        { "name": "Historial de verificaciones", "request": { "method": "GET", "header": [], "url": "{{base_url}}/revision-8f4d9c2a/api?view=history" } }
+      ]
+    },
+    {
+      "name": "3. Pruebas negativas de seguridad (no modifican datos)",
+      "item": [
+        {
+          "name": "API backend directa bloqueada por Apache -> 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "{{admin_origin}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{base_url}}/api/admin/auth/login"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Apache niega la API admin directa', () => pm.response.to.have.status(403));"] } }]
+        },
+        {
+          "name": "Login sin protección CSRF -> 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "{{admin_origin}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{base_url}}/revision-8f4d9c2a/api/auth/login"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('CSRF rechazado', () => pm.response.to.have.status(403));"] } }]
+        },
+        {
+          "name": "Origen falso -> 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "https://evil.example" },
+              { "key": "X-Revision-CSRF", "value": "1" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{base_url}}/revision-8f4d9c2a/api/auth/login"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Origen rechazado', () => pm.response.to.have.status(403));"] } }]
+        },
+        {
+          "name": "API de revisión heredada eliminada -> 404",
+          "request": { "method": "GET", "header": [], "url": "{{base_url}}/api/revision/verificaciones" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Ruta heredada inexistente', () => pm.response.to.have.status(404));"] } }]
+        }
+      ]
+    },
+    {
+      "name": "4. Escritura (CUIDADO: modifica producción)",
+      "description": "Ejecuta cada request individualmente y solo con IDs de prueba. Todas requieren cookie vigente, Origin exacto y X-Revision-CSRF. Las acciones sensibles quedan en admin_audit_log.",
+      "item": [
+        {
+          "name": "Suspender usuario",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Origin", "value": "{{admin_origin}}" },
+              { "key": "X-Revision-CSRF", "value": "1" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"suspended\",\n  \"reason\": \"Motivo administrativo de prueba suficientemente claro\",\n  \"until\": \"{{suspend_until}}\",\n  \"expectedStatus\": \"active\"\n}" },
+            "url": "{{base_url}}/revision-8f4d9c2a/api/admin/users/{{account_id}}/status"
+          }
+        },
+        {
+          "name": "Banear usuarios en lote (crea backup primero)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "{{admin_origin}}" },
+              { "key": "X-Revision-CSRF", "value": "1" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"ids\": [\"{{account_id}}\"],\n  \"status\": \"banned\",\n  \"reason\": \"Fraude confirmado durante una prueba administrativa\",\n  \"until\": null\n}" },
+            "url": "{{base_url}}/revision-8f4d9c2a/api/admin/users/bulk/status"
+          }
+        },
+        {
+          "name": "Resetear cupos",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "{{admin_origin}}" },
+              { "key": "X-Revision-CSRF", "value": "1" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"scope\": \"all\"\n}" },
+            "url": "{{base_url}}/revision-8f4d9c2a/api/admin/users/{{account_id}}/reset-limits"
+          }
+        },
+        {
+          "name": "Marcar publicación como spam",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Origin", "value": "{{admin_origin}}" },
+              { "key": "X-Revision-CSRF", "value": "1" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Contenido repetitivo confirmado como spam en la revisión\",\n  \"expectedStatus\": \"visible\"\n}" },
+            "url": "{{base_url}}/revision-8f4d9c2a/api/admin/publications/{{publication_kind}}/{{publication_id}}/spam"
+          }
+        },
+        {
+          "name": "Eliminar publicación (eliminación lógica)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Origin", "value": "{{admin_origin}}" },
+              { "key": "X-Revision-CSRF", "value": "1" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Publicación incompatible con las reglas de la plataforma\",\n  \"expectedStatus\": \"visible\"\n}" },
+            "url": "{{base_url}}/revision-8f4d9c2a/api/admin/publications/{{publication_kind}}/{{publication_id}}"
+          }
+        },
+        {
+          "name": "Actualizar configuración de cupos",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Origin", "value": "{{admin_origin}}" },
+              { "key": "X-Revision-CSRF", "value": "1" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"productsActive\": 10,\n  \"productsDaily\": 5,\n  \"wantedActive\": 3,\n  \"wantedDaily\": 2,\n  \"durationDays\": 30\n}" },
+            "url": "{{base_url}}/revision-8f4d9c2a/api/admin/config/{{config_key}}"
+          }
+        },
+        {
+          "name": "Aprobar verificación pendiente",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "{{admin_origin}}" },
+              { "key": "X-Revision-CSRF", "value": "1" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Documentación revisada y aprobada manualmente\"\n}" },
+            "url": "{{base_url}}/revision-8f4d9c2a/api?id={{verification_id}}&action=approve"
+          }
+        },
+        {
+          "name": "Rechazar verificación pendiente",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "{{admin_origin}}" },
+              { "key": "X-Revision-CSRF", "value": "1" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Los documentos no permiten confirmar la identidad enviada\"\n}" },
+            "url": "{{base_url}}/revision-8f4d9c2a/api?id={{verification_id}}&action=reject"
+          }
+        },
+        {
+          "name": "Forzar o quitar verificación manual",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "{{admin_origin}}" },
+              { "key": "X-Revision-CSRF", "value": "1" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"verified\": true,\n  \"expectedVerified\": false,\n  \"requestId\": \"{{request_id}}\",\n  \"reason\": \"Verificación manual sustentada por revisión administrativa\"\n}" },
+            "url": "{{base_url}}/revision-8f4d9c2a/api?id={{account_id}}&action=set-verification"
+          }
+        }
+      ]
+    }
+  ]
+}

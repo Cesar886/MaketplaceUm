@@ -266,10 +266,17 @@ test('sin búsquedas registradas, cae a títulos de producto activo por interacc
   raw.exec(`DELETE FROM products; DELETE FROM categories; DELETE FROM interacciones_dispositivo;`);
   raw.prepare('INSERT INTO categories (id, name) VALUES (?, ?)').run('c_libros', 'Libros');
   raw.prepare('INSERT INTO categories (id, name) VALUES (?, ?)').run('c_tec', 'Tecnología');
+  raw.prepare(`
+    INSERT OR IGNORE INTO sellers (id, name, avatarInitials, admin_status)
+    VALUES ('search_seller', 'Seller de búsqueda', 'SB', 'active')
+  `).run();
 
   const insertar = (id, titulo, categoria) =>
     raw
-      .prepare('INSERT INTO products (id, title, price, category) VALUES (?, ?, 100, ?)')
+      .prepare(`
+        INSERT INTO products (id, title, price, category, seller)
+        VALUES (?, ?, 100, ?, 'search_seller')
+      `)
       .run(id, titulo, categoria);
 
   insertar('p1', 'Bicicleta rodada 26', 'c_tec');

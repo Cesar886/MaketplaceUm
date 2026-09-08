@@ -54,6 +54,13 @@ function sembrarProducto({
   // los tests de categoría y de orden estarían midiendo otra cosa.
   title = title || `Xilofono${n}`;
 
+  // Las consultas públicas descartan publicaciones huérfanas y cuentas
+  // restringidas. Cada fixture debe representar un vendedor real activo.
+  raw.prepare(`
+    INSERT OR IGNORE INTO sellers (id, name, avatarInitials, admin_status)
+    VALUES (?, ?, 'TP', 'active')
+  `).run(seller, `Test ${seller}`);
+
   raw.prepare(`
     INSERT INTO products (id, title, price, priceNum, category, description, seller,
                           created_at, manual_status, status, stock_quantity)

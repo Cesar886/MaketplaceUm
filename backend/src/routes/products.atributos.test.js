@@ -33,6 +33,13 @@ const { generateToken } = require('../auth');
 
 db.initDatabase();
 
+// Los casos de migración insertan filas a mano; desde que existe moderación
+// también deben apuntar a una cuenta activa para ser legibles públicamente.
+db.getDb().prepare(`
+  INSERT INTO sellers (id, name, avatarInitials, admin_status)
+  VALUES ('v_x', 'Vendedor legado', 'VL', 'active')
+`).run();
+
 const { products, saveData } = require('../data');
 const { register } = require('./products');
 
