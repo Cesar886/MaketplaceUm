@@ -78,6 +78,26 @@
     "subtitle": "Blocked users and muted chats",
     "empty": "You don't have blocked users or muted chats."
   },
+  "my_reports": {
+    "title": "My reports",
+    "subtitle": "Check the status of reports you submitted",
+    "intro": "Here you can see whether your report was received, is under review, was resolved, or was dismissed by the Reports team.",
+    "load_error": "Couldn't load your reports. Try again.",
+    "empty_title": "You haven't submitted reports",
+    "empty_body": "When you report a listing, account, or chat, it will appear here with its status.",
+    "no_session_title": "Sign in to view your reports",
+    "no_session_body": "Reports are saved to your account so the team can follow up.",
+    "status_received": "Received",
+    "status_reviewing": "Under review",
+    "status_resolved": "Resolved",
+    "status_dismissed": "Dismissed",
+    "target_user": "Account report",
+    "target_product": "Listing report",
+    "target_wanted": "Request report",
+    "target_chat": "Chat report",
+    "target_unknown": "Report",
+    "admin_note": "Team response: {note}"
+  },
   "report_problem": {
     "title": "Report a problem",
     "intro": "Send a message to our official problem-reporting account. We read it and reply right here.",

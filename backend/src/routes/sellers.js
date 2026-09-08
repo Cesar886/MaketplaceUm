@@ -43,6 +43,16 @@ const upload = multer({
   },
 });
 
+function profileViewerKey(req) {
+  if (req.user?.id) {
+    return `${req.user.anon ? 'anon' : 'user'}:${req.user.id}`;
+  }
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  const ip = forwarded || req.ip || req.socket?.remoteAddress || 'unknown';
+  const ua = String(req.headers['user-agent'] || '').slice(0, 180);
+  return `net:${crypto.createHash('sha256').update(`${ip}|${ua}`).digest('hex')}`;
+}
+
 function register(app) {
   app.get('/api/sellers', (_req, res) => {
     res.json(sellers.filter(seller => db.isSellerPubliclyActive(seller.id)));
@@ -247,10 +257,10 @@ function register(app) {
     // ajena cuenta: al dueño se le devuelve el total sin aumentarlo cuando
     // abre su propio perfil o su pantalla de configuración.
     if (!req.user || req.user.id !== seller.id) {
-      db.incrementSellerProfileViews(seller.id);
+      const counted = db.recordSellerProfileView(seller.id, profileViewerKey(req));
       // `sellers` es el caché que alimenta esta respuesta; reflejarlo evita
       // que la cifra se quede una visita atrás hasta reiniciar el servidor.
-      seller.profileViews = (seller.profileViews || 0) + 1;
+      if (counted) seller.profileViews = (seller.profileViews || 0) + 1;
     }
     // Un visitante sin sesión no tiene "visor", así que nunca ve presencia:
     // si no, bastaría con cerrar sesión para saltarse la reciprocidad del

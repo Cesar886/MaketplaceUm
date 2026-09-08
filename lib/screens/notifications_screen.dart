@@ -373,6 +373,9 @@ class _NotificationTile extends StatelessWidget {
       case 'product_question':
       case 'question_answered':
         return Icons.forum_outlined;
+      case 'publication_moderated':
+      case 'report_status_updated':
+        return Icons.gpp_maybe_outlined;
       case ApiService.notifInteresNuevosProductos:
         return Icons.storefront_rounded;
       default:
@@ -394,6 +397,9 @@ class _NotificationTile extends StatelessWidget {
       case 'product_question':
       case 'question_answered':
         return context.colors.accent;
+      case 'publication_moderated':
+      case 'report_status_updated':
+        return Colors.orange.shade700;
       default:
         return context.colors.mutedStrong;
     }

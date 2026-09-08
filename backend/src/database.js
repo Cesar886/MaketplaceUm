@@ -145,6 +145,16 @@ function initDatabase() {
 
     CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at);
 
+    CREATE TABLE IF NOT EXISTS profile_view_events (
+      profile_id TEXT NOT NULL,
+      viewer_key TEXT NOT NULL,
+      viewed_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (profile_id, viewer_key)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_profile_view_events_profile_time
+      ON profile_view_events(profile_id, viewed_at);
+
     CREATE TABLE IF NOT EXISTS conversations (
       id TEXT PRIMARY KEY,
       product_id TEXT NOT NULL,
@@ -822,6 +832,16 @@ function runMigrations() {
   if (!sellerColsProfileViews.some(c => c.name === 'profile_views')) {
     db.exec(`ALTER TABLE sellers ADD COLUMN profile_views INTEGER NOT NULL DEFAULT 0`);
   }
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS profile_view_events (
+      profile_id TEXT NOT NULL,
+      viewer_key TEXT NOT NULL,
+      viewed_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (profile_id, viewer_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_profile_view_events_profile_time
+      ON profile_view_events(profile_id, viewed_at);
+  `);
 
   // Documentos de solicitudes manuales de negocio.
   db.exec(`
@@ -2822,6 +2842,31 @@ function deleteProduct(id) {
 
 function incrementProductViews(id) {
   db.prepare('UPDATE products SET views = views + 3 WHERE id = ?').run(id);
+}
+
+/**
+ * Suma una apertura ajena al perfil solo si ese visitante no fue contado en
+ * la ventana reciente. Evita que refresh, volver atrás/entrar o recargas de
+ * la pantalla inflen la métrica.
+ */
+function recordSellerProfileView(profileId, viewerKey, windowHours = 24) {
+  if (!profileId || !viewerKey) return false;
+  const windowModifier = `-${Math.max(1, Math.min(Number(windowHours) || 24, 24 * 30))} hours`;
+  return db.transaction(() => {
+    const recent = db.prepare(`
+      SELECT 1 FROM profile_view_events
+       WHERE profile_id = ? AND viewer_key = ?
+         AND viewed_at >= datetime('now', ?)
+    `).get(profileId, viewerKey, windowModifier);
+    if (recent) return false;
+    db.prepare(`
+      INSERT INTO profile_view_events (profile_id, viewer_key, viewed_at)
+      VALUES (?, ?, datetime('now'))
+      ON CONFLICT(profile_id, viewer_key) DO UPDATE SET viewed_at = excluded.viewed_at
+    `).run(profileId, viewerKey);
+    db.prepare('UPDATE sellers SET profile_views = profile_views + 1 WHERE id = ?').run(profileId);
+    return true;
+  })();
 }
 
 /** Suma una apertura ajena al perfil, independiente de publicaciones. */
@@ -5426,6 +5471,7 @@ module.exports = {
   markAllNotificationsRead,
   markNotificationsReadForConversation,
   getUnreadNotificationCount,
+  recordSellerProfileView,
   // Conversations
   createConversation,
   findConversation,

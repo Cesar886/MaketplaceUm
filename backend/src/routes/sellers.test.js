@@ -72,17 +72,32 @@ async function get(id, token) {
 
 test('las visitas del perfil son independientes y no cuenta al propio dueño', async () => {
   const vendedor = crearVendedor({ isBusiness: false });
+  const visitante = crearVendedor({ isBusiness: false });
+  const invitado = generateAnonToken();
 
   const primeraVisita = await get(vendedor.id);
   assert.strictEqual(primeraVisita.status, 200);
   assert.strictEqual(primeraVisita.body.profileViews, 1);
 
+  const recargaAnonima = await get(vendedor.id);
+  assert.strictEqual(recargaAnonima.status, 200);
+  assert.strictEqual(recargaAnonima.body.profileViews, 1);
+
   const vistaDelDueno = await get(vendedor.id, vendedor.token);
   assert.strictEqual(vistaDelDueno.status, 200);
   assert.strictEqual(vistaDelDueno.body.profileViews, 1);
 
-  const segundaVisita = await get(vendedor.id);
+  const segundaVisita = await get(vendedor.id, visitante.token);
   assert.strictEqual(segundaVisita.body.profileViews, 2);
+
+  const recargaDelVisitante = await get(vendedor.id, visitante.token);
+  assert.strictEqual(recargaDelVisitante.body.profileViews, 2);
+
+  const visitaInvitado = await get(vendedor.id, invitado.token);
+  assert.strictEqual(visitaInvitado.body.profileViews, 3);
+
+  const recargaInvitado = await get(vendedor.id, invitado.token);
+  assert.strictEqual(recargaInvitado.body.profileViews, 3);
 });
 
 test('un invitado tiene un perfil publico minimo aunque no exista en sellers', async () => {

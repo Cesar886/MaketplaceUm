@@ -17,6 +17,7 @@ import 'package:mercadito_um/screens/legal/privacy_screen.dart';
 import 'package:mercadito_um/screens/legal/terms_screen.dart';
 import 'package:mercadito_um/screens/profile/help_screen.dart';
 import 'package:mercadito_um/screens/profile/my_data_screen.dart';
+import 'package:mercadito_um/screens/profile/my_reports_screen.dart';
 import 'package:mercadito_um/screens/profile/safety_tips_screen.dart';
 import 'package:mercadito_um/screens/profile/security_screen.dart';
 import 'package:mercadito_um/screens/profile/settings_screen.dart';
@@ -91,6 +92,7 @@ void main() {
       'Centro de ayuda',
       'Seguridad',
       'Centro de seguridad',
+      'Mis reportes',
       'Términos y Condiciones',
       'Política de Privacidad',
       'Aviso de Cookies',
@@ -127,6 +129,7 @@ void main() {
       'Centro de ayuda': HelpScreen,
       'Seguridad': SafetyTipsScreen,
       'Centro de seguridad': SecurityScreen,
+      'Mis reportes': MyReportsScreen,
       'Términos y Condiciones': TermsScreen,
       'Política de Privacidad': PrivacyScreen,
       'Ver mis datos': MyDataScreen,

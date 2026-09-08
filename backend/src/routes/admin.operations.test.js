@@ -171,6 +171,19 @@ test('spam y eliminación lógica ocultan publicaciones públicas y conservan ev
     'SELECT action FROM admin_audit_log WHERE entity_id IN (?, ?) ORDER BY id',
   ).all(productId, wantedId).map(row => row.action);
   assert.deepEqual(actions, ['publication.spam', 'publication.delete']);
+
+  const notifications = database.prepare(
+    'SELECT type, title, body, data FROM notifications WHERE user_id = ? ORDER BY created_at ASC',
+  ).all(id);
+  assert.equal(notifications.length, 2);
+  assert.equal(notifications[0].type, 'publication_moderated');
+  assert.equal(notifications[0].title, 'Tu publicación fue marcada como spam');
+  assert.match(notifications[0].body, /Producto spam/);
+  assert.match(notifications[0].body, /Contenido repetitivo/);
+  assert.equal(JSON.parse(notifications[0].data).publicationId, productId);
+  assert.equal(notifications[1].title, 'Tu publicación fue retirada');
+  assert.match(notifications[1].body, /Búsqueda eliminada/);
+  assert.equal(JSON.parse(notifications[1].data).publicationId, wantedId);
 });
 
 test('operación masiva aborta si no puede respaldar y crea backup antes de aplicar', async () => {

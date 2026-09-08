@@ -111,6 +111,14 @@ test('un reporte se crea como caso estructurado y admin puede resolverlo con aud
   assert.equal(updated.body.report.status, 'resolved');
   assert.ok(updated.body.report.resolved_at);
 
+  const notif = database.prepare(
+    'SELECT type, title, body, data FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+  ).get(reporter.id);
+  assert.equal(notif.type, 'report_status_updated');
+  assert.equal(notif.title, 'Tu reporte fue resuelto');
+  assert.match(notif.body, /Se contacto al usuario reportado/);
+  assert.equal(JSON.parse(notif.data).reportId, created.body.report.id);
+
   const audit = database.prepare(
     "SELECT action FROM admin_audit_log WHERE entity_id = ? ORDER BY id DESC LIMIT 1",
   ).get(created.body.report.id);

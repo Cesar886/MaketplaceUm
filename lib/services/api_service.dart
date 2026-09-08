@@ -979,6 +979,17 @@ class ApiService {
     }
   }
 
+  static Future<List<UserReport>> getMyReports() async {
+    final res = await _getWithRetry(_uri('/me/reports'), headers: _authHeaders);
+    if (res.statusCode != 200) {
+      throw excepcionDeRespuesta(res, fallback: 'my_reports.load_error'.tr());
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return (data['reports'] as List<dynamic>? ?? const [])
+        .map((e) => UserReport.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
   static Future<void> setNotificationPreference({
     required String type,
     required bool enabled,

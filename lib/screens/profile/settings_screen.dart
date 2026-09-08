@@ -17,6 +17,7 @@ import '../legal/terms_screen.dart';
 import 'help_screen.dart';
 import 'language_screen.dart';
 import 'my_data_screen.dart';
+import 'my_reports_screen.dart';
 import 'safety_tips_screen.dart';
 import 'security_screen.dart';
 
@@ -269,6 +270,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: 'security_center.title'.tr(),
               subtitle: 'security_center.subtitle'.tr(),
               onTap: () => _abrir(const SecurityScreen()),
+            ),
+            OptionTile(
+              icon: Icons.assignment_turned_in_rounded,
+              title: 'my_reports.title'.tr(),
+              subtitle: 'my_reports.subtitle'.tr(),
+              onTap: () => _abrir(const MyReportsScreen()),
             ),
             OptionTile(
               icon: Icons.description_rounded,

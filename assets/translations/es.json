@@ -78,6 +78,26 @@
     "subtitle": "Usuarios bloqueados y chats silenciados",
     "empty": "No tienes usuarios bloqueados ni chats silenciados."
   },
+  "my_reports": {
+    "title": "Mis reportes",
+    "subtitle": "Consulta el estado de los reportes que enviaste",
+    "intro": "Aquí puedes revisar si tu reporte fue recibido, está en revisión, fue resuelto o fue descartado por el equipo de Reportes.",
+    "load_error": "No se pudieron cargar tus reportes. Intenta de nuevo.",
+    "empty_title": "No has enviado reportes",
+    "empty_body": "Cuando reportes una publicación, cuenta o chat, aparecerá aquí con su estado.",
+    "no_session_title": "Inicia sesión para ver tus reportes",
+    "no_session_body": "Los reportes se guardan asociados a tu cuenta para poder darles seguimiento.",
+    "status_received": "Recibido",
+    "status_reviewing": "En revisión",
+    "status_resolved": "Resuelto",
+    "status_dismissed": "Descartado",
+    "target_user": "Reporte de cuenta",
+    "target_product": "Reporte de publicación",
+    "target_wanted": "Reporte de solicitud",
+    "target_chat": "Reporte de chat",
+    "target_unknown": "Reporte",
+    "admin_note": "Respuesta del equipo: {note}"
+  },
   "report_problem": {
     "title": "Reportar un problema",
     "intro": "Envíale un mensaje a nuestra cuenta oficial de reporte de problemas. Te leemos y te respondemos por aquí mismo.",

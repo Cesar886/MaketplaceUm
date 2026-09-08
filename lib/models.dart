@@ -1152,6 +1152,60 @@ class NotificationItem {
   final String createdAt;
 }
 
+class UserReport {
+  const UserReport({
+    required this.id,
+    required this.targetType,
+    required this.targetId,
+    this.targetUserId,
+    this.targetUserName,
+    required this.reason,
+    this.details = '',
+    required this.status,
+    this.adminNote = '',
+    required this.createdAt,
+    required this.updatedAt,
+    this.resolvedAt,
+  });
+
+  factory UserReport.fromJson(Map<String, dynamic> json) {
+    return UserReport(
+      id: json['id'] as String? ?? '',
+      targetType:
+          json['target_type'] as String? ?? json['targetType'] as String? ?? '',
+      targetId:
+          json['target_id'] as String? ?? json['targetId'] as String? ?? '',
+      targetUserId:
+          json['target_user_id'] as String? ?? json['targetUserId'] as String?,
+      targetUserName: json['targetUserName'] as String?,
+      reason: json['reason'] as String? ?? '',
+      details: json['details'] as String? ?? '',
+      status: json['status'] as String? ?? 'received',
+      adminNote:
+          json['admin_note'] as String? ?? json['adminNote'] as String? ?? '',
+      createdAt:
+          json['created_at'] as String? ?? json['createdAt'] as String? ?? '',
+      updatedAt:
+          json['updated_at'] as String? ?? json['updatedAt'] as String? ?? '',
+      resolvedAt:
+          json['resolved_at'] as String? ?? json['resolvedAt'] as String?,
+    );
+  }
+
+  final String id;
+  final String targetType;
+  final String targetId;
+  final String? targetUserId;
+  final String? targetUserName;
+  final String reason;
+  final String details;
+  final String status;
+  final String adminNote;
+  final String createdAt;
+  final String updatedAt;
+  final String? resolvedAt;
+}
+
 class Conversation {
   const Conversation({
     required this.id,

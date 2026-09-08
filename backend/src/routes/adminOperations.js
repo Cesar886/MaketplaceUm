@@ -6,6 +6,7 @@ const { createAdminBackup } = require('../adminBackup');
 const db = require('../database');
 const { products, refrescarSellers } = require('../data');
 const { invalidateSellerSessions } = require('../sellerAccess');
+const { sendPush } = require('../push');
 
 const MAX_ID = 180;
 const MAX_REASON = 500;
@@ -100,6 +101,47 @@ function statusAction(status) {
 function disconnectUser(req, userId) {
   const io = req.app.get('io');
   if (io?.in) io.in(`user:${userId}`).disconnectSockets(true);
+}
+
+function notificationId() {
+  return `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function notifyModeration(userId, type, title, body, data) {
+  if (!userId) return;
+  const payload = { ...data, type };
+  db.createNotification(notificationId(), userId, type, title, body, payload);
+  sendPush([userId], title, body, payload);
+}
+
+function notifyPublicationModerated(ownerId, kind, publication, status, moderationReason) {
+  const label = kind === 'wanted' ? 'solicitud' : 'publicación';
+  const title = status === 'spam'
+    ? 'Tu publicación fue marcada como spam'
+    : 'Tu publicación fue retirada';
+  const body = `Tu ${label} "${publication.title}" ya no está visible. Motivo: ${moderationReason}`;
+  notifyModeration(ownerId, 'publication_moderated', title, body, {
+    publicationKind: kind,
+    publicationId: publication.id,
+    moderationStatus: status,
+    reason: moderationReason,
+  });
+}
+
+function notifyReportUpdated(report) {
+  if (!report?.reporter_id || !['resolved', 'dismissed'].includes(report.status)) return;
+  const title = report.status === 'resolved'
+    ? 'Tu reporte fue resuelto'
+    : 'Tu reporte fue revisado';
+  const body = report.admin_note
+    ? `El equipo de Reportes actualizó tu reporte: ${report.admin_note}`
+    : 'El equipo de Reportes terminó de revisar tu reporte.';
+  notifyModeration(report.reporter_id, 'report_status_updated', title, body, {
+    reportId: report.id,
+    status: report.status,
+    targetType: report.target_type,
+    targetId: report.target_id,
+  });
 }
 
 function applyAccountStatus(database, req, id, parsed, createdAt) {
@@ -374,7 +416,9 @@ function router() {
     }
     const table = kind === 'product' ? 'products' : 'wanted_posts';
     const database = db.getDb();
-    const before = database.prepare(`SELECT id, title, moderation_status AS status
+    const ownerColumn = kind === 'product' ? 'seller' : 'user_id';
+    const before = database.prepare(`SELECT id, title, ${ownerColumn} AS ownerId,
+      moderation_status AS status
       FROM ${table} WHERE id = ?`).get(req.params.id);
     if (!before) return res.status(404).json({ error: 'Publicación no encontrada.' });
     if (body.expectedStatus && before.status !== body.expectedStatus) {
@@ -395,6 +439,7 @@ function router() {
         details: { title: before.title, before: before.status, after: targetStatus, reason: safeReason },
         createdAt: now,
       });
+      notifyPublicationModerated(before.ownerId, kind, before, targetStatus, safeReason);
     })();
     if (kind === 'product') {
       const index = products.findIndex(product => product.id === req.params.id);
@@ -481,6 +526,7 @@ function router() {
       },
       createdAt: new Date().toISOString(),
     });
+    notifyReportUpdated(result.after);
     return res.json({ report: result.after });
   });
 
