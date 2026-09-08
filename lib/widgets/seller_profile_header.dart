@@ -324,7 +324,7 @@ class _FilaMetadatos extends StatelessWidget {
             Icon(Icons.visibility_outlined, color: color, size: 17),
             const SizedBox(width: 4),
             Text(
-              formatCompactNumber(seller.profileViews),
+              formatCompactNumber(seller.productViews),
               style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 13.5,

@@ -37,7 +37,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<Product> _recentProducts = [];
   double _sellerRating = 0.0;
   int _sellerReviews = 0;
-  int _sellerProfileViews = 0;
   Seller? _seller;
   bool _loadingSellerForEdit = false;
 
@@ -62,7 +61,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _listings = results[0] as List<Product>;
         _sellerRating = seller.rating;
         _sellerReviews = seller.reviews;
-        _sellerProfileViews = seller.profileViews;
         _seller = seller;
       });
       // El perfil del backend manda sobre el caché local: es lo que hace que
@@ -391,13 +389,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           value: '$activeCount',
                           label: 'profile.active_listings'.tr(),
                           icon: Icons.store_rounded,
-                        ),
-                      ),
-                      Expanded(
-                        child: _ProfileMetric(
-                          value: '$_sellerProfileViews',
-                          label: 'profile.views'.tr(),
-                          icon: Icons.visibility_outlined,
                         ),
                       ),
                     ],

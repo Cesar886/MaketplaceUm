@@ -167,6 +167,7 @@ class Seller {
     this.phone,
     required this.rating,
     required this.reviews,
+    this.productViews = 0,
     this.profileViews = 0,
     required this.verified,
     this.socioFundador = false,
@@ -215,6 +216,7 @@ class Seller {
       phone: json['phone'] as String?,
       rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
       reviews: (json['reviews'] as num?)?.toInt() ?? 0,
+      productViews: (json['productViews'] as num?)?.toInt() ?? 0,
       profileViews: (json['profileViews'] as num?)?.toInt() ?? 0,
       verified: json['verified'] as bool? ?? false,
       socioFundador: json['socioFundador'] as bool? ?? false,
@@ -280,7 +282,11 @@ class Seller {
   final double rating;
   final int reviews;
 
+  /// Suma historica de vistas de todos los productos conservados del vendedor.
+  final int productViews;
+
   /// Visitas al perfil, separadas de las vistas de publicaciones.
+  /// El backend solo incluye este dato para el propio dueno y para admin.
   final int profileViews;
   final bool verified;
 
