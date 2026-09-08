@@ -384,15 +384,15 @@ test('un id anónimo copiado de un mensaje no sirve para suplantar al invitado',
   assert.deepStrictEqual(res.body.conversations, []);
 });
 
-// ═══ Primer contacto: máximo tres mensajes sin respuesta ════════
+// ═══ Primer contacto: máximo cinco mensajes sin respuesta ═══════
 
-test('el primer contacto permite tres mensajes y bloquea el cuarto', async () => {
+test('el primer contacto permite cinco mensajes y bloquea el sexto', async () => {
   const ana = crearUsuario();
   const beto = crearUsuario();
   const producto = crearProducto(beto.id);
   let conversationId;
 
-  for (let i = 1; i <= 3; i++) {
+  for (let i = 1; i <= 5; i++) {
     const res = await pedir('/api/chat/send', {
       token: ana.token,
       metodo: 'POST',
@@ -402,18 +402,19 @@ test('el primer contacto permite tres mensajes y bloquea el cuarto', async () =>
     });
     assert.strictEqual(res.status, 201);
     conversationId = res.body.conversationId;
-    assert.strictEqual(res.body.relationship.remainingMessages, 3 - i);
+    assert.strictEqual(res.body.relationship.firstContactLimit, 5);
+    assert.strictEqual(res.body.relationship.remainingMessages, 5 - i);
   }
 
-  const cuarto = await pedir('/api/chat/send', {
+  const sexto = await pedir('/api/chat/send', {
     token: ana.token,
     metodo: 'POST',
-    cuerpo: { conversationId, text: 'Mensaje 4' },
+    cuerpo: { conversationId, text: 'Mensaje 6' },
   });
-  assert.strictEqual(cuarto.status, 429);
-  assert.strictEqual(cuarto.body.code, 'FIRST_CONTACT_LIMIT');
-  assert.strictEqual(cuarto.body.relationship.awaitingReply, true);
-  assert.strictEqual(db.getMessages(conversationId).length, 3);
+  assert.strictEqual(sexto.status, 429);
+  assert.strictEqual(sexto.body.code, 'FIRST_CONTACT_LIMIT');
+  assert.strictEqual(sexto.body.relationship.awaitingReply, true);
+  assert.strictEqual(db.getMessages(conversationId).length, 5);
 });
 
 test('el cupo se comparte entre publicaciones y una respuesta lo desbloquea para siempre', async () => {

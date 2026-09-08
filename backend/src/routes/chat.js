@@ -111,7 +111,7 @@ function validarCita(replyToMessageId, conversationId) {
 /** Aplica bloqueo y el cupo anti-spam de primer contacto.
  *
  * El estado se calcula por pareja de usuarios en la base, no por hilo. Así
- * no se recuperan otros tres mensajes abriendo otra publicación del mismo
+ * no se recuperan otros cinco mensajes abriendo otra publicación del mismo
  * negocio. */
 function validarRelacionParaEnvio(senderId, recipientId) {
   const relationship = db.getChatRelationship(senderId, recipientId);
@@ -134,7 +134,7 @@ function validarRelacionParaEnvio(senderId, recipientId) {
   if (!relationship.canSend) {
     return {
       status: 429,
-      error: 'Ya enviaste 3 mensajes. Podrás continuar cuando la otra cuenta responda.',
+      error: `Ya enviaste ${db.MENSAJES_PRIMER_CONTACTO} mensajes. Podrás continuar cuando la otra cuenta responda.`,
       code: 'FIRST_CONTACT_LIMIT',
       relationship,
     };

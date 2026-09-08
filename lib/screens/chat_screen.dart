@@ -787,11 +787,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (state.blockedMe) return 'chat.blocked_by_them'.tr();
     if (state.accepted) return null;
     if (state.awaitingReply) {
-      return 'chat.awaiting_reply'.tr(namedArgs: {'user': name});
+      return 'chat.awaiting_reply'.tr(
+        namedArgs: {'count': '${state.firstContactLimit}', 'user': name},
+      );
     }
-    final remaining = state.remainingMessages ?? 3;
-    if (remaining == 3) {
-      return 'chat.first_contact_info'.tr(namedArgs: {'user': name});
+    final remaining = state.remainingMessages ?? state.firstContactLimit;
+    if (remaining == state.firstContactLimit) {
+      return 'chat.first_contact_info'.tr(
+        namedArgs: {'count': '${state.firstContactLimit}', 'user': name},
+      );
     }
     return 'chat.first_contact_remaining'.tr(
       namedArgs: {'count': '$remaining', 'user': name},

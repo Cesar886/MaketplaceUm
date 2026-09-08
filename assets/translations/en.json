@@ -554,9 +554,9 @@
     "unblocked_success": "User unblocked",
     "report_user": "Report user",
     "relationship_error": "Couldn't update this option. Please try again.",
-    "first_contact_info": "For safety, you can send up to 3 messages until {user} replies.",
+    "first_contact_info": "For safety, you can send up to {count} messages until {user} replies.",
     "first_contact_remaining": "You have {count} messages left until {user} replies.",
-    "awaiting_reply": "You've sent 3 messages. You can continue when {user} replies.",
+    "awaiting_reply": "You've sent {count} messages. You can continue when {user} replies.",
     "blocked_by_me": "Unblock {user} to send messages.",
     "blocked_by_them": "You can't send messages to this account."
   },

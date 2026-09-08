@@ -1248,6 +1248,7 @@ class ChatRelationship {
     this.mutedByMe = false,
     this.accepted = false,
     this.awaitingReply = false,
+    this.firstContactLimit = 5,
     this.remainingMessages,
     this.canSend = true,
   });
@@ -1259,6 +1260,7 @@ class ChatRelationship {
       mutedByMe: json['mutedByMe'] as bool? ?? false,
       accepted: json['accepted'] as bool? ?? false,
       awaitingReply: json['awaitingReply'] as bool? ?? false,
+      firstContactLimit: json['firstContactLimit'] as int? ?? 5,
       remainingMessages: json['remainingMessages'] as int?,
       canSend: json['canSend'] as bool? ?? true,
     );
@@ -1269,6 +1271,7 @@ class ChatRelationship {
   final bool mutedByMe;
   final bool accepted;
   final bool awaitingReply;
+  final int firstContactLimit;
   final int? remainingMessages;
   final bool canSend;
 }

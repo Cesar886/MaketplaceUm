@@ -3966,7 +3966,7 @@ function findDirectConversation(unoId, otroId) {
   `).get(unoId, otroId, otroId, unoId);
 }
 
-const MENSAJES_PRIMER_CONTACTO = 3;
+const MENSAJES_PRIMER_CONTACTO = 5;
 
 /** Estado de contacto entre dos personas, compartido por TODOS sus hilos.
  *
@@ -3982,6 +3982,7 @@ function getChatRelationship(ownerId, targetId) {
       mutedByMe: false,
       accepted: true,
       awaitingReply: false,
+      firstContactLimit: MENSAJES_PRIMER_CONTACTO,
       remainingMessages: null,
       canSend: ownerId === targetId ? false : true,
     };
@@ -4022,6 +4023,7 @@ function getChatRelationship(ownerId, targetId) {
     mutedByMe: !!mine?.muted,
     accepted,
     awaitingReply: !accepted && sentByMe >= MENSAJES_PRIMER_CONTACTO,
+    firstContactLimit: MENSAJES_PRIMER_CONTACTO,
     remainingMessages,
     canSend: !blocked && (accepted || sentByMe < MENSAJES_PRIMER_CONTACTO),
   };

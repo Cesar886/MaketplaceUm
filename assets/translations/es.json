@@ -554,9 +554,9 @@
     "unblocked_success": "Usuario desbloqueado",
     "report_user": "Reportar usuario",
     "relationship_error": "No se pudo actualizar esta opción. Intenta de nuevo.",
-    "first_contact_info": "Por seguridad, puedes enviar hasta 3 mensajes hasta que {user} responda.",
+    "first_contact_info": "Por seguridad, puedes enviar hasta {count} mensajes hasta que {user} responda.",
     "first_contact_remaining": "Te quedan {count} mensajes hasta que {user} responda.",
-    "awaiting_reply": "Ya enviaste 3 mensajes. Podrás continuar cuando {user} responda.",
+    "awaiting_reply": "Ya enviaste {count} mensajes. Podrás continuar cuando {user} responda.",
     "blocked_by_me": "Desbloquea a {user} para poder enviar mensajes.",
     "blocked_by_them": "No puedes enviar mensajes a esta cuenta."
   },
