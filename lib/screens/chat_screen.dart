@@ -21,6 +21,7 @@ import '../widgets/badges.dart';
 import '../widgets/app_shimmer.dart';
 import '../widgets/online_status_avatar.dart';
 import 'product_detail_screen.dart';
+import 'report_user_sheet.dart';
 import 'seller_profile_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -64,6 +65,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String _userId = '';
   bool _otherTyping = false;
   Product? _displayProduct;
+  ChatRelationship? _relationship;
 
   /// Mensaje que se está respondiendo, o null si se escribe un mensaje suelto.
   ChatMessage? _replyingTo;
@@ -163,6 +165,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     // identificador correcto.
     setState(() => _userId = userId);
     _loadDisplayProduct();
+    unawaited(_loadRelationship());
 
     // Conectar socket y unirse a la sala
     _socket.connect();
@@ -193,6 +196,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           _messages.add(msg);
         }
       });
+      // La primera respuesta del interlocutor acepta la conversación y debe
+      // habilitar el campo de texto sin obligar a cerrar y reabrir el chat.
+      if (msg.senderId != _userId) unawaited(_loadRelationship());
       _scrollToBottom();
       // El mensaje se está leyendo en pantalla: si además llegó como push
       // (carrera entre el socket y FCM), esa notificación sobra.
@@ -241,9 +247,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _messages = [];
       _messageKeys.clear();
       _replyingTo = null;
+      _relationship = null;
       _loading = true;
       setState(() {});
       _loadMessages();
+      unawaited(_loadRelationship());
     }
   }
 
@@ -313,6 +321,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _loading = false;
         _loadError = true;
       });
+    }
+  }
+
+  Future<void> _loadRelationship() async {
+    final otherId = widget.otherUser?.id ?? widget.sellerId;
+    if (otherId == null || otherId.isEmpty || otherId == _userId) return;
+    try {
+      final relationship = await ApiService.getChatRelationship(otherId);
+      if (mounted) setState(() => _relationship = relationship);
+    } catch (_) {
+      // La conversación sigue siendo usable: el servidor aplica las reglas
+      // aunque este estado auxiliar no pudiera cargarse para pintar la UI.
     }
   }
 
@@ -411,7 +431,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _sendMessage() async {
     final text = _textController.text.trim();
-    if (text.isEmpty || _sending) return;
+    if (text.isEmpty || _sending || _relationship?.canSend == false) return;
 
     // Se captura y se limpia ANTES de la petición: el campo de texto ya se
     // vació, y dejar la barra de "respondiendo a" colgada mientras vuela el
@@ -465,7 +485,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   /// Elige una imagen de la galería y la envía al chat. El backend la
   /// convierte a WebP antes de guardarla para que pese menos.
   Future<void> _pickAndSendImage() async {
-    if (_sendingImage) return;
+    if (_sendingImage || _relationship?.canSend == false) return;
     final picked = await ImagePicker().pickImage(
       source: ImageSource.gallery,
       imageQuality: 85,
@@ -522,6 +542,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         }
         _currentConvId = newConvId;
         _socket.joinConversation(_currentConvId!);
+      }
+      final relationship = result['relationship'] as Map<String, dynamic>?;
+      if (relationship != null) {
+        _relationship = ChatRelationship.fromJson(relationship);
       }
     });
     _scrollToBottom();
@@ -583,6 +607,196 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _vaciarChat() async {
+    final convId = _currentConvId;
+    if (convId == null || convId.isEmpty || _messages.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('chat.clear_chat_confirm'.tr()),
+        content: Text('chat.clear_chat_explanation'.tr()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text('common.cancel'.tr()),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: Text('chat.clear_chat'.tr()),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await ApiService.deleteConversation(convId);
+      await limpiarNotificacionesDeConversacion(convId);
+      if (!mounted) return;
+      setState(() {
+        _messages = [];
+        _messageKeys.clear();
+        _replyingTo = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('chat.clear_chat_success'.tr())),
+      );
+    } catch (e, stack) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            mensajeDeError(
+              e,
+              stack: stack,
+              fallback: 'chat.delete_conversation_error'.tr(),
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _toggleMute() async {
+    final otherId = widget.otherUser?.id ?? widget.sellerId;
+    if (otherId == null || otherId.isEmpty) return;
+    final muted = !(_relationship?.mutedByMe ?? false);
+    try {
+      final relationship = await ApiService.setChatUserMuted(otherId, muted);
+      if (!mounted) return;
+      setState(() => _relationship = relationship);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            (muted ? 'chat.muted_success' : 'chat.unmuted_success').tr(),
+          ),
+        ),
+      );
+    } catch (e, stack) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            mensajeDeError(
+              e,
+              stack: stack,
+              fallback: 'chat.relationship_error'.tr(),
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _toggleBlock() async {
+    final other = widget.otherUser;
+    final otherId = other?.id ?? widget.sellerId;
+    if (otherId == null || otherId.isEmpty) return;
+    final block = !(_relationship?.blockedByMe ?? false);
+    if (block) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(
+            'chat.block_confirm'.tr(
+              namedArgs: {'user': other?.name ?? ''},
+            ),
+          ),
+          content: Text('chat.block_explanation'.tr()),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text('common.cancel'.tr()),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+              child: Text('chat.block_user'.tr()),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
+    try {
+      final relationship = await ApiService.setChatUserBlocked(otherId, block);
+      if (!mounted) return;
+      setState(() {
+        _relationship = relationship;
+        _replyingTo = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            (block ? 'chat.blocked_success' : 'chat.unblocked_success').tr(),
+          ),
+        ),
+      );
+    } catch (e, stack) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            mensajeDeError(
+              e,
+              stack: stack,
+              fallback: 'chat.relationship_error'.tr(),
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _onMenuAction(String action) async {
+    switch (action) {
+      case 'profile':
+        _abrirPerfilInterlocutor();
+        return;
+      case 'mute':
+        await _toggleMute();
+        return;
+      case 'block':
+        await _toggleBlock();
+        return;
+      case 'report':
+        final other = widget.otherUser;
+        if (other != null) {
+          await showUserReportSheet(
+            context: context,
+            userId: other.id,
+            userName: other.name,
+          );
+        }
+        return;
+      case 'clear':
+        await _vaciarChat();
+        return;
+    }
+  }
+
+  String? _relationshipBanner(ChatRelationship? relationship) {
+    final state = relationship;
+    if (state == null) return null;
+    final name = widget.otherUser?.name ?? '';
+    if (state.blockedByMe) {
+      return 'chat.blocked_by_me'.tr(namedArgs: {'user': name});
+    }
+    if (state.blockedMe) return 'chat.blocked_by_them'.tr();
+    if (state.accepted) return null;
+    if (state.awaitingReply) {
+      return 'chat.awaiting_reply'.tr(namedArgs: {'user': name});
+    }
+    final remaining = state.remainingMessages ?? 3;
+    if (remaining == 3) {
+      return 'chat.first_contact_info'.tr(namedArgs: {'user': name});
+    }
+    return 'chat.first_contact_remaining'.tr(
+      namedArgs: {'count': '$remaining', 'user': name},
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // _userId es el mismo identificador con el que se envían y cargan los
@@ -592,6 +806,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     // anónimos, porque backendSellerId siempre es null para ellos y
     // "msg.senderId == ''" nunca es true.
     final currentUserId = _userId;
+    final relationshipBanner = _relationshipBanner(_relationship);
+    final messagingDisabled = _relationship?.canSend == false;
 
     return Scaffold(
       appBar: AppBar(
@@ -610,6 +826,82 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             IconButton(
               onPressed: () => _navigateToListing(context, _displayProduct!),
               icon: const Icon(Icons.open_in_new_rounded),
+            ),
+          if (widget.otherUser?.id.isNotEmpty == true)
+            PopupMenuButton<String>(
+              tooltip: 'chat.more_options'.tr(),
+              icon: const Icon(Icons.more_vert_rounded),
+              onSelected: _onMenuAction,
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'profile',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.person_outline_rounded),
+                    title: Text('chat.view_profile'.tr()),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'mute',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      _relationship?.mutedByMe == true
+                          ? Icons.notifications_active_outlined
+                          : Icons.notifications_off_outlined,
+                    ),
+                    title: Text(
+                      (_relationship?.mutedByMe == true
+                              ? 'chat.unmute_user'
+                              : 'chat.mute_user')
+                          .tr(),
+                    ),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'clear',
+                  enabled: _currentConvId?.isNotEmpty == true &&
+                      _messages.isNotEmpty,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.delete_sweep_outlined),
+                    title: Text('chat.clear_chat'.tr()),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'report',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.flag_outlined),
+                    title: Text('chat.report_user'.tr()),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'block',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      _relationship?.blockedByMe == true
+                          ? Icons.lock_open_rounded
+                          : Icons.block_rounded,
+                      color: _relationship?.blockedByMe == true
+                          ? null
+                          : context.colors.danger,
+                    ),
+                    title: Text(
+                      (_relationship?.blockedByMe == true
+                              ? 'chat.unblock_user'
+                              : 'chat.block_user')
+                          .tr(),
+                      style: TextStyle(
+                        color: _relationship?.blockedByMe == true
+                            ? null
+                            : context.colors.danger,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
         ],
       ),
@@ -723,6 +1015,43 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               // sin esto quedaría centrada y encogida al tamaño del texto.
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (relationshipBanner != null)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 9,
+                    ),
+                    decoration: BoxDecoration(
+                      color: messagingDisabled
+                          ? context.colors.danger.withValues(alpha: .08)
+                          : context.colors.primary.withValues(alpha: .08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          messagingDisabled
+                              ? Icons.shield_outlined
+                              : Icons.info_outline_rounded,
+                          size: 17,
+                          color: messagingDisabled
+                              ? context.colors.danger
+                              : context.colors.accent,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            relationshipBanner,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: context.colors.mutedStrong,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 if (_replyingTo != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
@@ -740,7 +1069,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 Row(
                   children: [
                     IconButton(
-                      onPressed: _sendingImage ? null : _pickAndSendImage,
+                      onPressed: _sendingImage || messagingDisabled
+                          ? null
+                          : _pickAndSendImage,
                       icon: _sendingImage
                           ? const SizedBox(
                               width: 20,
@@ -753,6 +1084,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       child: TextField(
                         controller: _textController,
                         focusNode: _textFocusNode,
+                        enabled: !messagingDisabled,
                         textInputAction: TextInputAction.send,
                         textCapitalization: TextCapitalization.sentences,
                         onSubmitted: (_) => _sendMessage(),
@@ -771,7 +1103,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     ),
                     const SizedBox(width: 8),
                     IconButton.filled(
-                      onPressed: _sending ? null : _sendMessage,
+                      onPressed: _sending || messagingDisabled
+                          ? null
+                          : _sendMessage,
                       icon: _sending
                           ? SizedBox(
                               width: 20,

@@ -21,6 +21,7 @@ import '../widgets/seller_schedule_location_row.dart';
 import '../widgets/social_links_row.dart';
 import 'chat_screen.dart';
 import 'product_detail_screen.dart';
+import 'report_user_sheet.dart';
 
 /// El color del banner del perfil: el swatch del VENDEDOR, resuelto contra
 /// [brightness], nunca el de quien mira. Es una función y no un `context.
@@ -86,6 +87,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
   List<Product> _products = [];
   bool _loading = true;
   String? _error;
+  ChatRelationship? _relationship;
 
   late final TabController _tabs = TabController(length: 2, vsync: this);
 
@@ -134,6 +136,16 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
         );
         _loading = false;
       });
+      final ownId = context.read<AuthProvider>().backendSellerId;
+      if (seller.id != ownId) {
+        try {
+          final relationship = await ApiService.getChatRelationship(seller.id);
+          if (mounted) setState(() => _relationship = relationship);
+        } catch (_) {
+          // El menú conserva acciones seguras y el servidor sigue siendo la
+          // autoridad aunque este estado visual no se pudiera precargar.
+        }
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -192,6 +204,103 @@ class _SellerProfileScreenState extends State<SellerProfileScreen>
         ),
       ),
     );
+  }
+
+  Future<void> _toggleMute() async {
+    final seller = _seller;
+    if (seller == null) return;
+    final muted = !(_relationship?.mutedByMe ?? false);
+    try {
+      final relationship = await ApiService.setChatUserMuted(seller.id, muted);
+      if (!mounted) return;
+      setState(() => _relationship = relationship);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            (muted ? 'chat.muted_success' : 'chat.unmuted_success').tr(),
+          ),
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('chat.relationship_error'.tr())),
+        );
+      }
+    }
+  }
+
+  Future<void> _toggleBlock() async {
+    final seller = _seller;
+    if (seller == null) return;
+    final block = !(_relationship?.blockedByMe ?? false);
+    if (block) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(
+            'chat.block_confirm'.tr(namedArgs: {'user': seller.name}),
+          ),
+          content: Text('chat.block_explanation'.tr()),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text('common.cancel'.tr()),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+              child: Text('chat.block_user'.tr()),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+    try {
+      final relationship = await ApiService.setChatUserBlocked(
+        seller.id,
+        block,
+      );
+      if (!mounted) return;
+      setState(() => _relationship = relationship);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            (block ? 'chat.blocked_success' : 'chat.unblocked_success').tr(),
+          ),
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('chat.relationship_error'.tr())),
+        );
+      }
+    }
+  }
+
+  Future<void> _onProfileMenuAction(String action) async {
+    final seller = _seller;
+    if (seller == null) return;
+    switch (action) {
+      case 'message':
+        await _openChat();
+        return;
+      case 'mute':
+        await _toggleMute();
+        return;
+      case 'report':
+        await showUserReportSheet(
+          context: context,
+          userId: seller.id,
+          userName: seller.name,
+        );
+        return;
+      case 'block':
+        await _toggleBlock();
+        return;
+    }
   }
 
   @override

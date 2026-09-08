@@ -15,8 +15,9 @@
     { "key": "publication_id", "value": "" },
     { "key": "verification_id", "value": "" },
     { "key": "config_key", "value": "um_sin_verificar" },
-    { "key": "request_id", "value": "00000000-0000-4000-8000-000000000000" },
-    { "key": "suspend_until", "value": "2026-12-31T23:59:59.000Z" }
+    { "key": "request_id", "value": "" },
+    { "key": "suspend_until", "value": "" },
+    { "key": "allow_writes", "value": "NO" }
   ],
   "item": [
     {
@@ -142,6 +143,18 @@
     {
       "name": "4. Escritura (CUIDADO: modifica producción)",
       "description": "Ejecuta cada request individualmente y solo con IDs de prueba. Todas requieren cookie vigente, Origin exacto y X-Revision-CSRF. Las acciones sensibles quedan en admin_audit_log.",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "if (pm.collectionVariables.get('allow_writes') !== 'SI_ENTIENDO') {",
+              "  throw new Error('Escritura bloqueada: cambia allow_writes a SI_ENTIENDO solo durante una prueba controlada.');",
+              "}"
+            ]
+          }
+        }
+      ],
       "item": [
         {
           "name": "Suspender usuario",

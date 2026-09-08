@@ -21,6 +21,8 @@ devuelve en el JSON.
 3. Ejecuta **Validar sesión** y después las consultas de solo lectura.
 4. Actualiza `account_id`, `publication_id` o `verification_id` antes de una
    operación de escritura. Esas peticiones modifican la base de producción.
+   Para desbloquear esa carpeta deliberadamente, cambia `allow_writes` de
+   `NO` a `SI_ENTIENDO` y vuelve a `NO` al terminar.
 5. Genera un UUID v4 nuevo para `request_id` en cada cambio manual de
    verificación; reutilizarlo deliberadamente activa la defensa idempotente.
 6. Ejecuta **Cerrar sesión** al terminar. Además de borrar la cookie, el

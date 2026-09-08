@@ -108,6 +108,46 @@ function validarCita(replyToMessageId, conversationId) {
   return null;
 }
 
+/** Aplica bloqueo y el cupo anti-spam de primer contacto.
+ *
+ * El estado se calcula por pareja de usuarios en la base, no por hilo. Así
+ * no se recuperan otros tres mensajes abriendo otra publicación del mismo
+ * negocio. */
+function validarRelacionParaEnvio(senderId, recipientId) {
+  const relationship = db.getChatRelationship(senderId, recipientId);
+  if (relationship.blockedByMe) {
+    return {
+      status: 403,
+      error: 'Desbloquea a esta cuenta para poder enviarle mensajes.',
+      code: 'CHAT_BLOCKED_BY_ME',
+      relationship,
+    };
+  }
+  if (relationship.blockedMe) {
+    return {
+      status: 403,
+      error: 'No puedes enviar mensajes a esta cuenta.',
+      code: 'CHAT_BLOCKED_BY_RECIPIENT',
+      relationship,
+    };
+  }
+  if (!relationship.canSend) {
+    return {
+      status: 429,
+      error: 'Ya enviaste 3 mensajes. Podrás continuar cuando la otra cuenta responda.',
+      code: 'FIRST_CONTACT_LIMIT',
+      relationship,
+    };
+  }
+  return null;
+}
+
+function otherParticipant(conversation, userId) {
+  return conversation.buyer_id === userId
+    ? conversation.seller_id
+    : conversation.buyer_id;
+}
+
 /** Notifica al otro usuario de la conversación (push + notificación in-app + socket). */
 function notifyNewMessage(app, conversation, senderId, previewText) {
   const otherUserId = conversation.buyer_id === senderId ? conversation.seller_id : conversation.buyer_id;
@@ -118,22 +158,27 @@ function notifyNewMessage(app, conversation, senderId, previewText) {
   ).get(conversation.id);
   const type = isFirst && isFirst.c <= 1 ? 'new_chat' : 'new_message';
 
-  db.createNotification(
-    notifId,
-    otherUserId,
-    type,
-    'Nuevo mensaje',
-    `${sender?.name || 'Alguien'} te escribió: "${previewText}"`,
-    { conversationId: conversation.id, productId: conversation.product_id, senderId }
-  );
+  // Silenciar no oculta ni descarta mensajes: solo evita interrupciones.
+  // El socket de abajo se conserva para que un chat abierto se actualice y
+  // el mensaje seguirá apareciendo como no leído en la bandeja.
+  if (!db.isChatUserMuted(otherUserId, senderId)) {
+    db.createNotification(
+      notifId,
+      otherUserId,
+      type,
+      'Nuevo mensaje',
+      `${sender?.name || 'Alguien'} te escribió: "${previewText}"`,
+      { conversationId: conversation.id, productId: conversation.product_id, senderId }
+    );
 
-  const senderName = sender?.name || 'Alguien';
-  sendPush(
-    [otherUserId],
-    type === 'new_chat' ? 'Nuevo chat' : 'Nuevo mensaje',
-    `${senderName}: ${previewText}`,
-    { conversationId: conversation.id, productId: conversation.product_id, type }
-  );
+    const senderName = sender?.name || 'Alguien';
+    sendPush(
+      [otherUserId],
+      type === 'new_chat' ? 'Nuevo chat' : 'Nuevo mensaje',
+      `${senderName}: ${previewText}`,
+      { conversationId: conversation.id, productId: conversation.product_id, type }
+    );
+  }
 
   const messages = db.getMessages(conversation.id);
   const io = app.get('io');
@@ -252,6 +297,31 @@ function register(app) {
     res.json({ conversationId: conversation ? conversation.id : null });
   });
 
+  // Preferencias y estado anti-spam con otra cuenta. Se consulta tanto desde
+  // el menú del chat como desde los tres puntos del perfil público.
+  app.get('/api/chat/users/:id/relationship', requireAuth, (req, res) => {
+    if (req.user.id === req.params.id) {
+      return res.status(400).json({ error: 'No puedes gestionar tu propia cuenta' });
+    }
+    res.json({ relationship: db.getChatRelationship(req.user.id, req.params.id) });
+  });
+
+  app.put('/api/chat/users/:id/block', requireAuth, (req, res) => {
+    if (req.user.id === req.params.id || typeof req.body?.blocked !== 'boolean') {
+      return res.status(400).json({ error: 'Solicitud de bloqueo inválida' });
+    }
+    db.setChatUserSetting(req.user.id, req.params.id, 'blocked', req.body.blocked);
+    res.json({ relationship: db.getChatRelationship(req.user.id, req.params.id) });
+  });
+
+  app.put('/api/chat/users/:id/mute', requireAuth, (req, res) => {
+    if (req.user.id === req.params.id || typeof req.body?.muted !== 'boolean') {
+      return res.status(400).json({ error: 'Solicitud de silencio inválida' });
+    }
+    db.setChatUserSetting(req.user.id, req.params.id, 'muted', req.body.muted);
+    res.json({ relationship: db.getChatRelationship(req.user.id, req.params.id) });
+  });
+
   // GET /api/chat/conversations/:id/messages - obtener mensajes de una conversación
   app.get('/api/chat/conversations/:id/messages', requireAuth, (req, res) => {
     const userId = req.user.id;
@@ -287,6 +357,16 @@ function register(app) {
     const { conversation, error } = resolveConversation({ conversationId, productId, sellerId, userId });
     if (error) return res.status(error.status).json({ error: error.error });
 
+    const recipientId = otherParticipant(conversation, userId);
+    const relationshipError = validarRelacionParaEnvio(userId, recipientId);
+    if (relationshipError) {
+      return res.status(relationshipError.status).json({
+        error: relationshipError.error,
+        code: relationshipError.code,
+        relationship: relationshipError.relationship,
+      });
+    }
+
     const replyError = validarCita(replyToMessageId, conversation.id);
     if (replyError) return res.status(400).json({ error: replyError });
 
@@ -295,7 +375,11 @@ function register(app) {
     db.createMessage(msgId, conversation.id, userId, trimmedText, null, replyToMessageId || null);
 
     const messages = notifyNewMessage(app, conversation, userId, trimmedText.slice(0, 100));
-    res.status(201).json({ messages, conversationId: conversation.id });
+    res.status(201).json({
+      messages,
+      conversationId: conversation.id,
+      relationship: db.getChatRelationship(userId, recipientId),
+    });
   });
 
   // POST /api/chat/send-image - enviar un mensaje con una imagen (multipart).
@@ -319,6 +403,17 @@ function register(app) {
         return res.status(error.status).json({ error: error.error });
       }
 
+      const recipientId = otherParticipant(conversation, userId);
+      const relationshipError = validarRelacionParaEnvio(userId, recipientId);
+      if (relationshipError) {
+        fs.unlink(req.file.path, () => {});
+        return res.status(relationshipError.status).json({
+          error: relationshipError.error,
+          code: relationshipError.code,
+          relationship: relationshipError.relationship,
+        });
+      }
+
       const replyError = validarCita(replyToMessageId, conversation.id);
       if (replyError) {
         fs.unlink(req.file.path, () => {});
@@ -338,7 +433,11 @@ function register(app) {
       db.createMessage(msgId, conversation.id, userId, '', imageUrl, replyToMessageId || null);
 
       const messages = notifyNewMessage(app, conversation, userId, '📷 Foto');
-      res.status(201).json({ messages, conversationId: conversation.id });
+      res.status(201).json({
+        messages,
+        conversationId: conversation.id,
+        relationship: db.getChatRelationship(userId, recipientId),
+      });
     });
   });
 

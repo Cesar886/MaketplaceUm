@@ -379,6 +379,152 @@ test('un id anónimo copiado de un mensaje no sirve para suplantar al invitado',
   assert.deepStrictEqual(res.body.conversations, []);
 });
 
+// ═══ Primer contacto: máximo tres mensajes sin respuesta ════════
+
+test('el primer contacto permite tres mensajes y bloquea el cuarto', async () => {
+  const ana = crearUsuario();
+  const beto = crearUsuario();
+  const producto = crearProducto(beto.id);
+  let conversationId;
+
+  for (let i = 1; i <= 3; i++) {
+    const res = await pedir('/api/chat/send', {
+      token: ana.token,
+      metodo: 'POST',
+      cuerpo: conversationId
+        ? { conversationId, text: `Mensaje ${i}` }
+        : { productId: producto.id, sellerId: beto.id, text: `Mensaje ${i}` },
+    });
+    assert.strictEqual(res.status, 201);
+    conversationId = res.body.conversationId;
+    assert.strictEqual(res.body.relationship.remainingMessages, 3 - i);
+  }
+
+  const cuarto = await pedir('/api/chat/send', {
+    token: ana.token,
+    metodo: 'POST',
+    cuerpo: { conversationId, text: 'Mensaje 4' },
+  });
+  assert.strictEqual(cuarto.status, 429);
+  assert.strictEqual(cuarto.body.code, 'FIRST_CONTACT_LIMIT');
+  assert.strictEqual(cuarto.body.relationship.awaitingReply, true);
+  assert.strictEqual(db.getMessages(conversationId).length, 3);
+});
+
+test('el cupo se comparte entre publicaciones y una respuesta lo desbloquea para siempre', async () => {
+  const ana = crearUsuario();
+  const beto = crearUsuario();
+  const productoA = crearProducto(beto.id);
+  const productoB = crearProducto(beto.id);
+
+  const primero = await pedir('/api/chat/send', {
+    token: ana.token,
+    metodo: 'POST',
+    cuerpo: { productId: productoA.id, sellerId: beto.id, text: 'Uno' },
+  });
+  await pedir('/api/chat/send', {
+    token: ana.token,
+    metodo: 'POST',
+    cuerpo: { conversationId: primero.body.conversationId, text: 'Dos' },
+  });
+  const tercero = await pedir('/api/chat/send', {
+    token: ana.token,
+    metodo: 'POST',
+    cuerpo: { productId: productoB.id, sellerId: beto.id, text: 'Tres' },
+  });
+  assert.strictEqual(tercero.status, 201);
+
+  const cuarto = await pedir('/api/chat/send', {
+    token: ana.token,
+    metodo: 'POST',
+    cuerpo: { conversationId: primero.body.conversationId, text: 'Cuatro' },
+  });
+  assert.strictEqual(cuarto.status, 429, 'otro hilo no debe renovar el cupo');
+
+  const respuesta = await pedir('/api/chat/send', {
+    token: beto.token,
+    metodo: 'POST',
+    cuerpo: { conversationId: tercero.body.conversationId, text: 'Hola Ana' },
+  });
+  assert.strictEqual(respuesta.status, 201);
+  assert.strictEqual(respuesta.body.relationship.accepted, true);
+
+  for (let i = 0; i < 5; i++) {
+    const libre = await pedir('/api/chat/send', {
+      token: ana.token,
+      metodo: 'POST',
+      cuerpo: { conversationId: primero.body.conversationId, text: `Libre ${i}` },
+    });
+    assert.strictEqual(libre.status, 201, 'la respuesta debe aceptar la relación');
+  }
+});
+
+test('bloquear impide nuevos mensajes en ambos sentidos hasta desbloquear', async () => {
+  const ana = crearUsuario();
+  const beto = crearUsuario();
+  const producto = crearProducto(beto.id);
+  const { convId } = crearConversacion(ana.id, beto.id, producto.id);
+
+  const bloqueo = await pedir(`/api/chat/users/${beto.id}/block`, {
+    token: ana.token,
+    metodo: 'PUT',
+    cuerpo: { blocked: true },
+  });
+  assert.strictEqual(bloqueo.status, 200);
+  assert.strictEqual(bloqueo.body.relationship.blockedByMe, true);
+
+  const deAna = await pedir('/api/chat/send', {
+    token: ana.token,
+    metodo: 'POST',
+    cuerpo: { conversationId: convId, text: 'No debe salir' },
+  });
+  const deBeto = await pedir('/api/chat/send', {
+    token: beto.token,
+    metodo: 'POST',
+    cuerpo: { conversationId: convId, text: 'Tampoco debe salir' },
+  });
+  assert.strictEqual(deAna.status, 403);
+  assert.strictEqual(deAna.body.code, 'CHAT_BLOCKED_BY_ME');
+  assert.strictEqual(deBeto.status, 403);
+  assert.strictEqual(deBeto.body.code, 'CHAT_BLOCKED_BY_RECIPIENT');
+
+  await pedir(`/api/chat/users/${beto.id}/block`, {
+    token: ana.token,
+    metodo: 'PUT',
+    cuerpo: { blocked: false },
+  });
+  const desbloqueado = await pedir('/api/chat/send', {
+    token: beto.token,
+    metodo: 'POST',
+    cuerpo: { conversationId: convId, text: 'Ahora sí' },
+  });
+  assert.strictEqual(desbloqueado.status, 201);
+});
+
+test('silenciar conserva el mensaje y el no leído, pero no crea notificación', async () => {
+  const ana = crearUsuario();
+  const beto = crearUsuario();
+  const producto = crearProducto(beto.id);
+  const { convId } = crearConversacion(ana.id, beto.id, producto.id);
+
+  const silencio = await pedir(`/api/chat/users/${beto.id}/mute`, {
+    token: ana.token,
+    metodo: 'PUT',
+    cuerpo: { muted: true },
+  });
+  assert.strictEqual(silencio.status, 200);
+  assert.strictEqual(silencio.body.relationship.mutedByMe, true);
+
+  const enviado = await pedir('/api/chat/send', {
+    token: beto.token,
+    metodo: 'POST',
+    cuerpo: { conversationId: convId, text: 'Mensaje silencioso' },
+  });
+  assert.strictEqual(enviado.status, 201);
+  assert.strictEqual(db.getUnreadMessageCount(ana.id), 1);
+  assert.strictEqual(db.getUnreadNotificationCount(ana.id), 0);
+});
+
 test('otherUser trae socioFundador y verified, para la palomita del chat', async () => {
   const comprador = crearUsuario();
   const vendedor = crearUsuario();

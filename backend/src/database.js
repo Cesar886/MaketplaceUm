@@ -1684,6 +1684,31 @@ function runMigrations() {
       ON conversation_deletions(user_id, conversation_id);
   `);
 
+  // 42. Preferencias de seguridad entre dos cuentas.
+  //
+  //     Cada dirección se guarda por separado: Ana puede silenciar a Beto
+  //     sin que Beto la silencie a ella. Un bloqueo, en cambio, se consulta
+  //     en ambos sentidos al enviar porque una persona bloqueada no debe
+  //     poder seguir contactando al bloqueador ni recibir mensajes suyos por
+  //     accidente hasta que este lo desbloquee.
+  //
+  //     No hay FK hacia sellers: el chat también admite ids de sesiones
+  //     anónimas y las tablas messages/conversations siguen esa misma regla.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS chat_user_settings (
+      owner_id TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      blocked INTEGER NOT NULL DEFAULT 0,
+      muted INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (owner_id, target_id),
+      CHECK(owner_id != target_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_chat_user_settings_target
+      ON chat_user_settings(target_id, owner_id);
+  `);
+
   // Insignia verde "Socio Fundador": columna nueva en `sellers`, para bases
   // que ya existían antes de agregarla al CREATE TABLE de arriba.
   const sellerColsSocio = db.prepare("PRAGMA table_info('sellers')").all();
@@ -3941,6 +3966,100 @@ function findDirectConversation(unoId, otroId) {
   `).get(unoId, otroId, otroId, unoId);
 }
 
+const MENSAJES_PRIMER_CONTACTO = 3;
+
+/** Estado de contacto entre dos personas, compartido por TODOS sus hilos.
+ *
+ * El límite no se calcula por conversación: de hacerlo así bastaría abrir
+ * otro producto del mismo vendedor para mandar otros tres mensajes. La relación
+ * queda aceptada en cuanto existe al menos un mensaje de cada lado, sin
+ * importar cuál de los dos inició el contacto. */
+function getChatRelationship(ownerId, targetId) {
+  if (!ownerId || !targetId || ownerId === targetId) {
+    return {
+      blockedByMe: false,
+      blockedMe: false,
+      mutedByMe: false,
+      accepted: true,
+      awaitingReply: false,
+      remainingMessages: null,
+      canSend: ownerId === targetId ? false : true,
+    };
+  }
+
+  const mine = db.prepare(`
+    SELECT blocked, muted FROM chat_user_settings
+    WHERE owner_id = ? AND target_id = ?
+  `).get(ownerId, targetId);
+  const theirs = db.prepare(`
+    SELECT blocked FROM chat_user_settings
+    WHERE owner_id = ? AND target_id = ?
+  `).get(targetId, ownerId);
+
+  const counts = db.prepare(`
+    SELECT
+      COALESCE(SUM(CASE WHEN m.sender_id = ? THEN 1 ELSE 0 END), 0) AS mine,
+      COALESCE(SUM(CASE WHEN m.sender_id = ? THEN 1 ELSE 0 END), 0) AS theirs
+    FROM messages m
+    JOIN conversations c ON c.id = m.conversation_id
+    WHERE (c.buyer_id = ? AND c.seller_id = ?)
+       OR (c.buyer_id = ? AND c.seller_id = ?)
+  `).get(ownerId, targetId, ownerId, targetId, targetId, ownerId);
+
+  const sentByMe = Number(counts?.mine || 0);
+  const sentByThem = Number(counts?.theirs || 0);
+  const accepted = sentByMe > 0 && sentByThem > 0;
+  const remainingMessages = accepted
+    ? null
+    : Math.max(0, MENSAJES_PRIMER_CONTACTO - sentByMe);
+  const blockedByMe = !!mine?.blocked;
+  const blockedMe = !!theirs?.blocked;
+  const blocked = blockedByMe || blockedMe;
+
+  return {
+    blockedByMe,
+    blockedMe,
+    mutedByMe: !!mine?.muted,
+    accepted,
+    awaitingReply: !accepted && sentByMe >= MENSAJES_PRIMER_CONTACTO,
+    remainingMessages,
+    canSend: !blocked && (accepted || sentByMe < MENSAJES_PRIMER_CONTACTO),
+  };
+}
+
+function setChatUserSetting(ownerId, targetId, setting, enabled) {
+  if (!ownerId || !targetId || ownerId === targetId) return false;
+  if (setting !== 'blocked' && setting !== 'muted') return false;
+  db.prepare(`
+    INSERT INTO chat_user_settings (owner_id, target_id, ${setting}, updated_at)
+    VALUES (?, ?, ?, datetime('now'))
+    ON CONFLICT(owner_id, target_id) DO UPDATE SET
+      ${setting} = excluded.${setting},
+      updated_at = excluded.updated_at
+  `).run(ownerId, targetId, enabled ? 1 : 0);
+  return true;
+}
+
+function areUsersBlocked(oneId, otherId) {
+  if (!oneId || !otherId) return false;
+  const row = db.prepare(`
+    SELECT 1 FROM chat_user_settings
+    WHERE ((owner_id = ? AND target_id = ?)
+        OR (owner_id = ? AND target_id = ?))
+      AND blocked = 1
+    LIMIT 1
+  `).get(oneId, otherId, otherId, oneId);
+  return !!row;
+}
+
+function isChatUserMuted(ownerId, targetId) {
+  const row = db.prepare(`
+    SELECT muted FROM chat_user_settings
+    WHERE owner_id = ? AND target_id = ?
+  `).get(ownerId, targetId);
+  return !!row?.muted;
+}
+
 function getConversationsForUser(userId) {
   return db.prepare(`
     SELECT c.* FROM conversations c
@@ -5115,6 +5234,11 @@ module.exports = {
   findConversation,
   createDirectConversation,
   findDirectConversation,
+  MENSAJES_PRIMER_CONTACTO,
+  getChatRelationship,
+  setChatUserSetting,
+  areUsersBlocked,
+  isChatUserMuted,
   getConversationsForUser,
   deleteConversationForUser,
   setUltimaActividad,

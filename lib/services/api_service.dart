@@ -1950,6 +1950,56 @@ class ApiService {
     return data['conversationId'] as String?;
   }
 
+  static Future<ChatRelationship> getChatRelationship(String userId) async {
+    final res = await _getWithRetry(
+      _uri('/chat/users/$userId/relationship'),
+      headers: _authHeaders,
+    );
+    if (res.statusCode != 200) {
+      throw excepcionDeRespuesta(res, fallback: 'chat.relationship_error'.tr());
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return ChatRelationship.fromJson(
+      data['relationship'] as Map<String, dynamic>? ?? const {},
+    );
+  }
+
+  static Future<ChatRelationship> setChatUserBlocked(
+    String userId,
+    bool blocked,
+  ) async {
+    final res = await _client.put(
+      _uri('/chat/users/$userId/block'),
+      headers: _authHeaders,
+      body: jsonEncode({'blocked': blocked}),
+    );
+    if (res.statusCode != 200) {
+      throw excepcionDeRespuesta(res, fallback: 'chat.relationship_error'.tr());
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return ChatRelationship.fromJson(
+      data['relationship'] as Map<String, dynamic>? ?? const {},
+    );
+  }
+
+  static Future<ChatRelationship> setChatUserMuted(
+    String userId,
+    bool muted,
+  ) async {
+    final res = await _client.put(
+      _uri('/chat/users/$userId/mute'),
+      headers: _authHeaders,
+      body: jsonEncode({'muted': muted}),
+    );
+    if (res.statusCode != 200) {
+      throw excepcionDeRespuesta(res, fallback: 'chat.relationship_error'.tr());
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return ChatRelationship.fromJson(
+      data['relationship'] as Map<String, dynamic>? ?? const {},
+    );
+  }
+
   /// Elimina el chat solo de la bandeja del usuario autenticado.
   ///
   /// El historial de la otra persona no se modifica. Si llega un mensaje

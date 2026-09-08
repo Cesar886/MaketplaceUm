@@ -1237,6 +1237,42 @@ class ChatProduct {
   final String? imageColor;
 }
 
+/// Estado de seguridad y consentimiento entre la cuenta actual y otra.
+///
+/// Se calcula en el servidor para que el límite de primer contacto no se
+/// pueda evadir modificando el cliente o abriendo otro chat.
+class ChatRelationship {
+  const ChatRelationship({
+    this.blockedByMe = false,
+    this.blockedMe = false,
+    this.mutedByMe = false,
+    this.accepted = false,
+    this.awaitingReply = false,
+    this.remainingMessages,
+    this.canSend = true,
+  });
+
+  factory ChatRelationship.fromJson(Map<String, dynamic> json) {
+    return ChatRelationship(
+      blockedByMe: json['blockedByMe'] as bool? ?? false,
+      blockedMe: json['blockedMe'] as bool? ?? false,
+      mutedByMe: json['mutedByMe'] as bool? ?? false,
+      accepted: json['accepted'] as bool? ?? false,
+      awaitingReply: json['awaitingReply'] as bool? ?? false,
+      remainingMessages: json['remainingMessages'] as int?,
+      canSend: json['canSend'] as bool? ?? true,
+    );
+  }
+
+  final bool blockedByMe;
+  final bool blockedMe;
+  final bool mutedByMe;
+  final bool accepted;
+  final bool awaitingReply;
+  final int? remainingMessages;
+  final bool canSend;
+}
+
 class ChatUser {
   const ChatUser({
     required this.id,
