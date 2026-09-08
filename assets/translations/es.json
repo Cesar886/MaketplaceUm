@@ -1021,6 +1021,7 @@
     "whatsapp_invalid": "El número de WhatsApp debe tener solo dígitos con código de país (10 a 15 dígitos)"
   },
   "role": {
+    "guest": "Usuario sin cuenta",
     "um_staff": "Personal UM"
   },
   "checklist": {

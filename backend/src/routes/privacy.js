@@ -24,6 +24,20 @@ function register(app) {
     db.setMostrarEstadoEnLinea(req.user.id, showOnlineStatus);
     res.json({ showOnlineStatus });
   });
+
+  app.get('/api/me/security', requireAuth, (req, res) => {
+    if (req.user.anon) return res.json({ users: [] });
+    res.json({ users: db.getChatSafetySettings(req.user.id) });
+  });
+
+  app.delete('/api/me/account', requireAuth, (req, res) => {
+    if (req.user.anon) return res.status(403).json({ error: 'Cuenta requerida.' });
+    const result = db.anonymizeSellerAccount(req.user.id);
+    if (!result) return res.status(404).json({ error: 'Cuenta no encontrada.' });
+    const io = req.app.get('io');
+    if (io?.in) io.in(`user:${req.user.id}`).disconnectSockets(true);
+    res.json({ deleted: true, deletedAt: result.deletedAt });
+  });
 }
 
 module.exports = { register };

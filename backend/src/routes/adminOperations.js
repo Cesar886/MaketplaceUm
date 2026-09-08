@@ -439,6 +439,51 @@ function router() {
     return res.json({ entries, total, page: pagination.page, limit: pagination.limit });
   });
 
+  api.get('/reports', (req, res) => {
+    const pagination = pageParams(req.query);
+    const status = String(req.query.status || 'all');
+    const targetType = String(req.query.targetType || 'all');
+    if (!pagination) return res.status(400).json({ error: 'Paginacion invalida.' });
+    const result = db.listReports({
+      status,
+      targetType,
+      limit: pagination.limit,
+      offset: pagination.offset,
+    });
+    if (!result) return res.status(400).json({ error: 'Filtros de reportes invalidos.' });
+    return res.json({ ...result, page: pagination.page, limit: pagination.limit });
+  });
+
+  api.patch('/reports/:id', (req, res) => {
+    if (!validId(req.params.id)) return res.status(400).json({ error: 'Reporte invalido.' });
+    const status = String(req.body?.status || '');
+    const adminNote = typeof req.body?.adminNote === 'string' ? req.body.adminNote.trim() : '';
+    if (!['received', 'reviewing', 'resolved', 'dismissed'].includes(status)
+        || adminNote.length > MAX_REASON * 2) {
+      return res.status(400).json({ error: 'Estado o nota invalidos.' });
+    }
+    const result = db.updateReportStatus({
+      id: req.params.id,
+      status,
+      adminNote,
+      adminId: req.admin.id,
+    });
+    if (!result) return res.status(404).json({ error: 'Reporte no encontrado.' });
+    registrarAuditoriaAdmin(db.getDb(), req, {
+      action: 'report.update',
+      entityType: 'report',
+      entityId: req.params.id,
+      details: {
+        before: result.before.status,
+        after: result.after.status,
+        targetType: result.after.target_type,
+        targetId: result.after.target_id,
+      },
+      createdAt: new Date().toISOString(),
+    });
+    return res.json({ report: result.after });
+  });
+
   return api;
 }
 

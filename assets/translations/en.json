@@ -1021,6 +1021,7 @@
     "whatsapp_invalid": "The WhatsApp number must contain only digits with country code (10 to 15 digits)"
   },
   "role": {
+    "guest": "Guest user",
     "um_staff": "UM staff"
   },
   "checklist": {

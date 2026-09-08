@@ -5,8 +5,6 @@ import '../app_theme.dart';
 import '../services/api_error.dart';
 import '../services/api_service.dart';
 
-const _reportesUserId = 'u_cesar8herrera_g2zc';
-
 Future<void> showUserReportSheet({
   required BuildContext context,
   required String userId,
@@ -63,19 +61,13 @@ class _UserReportSheetState extends State<_UserReportSheet> {
     final reason = _isOther
         ? _detailsController.text.trim()
         : (_reason ?? '').tr();
-    final message = 'report_user.message_template'.tr(
-      namedArgs: {
-        'reason': reason,
-        'user': widget.userName,
-        'userId': widget.userId,
-      },
-    );
-
     try {
-      await ApiService.sendMessage(
-        productId: '',
-        sellerId: _reportesUserId,
-        text: message,
+      await ApiService.createReport(
+        targetType: 'user',
+        targetId: widget.userId,
+        targetUserId: widget.userId,
+        reason: reason,
+        details: _detailsController.text.trim(),
       );
       if (!mounted) return;
       Navigator.of(context).pop();

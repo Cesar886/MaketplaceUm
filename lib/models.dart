@@ -162,6 +162,7 @@ class Seller {
     required this.avatarInitials,
     required this.major,
     this.isBusiness = false,
+    this.isGuest = false,
     this.logoUrl,
     this.phone,
     required this.rating,
@@ -209,6 +210,7 @@ class Seller {
       avatarInitials: json['avatarInitials'] as String? ?? '',
       major: json['major'] as String? ?? '',
       isBusiness: json['isBusiness'] as bool? ?? false,
+      isGuest: json['isGuest'] as bool? ?? false,
       logoUrl: json['logoUrl'] as String?,
       phone: json['phone'] as String?,
       rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
@@ -272,6 +274,7 @@ class Seller {
   final String avatarInitials;
   final String major;
   final bool isBusiness;
+  final bool isGuest;
   final String? logoUrl;
   final String? phone;
   final double rating;
@@ -1286,6 +1289,7 @@ class ChatUser {
     this.verified = false,
     this.socioFundador = false,
     this.tipoCuenta = 'particular',
+    this.isGuest = false,
   });
 
   factory ChatUser.fromJson(Map<String, dynamic> json) {
@@ -1298,6 +1302,7 @@ class ChatUser {
       verified: json['verified'] as bool? ?? false,
       socioFundador: json['socioFundador'] as bool? ?? false,
       tipoCuenta: json['tipoCuenta'] as String? ?? 'particular',
+      isGuest: json['isGuest'] as bool? ?? false,
     );
   }
 
@@ -1316,6 +1321,7 @@ class ChatUser {
   final bool verified;
   final bool socioFundador;
   final String tipoCuenta;
+  final bool isGuest;
 
   /// Para abrir el chat desde la ficha de un producto, donde lo que se tiene
   /// a mano es el [Seller] y no un [ChatUser] (ese solo viaja dentro de una
@@ -1329,6 +1335,7 @@ class ChatUser {
     verified: seller.verified,
     socioFundador: seller.socioFundador,
     tipoCuenta: seller.tipoCuenta,
+    isGuest: seller.isGuest,
   );
 }
 

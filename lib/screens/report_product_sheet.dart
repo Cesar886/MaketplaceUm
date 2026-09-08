@@ -2,12 +2,9 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
-import '../config/app_config.dart';
 import '../models.dart';
 import '../services/api_error.dart';
 import '../services/api_service.dart';
-
-const _reportesUserId = 'u_cesar8herrera_g2zc';
 
 enum _ReportTarget { product, account }
 
@@ -77,32 +74,20 @@ class _ProductReportSheetState extends State<_ProductReportSheet> {
     FocusScope.of(context).unfocus();
     setState(() => _sending = true);
 
-    final targetLabel =
-        (_target == _ReportTarget.product
-                ? 'report_listing.target_product'
-                : 'report_listing.target_account')
-            .tr();
     final reasonLabel = _isOther
         ? _otherController.text.trim()
         : (_reason ?? '').tr();
     final product = widget.product;
-    final message = 'report_listing.message_template'.tr(
-      namedArgs: {
-        'target': targetLabel,
-        'reason': reasonLabel,
-        'title': product.title,
-        'productId': product.id,
-        'seller': product.seller.name,
-        'sellerId': product.seller.id,
-        'url': AppConfig.urlPublicacion(product.id),
-      },
-    );
 
     try {
-      await ApiService.sendMessage(
-        productId: '',
-        sellerId: _reportesUserId,
-        text: message,
+      await ApiService.createReport(
+        targetType: _target == _ReportTarget.product ? 'product' : 'user',
+        targetId: _target == _ReportTarget.product
+            ? product.id
+            : product.seller.id,
+        targetUserId: product.seller.id,
+        reason: reasonLabel,
+        details: _otherController.text.trim(),
       );
       if (!mounted) return;
       Navigator.of(context).pop();

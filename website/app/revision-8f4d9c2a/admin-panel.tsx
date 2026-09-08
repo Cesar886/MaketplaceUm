@@ -10,6 +10,7 @@ const base = '/revision-8f4d9c2a/api';
 const sections = [
   ['verificaciones', 'Verificaciones'],
   ['dashboard', 'Dashboard'],
+  ['reportes', 'Reportes'],
   ['usuarios', 'Usuarios'],
   ['publicaciones', 'Publicaciones'],
   ['configuracion', 'Configuración'],
@@ -30,6 +31,14 @@ type Publication = {
   ownerName: string; createdAt: string; moderationStatus: 'visible' | 'removed' | 'spam';
   domainStatus?: string | null; views: number;
 };
+type Report = {
+  id: string; reporter_id: string; reporterName?: string | null;
+  target_type: 'user' | 'product' | 'wanted' | 'chat'; target_id: string;
+  target_user_id?: string | null; targetUserName?: string | null;
+  reason: string; details?: string | null;
+  status: 'received' | 'reviewing' | 'resolved' | 'dismissed';
+  admin_note?: string | null; created_at: string; updated_at: string;
+};
 type ConfigRow = {
   key: string; productsActive: number; productsDaily: number; wantedActive: number;
   wantedDaily: number; durationDays: number; updatedAt?: string | null;
@@ -44,7 +53,7 @@ function formatDate(value?: string | null) {
 }
 
 function statusLabel(value: string) {
-  return ({ active: 'Activa', suspended: 'Suspendida', banned: 'Baneada', visible: 'Visible', removed: 'Retirada', spam: 'Spam' } as Record<string, string>)[value] || value;
+  return ({ active: 'Activa', suspended: 'Suspendida', banned: 'Baneada', visible: 'Visible', removed: 'Retirada', spam: 'Spam', received: 'Recibido', reviewing: 'En revisión', resolved: 'Resuelto', dismissed: 'Descartado' } as Record<string, string>)[value] || value;
 }
 
 async function adminFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -201,6 +210,44 @@ function PublicationsPanel() {
   return <section aria-labelledby="publications-title" className={styles.sectionPanel}><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Catálogo global</p><h2 id="publications-title">Publicaciones</h2><p>Modera productos y solicitudes sin destruir la evidencia.</p></div><span className={styles.countPill}>{total} registros</span></div><form className={styles.toolbar} onSubmit={e => { e.preventDefault(); setQuery(queryInput.trim()); }}><label className={styles.searchField}><span>Buscar</span><input maxLength={100} onChange={e => setQueryInput(e.target.value)} placeholder="Título, autor o ID" value={queryInput} /></label><label><span>Tipo</span><select onChange={e => setKind(e.target.value)} value={kind}><option value="all">Todos</option><option value="product">Productos</option><option value="wanted">Se busca</option></select></label><label><span>Moderación</span><select onChange={e => setStatus(e.target.value)} value={status}><option value="all">Todos</option><option value="visible">Visible</option><option value="spam">Spam</option><option value="removed">Retirada</option></select></label><button className={styles.secondaryButton} type="submit">Filtrar</button></form>{error && <PanelState error>{error}</PanelState>}{loading ? <PanelState>Cargando catálogo…</PanelState> : items.length === 0 ? <PanelState>No hay publicaciones con estos filtros.</PanelState> : <div className={styles.tableWrap}><table className={styles.dataTable}><thead><tr><th>Publicación</th><th>Tipo</th><th>Autor</th><th>Fecha</th><th>Estado</th><th>Vistas</th><th><span className={styles.srOnly}>Acciones</span></th></tr></thead><tbody>{items.map(item => <tr key={`${item.kind}-${item.id}`}><td><strong>{item.title}</strong><small>{item.id}</small></td><td>{item.kind === 'product' ? 'Producto' : 'Se busca'}</td><td><strong>{item.ownerName}</strong><small>{item.ownerId}</small></td><td>{formatDate(item.createdAt)}</td><td><StatusBadge status={item.moderationStatus} /></td><td>{item.views}</td><td>{item.moderationStatus === 'visible' ? <div className={styles.rowActions}><button onClick={() => setAction({ item, target: 'spam' })} type="button">Spam</button><button className={styles.dangerText} onClick={() => setAction({ item, target: 'removed' })} type="button">Retirar</button></div> : <span className={styles.muted}>Moderada</span>}</td></tr>)}</tbody></table></div>}{action && <ActionDialog eyebrow="Moderación" onClose={() => setAction(null)} title={action.target === 'spam' ? 'Marcar como spam' : 'Retirar publicación'}><form className={styles.actionForm} onSubmit={moderate}><p className={styles.warningText}>La publicación dejará de aparecer en feeds, búsquedas y detalles, pero la fila se conservará para auditoría.</p><label><span>Motivo obligatorio</span><textarea autoFocus maxLength={500} minLength={10} onChange={e => setReasonText(e.target.value)} required value={reasonText} /><small>{reasonText.trim().length}/500 · mínimo 10</small></label><div className={styles.dialogFooter}><button onClick={() => setAction(null)} type="button">Cancelar</button><button className={styles.dangerButton} disabled={working || reasonText.trim().length < 10} type="submit">{working ? 'Aplicando…' : 'Confirmar moderación'}</button></div></form></ActionDialog>}</section>;
 }
 
+function ReportsPanel() {
+  const [status, setStatus] = useState('received');
+  const [targetType, setTargetType] = useState('all');
+  const [reports, setReports] = useState<Report[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [action, setAction] = useState<{ report: Report; status: Report['status'] } | null>(null);
+  const [note, setNote] = useState('');
+  const [working, setWorking] = useState(false);
+  const load = () => {
+    setLoading(true); setError('');
+    const params = new URLSearchParams({ page: '1', limit: '50', status, targetType });
+    adminFetch<{ reports: Report[]; total: number }>(`/admin/reports?${params}`)
+      .then(result => { setReports(result.reports); setTotal(result.total); })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  };
+  useEffect(load, [status, targetType]);
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!action) return;
+    setWorking(true);
+    try {
+      await adminFetch(`/admin/reports/${encodeURIComponent(action.report.id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: action.status, adminNote: note.trim() }),
+      });
+      setAction(null); setNote(''); load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo actualizar el reporte.');
+    } finally {
+      setWorking(false);
+    }
+  }
+  return <section aria-labelledby="reports-title" className={styles.sectionPanel}><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Confianza y seguridad</p><h2 id="reports-title">Reportes</h2><p>Casos creados desde perfiles, chats y publicaciones.</p></div><span className={styles.countPill}>{total} reportes</span></div><form className={styles.toolbar}><label><span>Estado</span><select onChange={e => setStatus(e.target.value)} value={status}><option value="all">Todos</option><option value="received">Recibidos</option><option value="reviewing">En revisión</option><option value="resolved">Resueltos</option><option value="dismissed">Descartados</option></select></label><label><span>Tipo</span><select onChange={e => setTargetType(e.target.value)} value={targetType}><option value="all">Todos</option><option value="user">Usuario</option><option value="product">Producto</option><option value="wanted">Se busca</option><option value="chat">Chat</option></select></label></form>{error && <PanelState error>{error}</PanelState>}{loading ? <PanelState>Cargando reportes…</PanelState> : reports.length === 0 ? <PanelState>No hay reportes con estos filtros.</PanelState> : <div className={styles.tableWrap}><table className={styles.dataTable}><thead><tr><th>Reporte</th><th>Reporta</th><th>Objetivo</th><th>Motivo</th><th>Estado</th><th>Fecha</th><th><span className={styles.srOnly}>Acciones</span></th></tr></thead><tbody>{reports.map(report => <tr key={report.id}><td><strong>{report.id}</strong><small>{report.details || 'Sin detalle adicional'}</small></td><td><strong>{report.reporterName || report.reporter_id}</strong><small>{report.reporter_id}</small></td><td><strong>{report.target_type}: {report.target_id}</strong><small>{report.targetUserName || report.target_user_id || 'Sin usuario asociado'}</small></td><td>{report.reason}</td><td><StatusBadge status={report.status} /></td><td>{formatDate(report.created_at)}</td><td><div className={styles.rowActions}>{report.status !== 'reviewing' && <button onClick={() => setAction({ report, status: 'reviewing' })} type="button">Revisar</button>}{report.status !== 'resolved' && <button onClick={() => setAction({ report, status: 'resolved' })} type="button">Resolver</button>}{report.status !== 'dismissed' && <button className={styles.dangerText} onClick={() => setAction({ report, status: 'dismissed' })} type="button">Descartar</button>}</div></td></tr>)}</tbody></table></div>}{action && <ActionDialog eyebrow="Reporte" onClose={() => setAction(null)} title={`${statusLabel(action.status)} ${action.report.id}`}><form className={styles.actionForm} onSubmit={submit}><p className={styles.warningText}>La decisión quedará en auditoría y el reporte conservará su evidencia.</p><label><span>Nota interna</span><textarea autoFocus maxLength={1000} onChange={e => setNote(e.target.value)} value={note} /></label><div className={styles.dialogFooter}><button onClick={() => setAction(null)} type="button">Cancelar</button><button className={action.status === 'dismissed' ? styles.dangerButton : styles.primaryButton} disabled={working} type="submit">{working ? 'Guardando…' : 'Guardar estado'}</button></div></form></ActionDialog>}</section>;
+}
+
 const configNames: Record<string, string> = { negocio_verificado: 'Negocio verificado', negocio_sin_verificar: 'Negocio sin verificar', um_verificado: 'UM verificado', um_sin_verificar: 'UM sin verificar', externo: 'Externo' };
 const configFields = [['productsActive', 'Productos activos'], ['productsDaily', 'Productos / día'], ['wantedActive', '“Se busca” activos'], ['wantedDaily', '“Se busca” / día'], ['durationDays', 'Duración (días)']] as const;
 function ConfigPanel() {
@@ -227,7 +274,7 @@ export default function AdminPanel() {
     <div className={styles.shell}>
       <header className={styles.hero}><div className={styles.brandMark} aria-hidden="true">UM</div><div><p className={styles.eyebrow}>Marketplace UM · Operaciones</p><h1>Centro de administración</h1><p>Confianza, catálogo y límites en un solo lugar.</p></div><div className={styles.securitySeal}><span aria-hidden="true">◆</span><div><strong>Sesión reforzada</strong><small>JWT · 2FA · Auditoría</small></div></div></header>
       <nav aria-label="Secciones administrativas" className={styles.nav}>{sections.map(([key, label], index) => <a aria-current={active === key ? 'page' : undefined} href={`?section=${key}`} key={key}><span>{String(index + 1).padStart(2, '0')}</span>{label}</a>)}</nav>
-      <div className={styles.workspace}>{active === 'verificaciones' && <section className={styles.sectionPanel}><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Confianza de la comunidad</p><h2>Verificaciones</h2><p>La cola original permanece completa: pendientes, padrón e historial.</p></div></div><RevisionQueue /></section>}{active === 'dashboard' && <DashboardPanel />}{active === 'usuarios' && <UsersPanel />}{active === 'publicaciones' && <PublicationsPanel />}{active === 'configuracion' && <ConfigPanel />}{active === 'auditoria' && <AuditPanel />}</div>
+      <div className={styles.workspace}>{active === 'verificaciones' && <section className={styles.sectionPanel}><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Confianza de la comunidad</p><h2>Verificaciones</h2><p>La cola original permanece completa: pendientes, padrón e historial.</p></div></div><RevisionQueue /></section>}{active === 'dashboard' && <DashboardPanel />}{active === 'reportes' && <ReportsPanel />}{active === 'usuarios' && <UsersPanel />}{active === 'publicaciones' && <PublicationsPanel />}{active === 'configuracion' && <ConfigPanel />}{active === 'auditoria' && <AuditPanel />}</div>
       <footer className={styles.footer}><span>Marketplace UM</span><p>Panel privado · Todas las acciones sensibles quedan registradas.</p></footer>
     </div>
   );

@@ -1709,6 +1709,35 @@ function runMigrations() {
       ON chat_user_settings(target_id, owner_id);
   `);
 
+  // Reportes reales: dejan de ser mensajes perdidos en un chat de soporte y
+  // pasan a una cola moderable con estado, historial mínimo y trazabilidad.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS reports (
+      id TEXT PRIMARY KEY,
+      reporter_id TEXT NOT NULL,
+      target_type TEXT NOT NULL CHECK(target_type IN ('user', 'product', 'wanted', 'chat')),
+      target_id TEXT NOT NULL,
+      target_user_id TEXT,
+      reason TEXT NOT NULL,
+      details TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'received'
+        CHECK(status IN ('received', 'reviewing', 'resolved', 'dismissed')),
+      admin_note TEXT DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      resolved_at TEXT,
+      resolved_by_admin_id INTEGER,
+      FOREIGN KEY (resolved_by_admin_id) REFERENCES admins(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_reports_status_created
+      ON reports(status, created_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_reports_reporter
+      ON reports(reporter_id, created_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_reports_target
+      ON reports(target_type, target_id, created_at DESC, id DESC);
+  `);
+
   // Insignia verde "Socio Fundador": columna nueva en `sellers`, para bases
   // que ya existían antes de agregarla al CREATE TABLE de arriba.
   const sellerColsSocio = db.prepare("PRAGMA table_info('sellers')").all();
@@ -2051,6 +2080,9 @@ function runMigrations() {
       ALTER TABLE sellers ADD COLUMN auth_invalid_before INTEGER NOT NULL DEFAULT 0
         CHECK(auth_invalid_before >= 0)
     `);
+  }
+  if (!sellerColsModeration.some(column => column.name === 'deleted_at')) {
+    db.exec('ALTER TABLE sellers ADD COLUMN deleted_at TEXT');
   }
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_sellers_admin_status
@@ -4062,6 +4094,146 @@ function isChatUserMuted(ownerId, targetId) {
   return !!row?.muted;
 }
 
+function getChatSafetySettings(ownerId) {
+  if (!ownerId) return [];
+  return db.prepare(`
+    SELECT s.target_id AS userId, s.blocked, s.muted, s.updated_at AS updatedAt,
+           COALESCE(u.name, s.target_id) AS name,
+           u.avatarInitials, u.logoUrl, u.verified, u.isBusiness,
+           u.socio_fundador AS socioFundador
+      FROM chat_user_settings s
+      LEFT JOIN sellers u ON u.id = s.target_id
+     WHERE s.owner_id = ? AND (s.blocked = 1 OR s.muted = 1)
+     ORDER BY s.updated_at DESC, s.target_id ASC
+  `).all(ownerId).map(row => ({
+    userId: row.userId,
+    name: row.name,
+    avatarInitials: row.avatarInitials || '',
+    logoUrl: row.logoUrl || null,
+    verified: !!row.verified,
+    isBusiness: !!row.isBusiness,
+    socioFundador: !!row.socioFundador,
+    blocked: !!row.blocked,
+    muted: !!row.muted,
+    updatedAt: row.updatedAt,
+  }));
+}
+
+const REPORT_TARGET_TYPES = new Set(['user', 'product', 'wanted', 'chat']);
+const REPORT_STATUSES = new Set(['received', 'reviewing', 'resolved', 'dismissed']);
+
+function createReport({ reporterId, targetType, targetId, targetUserId = null, reason, details = '' }) {
+  if (!REPORT_TARGET_TYPES.has(targetType)) throw new Error('Tipo de reporte invalido.');
+  const safeReason = String(reason || '').trim();
+  const safeDetails = String(details || '').trim();
+  if (safeReason.length < 3 || safeReason.length > 120) throw new Error('Motivo invalido.');
+  if (!targetId || String(targetId).length > 180) throw new Error('Objetivo invalido.');
+  if (safeDetails.length > 1000) throw new Error('Detalle invalido.');
+  const id = `rep_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
+  db.prepare(`
+    INSERT INTO reports (
+      id, reporter_id, target_type, target_id, target_user_id, reason, details,
+      status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'received', datetime('now'), datetime('now'))
+  `).run(id, reporterId, targetType, String(targetId), targetUserId || null, safeReason, safeDetails);
+  return getReportById(id);
+}
+
+function getReportById(id) {
+  return db.prepare(`
+    SELECT r.*, reporter.name AS reporterName, target.name AS targetUserName
+      FROM reports r
+      LEFT JOIN sellers reporter ON reporter.id = r.reporter_id
+      LEFT JOIN sellers target ON target.id = r.target_user_id
+     WHERE r.id = ?
+  `).get(id);
+}
+
+function listReports({ status = 'all', targetType = 'all', limit = 50, offset = 0 } = {}) {
+  const where = [];
+  const params = [];
+  if (status !== 'all') {
+    if (!REPORT_STATUSES.has(status)) return null;
+    where.push('r.status = ?');
+    params.push(status);
+  }
+  if (targetType !== 'all') {
+    if (!REPORT_TARGET_TYPES.has(targetType)) return null;
+    where.push('r.target_type = ?');
+    params.push(targetType);
+  }
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const total = db.prepare(`SELECT COUNT(*) AS total FROM reports r ${clause}`).get(...params).total;
+  const reports = db.prepare(`
+    SELECT r.*, reporter.name AS reporterName, target.name AS targetUserName
+      FROM reports r
+      LEFT JOIN sellers reporter ON reporter.id = r.reporter_id
+      LEFT JOIN sellers target ON target.id = r.target_user_id
+      ${clause}
+     ORDER BY r.created_at DESC, r.id DESC
+     LIMIT ? OFFSET ?
+  `).all(...params, limit, offset);
+  return { reports, total };
+}
+
+function updateReportStatus({ id, status, adminNote = '', adminId }) {
+  if (!REPORT_STATUSES.has(status)) return null;
+  const before = getReportById(id);
+  if (!before) return null;
+  const resolved = status === 'resolved' || status === 'dismissed';
+  db.prepare(`
+    UPDATE reports
+       SET status = ?, admin_note = ?, updated_at = datetime('now'),
+           resolved_at = CASE WHEN ? THEN datetime('now') ELSE NULL END,
+           resolved_by_admin_id = CASE WHEN ? THEN ? ELSE NULL END
+     WHERE id = ?
+  `).run(status, String(adminNote || '').trim().slice(0, 1000), resolved ? 1 : 0, resolved ? 1 : 0, adminId, id);
+  return { before, after: getReportById(id) };
+}
+
+function anonymizeSellerAccount(userId) {
+  const seller = db.prepare('SELECT * FROM sellers WHERE id = ?').get(userId);
+  if (!seller) return null;
+  const now = new Date().toISOString();
+  db.transaction(() => {
+    db.prepare('DELETE FROM push_tokens WHERE user_id = ?').run(userId);
+    db.prepare('UPDATE refresh_sessions SET revoked_at = datetime(\'now\') WHERE user_id = ? AND revoked_at IS NULL').run(userId);
+    db.prepare('DELETE FROM category_interests WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM chat_user_settings WHERE owner_id = ? OR target_id = ?').run(userId, userId);
+    db.prepare('DELETE FROM verification_documents WHERE usuario_id = ?').run(userId);
+    db.prepare('DELETE FROM verificaciones WHERE usuario_id = ?').run(userId);
+    db.prepare("UPDATE products SET manual_status = 'paused', moderation_status = 'removed', moderation_reason = 'Cuenta eliminada por el usuario', updated_at = datetime('now') WHERE seller = ?").run(userId);
+    db.prepare("UPDATE wanted_posts SET status = 'cerrada', moderation_status = 'removed', moderation_reason = 'Cuenta eliminada por el usuario' WHERE user_id = ?").run(userId);
+    db.prepare(`
+      UPDATE sellers SET
+        name = ?,
+        email = NULL,
+        phone = NULL,
+        avatarInitials = 'EU',
+        major = NULL,
+        logoUrl = NULL,
+        businessDescription = NULL,
+        businessCategory = NULL,
+        businessHours = NULL,
+        paymentMethods = '[]',
+        whatsapp_number = NULL,
+        facebook_url = NULL,
+        instagram_url = NULL,
+        tiktok_url = NULL,
+        twitter_url = NULL,
+        producto_fijado_id = NULL,
+        verified = 0,
+        socio_fundador = 0,
+        admin_status = 'banned',
+        admin_status_reason = 'Cuenta eliminada por solicitud del usuario',
+        admin_status_until = NULL,
+        deleted_at = ?
+      WHERE id = ?
+    `).run(`Cuenta eliminada ${userId.slice(-6)}`, now, userId);
+  })();
+  return { id: userId, deletedAt: now };
+}
+
 function getConversationsForUser(userId) {
   return db.prepare(`
     SELECT c.* FROM conversations c
@@ -5239,6 +5411,7 @@ module.exports = {
   MENSAJES_PRIMER_CONTACTO,
   getChatRelationship,
   setChatUserSetting,
+  getChatSafetySettings,
   areUsersBlocked,
   isChatUserMuted,
   getConversationsForUser,
@@ -5294,4 +5467,9 @@ module.exports = {
   trackCategoryEngagement,
   getCategoriesRanked,
   invalidateCategoriesRankedCache,
+  createReport,
+  getReportById,
+  listReports,
+  updateReportStatus,
+  anonymizeSellerAccount,
 };

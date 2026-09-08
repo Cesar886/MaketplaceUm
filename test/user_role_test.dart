@@ -9,6 +9,7 @@ void main() {
     String major = '',
     String? carrera,
     String? tipoVerificacion,
+    bool isGuest = false,
   }) {
     return Seller(
       name: 'Ana',
@@ -20,6 +21,7 @@ void main() {
       tipoCuenta: tipoCuenta,
       carrera: carrera,
       tipoVerificacion: tipoVerificacion,
+      isGuest: isGuest,
     );
   }
 
@@ -92,5 +94,15 @@ void main() {
   test('un major vacío omite la línea en vez de dejar un hueco', () {
     final seller = construir(tipoCuenta: 'particular', verified: false);
     expect(subtituloRol(seller), isNull);
+  });
+
+  test('un invitado se identifica como usuario sin cuenta', () {
+    final seller = construir(
+      tipoCuenta: 'particular',
+      verified: false,
+      major: 'Invitado',
+      isGuest: true,
+    );
+    expect(subtituloRol(seller), 'Usuario sin cuenta');
   });
 }

@@ -8,6 +8,7 @@ import '../../providers/accent_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/api_service.dart';
+import '../../services/api_error.dart';
 import '../../services/presence_service.dart';
 import '../../widgets/option_tile.dart';
 import '../legal/cookies_screen.dart';
@@ -17,6 +18,7 @@ import 'help_screen.dart';
 import 'language_screen.dart';
 import 'my_data_screen.dart';
 import 'safety_tips_screen.dart';
+import 'security_screen.dart';
 
 /// Preferencias de la app: apariencia, sonido, idioma, soporte legal y
 /// acciones sobre la cuenta.
@@ -145,12 +147,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ).push(MaterialPageRoute<void>(builder: (_) => pantalla));
   }
 
-  /// Confirmación de borrado de cuenta.
-  ///
-  /// El diálogo es real para que se vea la fricción que va a tener la
-  /// acción, pero confirmar todavía no borra nada: no hay endpoint, y una
-  /// baja a medias (sesión cerrada con la cuenta viva) sería peor que no
-  /// tener el botón.
   Future<void> _confirmarEliminarCuenta() async {
     final confirmado = await showDialog<bool>(
       context: context,
@@ -171,7 +167,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
     if (confirmado != true || !mounted) return;
-    _proximamente('settings.feature_delete_account'.tr());
+    try {
+      await ApiService.deleteMyAccount();
+      if (!mounted) return;
+      await context.read<AuthProvider>().logout();
+    } catch (error, stack) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            mensajeDeError(
+              error,
+              stack: stack,
+              fallback: 'settings.delete_account_error'.tr(),
+            ),
+          ),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    }
   }
 
   @override
@@ -249,6 +263,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: 'profile.safety'.tr(),
               subtitle: 'profile.safety_subtitle'.tr(),
               onTap: () => _abrir(const SafetyTipsScreen()),
+            ),
+            OptionTile(
+              icon: Icons.admin_panel_settings_rounded,
+              title: 'security_center.title'.tr(),
+              subtitle: 'security_center.subtitle'.tr(),
+              onTap: () => _abrir(const SecurityScreen()),
             ),
             OptionTile(
               icon: Icons.description_rounded,

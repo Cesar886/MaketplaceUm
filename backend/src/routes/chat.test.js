@@ -348,6 +348,30 @@ test('un invitado con token puede abrir una conversación y escribir', async () 
   assert.strictEqual(ultimo.senderId, invitado.anonId);
 });
 
+test('la bandeja entrega perfil publico del invitado para abrir, bloquear y reportar', async () => {
+  const vendedor = crearUsuario();
+  const producto = crearProducto(vendedor.id);
+  const invitado = generateAnonToken();
+
+  await pedir('/api/chat/send', {
+    token: invitado.token,
+    metodo: 'POST',
+    cuerpo: { productId: producto.id, sellerId: vendedor.id, text: 'Hola' },
+  });
+
+  const bandeja = await pedir('/api/chat/conversations', { token: vendedor.token });
+  assert.strictEqual(bandeja.status, 200);
+  assert.strictEqual(bandeja.body.conversations.length, 1);
+  assert.deepStrictEqual(
+    {
+      id: bandeja.body.conversations[0].otherUser.id,
+      name: bandeja.body.conversations[0].otherUser.name,
+      isGuest: bandeja.body.conversations[0].otherUser.isGuest,
+    },
+    { id: invitado.anonId, name: 'Usuario invitado', isGuest: true },
+  );
+});
+
 test('un invitado no puede leer la conversación de otro invitado', async () => {
   const vendedor = crearUsuario();
   const producto = crearProducto(vendedor.id);
@@ -444,13 +468,26 @@ test('el cupo se comparte entre publicaciones y una respuesta lo desbloquea para
   const cuarto = await pedir('/api/chat/send', {
     token: ana.token,
     metodo: 'POST',
+    cuerpo: { conversationId: tercero.body.conversationId, text: 'Cuatro' },
+  });
+  const quinto = await pedir('/api/chat/send', {
+    token: ana.token,
+    metodo: 'POST',
+    cuerpo: { conversationId: primero.body.conversationId, text: 'Cinco' },
+  });
+  assert.strictEqual(cuarto.status, 201);
+  assert.strictEqual(quinto.status, 201);
+
+  const sexto = await pedir('/api/chat/send', {
+    token: ana.token,
+    metodo: 'POST',
     cuerpo: {
       productId: productoC.id,
       sellerId: beto.id,
-      text: 'Cuatro',
+      text: 'Seis',
     },
   });
-  assert.strictEqual(cuarto.status, 429, 'otro hilo no debe renovar el cupo');
+  assert.strictEqual(sexto.status, 429, 'otro hilo no debe renovar el cupo');
   const hiloVacio = db.getDb().prepare(
     'SELECT 1 FROM conversations WHERE product_id = ? AND buyer_id = ? AND seller_id = ?',
   ).get(productoC.id, ana.id, beto.id);

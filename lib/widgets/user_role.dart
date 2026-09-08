@@ -22,6 +22,8 @@ import '../models.dart';
 /// particulares del resto, no publicar qué estudia cada quien al pie de cada
 /// comentario.
 String? subtituloRol(Seller seller, {bool incluirEstudiante = true}) {
+  if (seller.isGuest) return 'role.guest'.tr();
+
   // Negocio y particular conservan la etiqueta fija que se les asignó al
   // registrarse. `major` NO se toca ni se reescribe: hay tres lugares que
   // derivan datos de su contenido literal (`database.js` deduce tipo_cuenta

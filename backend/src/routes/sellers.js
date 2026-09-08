@@ -6,6 +6,7 @@ const multer = require('multer');
 const { sellers, categories, updateSellerField } = require('../data');
 const { requireAuth, optionalAuth } = require('../auth');
 const { presenciaDe } = require('./presenciaHttp');
+const { guestPublicProfile } = require('../guestProfile');
 const db = require('../database');
 const {
   validateName,
@@ -229,7 +230,17 @@ function register(app) {
 
   app.get('/api/sellers/:id', optionalAuth, (req, res) => {
     const seller = sellers.find(s => s.id === req.params.id);
-    if (!seller || !db.isSellerPubliclyActive(seller.id)) {
+    if (!seller) {
+      const guest = guestPublicProfile(req.params.id);
+      if (guest) {
+        return res.json({
+          ...guest,
+          ...presenciaDe(req, req.user ? req.user.id : null, guest.id),
+        });
+      }
+      return res.status(404).json({ error: 'Vendedor no encontrado' });
+    }
+    if (!db.isSellerPubliclyActive(seller.id)) {
       return res.status(404).json({ error: 'Vendedor no encontrado' });
     }
     // Es una métrica del PERFIL, no de sus publicaciones. Solo una visita

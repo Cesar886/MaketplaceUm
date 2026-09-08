@@ -8,6 +8,7 @@ const { sendPush } = require('../push');
 const { presenciaDe } = require('./presenciaHttp');
 const { requireAuth } = require('../auth');
 const { createChatMessageLimiter } = require('../security');
+const { guestPublicProfile } = require('../guestProfile');
 
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
 
@@ -225,6 +226,7 @@ function register(app) {
       const wantedPost = conv.productId ? null : db.getWantedPostById(conv.wantedPostId);
       const otherUserId = conv.buyerId === userId ? conv.sellerId : conv.buyerId;
       const otherUser = db.getDb().prepare('SELECT * FROM sellers WHERE id = ?').get(otherUserId);
+      const guestUser = otherUser ? null : guestPublicProfile(otherUserId);
       const lastMessage = db.getDb().prepare(
         'SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1'
       ).get(conv.id);
@@ -266,6 +268,16 @@ function register(app) {
           // El "visor" es el dueño del inbox que se está leyendo, así que
           // esto no concede nada que el endpoint no diera ya.
           ...presenciaDe(req, userId, otherUser.id),
+        } : guestUser ? {
+          id: guestUser.id,
+          name: guestUser.name,
+          avatarInitials: guestUser.avatarInitials,
+          logoUrl: null,
+          isGuest: true,
+          verified: false,
+          socioFundador: false,
+          tipoCuenta: guestUser.tipoCuenta,
+          ...presenciaDe(req, userId, guestUser.id),
         } : null,
         lastMessage: lastMessage ? {
           id: lastMessage.id,

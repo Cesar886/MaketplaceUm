@@ -928,6 +928,51 @@ class ApiService {
     return prefs.map((k, v) => MapEntry(k, v == true));
   }
 
+  static Future<List<Map<String, dynamic>>> getSecurityUsers() async {
+    final res = await _getWithRetry(_uri('/me/security'), headers: _authHeaders);
+    if (res.statusCode != 200) {
+      throw excepcionDeRespuesta(res, fallback: 'settings.security_error'.tr());
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return (data['users'] as List<dynamic>? ?? const [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+  }
+
+  static Future<void> deleteMyAccount() async {
+    final res = await _client.delete(_uri('/me/account'), headers: _authHeaders);
+    if (res.statusCode != 200) {
+      throw excepcionDeRespuesta(
+        res,
+        fallback: 'settings.delete_account_error'.tr(),
+      );
+    }
+  }
+
+  static Future<void> createReport({
+    required String targetType,
+    required String targetId,
+    String? targetUserId,
+    required String reason,
+    String details = '',
+  }) async {
+    final res = await _client.post(
+      _uri('/reports'),
+      headers: _authHeaders,
+      body: jsonEncode({
+        'targetType': targetType,
+        'targetId': targetId,
+        if (targetUserId != null && targetUserId.isNotEmpty)
+          'targetUserId': targetUserId,
+        'reason': reason,
+        'details': details,
+      }),
+    );
+    if (res.statusCode != 201) {
+      throw excepcionDeRespuesta(res, fallback: 'report_user.send_error'.tr());
+    }
+  }
+
   static Future<void> setNotificationPreference({
     required String type,
     required bool enabled,

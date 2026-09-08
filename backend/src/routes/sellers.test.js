@@ -16,7 +16,7 @@ process.env.JWT_SECRET = 'secreto-de-prueba';
 
 const express = require('express');
 const db = require('../database');
-const { generateToken } = require('../auth');
+const { generateToken, generateAnonToken } = require('../auth');
 const { registerSeller, updateSellerField } = require('../data');
 const sellersRoute = require('./sellers');
 
@@ -83,6 +83,26 @@ test('las visitas del perfil son independientes y no cuenta al propio dueño', a
 
   const segundaVisita = await get(vendedor.id);
   assert.strictEqual(segundaVisita.body.profileViews, 2);
+});
+
+test('un invitado tiene un perfil publico minimo aunque no exista en sellers', async () => {
+  const invitado = generateAnonToken();
+
+  const res = await get(invitado.anonId);
+
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.body.id, invitado.anonId);
+  assert.strictEqual(res.body.name, 'Usuario invitado');
+  assert.strictEqual(res.body.isGuest, true);
+  assert.strictEqual(res.body.phone, null);
+  assert.strictEqual(res.body.verified, false);
+});
+
+test('un id invitado legado tambien conserva su perfil publico', async () => {
+  const res = await get('anon_01234567-89ab-cdef-0123-456789abcdef');
+
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.body.isGuest, true);
 });
 
 test('un negocio guarda sus redes sociales y las ve reflejadas en su perfil público', async () => {
