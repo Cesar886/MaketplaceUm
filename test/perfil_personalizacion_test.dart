@@ -57,12 +57,16 @@ void main() {
         'productoFijadoId': 'p9',
         'respondeRapido': true,
         'rachaSemanas': 4,
+        'productViews': 321,
+        'profileViews': 45,
       });
 
       expect(seller.colorAcento, 'salvia');
       expect(seller.productoFijadoId, 'p9');
       expect(seller.respondeRapido, isTrue);
       expect(seller.rachaSemanas, 4);
+      expect(seller.productViews, 321);
+      expect(seller.profileViews, 45);
     });
 
     test('un perfil sin personalizar cae a los defaults, no a null', () {
@@ -96,6 +100,35 @@ void main() {
 
       expect(AccentSwatch.porId(seller.colorAcento), AccentSwatch.defecto);
     });
+  });
+
+  testWidgets('el encabezado público muestra productos, no visitas privadas', (
+    tester,
+  ) async {
+    const seller = Seller(
+      id: 's_vistas',
+      name: 'Tienda con vistas',
+      avatarInitials: 'TV',
+      major: '',
+      rating: 0,
+      reviews: 0,
+      productViews: 321,
+      profileViews: 45,
+      verified: false,
+    );
+
+    await tester.pumpWidget(
+      _app(
+        const SellerProfileHeader(
+          seller: seller,
+          estadoConexion: EstadoConexion.desconocido,
+          colorBanner: Color(0xFF7B2D3B),
+        ),
+      ),
+    );
+
+    expect(find.text('321'), findsOneWidget);
+    expect(find.text('45'), findsNothing);
   });
 
   group('ordenarConFijadoPrimero', () {
