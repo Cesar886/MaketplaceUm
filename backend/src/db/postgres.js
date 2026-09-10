@@ -160,6 +160,10 @@ function sqliteFunctionsToPostgres(input) {
     'GREATEST(COALESCE(auth_invalid_before, 0), ?)');
   sql = sql.replace(/\bCASE\s+WHEN\s+(\?|[@:$][A-Za-z_][A-Za-z0-9_]*)\s+THEN\b/gi,
     'CASE WHEN $1 = 1 THEN');
+  // PostgreSQL no puede inferir el tipo de un parámetro usado sólo en
+  // `? IS NULL`; el cast no altera la semántica de esa comprobación.
+  sql = sql.replace(/\b(\?|[@:$][A-Za-z_][A-Za-z0-9_]*)\s+IS\s+(NOT\s+)?NULL\b/gi,
+    'CAST($1 AS TEXT) IS $2NULL');
   sql = sql.replace(/\b([A-Za-z_][A-Za-z0-9_.]*)\s+IS\s+(\?|[@:$][A-Za-z_][A-Za-z0-9_]*)/gi,
     '$1 IS NOT DISTINCT FROM $2');
   sql = sql.replace(/\bCOLLATE\s+NOCASE\b/gi, '');

@@ -266,13 +266,13 @@ function router() {
       error: 'Cuenta no encontrada.'
     });
     const recentActivity = await database.prepare(`
-      SELECT kind, id, title, createdAt, status FROM (
+      SELECT kind, id, title, "createdAt", status FROM (
         SELECT 'product' AS kind, id, title, created_at AS createdAt,
           moderation_status AS status FROM products WHERE seller = ?
         UNION ALL
         SELECT 'wanted' AS kind, id, title, created_at AS createdAt,
           moderation_status AS status FROM wanted_posts WHERE user_id = ?
-      ) ORDER BY createdAt DESC LIMIT 20`).all(req.params.id, req.params.id);
+      ) ORDER BY "createdAt" DESC LIMIT 20`).all(req.params.id, req.params.id);
     return res.json({
       user,
       recentActivity

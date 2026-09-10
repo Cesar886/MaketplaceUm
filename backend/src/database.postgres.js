@@ -1009,7 +1009,7 @@ async function recomputeAllSellerRatings() {
   const stmt = db.prepare(`
     UPDATE sellers SET
       rating = COALESCE((
-        SELECT ROUND(AVG(CAST(pr.stars AS REAL)), 1)
+        SELECT ROUND(AVG(pr.stars)::numeric, 1)::double precision
         FROM product_ratings pr
         JOIN products p ON p.id = pr.product_id
         WHERE p.seller = sellers.id
@@ -1886,7 +1886,7 @@ async function updateReportStatus({
     UPDATE reports
        SET status = ?, admin_note = ?, updated_at = datetime('now'),
            resolved_at = CASE WHEN ? THEN datetime('now') ELSE NULL END,
-           resolved_by_admin_id = CASE WHEN ? THEN ? ELSE NULL END
+           resolved_by_admin_id = CASE WHEN ? THEN (?::bigint) ELSE NULL END
      WHERE id = ?
   `).run(status, String(adminNote || '').trim().slice(0, 1000), resolved ? 1 : 0, resolved ? 1 : 0, adminId, id);
   return {
