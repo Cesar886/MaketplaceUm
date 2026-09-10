@@ -79,7 +79,7 @@ export async function obtenerProductosParaPortada(
     };
     const candidatos = [...(cuerpo.productos ?? [])]
       .sort((a, b) => String(b.actualizado).localeCompare(String(a.actualizado)))
-      .slice(0, 10);
+      .slice(0, 18);
     const resultados = await Promise.allSettled(
       candidatos.map(({ id }) => obtenerPublicacion(id)),
     );
@@ -89,7 +89,10 @@ export async function obtenerProductosParaPortada(
         ? [resultado.value]
         : [])
       .filter((publicacion): publicacion is Extract<PublicacionPublica, { tipo: 'producto' }> =>
-        publicacion.tipo === 'producto' && publicacion.fotos.length > 0)
+        publicacion.tipo === 'producto'
+        && publicacion.fotos.length > 0
+        && publicacion.estado === 'available'
+        && publicacion.categoria?.id !== 'other')
       .slice(0, limite);
   } catch {
     return [];

@@ -11,6 +11,11 @@ export const metadata: Metadata = {
 };
 
 const categorias = ['Libros', 'Tecnología', 'Comida', 'Servicios', 'Apuntes', 'Ropa'];
+const muestras = [
+  { sobre: 'Para tus clases', titulo: 'Libros y apuntes', accion: 'Cerca de ti', categoria: 'Libros' },
+  { sobre: 'Hecho en la UM', titulo: 'Comida y negocios', accion: 'Descubre', categoria: 'Comida' },
+  { sobre: 'Entre estudiantes', titulo: 'Tecnología y más', accion: 'Conecta', categoria: 'Tecnología' },
+];
 
 function precio(valor: number) {
   return new Intl.NumberFormat('es-MX', {
@@ -71,13 +76,11 @@ export default async function Inicio() {
               <span><small>{producto.categoria?.nombre ?? 'Marketplace UM'}</small><strong>{producto.titulo}</strong><b>{precio(producto.precio)}</b></span>
             </a>
           ))}
-          {productos.length === 0 && (
-            <>
-              <div className="landing-mini-producto landing-mini-producto--1 landing-mini-texto"><span><small>Para tus clases</small><strong>Libros y apuntes</strong><b>Cerca de ti</b></span></div>
-              <div className="landing-mini-producto landing-mini-producto--2 landing-mini-texto"><span><small>Hecho en la UM</small><strong>Comida y negocios</strong><b>Descubre</b></span></div>
-              <div className="landing-mini-producto landing-mini-producto--3 landing-mini-texto"><span><small>Entre estudiantes</small><strong>Tecnología y más</strong><b>Conecta</b></span></div>
-            </>
-          )}
+          {muestras.slice(0, 3 - productos.length).map((muestra, indice) => (
+            <div className={`landing-mini-producto landing-mini-producto--${productos.length + indice + 1} landing-mini-texto`} key={muestra.titulo}>
+              <span><small>{muestra.sobre}</small><strong>{muestra.titulo}</strong><b>{muestra.accion}</b></span>
+            </div>
+          ))}
           <div className="landing-alerta-flotante"><span>✓</span> Publicación nueva cerca de ti</div>
         </div>
       </section>
@@ -92,14 +95,15 @@ export default async function Inicio() {
           <p>Explora publicaciones de personas y negocios que forman parte de tu misma comunidad.</p>
         </div>
         <div className="landing-grid-productos">
-          {productos.length > 0 ? productos.map((producto, indice) => (
+          {productos.map((producto, indice) => (
             <a className="landing-producto" href={`/producto/${producto.id}`} key={producto.id}>
               <div className="landing-producto-imagen"><img src={urlFoto(producto.fotos[0])} alt={producto.titulo} /><span>{indice === 0 ? 'Nuevo' : producto.categoria?.nombre ?? 'Descubre'}</span></div>
               <div className="landing-producto-info"><div><small>{producto.vendedor?.nombre ?? 'Comunidad UM'}</small><h3>{producto.titulo}</h3></div><strong>{precio(producto.precio)}</strong></div>
             </a>
-          )) : categorias.slice(0, 3).map((categoria, indice) => (
-            <div className={`landing-producto landing-producto-vacio landing-producto-vacio--${indice + 1}`} key={categoria}>
-              <div className="landing-producto-imagen"><span>Explora</span><b>{categoria}</b></div>
+          ))}
+          {muestras.slice(0, 3 - productos.length).map((muestra, indice) => (
+            <div className={`landing-producto landing-producto-vacio landing-producto-vacio--${productos.length + indice + 1}`} key={muestra.categoria}>
+              <div className="landing-producto-imagen"><span>Explora</span><b>{muestra.categoria}</b></div>
               <div className="landing-producto-info"><div><small>Comunidad UM</small><h3>Algo nuevo te espera</h3></div><strong>↗</strong></div>
             </div>
           ))}
