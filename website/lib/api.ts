@@ -63,3 +63,35 @@ export async function obtenerPublicacion(
   }
   return (await res.json()) as PublicacionPublica;
 }
+
+/** Selección pública, pequeña y segura para la vitrina de inicio. */
+export async function obtenerProductosParaPortada(
+  limite = 3,
+): Promise<Extract<PublicacionPublica, { tipo: 'producto' }>[]> {
+  try {
+    const listado = await fetch(`${API_URL}/api/public/productos`, {
+      next: { revalidate: 300 },
+    });
+    if (!listado.ok) return [];
+
+    const cuerpo = (await listado.json()) as {
+      productos?: { id: string; actualizado: string | null }[];
+    };
+    const candidatos = [...(cuerpo.productos ?? [])]
+      .sort((a, b) => String(b.actualizado).localeCompare(String(a.actualizado)))
+      .slice(0, 10);
+    const resultados = await Promise.allSettled(
+      candidatos.map(({ id }) => obtenerPublicacion(id)),
+    );
+
+    return resultados
+      .flatMap(resultado => resultado.status === 'fulfilled' && resultado.value
+        ? [resultado.value]
+        : [])
+      .filter((publicacion): publicacion is Extract<PublicacionPublica, { tipo: 'producto' }> =>
+        publicacion.tipo === 'producto' && publicacion.fotos.length > 0)
+      .slice(0, limite);
+  } catch {
+    return [];
+  }
+}
