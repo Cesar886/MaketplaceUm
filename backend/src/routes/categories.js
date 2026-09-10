@@ -1,13 +1,16 @@
-const { categories } = require('../data');
+const {
+  categories
+} = require('../data');
 const db = require('../database');
-const { optionalAuth } = require('../auth');
+const {
+  optionalAuth
+} = require('../auth');
 const {
   ATRIBUTOS_GENERALES,
   ATRIBUTOS_POR_CATEGORIA,
   ATRIBUTOS_DESTACADOS,
-  GENERALES_EXCLUIDAS,
+  GENERALES_EXCLUIDAS
 } = require('../config/atributosCategoria');
-
 function register(app) {
   app.get('/api/categories', (_req, res) => {
     res.json(categories);
@@ -32,7 +35,7 @@ function register(app) {
       generales: ATRIBUTOS_GENERALES,
       generalesExcluidas: GENERALES_EXCLUIDAS,
       porCategoria: ATRIBUTOS_POR_CATEGORIA,
-      destacados: ATRIBUTOS_DESTACADOS,
+      destacados: ATRIBUTOS_DESTACADOS
     });
   });
 
@@ -40,8 +43,8 @@ function register(app) {
   // engagement reciente (ver database.js: getCategoriesRanked). Home y
   // búsqueda consumen este mismo endpoint para pintar los íconos en el
   // mismo orden.
-  app.get('/api/categories/ranked', (_req, res) => {
-    res.json(db.getCategoriesRanked());
+  app.get('/api/categories/ranked', async (_req, res) => {
+    res.json(await db.getCategoriesRanked());
   });
 
   // POST /api/categories/:id/tap — registra que se tocó el ícono de una
@@ -58,24 +61,24 @@ function register(app) {
   //
   // Lo segundo solo ocurre si viene `deviceId`: sin él no hay a quién
   // atribuir la señal, y la parte global se registra igual.
-  app.post('/api/categories/:id/tap', optionalAuth, (req, res) => {
+  app.post('/api/categories/:id/tap', optionalAuth, async (req, res) => {
     const category = categories.find(c => c.id === req.params.id);
     if (category) {
-      db.trackCategoryEngagement(category.id, 'icon_tap');
-
+      await db.trackCategoryEngagement(category.id, 'icon_tap');
       const deviceId = req.body?.deviceId;
       if (deviceId) {
-        db.registrarInteraccion({
+        await db.registrarInteraccion({
           deviceId,
           userId: req.user ? req.user.id : null,
           productId: null,
           category: category.id,
-          tipo: 'categoria',
+          tipo: 'categoria'
         });
       }
     }
     res.status(204).end();
   });
 }
-
-module.exports = { register };
+module.exports = {
+  register
+};

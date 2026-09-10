@@ -12,19 +12,21 @@
  * dónde existe el token en claro.
  */
 
-const { randomUUID } = require('crypto');
+const {
+  randomUUID
+} = require('crypto');
 const db = require('../database');
-const { cifrar, descifrar } = require('./crypto');
-
+const {
+  cifrar,
+  descifrar
+} = require('./crypto');
 const ahora = () => new Date().toISOString();
 
 // ─── OAuth: state anti-CSRF ─────────────────────────────────
 
-function crearOAuthState(sellerId) {
+async function crearOAuthState(sellerId) {
   const state = randomUUID();
-  db.getDb()
-    .prepare('INSERT INTO payment_oauth_states (state, seller_id, created_at) VALUES (?, ?, ?)')
-    .run(state, sellerId, ahora());
+  await db.getDb().prepare('INSERT INTO payment_oauth_states (state, seller_id, created_at) VALUES (?, ?, ?)').run(state, sellerId, ahora());
   return state;
 }
 
@@ -33,24 +35,16 @@ function crearOAuthState(sellerId) {
  * Devuelve el seller_id, o null si no existe, ya se usó o caducó (15 min).
  * Un state de un solo uso impide reproducir un callback capturado.
  */
-function consumirOAuthState(state) {
-  const fila = db.getDb()
-    .prepare('SELECT * FROM payment_oauth_states WHERE state = ? AND used_at IS NULL')
-    .get(state);
+async function consumirOAuthState(state) {
+  const fila = await db.getDb().prepare('SELECT * FROM payment_oauth_states WHERE state = ? AND used_at IS NULL').get(state);
   if (!fila) return null;
-
   const edadMin = (Date.now() - new Date(fila.created_at).getTime()) / 60000;
   if (!Number.isFinite(edadMin) || edadMin > 15) return null;
-
-  db.getDb().prepare('UPDATE payment_oauth_states SET used_at = ? WHERE state = ?')
-    .run(ahora(), state);
+  await db.getDb().prepare('UPDATE payment_oauth_states SET used_at = ? WHERE state = ?').run(ahora(), state);
   return fila.seller_id;
 }
-
-function limpiarOAuthStatesViejos() {
-  db.getDb()
-    .prepare("DELETE FROM payment_oauth_states WHERE created_at < datetime('now', '-1 day')")
-    .run();
+async function limpiarOAuthStatesViejos() {
+  await db.getDb().prepare("DELETE FROM payment_oauth_states WHERE created_at < datetime('now', '-1 day')").run();
 }
 
 // ─── Cuenta de Mercado Pago del vendedor ────────────────────
@@ -59,14 +53,15 @@ function limpiarOAuthStatesViejos() {
 // añadir otro no obligue a migrar la tabla; mientras tanto, todo lo que no
 // diga otra cosa habla de Mercado Pago.
 const PROVEEDOR_POR_DEFECTO = 'mercadopago';
-
-function guardarCuentaVendedor(sellerId, { mpUserId, accessToken, refreshToken, expiresIn, publicKey },
-  provider = PROVEEDOR_POR_DEFECTO) {
-  const expiraEn = Number.isFinite(expiresIn)
-    ? new Date(Date.now() + expiresIn * 1000).toISOString()
-    : null;
-
-  db.getDb().prepare(`
+async function guardarCuentaVendedor(sellerId, {
+  mpUserId,
+  accessToken,
+  refreshToken,
+  expiresIn,
+  publicKey
+}, provider = PROVEEDOR_POR_DEFECTO) {
+  const expiraEn = Number.isFinite(expiresIn) ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
+  await db.getDb().prepare(`
     INSERT INTO vendor_payment_accounts
       (seller_id, provider, mp_user_id, mp_access_token_enc, mp_refresh_token_enc,
        mp_token_expires_at, mp_public_key, connected_at, revoked_at,
@@ -85,24 +80,13 @@ function guardarCuentaVendedor(sellerId, { mpUserId, accessToken, refreshToken, 
       revoked_at = NULL,
       disconnect_reason = NULL,
       disconnected_by = NULL
-  `).run(
-    sellerId,
-    provider,
-    String(mpUserId),
-    cifrar(accessToken),
-    refreshToken ? cifrar(refreshToken) : null,
-    expiraEn,
-    publicKey || null,
-    ahora(),
-  );
+  `).run(sellerId, provider, String(mpUserId), cifrar(accessToken), refreshToken ? cifrar(refreshToken) : null, expiraEn, publicKey || null, ahora());
 }
 
 /** Fila cruda (tokens aún cifrados). Para saber si está conectado. */
-function getCuentaVendedor(sellerId, provider = PROVEEDOR_POR_DEFECTO) {
-  return db.getDb()
-    .prepare(`SELECT * FROM vendor_payment_accounts
-              WHERE seller_id = ? AND provider = ? AND revoked_at IS NULL`)
-    .get(sellerId, provider) || null;
+async function getCuentaVendedor(sellerId, provider = PROVEEDOR_POR_DEFECTO) {
+  return (await db.getDb().prepare(`SELECT * FROM vendor_payment_accounts
+              WHERE seller_id = ? AND provider = ? AND revoked_at IS NULL`).get(sellerId, provider)) || null;
 }
 
 /**
@@ -110,10 +94,8 @@ function getCuentaVendedor(sellerId, provider = PROVEEDOR_POR_DEFECTO) {
  * "tu conexión se cayó, reconéctala" en vez de "no tienes cuenta", que son
  * dos situaciones distintas para el vendedor.
  */
-function getCuentaVendedorIncluyendoRevocada(sellerId, provider = PROVEEDOR_POR_DEFECTO) {
-  return db.getDb()
-    .prepare('SELECT * FROM vendor_payment_accounts WHERE seller_id = ? AND provider = ?')
-    .get(sellerId, provider) || null;
+async function getCuentaVendedorIncluyendoRevocada(sellerId, provider = PROVEEDOR_POR_DEFECTO) {
+  return (await db.getDb().prepare('SELECT * FROM vendor_payment_accounts WHERE seller_id = ? AND provider = ?').get(sellerId, provider)) || null;
 }
 
 /**
@@ -128,34 +110,30 @@ function getCuentaVendedorIncluyendoRevocada(sellerId, provider = PROVEEDOR_POR_
  * reenvío del webhook encuentre la cuenta y no genere un aviso de
  * "desconocido" en los logs.
  */
-function getVendedorPorMpUserId(mpUserId, provider = PROVEEDOR_POR_DEFECTO) {
-  return db.getDb()
-    .prepare('SELECT * FROM vendor_payment_accounts WHERE mp_user_id = ? AND provider = ?')
-    .get(String(mpUserId), provider) || null;
+async function getVendedorPorMpUserId(mpUserId, provider = PROVEEDOR_POR_DEFECTO) {
+  return (await db.getDb().prepare('SELECT * FROM vendor_payment_accounts WHERE mp_user_id = ? AND provider = ?').get(String(mpUserId), provider)) || null;
 }
-
-function getCuentaVendedorConToken(sellerId, provider = PROVEEDOR_POR_DEFECTO) {
-  const fila = getCuentaVendedor(sellerId, provider);
+async function getCuentaVendedorConToken(sellerId, provider = PROVEEDOR_POR_DEFECTO) {
+  const fila = await getCuentaVendedor(sellerId, provider);
   if (!fila) return null;
   return {
     ...fila,
     accessToken: descifrar(fila.mp_access_token_enc),
-    refreshToken: descifrar(fila.mp_refresh_token_enc),
+    refreshToken: descifrar(fila.mp_refresh_token_enc)
   };
 }
-
-function actualizarTokensVendedor(sellerId, { accessToken, refreshToken, expiresIn },
-  provider = PROVEEDOR_POR_DEFECTO) {
-  const expiraEn = Number.isFinite(expiresIn)
-    ? new Date(Date.now() + expiresIn * 1000).toISOString()
-    : null;
-  db.getDb().prepare(`
+async function actualizarTokensVendedor(sellerId, {
+  accessToken,
+  refreshToken,
+  expiresIn
+}, provider = PROVEEDOR_POR_DEFECTO) {
+  const expiraEn = Number.isFinite(expiresIn) ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
+  await db.getDb().prepare(`
     UPDATE vendor_payment_accounts
     SET mp_access_token_enc = ?, mp_refresh_token_enc = COALESCE(?, mp_refresh_token_enc),
         mp_token_expires_at = ?
     WHERE seller_id = ? AND provider = ?
-  `).run(cifrar(accessToken), refreshToken ? cifrar(refreshToken) : null, expiraEn,
-    sellerId, provider);
+  `).run(cifrar(accessToken), refreshToken ? cifrar(refreshToken) : null, expiraEn, sellerId, provider);
 }
 
 /**
@@ -166,13 +144,16 @@ function actualizarTokensVendedor(sellerId, { accessToken, refreshToken, expires
  * @param {'user'|'webhook'|'token_check'} por quién detectó la desconexión
  * @returns {boolean} true si esta llamada la desconectó (false si ya lo estaba)
  */
-function desconectarVendedor(sellerId, { motivo = null, por = 'user',
-  provider = PROVEEDOR_POR_DEFECTO } = {}) {
-  const cambios = db.getDb().prepare(`
+async function desconectarVendedor(sellerId, {
+  motivo = null,
+  por = 'user',
+  provider = PROVEEDOR_POR_DEFECTO
+} = {}) {
+  const cambios = (await db.getDb().prepare(`
     UPDATE vendor_payment_accounts
     SET revoked_at = ?, disconnect_reason = ?, disconnected_by = ?
     WHERE seller_id = ? AND provider = ? AND revoked_at IS NULL
-  `).run(ahora(), motivo, por, sellerId, provider).changes;
+  `).run(ahora(), motivo, por, sellerId, provider)).changes;
   return cambios > 0;
 }
 
@@ -184,23 +165,19 @@ function desconectarVendedor(sellerId, { motivo = null, por = 'user',
 // La columna se sigue llamando `seller_id` por herencia del esquema (esa
 // tabla de usuarios se llama `sellers`), pero aquí siempre es el comprador.
 
-function getCustomerId(buyerId, vendorId) {
-  const fila = db.getDb()
-    .prepare('SELECT mp_customer_id FROM buyer_mp_customers WHERE seller_id = ? AND vendor_id = ?')
-    .get(buyerId, vendorId);
+async function getCustomerId(buyerId, vendorId) {
+  const fila = await db.getDb().prepare('SELECT mp_customer_id FROM buyer_mp_customers WHERE seller_id = ? AND vendor_id = ?').get(buyerId, vendorId);
   return fila ? fila.mp_customer_id : null;
 }
-
-function guardarCustomerId(buyerId, vendorId, mpCustomerId) {
-  db.getDb().prepare(`
+async function guardarCustomerId(buyerId, vendorId, mpCustomerId) {
+  await db.getDb().prepare(`
     INSERT INTO buyer_mp_customers (seller_id, vendor_id, mp_customer_id, created_at)
     VALUES (?, ?, ?, ?)
     ON CONFLICT(seller_id, vendor_id) DO UPDATE SET mp_customer_id = excluded.mp_customer_id
   `).run(buyerId, vendorId, mpCustomerId, ahora());
 }
-
-function guardarTarjeta(buyerId, vendorId, tarjeta) {
-  db.getDb().prepare(`
+async function guardarTarjeta(buyerId, vendorId, tarjeta) {
+  await db.getDb().prepare(`
     INSERT INTO saved_cards
       (seller_id, vendor_id, mp_card_id, last_four_digits, payment_method,
        expiration_month, expiration_year, created_at)
@@ -210,36 +187,19 @@ function guardarTarjeta(buyerId, vendorId, tarjeta) {
       payment_method = excluded.payment_method,
       expiration_month = excluded.expiration_month,
       expiration_year = excluded.expiration_year
-  `).run(
-    buyerId,
-    vendorId,
-    tarjeta.mpCardId,
-    tarjeta.lastFour || null,
-    tarjeta.paymentMethod || null,
-    tarjeta.expMonth || null,
-    tarjeta.expYear || null,
-    ahora(),
-  );
+  `).run(buyerId, vendorId, tarjeta.mpCardId, tarjeta.lastFour || null, tarjeta.paymentMethod || null, tarjeta.expMonth || null, tarjeta.expYear || null, ahora());
 }
-
-function listarTarjetas(buyerId, vendorId) {
-  return db.getDb()
-    .prepare(`SELECT * FROM saved_cards WHERE seller_id = ? AND vendor_id = ?
-              ORDER BY created_at DESC`)
-    .all(buyerId, vendorId);
+async function listarTarjetas(buyerId, vendorId) {
+  return await db.getDb().prepare(`SELECT * FROM saved_cards WHERE seller_id = ? AND vendor_id = ?
+              ORDER BY created_at DESC`).all(buyerId, vendorId);
 }
 
 /** null si no existe, no es de este comprador, o es de otro vendedor. */
-function getTarjeta(buyerId, vendorId, mpCardId) {
-  return db.getDb()
-    .prepare('SELECT * FROM saved_cards WHERE seller_id = ? AND vendor_id = ? AND mp_card_id = ?')
-    .get(buyerId, vendorId, mpCardId) || null;
+async function getTarjeta(buyerId, vendorId, mpCardId) {
+  return (await db.getDb().prepare('SELECT * FROM saved_cards WHERE seller_id = ? AND vendor_id = ? AND mp_card_id = ?').get(buyerId, vendorId, mpCardId)) || null;
 }
-
-function borrarTarjeta(buyerId, vendorId, mpCardId) {
-  return db.getDb()
-    .prepare('DELETE FROM saved_cards WHERE seller_id = ? AND vendor_id = ? AND mp_card_id = ?')
-    .run(buyerId, vendorId, mpCardId).changes > 0;
+async function borrarTarjeta(buyerId, vendorId, mpCardId) {
+  return (await db.getDb().prepare('DELETE FROM saved_cards WHERE seller_id = ? AND vendor_id = ? AND mp_card_id = ?').run(buyerId, vendorId, mpCardId)).changes > 0;
 }
 
 /**
@@ -247,26 +207,33 @@ function borrarTarjeta(buyerId, vendorId, mpCardId) {
  * cuenta se desconecta: esos Customers dejan de ser alcanzables, así que
  * seguir ofreciéndolas en el checkout solo produce cobros fallidos.
  */
-function borrarTarjetasDeVendedor(vendorId) {
+async function borrarTarjetasDeVendedor(vendorId) {
   const db_ = db.getDb();
-  const n = db_.prepare('DELETE FROM saved_cards WHERE vendor_id = ?').run(vendorId).changes;
-  db_.prepare('DELETE FROM buyer_mp_customers WHERE vendor_id = ?').run(vendorId);
+  const n = (await db_.prepare('DELETE FROM saved_cards WHERE vendor_id = ?').run(vendorId)).changes;
+  await db_.prepare('DELETE FROM buyer_mp_customers WHERE vendor_id = ?').run(vendorId);
   return n;
 }
 
 // ─── Órdenes ────────────────────────────────────────────────
 
-function crearOrden({ id, buyerId, vendorId, amount, applicationFee, currency, origin,
-  paymentMethod = null, items }) {
-  const crear = db.getDb().transaction(() => {
-    db.getDb().prepare(`
+async function crearOrden({
+  id,
+  buyerId,
+  vendorId,
+  amount,
+  applicationFee,
+  currency,
+  origin,
+  paymentMethod = null,
+  items
+}) {
+  const crear = db.getDb().transaction(async () => {
+    await db.getDb().prepare(`
       INSERT INTO orders
         (id, buyer_id, vendor_id, amount, application_fee, currency,
          status, payment_status, payment_method, origin, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, 'pending', NULL, ?, ?, ?, ?)
-    `).run(id, buyerId, vendorId, amount, applicationFee, currency,
-      paymentMethod, origin, ahora(), ahora());
-
+    `).run(id, buyerId, vendorId, amount, applicationFee, currency, paymentMethod, origin, ahora(), ahora());
     const insItem = db.getDb().prepare(`
       INSERT INTO order_items (order_id, product_id, quantity, unit_price, title_snapshot)
       VALUES (?, ?, ?, ?, ?)
@@ -276,49 +243,54 @@ function crearOrden({ id, buyerId, vendorId, amount, applicationFee, currency, o
     }
   });
   crear();
-  return getOrden(buyerId, id);
+  return await getOrden(buyerId, id);
 }
 
 /** Orden de un comprador. Filtra por buyer_id: el WHERE es la autorización. */
-function getOrden(buyerId, orderId) {
-  const orden = db.getDb()
-    .prepare('SELECT * FROM orders WHERE id = ? AND buyer_id = ?')
-    .get(orderId, buyerId);
+async function getOrden(buyerId, orderId) {
+  const orden = await db.getDb().prepare('SELECT * FROM orders WHERE id = ? AND buyer_id = ?').get(orderId, buyerId);
   if (!orden) return null;
-  return { ...orden, items: getItems(orderId) };
+  return {
+    ...orden,
+    items: await getItems(orderId)
+  };
 }
 
 /** Orden sin filtro de usuario. SOLO para el webhook, que no tiene sesión. */
-function getOrdenPorId(orderId) {
-  const orden = db.getDb().prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
-  return orden ? { ...orden, items: getItems(orderId) } : null;
+async function getOrdenPorId(orderId) {
+  const orden = await db.getDb().prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+  return orden ? {
+    ...orden,
+    items: await getItems(orderId)
+  } : null;
 }
-
-function getOrdenPorPagoMp(mpPaymentId) {
-  const orden = db.getDb()
-    .prepare('SELECT * FROM orders WHERE mp_payment_id = ?')
-    .get(String(mpPaymentId));
-  return orden ? { ...orden, items: getItems(orden.id) } : null;
+async function getOrdenPorPagoMp(mpPaymentId) {
+  const orden = await db.getDb().prepare('SELECT * FROM orders WHERE mp_payment_id = ?').get(String(mpPaymentId));
+  return orden ? {
+    ...orden,
+    items: await getItems(orden.id)
+  } : null;
 }
-
-function getItems(orderId) {
-  return db.getDb()
-    .prepare('SELECT * FROM order_items WHERE order_id = ? ORDER BY id')
-    .all(orderId);
+async function getItems(orderId) {
+  return await db.getDb().prepare('SELECT * FROM order_items WHERE order_id = ? ORDER BY id').all(orderId);
 }
-
-function listarOrdenesDeComprador(buyerId, limite = 50) {
-  return db.getDb()
-    .prepare('SELECT * FROM orders WHERE buyer_id = ? ORDER BY created_at DESC LIMIT ?')
-    .all(buyerId, limite)
-    .map(o => ({ ...o, items: getItems(o.id) }));
+async function listarOrdenesDeComprador(buyerId, limite = 50) {
+  const orders = await db.getDb().prepare(
+    'SELECT * FROM orders WHERE buyer_id = ? ORDER BY created_at DESC LIMIT ?',
+  ).all(buyerId, limite);
+  return Promise.all(orders.map(async o => ({
+    ...o,
+    items: await getItems(o.id)
+  })));
 }
-
-function listarOrdenesDeVendedor(vendorId, limite = 50) {
-  return db.getDb()
-    .prepare('SELECT * FROM orders WHERE vendor_id = ? ORDER BY created_at DESC LIMIT ?')
-    .all(vendorId, limite)
-    .map(o => ({ ...o, items: getItems(o.id) }));
+async function listarOrdenesDeVendedor(vendorId, limite = 50) {
+  const orders = await db.getDb().prepare(
+    'SELECT * FROM orders WHERE vendor_id = ? ORDER BY created_at DESC LIMIT ?',
+  ).all(vendorId, limite);
+  return Promise.all(orders.map(async o => ({
+    ...o,
+    items: await getItems(o.id)
+  })));
 }
 
 /**
@@ -381,18 +353,13 @@ const MARGEN_PREFERENCIA_MS = 2 * 60 * 1000;
  *
  * @returns {boolean} true si esta petición se quedó con la reserva.
  */
-function reservarPreferencia(orderId, expiraEn) {
-  return db.getDb().prepare(`
+async function reservarPreferencia(orderId, expiraEn) {
+  return (await db.getDb().prepare(`
     UPDATE orders
     SET mp_preference_expires_at = ?, updated_at = ?
     WHERE id = ?
       AND (mp_preference_expires_at IS NULL OR mp_preference_expires_at <= ?)
-  `).run(
-    new Date(expiraEn.getTime() + MARGEN_PREFERENCIA_MS).toISOString(),
-    ahora(),
-    orderId,
-    new Date().toISOString(),
-  ).changes > 0;
+  `).run(new Date(expiraEn.getTime() + MARGEN_PREFERENCIA_MS).toISOString(), ahora(), orderId, new Date().toISOString())).changes > 0;
 }
 
 /**
@@ -403,11 +370,11 @@ function reservarPreferencia(orderId, expiraEn) {
  * un cobro que no ocurrió. Solo borra si no hay preferencia guardada: si la
  * hay, es pagable y el bloqueo tiene que seguir.
  */
-function liberarPreferencia(orderId) {
-  return db.getDb().prepare(`
+async function liberarPreferencia(orderId) {
+  return (await db.getDb().prepare(`
     UPDATE orders SET mp_preference_expires_at = NULL, updated_at = ?
     WHERE id = ? AND mp_preference_id IS NULL
-  `).run(ahora(), orderId).changes > 0;
+  `).run(ahora(), orderId)).changes > 0;
 }
 
 /**
@@ -417,19 +384,17 @@ function liberarPreferencia(orderId) {
  * preferencia si alguien vuelve a pedir pagar con su cuenta, en vez de crear
  * una segunda igual de pagable que la primera.
  */
-function guardarPreferenciaDeOrden(orderId, { preferenceId, initPoint, expiraEn }) {
-  return db.getDb().prepare(`
+async function guardarPreferenciaDeOrden(orderId, {
+  preferenceId,
+  initPoint,
+  expiraEn
+}) {
+  return (await db.getDb().prepare(`
     UPDATE orders
     SET mp_preference_id = ?, mp_preference_init_point = ?,
         mp_preference_expires_at = ?, updated_at = ?
     WHERE id = ?
-  `).run(
-    String(preferenceId),
-    String(initPoint),
-    new Date(expiraEn.getTime() + MARGEN_PREFERENCIA_MS).toISOString(),
-    ahora(),
-    orderId,
-  ).changes > 0;
+  `).run(String(preferenceId), String(initPoint), new Date(expiraEn.getTime() + MARGEN_PREFERENCIA_MS).toISOString(), ahora(), orderId)).changes > 0;
 }
 
 /**
@@ -452,39 +417,34 @@ function guardarPreferenciaDeOrden(orderId, { preferenceId, initPoint, expiraEn 
  */
 function preferenciaVivaDeOrden(orden) {
   if (!orden?.mp_preference_expires_at) return null;
-
   const expira = new Date(orden.mp_preference_expires_at).getTime();
   // Una fecha ilegible se trata como VIVA, no como caducada: ante la duda,
   // bloquear un cobro es recuperable (se reintenta en unos minutos) y
   // permitir uno duplicado no lo es.
   if (Number.isFinite(expira) && expira <= Date.now()) return null;
-
   return {
     id: orden.mp_preference_id || null,
     initPoint: orden.mp_preference_init_point || null,
-    expiraEn: Number.isFinite(expira) ? new Date(expira) : new Date(Date.now() + 60000),
+    expiraEn: Number.isFinite(expira) ? new Date(expira) : new Date(Date.now() + 60000)
   };
 }
-
-function actualizarPagoDeOrden(orderId, { mpPaymentId, paymentStatus }) {
-  const orden = db.getDb().prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+async function actualizarPagoDeOrden(orderId, {
+  mpPaymentId,
+  paymentStatus
+}) {
+  const orden = await db.getDb().prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
   if (!orden) return false;
 
   // ¿Esta notificación es de OTRO pago del que ya teníamos guardado? Pasa
   // cuando el comprador reintentó con otra tarjeta tras un rechazo: la orden
   // acumula varios intentos de cobro y solo uno es el bueno.
-  const esOtroPago = Boolean(
-    mpPaymentId && orden.mp_payment_id
-    && String(orden.mp_payment_id) !== String(mpPaymentId),
-  );
-
+  const esOtroPago = Boolean(mpPaymentId && orden.mp_payment_id && String(orden.mp_payment_id) !== String(mpPaymentId));
   if (esOtroPago) {
     // El intento nuevo solo sustituye al guardado si el guardado está
     // muerto. Al revés no: el webhook tardío de un intento rechazado no
     // puede tumbar la orden que otro pago ya dejó aprobada.
     if (!ESTADOS_MUERTOS.has(orden.payment_status)) return false;
-  } else if (orden.payment_status && ESTADOS_FINALES.has(orden.payment_status)
-      && orden.payment_status !== paymentStatus) {
+  } else if (orden.payment_status && ESTADOS_FINALES.has(orden.payment_status) && orden.payment_status !== paymentStatus) {
     // Mismo pago: MP no garantiza el orden de entrega, así que un estado
     // final no retrocede. Salvo que el nuevo estado sea también final y
     // posterior (un reembolso después de una aprobación).
@@ -492,10 +452,7 @@ function actualizarPagoDeOrden(orderId, { mpPaymentId, paymentStatus }) {
       return false;
     }
   }
-
-  const status = paymentStatus === 'approved' ? 'paid'
-    : ['rejected', 'cancelled'].includes(paymentStatus) ? 'cancelled'
-    : orden.status;
+  const status = paymentStatus === 'approved' ? 'paid' : ['rejected', 'cancelled'].includes(paymentStatus) ? 'cancelled' : orden.status;
 
   // ¿Es ESTA llamada la que aprueba el pago? Se calcula ANTES del UPDATE,
   // comparando contra el estado guardado. Es la única condición segura para
@@ -506,22 +463,19 @@ function actualizarPagoDeOrden(orderId, { mpPaymentId, paymentStatus }) {
   // 'approved' no cambia nada), pero un descuento NO lo es: sin esta guarda,
   // tres entregas de la misma notificación descuentan tres veces y dejan el
   // inventario en negativo sin que nadie haya comprado de más.
-  const apruebaAhora = paymentStatus === 'approved'
-    && orden.payment_status !== 'approved';
+  const apruebaAhora = paymentStatus === 'approved' && orden.payment_status !== 'approved';
 
   // Todo en una transacción: si el descuento falla, el pago no puede quedar
   // registrado como cobrado — y al revés, una orden marcada como pagada sin
   // descontar vende dos veces lo mismo.
-  db.getDb().transaction(() => {
-    db.getDb().prepare(`
+  await db.getDb().transaction(async () => {
+    await db.getDb().prepare(`
       UPDATE orders SET mp_payment_id = COALESCE(?, mp_payment_id),
                         payment_status = ?, status = ?, updated_at = ?
       WHERE id = ?
     `).run(mpPaymentId ? String(mpPaymentId) : null, paymentStatus, status, ahora(), orderId);
-
-    if (apruebaAhora) descontarInventario(orderId);
+    if (apruebaAhora) await descontarInventario(orderId);
   })();
-
   return true;
 }
 
@@ -538,14 +492,14 @@ function actualizarPagoDeOrden(orderId, { mpPaymentId, paymentStatus }) {
  * todavía no tienen inventario definido: tumbar el registro de un pago ya
  * cobrado por eso sería mucho peor que no descontar.
  */
-function descontarInventario(orderId) {
+async function descontarInventario(orderId) {
   const actualizar = db.getDb().prepare(`
     UPDATE products
     SET stock_quantity = MAX(0, stock_quantity - ?),
         stock_updated_at = ?
     WHERE id = ? AND stock_quantity IS NOT NULL
   `);
-  for (const item of getItems(orderId)) {
+  for (const item of await getItems(orderId)) {
     actualizar.run(item.quantity || 1, ahora(), item.product_id);
   }
 }
@@ -556,11 +510,11 @@ function descontarInventario(orderId) {
  * es la forma de pagarla. Sin un estado propio se quedaría en 'pending' y
  * nadie —ni el comprador ni el vendedor— sabría que hay algo que hacer.
  */
-function marcarRequiereOtroMetodo(orderId) {
-  return db.getDb().prepare(`
+async function marcarRequiereOtroMetodo(orderId) {
+  return (await db.getDb().prepare(`
     UPDATE orders SET status = 'requires_other_method', updated_at = ?
     WHERE id = ? AND status = 'pending'
-  `).run(ahora(), orderId).changes > 0;
+  `).run(ahora(), orderId)).changes > 0;
 }
 
 // ─── Idempotencia del webhook ───────────────────────────────
@@ -570,9 +524,13 @@ function marcarRequiereOtroMetodo(orderId) {
  * hace la garantía: si dos entregas del mismo evento llegan a la vez, solo
  * una consigue insertar y la otra recibe false.
  */
-function registrarEventoWebhook({ eventId, topic, resourceId }) {
+async function registrarEventoWebhook({
+  eventId,
+  topic,
+  resourceId
+}) {
   try {
-    db.getDb().prepare(`
+    await db.getDb().prepare(`
       INSERT INTO mp_webhook_events (event_id, topic, resource_id, received_at)
       VALUES (?, ?, ?, ?)
     `).run(String(eventId), topic || null, resourceId ? String(resourceId) : null, ahora());
@@ -582,11 +540,8 @@ function registrarEventoWebhook({ eventId, topic, resourceId }) {
     throw err;
   }
 }
-
-function marcarEventoProcesado(eventId) {
-  db.getDb()
-    .prepare('UPDATE mp_webhook_events SET processed_at = ? WHERE event_id = ?')
-    .run(ahora(), String(eventId));
+async function marcarEventoProcesado(eventId) {
+  await db.getDb().prepare('UPDATE mp_webhook_events SET processed_at = ? WHERE event_id = ?').run(ahora(), String(eventId));
 }
 
 /**
@@ -595,13 +550,10 @@ function marcarEventoProcesado(eventId) {
  * medias (obtenerPago reventó, por ejemplo) — en ambos casos se debe
  * procesar, para que un reintento de MP no se pierda por un fallo previo.
  */
-function eventoFueProcesado(eventId) {
-  const fila = db.getDb()
-    .prepare('SELECT processed_at FROM mp_webhook_events WHERE event_id = ?')
-    .get(String(eventId));
+async function eventoFueProcesado(eventId) {
+  const fila = await db.getDb().prepare('SELECT processed_at FROM mp_webhook_events WHERE event_id = ?').get(String(eventId));
   return !!(fila && fila.processed_at);
 }
-
 module.exports = {
   crearOAuthState,
   consumirOAuthState,
@@ -637,5 +589,5 @@ module.exports = {
   marcarRequiereOtroMetodo,
   registrarEventoWebhook,
   eventoFueProcesado,
-  marcarEventoProcesado,
+  marcarEventoProcesado
 };

@@ -1,0 +1,63 @@
+name: marketplace-um
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    init: true
+    environment:
+      POSTGRES_DB: marketplace_um
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_superuser_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --data-checksums
+    secrets:
+      - postgres_superuser_password
+      - postgres_app_password
+      - postgres_migrator_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    # PostgreSQL no queda expuesto a Internet; sólo procesos del mismo host
+    # pueden abrir una conexión TCP.
+    ports:
+      - 127.0.0.1:5432:5432
+    shm_size: 256mb
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres -d marketplace_um]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    command:
+      - postgres
+      - -c
+      - password_encryption=scram-sha-256
+      - -c
+      - timezone=UTC
+      - -c
+      - log_connections=on
+      - -c
+      - log_disconnections=on
+      - -c
+      - log_statement=ddl
+      - -c
+      - log_min_duration_statement=1000
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+secrets:
+  postgres_superuser_password:
+    file: ./secrets/postgres_superuser_password
+  postgres_app_password:
+    file: ./secrets/postgres_app_password
+  postgres_migrator_password:
+    file: ./secrets/postgres_migrator_password
+
+volumes:
+  postgres_data:
+    name: marketplace_um_postgres_data

@@ -12,7 +12,9 @@
  */
 
 const db = require('../database');
-const { sendPush } = require('../push');
+const {
+  sendPush
+} = require('../push');
 const interes = require('./interes');
 const frecuencia = require('./frecuencia');
 
@@ -23,10 +25,10 @@ const frecuencia = require('./frecuencia');
  * Es best-effort: encolar no debe poder tumbar la publicación de un
  * producto, que es la operación que al usuario le importa.
  */
-function encolarProducto(productId) {
+async function encolarProducto(productId) {
   if (!productId) return;
   try {
-    db.getDb().prepare(`
+    await db.getDb().prepare(`
       INSERT OR IGNORE INTO interest_notification_queue (product_id, created_at)
       VALUES (?, datetime('now'))
     `).run(productId);
@@ -43,37 +45,33 @@ function encolarProducto(productId) {
  * muriera, la siguiente pasada volvería a anunciar los mismos productos, que
  * es el fallo que sí se nota desde el teléfono.
  */
-function tomarLotePendiente(limite = 200) {
+async function tomarLotePendiente(limite = 200) {
   const raw = db.getDb();
-
-  return raw.transaction(() => {
+  return await raw.transaction(async () => {
     // Primero se fija QUÉ filas entran en el lote, y ese conjunto exacto es
     // el que se marca y el que se lee. Antes eran dos consultas con su propio
     // LIMIT —una con JOIN a products y otra sin— y en cuanto la cola tenía
     // huérfanos (producto borrado; aquí no hay FK) los dos conjuntos se
     // desalineaban: las últimas filas del lote se anunciaban sin quedar
     // marcadas y volvían a salir en la pasada siguiente.
-    const ids = raw.prepare(`
+    const ids = (await raw.prepare(`
       SELECT product_id FROM interest_notification_queue
       WHERE processed_at IS NULL
       ORDER BY created_at
       LIMIT ?
-    `).all(limite).map(fila => fila.product_id);
-
+    `).all(limite)).map(fila => fila.product_id);
     if (ids.length === 0) return [];
-
     const huecos = ids.map(() => '?').join(',');
 
     // Se marcan TODAS las del lote, incluidas las que el JOIN de abajo
     // descartará por producto borrado: si no, esas filas se quedarían dando
     // vueltas en la cola para siempre.
-    raw.prepare(`
+    await raw.prepare(`
       UPDATE interest_notification_queue
       SET processed_at = datetime('now')
       WHERE product_id IN (${huecos})
     `).run(...ids);
-
-    return raw.prepare(`
+    return await raw.prepare(`
       SELECT q.product_id AS productId,
              p.category   AS categoryId,
              p.title      AS title,
@@ -95,16 +93,17 @@ function tomarLotePendiente(limite = 200) {
  * alguien que la sigue a mano y puede no haberla visitado en semanas, así
  * que decirle "coincide con lo que viste" sonaría inventado.
  */
-function redactarMensaje({ motivo, nombreCategoria, productos }) {
-  const titulo = motivo === 'interest_match'
-    ? `Coincide con lo que viste en ${nombreCategoria}`
-    : `Nuevo en ${nombreCategoria}`;
-
-  const cuerpo = productos.length === 1
-    ? `${productos[0].title} — $${productos[0].priceNum ?? 0}`
-    : `${productos.length} publicaciones nuevas para ti`;
-
-  return { titulo, cuerpo };
+function redactarMensaje({
+  motivo,
+  nombreCategoria,
+  productos
+}) {
+  const titulo = motivo === 'interest_match' ? `Coincide con lo que viste en ${nombreCategoria}` : `Nuevo en ${nombreCategoria}`;
+  const cuerpo = productos.length === 1 ? `${productos[0].title} — $${productos[0].priceNum ?? 0}` : `${productos.length} publicaciones nuevas para ti`;
+  return {
+    titulo,
+    cuerpo
+  };
 }
 
 /**
@@ -115,10 +114,14 @@ function redactarMensaje({ motivo, nombreCategoria, productos }) {
 async function ejecutarJobRetargeting() {
   // El snapshot de interés se recalcula al inicio de cada pasada: es lo que
   // aplica el decaimiento y purga a los que llevan 7 días sin aparecer.
-  interes.refrescarInteres();
-
-  const pendientes = tomarLotePendiente();
-  const resumen = { lote: pendientes.length, categorias: 0, enviados: 0, omitidos: {} };
+  await interes.refrescarInteres();
+  const pendientes = await tomarLotePendiente();
+  const resumen = {
+    lote: pendientes.length,
+    categorias: 0,
+    enviados: 0,
+    omitidos: {}
+  };
   if (pendientes.length === 0) return resumen;
 
   // Agrupar por categoría: un sujeto recibe como mucho un aviso por
@@ -130,24 +133,21 @@ async function ejecutarJobRetargeting() {
     porCategoria.get(fila.categoryId).push(fila);
   }
   resumen.categorias = porCategoria.size;
-
-  const nombresCategoria = new Map(
-    db.getCategories().map(c => [c.id, c.name || c.id])
-  );
+  const nombresCategoria = new Map((await db.getCategories()).map(c => [c.id, c.name || c.id]));
 
   // Un sujeto sale como mucho una vez por pasada aunque sea elegible en
   // varias categorías. El capping por categoría lo permitiría, pero recibir
   // dos pushes en el mismo segundo es exactamente la saturación que este
   // sistema existe para evitar.
   const yaAvisados = new Set();
-
   for (const [categoryId, productos] of porCategoria) {
     const nombreCategoria = nombresCategoria.get(categoryId) || categoryId;
     const vendedores = new Set(productos.map(p => p.sellerId));
-
-    for (const candidato of interes.getSujetosElegibles(categoryId)) {
-      const { subjectId, motivo } = candidato;
-
+    for (const candidato of await interes.getSujetosElegibles(categoryId)) {
+      const {
+        subjectId,
+        motivo
+      } = candidato;
       if (yaAvisados.has(subjectId)) {
         contar(resumen.omitidos, 'ya_avisado_en_esta_pasada');
         continue;
@@ -164,18 +164,23 @@ async function ejecutarJobRetargeting() {
       // tres avisos semanales y, a los tres, la reducción adaptativa pausaría
       // la categoría por no abrir algo que nunca llegó a existir. Una cuenta
       // sin token sí sigue adelante: la notificación in-app la espera.
-      if (esAnonimo(subjectId) && db.getPushTokensForUser(subjectId).length === 0) {
+      if (esAnonimo(subjectId) && (await db.getPushTokensForUser(subjectId)).length === 0) {
         contar(resumen.omitidos, 'sin_canal_de_entrega');
         continue;
       }
-
-      const veredicto = frecuencia.puedeEnviar(subjectId, categoryId);
+      const veredicto = await frecuencia.puedeEnviar(subjectId, categoryId);
       if (!veredicto.permitido) {
         contar(resumen.omitidos, veredicto.motivo);
         continue;
       }
-
-      const { titulo, cuerpo } = redactarMensaje({ motivo, nombreCategoria, productos });
+      const {
+        titulo,
+        cuerpo
+      } = redactarMensaje({
+        motivo,
+        nombreCategoria,
+        productos
+      });
       const productIds = productos.map(p => p.productId);
 
       // La notificación in-app solo tiene sentido para cuentas: la campana
@@ -184,37 +189,36 @@ async function ejecutarJobRetargeting() {
       let notificationId = null;
       if (!esAnonimo(subjectId)) {
         notificationId = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-        db.createNotification(notificationId, subjectId, frecuencia.TIPO_RETARGETING, titulo, cuerpo, {
+        await db.createNotification(notificationId, subjectId, frecuencia.TIPO_RETARGETING, titulo, cuerpo, {
           category: categoryId,
           productIds,
-          motivo,
+          motivo
         });
       }
-
-      frecuencia.registrarEnvio({ subjectId, categoryId, productIds, notificationId });
+      await frecuencia.registrarEnvio({
+        subjectId,
+        categoryId,
+        productIds,
+        notificationId
+      });
       yaAvisados.add(subjectId);
       resumen.enviados++;
 
       // El push se manda sin await dentro del bucle para no serializar una
       // ronda de red por sujeto; los fallos se registran, no se propagan,
       // porque el log del envío ya está escrito y reintentarlo duplicaría.
-      sendPush([subjectId], titulo, cuerpo, {
+      (await sendPush([subjectId], titulo, cuerpo, {
         type: frecuencia.TIPO_RETARGETING,
         category: categoryId,
         productId: productIds.length === 1 ? productIds[0] : '',
         notificationId: notificationId || '',
-        motivo,
-      }).catch(err => console.error('[retargeting] fallo al enviar push:', err.message));
+        motivo
+      })).catch(err => console.error('[retargeting] fallo al enviar push:', err.message));
     }
   }
-
-  console.log(
-    `[retargeting] lote=${resumen.lote} categorías=${resumen.categorias} enviados=${resumen.enviados}`,
-    resumen.omitidos
-  );
+  console.log(`[retargeting] lote=${resumen.lote} categorías=${resumen.categorias} enviados=${resumen.enviados}`, resumen.omitidos);
   return resumen;
 }
-
 function contar(mapa, clave) {
   mapa[clave] = (mapa[clave] || 0) + 1;
 }
@@ -224,11 +228,10 @@ function contar(mapa, clave) {
 function esAnonimo(subjectId) {
   return typeof subjectId === 'string' && subjectId.startsWith('anon_');
 }
-
 module.exports = {
   encolarProducto,
   tomarLotePendiente,
   redactarMensaje,
   ejecutarJobRetargeting,
-  esAnonimo,
+  esAnonimo
 };

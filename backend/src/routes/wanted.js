@@ -1,12 +1,27 @@
 const db = require('../database');
-const { sellers, categories } = require('../data');
-const { sendPush } = require('../push');
-const { requireAuth } = require('../auth');
-const { validateLocation, validatePaymentMethods } = require('../validation/sellerProfile');
-const { validarMetodosPermitidos } = require('../payments/methods');
-
+const {
+  sellers,
+  categories
+} = require('../data');
+const {
+  sendPush
+} = require('../push');
+const {
+  requireAuth
+} = require('../auth');
+const {
+  validateLocation,
+  validatePaymentMethods
+} = require('../validation/sellerProfile');
+const {
+  validarMetodosPermitidos
+} = require('../payments/methods');
 const VALID_TYPES = ['producto', 'servicio'];
-const { getPublicationPolicy, expiresAtFromNow, isExpired } = require('../publicationPolicy');
+const {
+  getPublicationPolicy,
+  expiresAtFromNow,
+  isExpired
+} = require('../publicationPolicy');
 
 /**
  * Junta sellerObj/categoryObj a una publicación "se busca", con el mismo
@@ -15,7 +30,7 @@ const { getPublicationPolicy, expiresAtFromNow, isExpired } = require('../public
  * el detalle de producto (nombre, avatar, rating, ícono/color de categoría)
  * en vez de solo un userId/categoryId crudo.
  */
-function attachWantedRelations(post) {
+async function attachWantedRelations(post) {
   if (!post) return post;
   return {
     ...post,
@@ -30,12 +45,12 @@ function attachWantedRelations(post) {
       // El publicante no tiene fila en `sellers`, pero sí puede tener productos
       // calificados: el agregado se calcula desde product_ratings en vez de
       // devolver un 0 fijo que la UI pintaría como "Sin calificaciones".
-      ...db.getSellerRatingStats(post.userId),
+      ...(await db.getSellerRatingStats(post.userId)),
       verified: false,
       carrera: null,
-      tipoVerificacion: null,
+      tipoVerificacion: null
     },
-    categoryObj: categories.find(c => c.id === post.categoryId) || null,
+    categoryObj: categories.find(c => c.id === post.categoryId) || null
   };
 }
 
@@ -45,67 +60,107 @@ function attachWantedRelations(post) {
  * las reglas. Devuelve { error } si algo es inválido, o los valores
  * normalizados listos para persistir.
  */
-function validateWantedFields({ title, categoryId, type, priceMin, priceMax }) {
-  if (!title || !title.trim()) return { error: 'title es requerido' };
-  if (!categoryId) return { error: 'categoryId es requerido' };
+function validateWantedFields({
+  title,
+  categoryId,
+  type,
+  priceMin,
+  priceMax
+}) {
+  if (!title || !title.trim()) return {
+    error: 'title es requerido'
+  };
+  if (!categoryId) return {
+    error: 'categoryId es requerido'
+  };
   if (!VALID_TYPES.includes(type)) {
-    return { error: `type debe ser uno de: ${VALID_TYPES.join(', ')}` };
+    return {
+      error: `type debe ser uno de: ${VALID_TYPES.join(', ')}`
+    };
   }
-
   const parsedPriceMin = priceMin !== undefined && priceMin !== null ? Number(priceMin) : null;
   const parsedPriceMax = priceMax !== undefined && priceMax !== null ? Number(priceMax) : null;
   if (parsedPriceMin !== null && Number.isNaN(parsedPriceMin)) {
-    return { error: 'priceMin debe ser un número válido' };
+    return {
+      error: 'priceMin debe ser un número válido'
+    };
   }
   if (parsedPriceMax !== null && Number.isNaN(parsedPriceMax)) {
-    return { error: 'priceMax debe ser un número válido' };
+    return {
+      error: 'priceMax debe ser un número válido'
+    };
   }
-
-  return { title: title.trim(), categoryId, type, priceMin: parsedPriceMin, priceMax: parsedPriceMax };
+  return {
+    title: title.trim(),
+    categoryId,
+    type,
+    priceMin: parsedPriceMin,
+    priceMax: parsedPriceMax
+  };
 }
-
 function register(app) {
   // POST /api/wanted - crear una publicación "Se busca"
   // Requiere autenticación: el autor se obtiene del JWT, no del body, para
   // que publicar "se busca" exija cuenta igual que publicar un producto
   // (POST /api/products) y nadie pueda spoofear la autoría con otro userId.
-  app.post('/api/wanted', requireAuth, (req, res) => {
-    const { description } = req.body;
+  app.post('/api/wanted', requireAuth, async (req, res) => {
+    const {
+      description
+    } = req.body;
     const userId = req.user.id;
-
     const validated = validateWantedFields(req.body);
-    if (validated.error) return res.status(400).json({ error: validated.error });
-    const { title, categoryId, type, priceMin: parsedPriceMin, priceMax: parsedPriceMax } = validated;
+    if (validated.error) return res.status(400).json({
+      error: validated.error
+    });
+    const {
+      title,
+      categoryId,
+      type,
+      priceMin: parsedPriceMin,
+      priceMax: parsedPriceMax
+    } = validated;
 
     // Ubicación puntual de la búsqueda (Nivel 2): solo cuentas de negocio.
     const sellerRecord = sellers.find(s => s.id === userId);
-    const policy = getPublicationPolicy(sellerRecord);
+    const policy = await getPublicationPolicy(sellerRecord);
     let postLocation = null;
     if (sellerRecord?.isBusiness) {
       const locationResult = validateLocation(req.body?.locationLat, req.body?.locationLng);
-      if (locationResult.error) return res.status(400).json({ error: locationResult.error });
+      if (locationResult.error) return res.status(400).json({
+        error: locationResult.error
+      });
       postLocation = locationResult.value;
     }
 
     // Métodos de pago de esta publicación (opcional): si no se manda,
     // queda null y el cliente usa los del perfil del publicante.
     const paymentMethodsResult = validatePaymentMethods(req.body?.paymentMethods);
-    if (paymentMethodsResult.error) return res.status(400).json({ error: paymentMethodsResult.error });
-    const metodosPermitidos = validarMetodosPermitidos(userId, paymentMethodsResult.value);
-    if (metodosPermitidos.error) return res.status(400).json({ error: metodosPermitidos.error });
-
+    if (paymentMethodsResult.error) return res.status(400).json({
+      error: paymentMethodsResult.error
+    });
+    const metodosPermitidos = await validarMetodosPermitidos(userId, paymentMethodsResult.value);
+    if (metodosPermitidos.error) return res.status(400).json({
+      error: metodosPermitidos.error
+    });
     const rollingWindow = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const since = db.getPublicationLimitSince(userId, 'wanted', rollingWindow);
-    const countToday = db.countWantedPostsSince(userId, since);
+    const since = await db.getPublicationLimitSince(userId, 'wanted', rollingWindow);
+    const countToday = await db.countWantedPostsSince(userId, since);
     if (countToday >= policy.wantedDaily) {
-      return res.status(429).json({ error: `Ya publicaste el máximo de ${policy.wantedDaily} búsquedas hoy`, code: 'WANTED_DAILY_LIMIT', limits: policy });
+      return res.status(429).json({
+        error: `Ya publicaste el máximo de ${policy.wantedDaily} búsquedas hoy`,
+        code: 'WANTED_DAILY_LIMIT',
+        limits: policy
+      });
     }
-    if (db.countActiveWantedPosts(userId) >= policy.wantedActive) {
-      return res.status(409).json({ error: `Ya tienes el máximo de ${policy.wantedActive} búsquedas activas`, code: 'WANTED_ACTIVE_LIMIT', limits: policy });
+    if ((await db.countActiveWantedPosts(userId)) >= policy.wantedActive) {
+      return res.status(409).json({
+        error: `Ya tienes el máximo de ${policy.wantedActive} búsquedas activas`,
+        code: 'WANTED_ACTIVE_LIMIT',
+        limits: policy
+      });
     }
-
     const id = `wanted_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const post = db.createWantedPost({
+    const post = await db.createWantedPost({
       id,
       userId,
       title,
@@ -117,59 +172,66 @@ function register(app) {
       locationLat: postLocation ? postLocation.lat : null,
       locationLng: postLocation ? postLocation.lng : null,
       paymentMethods: paymentMethodsResult.value,
-      expiresAt: expiresAtFromNow(policy.durationDays),
+      expiresAt: expiresAtFromNow(policy.durationDays)
     });
 
     // Notificar a los interesados en esta categoría (mismo patrón que products.js)
-    const interestedUsers = db.getUsersInterestedInCategory(categoryId).filter(u => u !== userId);
+    const interestedUsers = (await db.getUsersInterestedInCategory(categoryId)).filter(u => u !== userId);
     if (interestedUsers.length > 0) {
       for (const targetUserId of interestedUsers) {
         const notifId = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-        db.createNotification(
-          notifId,
-          targetUserId,
-          'wanted_post',
-          'Alguien busca algo en tu categoría',
-          `${post.title}`,
-          { wantedPostId: id, categoryId }
-        );
+        await db.createNotification(notifId, targetUserId, 'wanted_post', 'Alguien busca algo en tu categoría', `${post.title}`, {
+          wantedPostId: id,
+          categoryId
+        });
       }
-      sendPush(
-        interestedUsers,
-        'Se busca en tu categoría',
-        post.title,
-        { wantedPostId: id, categoryId, type: 'wanted_post' }
-      );
+      await sendPush(interestedUsers, 'Se busca en tu categoría', post.title, {
+        wantedPostId: id,
+        categoryId,
+        type: 'wanted_post'
+      });
     }
-
-    res.status(201).json(attachWantedRelations(post));
+    res.status(201).json(await attachWantedRelations(post));
   });
 
   // GET /api/wanted - feed de publicaciones
-  app.get('/api/wanted', (req, res) => {
-    const { category, status, type } = req.query;
-    const posts = db.listWantedPosts({ categoryId: category, status, type });
+  app.get('/api/wanted', async (req, res) => {
+    const {
+      category,
+      status,
+      type
+    } = req.query;
+    const posts = await db.listWantedPosts({
+      categoryId: category,
+      status,
+      type
+    });
     res.json(posts.map(attachWantedRelations));
   });
 
   // GET /api/wanted/:id - detalle
-  app.get('/api/wanted/:id', (req, res) => {
-    const post = db.getWantedPostById(req.params.id);
-    if (!post) return res.status(404).json({ error: 'Publicación no encontrada' });
-    if (isExpired(post)) return res.status(410).json({ error: 'Esta búsqueda expiró' });
-    res.json(attachWantedRelations(post));
+  app.get('/api/wanted/:id', async (req, res) => {
+    const post = await db.getWantedPostById(req.params.id);
+    if (!post) return res.status(404).json({
+      error: 'Publicación no encontrada'
+    });
+    if (isExpired(post)) return res.status(410).json({
+      error: 'Esta búsqueda expiró'
+    });
+    res.json(await attachWantedRelations(post));
   });
 
   // POST /api/wanted/:id/view - registra una vista de detalle (mismo
   // criterio simple que POST /api/products/:id/view: no cuenta si quien
   // pide es el dueño, sin exigir JWT).
-  app.post('/api/wanted/:id/view', (req, res) => {
-    const post = db.getWantedPostById(req.params.id);
-    if (!post) return res.status(404).json({ error: 'Publicación no encontrada' });
-
+  app.post('/api/wanted/:id/view', async (req, res) => {
+    const post = await db.getWantedPostById(req.params.id);
+    if (!post) return res.status(404).json({
+      error: 'Publicación no encontrada'
+    });
     const userId = req.body?.userId;
     if (!userId || post.userId !== userId) {
-      db.incrementWantedPostViews(post.id);
+      await db.incrementWantedPostViews(post.id);
     }
     res.status(204).end();
   });
@@ -178,75 +240,99 @@ function register(app) {
   // A diferencia del resto de wanted.js, usa requireAuth (JWT real) en vez
   // de confiar en un userId de body, para que un no-dueño reciba 403 de
   // verdad y no pueda spoofear la autoría solo mandando otro userId.
-  app.put('/api/wanted/:id', requireAuth, (req, res) => {
-    const post = db.getWantedPostById(req.params.id);
-    if (!post) return res.status(404).json({ error: 'Publicación no encontrada' });
+  app.put('/api/wanted/:id', requireAuth, async (req, res) => {
+    const post = await db.getWantedPostById(req.params.id);
+    if (!post) return res.status(404).json({
+      error: 'Publicación no encontrada'
+    });
     if (post.userId !== req.user.id) {
-      return res.status(403).json({ error: 'No tienes permiso para editar esta publicación' });
+      return res.status(403).json({
+        error: 'No tienes permiso para editar esta publicación'
+      });
     }
     if (post.status === 'resuelta') {
-      return res.status(400).json({ error: 'No se puede editar una búsqueda ya resuelta' });
+      return res.status(400).json({
+        error: 'No se puede editar una búsqueda ya resuelta'
+      });
     }
-
     const validated = validateWantedFields(req.body);
-    if (validated.error) return res.status(400).json({ error: validated.error });
-
+    if (validated.error) return res.status(400).json({
+      error: validated.error
+    });
     const paymentMethodsResult = validatePaymentMethods(req.body?.paymentMethods);
-    if (paymentMethodsResult.error) return res.status(400).json({ error: paymentMethodsResult.error });
-    const metodosPermitidos = validarMetodosPermitidos(req.user.id, paymentMethodsResult.value);
-    if (metodosPermitidos.error) return res.status(400).json({ error: metodosPermitidos.error });
-
-    const updated = db.updateWantedPost(req.params.id, {
+    if (paymentMethodsResult.error) return res.status(400).json({
+      error: paymentMethodsResult.error
+    });
+    const metodosPermitidos = await validarMetodosPermitidos(req.user.id, paymentMethodsResult.value);
+    if (metodosPermitidos.error) return res.status(400).json({
+      error: metodosPermitidos.error
+    });
+    const updated = await db.updateWantedPost(req.params.id, {
       title: validated.title,
       description: req.body.description || null,
       categoryId: validated.categoryId,
       type: validated.type,
       priceMin: validated.priceMin,
       priceMax: validated.priceMax,
-      paymentMethods: paymentMethodsResult.value,
+      paymentMethods: paymentMethodsResult.value
     });
-    res.json(attachWantedRelations(updated));
+    res.json(await attachWantedRelations(updated));
   });
 
   // PATCH /api/wanted/:id/resolve - marcar como resuelta (solo el dueño)
-  app.patch('/api/wanted/:id/resolve', requireAuth, (req, res) => {
-    const { resolvedWithUserId } = req.body;
+  app.patch('/api/wanted/:id/resolve', requireAuth, async (req, res) => {
+    const {
+      resolvedWithUserId
+    } = req.body;
     const userId = req.user.id;
-    const post = db.getWantedPostById(req.params.id);
-    if (!post) return res.status(404).json({ error: 'Publicación no encontrada' });
+    const post = await db.getWantedPostById(req.params.id);
+    if (!post) return res.status(404).json({
+      error: 'Publicación no encontrada'
+    });
     if (post.userId !== userId) {
-      return res.status(403).json({ error: 'No tienes permiso para resolver esta publicación' });
+      return res.status(403).json({
+        error: 'No tienes permiso para resolver esta publicación'
+      });
     }
     if (post.status === 'resuelta') {
-      return res.status(400).json({ error: 'Esta búsqueda ya fue resuelta' });
+      return res.status(400).json({
+        error: 'Esta búsqueda ya fue resuelta'
+      });
     }
-    res.json(attachWantedRelations(db.resolveWantedPost(req.params.id, resolvedWithUserId)));
+    res.json(await attachWantedRelations(await db.resolveWantedPost(req.params.id, resolvedWithUserId)));
   });
 
   // POST /api/wanted/:id/respond - abrir/reusar chat con el publicador
-  app.post('/api/wanted/:id/respond', requireAuth, (req, res) => {
+  app.post('/api/wanted/:id/respond', requireAuth, async (req, res) => {
     const userId = req.user.id;
-
-    const post = db.getWantedPostById(req.params.id);
-    if (!post) return res.status(404).json({ error: 'Publicación no encontrada' });
+    const post = await db.getWantedPostById(req.params.id);
+    if (!post) return res.status(404).json({
+      error: 'Publicación no encontrada'
+    });
     if (post.status === 'resuelta') {
-      return res.status(400).json({ error: 'Esta búsqueda ya fue resuelta' });
+      return res.status(400).json({
+        error: 'Esta búsqueda ya fue resuelta'
+      });
     }
     if (post.userId === userId) {
-      return res.status(400).json({ error: 'No puedes responder tu propia búsqueda' });
+      return res.status(400).json({
+        error: 'No puedes responder tu propia búsqueda'
+      });
     }
-
-    let conversation = db.findWantedConversation(post.id, post.userId, userId);
+    let conversation = await db.findWantedConversation(post.id, post.userId, userId);
     if (!conversation) {
       const convId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       // buyer_id/seller_id son solo etiquetas de columna heredadas del chat de productos;
       // aquí buyer = quien publicó el "se busca", seller = quien responde.
-      db.createWantedConversation(convId, post.id, post.userId, userId);
-      conversation = db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(convId);
+      await db.createWantedConversation(convId, post.id, post.userId, userId);
+      conversation = await db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(convId);
     }
-
-    res.json({ conversationId: conversation.id });
+    res.json({
+      conversationId: conversation.id
+    });
   });
 }
-
-module.exports = { register, attachWantedRelations };
+module.exports = {
+  register,
+  attachWantedRelations
+};

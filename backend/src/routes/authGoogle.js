@@ -20,17 +20,23 @@
 
 const express = require('express');
 const rateLimit = require('express-rate-limit');
-
 const dbModule = require('../database');
-const { generateSession } = require('../auth');
-const { getSellerAccess, sendSellerAccessError } = require('../sellerAccess');
-const { calcularIniciales } = require('../utils/iniciales');
+const {
+  generateSession
+} = require('../auth');
+const {
+  getSellerAccess,
+  sendSellerAccessError
+} = require('../sellerAccess');
+const {
+  calcularIniciales
+} = require('../utils/iniciales');
 const googleAuth = require('../services/googleAuth');
 const {
   validateName,
   validatePhone,
   validateBusinessHours,
-  validatePaymentMethods,
+  validatePaymentMethods
 } = require('../validation/sellerProfile');
 
 /** Proveedor de autenticación de una cuenta creada con Google. */
@@ -50,7 +56,7 @@ function sellerParaCliente(row) {
     isBusiness: !!row.isBusiness,
     major: row.major,
     carrera: row.carrera || null,
-    tipoVerificacion: row.tipo_verificacion || null,
+    tipoVerificacion: row.tipo_verificacion || null
   };
 }
 
@@ -71,7 +77,7 @@ function crearRutasAuthGoogle({
   getDb,
   verificarIdToken = googleAuth.verificarIdToken,
   vincularDispositivo = () => {},
-  refrescarSellers = () => {},
+  refrescarSellers = () => {}
 }) {
   const router = express.Router();
 
@@ -84,7 +90,9 @@ function crearRutasAuthGoogle({
     limit: 30,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { error: 'Demasiados intentos desde esta red. Intenta más tarde.' },
+    message: {
+      error: 'Demasiados intentos desde esta red. Intenta más tarde.'
+    }
   });
 
   // El cuerpo entero va dentro de un try/catch por una razón concreta de
@@ -100,18 +108,23 @@ function crearRutasAuthGoogle({
     } catch (err) {
       console.error('[auth/google] error no controlado:', err);
       if (!res.headersSent) {
-        res.status(500).json({ error: 'No se pudo completar el inicio de sesión con Google.' });
+        res.status(500).json({
+          error: 'No se pudo completar el inicio de sesión con Google.'
+        });
       }
     }
   });
-
   async function manejarGoogle(req, res) {
-    const { idToken, deviceId, registro } = req.body || {};
-
+    const {
+      idToken,
+      deviceId,
+      registro
+    } = req.body || {};
     if (!idToken || typeof idToken !== 'string') {
-      return res.status(400).json({ error: 'idToken es requerido' });
+      return res.status(400).json({
+        error: 'idToken es requerido'
+      });
     }
-
     let perfil;
     try {
       perfil = await verificarIdToken(idToken);
@@ -121,12 +134,16 @@ function crearRutasAuthGoogle({
         // qué hacer con cada caso: reintentar, mandar a registro, o pintar
         // el mensaje. La frase para el usuario va en `message`, igual que
         // en los 401 de auth.js.
-        return res.status(err.status || 401).json({ error: err.codigo, message: err.message });
+        return res.status(err.status || 401).json({
+          error: err.codigo,
+          message: err.message
+        });
       }
       console.error('[auth/google] error inesperado verificando idToken:', err);
-      return res.status(500).json({ error: 'No se pudo verificar el inicio de sesión con Google.' });
+      return res.status(500).json({
+        error: 'No se pudo verificar el inicio de sesión con Google.'
+      });
     }
-
     const db = getDb();
     const email = perfil.email.trim();
 
@@ -134,15 +151,12 @@ function crearRutasAuthGoogle({
     // es el identificador estable de la cuenta de Google, mientras que el
     // correo puede cambiar. Buscar solo por correo crearía una cuenta nueva
     // a quien cambió su dirección en Google.
-    const existente =
-      db.prepare('SELECT * FROM sellers WHERE google_sub = ?').get(perfil.sub) ||
-      db.prepare('SELECT * FROM sellers WHERE email = ? COLLATE NOCASE').get(email);
-
+    const existente = (await db.prepare('SELECT * FROM sellers WHERE google_sub = ?').get(perfil.sub)) || (await db.prepare('SELECT * FROM sellers WHERE email = ? COLLATE NOCASE').get(email));
     if (existente) {
       // Google ya probó la identidad. Antes de vincular el sub, actualizar
       // foto, asociar dispositivo o emitir tokens se aplica la misma puerta
       // de suspensión/baneo que al login con contraseña.
-      const accountAccess = getSellerAccess(db, existente.id);
+      const accountAccess = await getSellerAccess(db, existente.id);
       if (!accountAccess.allowed) return sendSellerAccessError(res, accountAccess);
 
       // Primera vez que esta cuenta entra con Google: se guarda el `sub`
@@ -150,23 +164,22 @@ function crearRutasAuthGoogle({
       // que ya tenía contraseña la conserva y puede seguir entrando con
       // ella — vincular Google añade una puerta, no cierra la otra.
       if (existente.google_sub !== perfil.sub) {
-        db.prepare('UPDATE sellers SET google_sub = ? WHERE id = ?').run(perfil.sub, existente.id);
+        await db.prepare('UPDATE sellers SET google_sub = ? WHERE id = ?').run(perfil.sub, existente.id);
         existente.google_sub = perfil.sub;
       }
       // La foto de Google solo se guarda si la cuenta no tenía ninguna: si
       // el usuario ya subió su propia foto aquí, pisarla en cada login sería
       // deshacerle un cambio que hizo a propósito.
       if (perfil.foto && !existente.avatarUrl) {
-        db.prepare('UPDATE sellers SET avatarUrl = ? WHERE id = ?').run(perfil.foto, existente.id);
+        await db.prepare('UPDATE sellers SET avatarUrl = ? WHERE id = ?').run(perfil.foto, existente.id);
         existente.avatarUrl = perfil.foto;
       }
       refrescarSellers();
-
       if (deviceId) vincularDispositivo(deviceId, existente.id);
       return res.json({
-        ...generateSession(existente.id),
+        ...(await generateSession(existente.id)),
         seller: sellerParaCliente(existente),
-        created: false,
+        created: false
       });
     }
 
@@ -178,56 +191,65 @@ function crearRutasAuthGoogle({
         // Lo que la app necesita para prellenar el formulario. El correo va
         // aquí y NO se acepta de vuelta desde el cliente en el paso
         // siguiente: el correo de la cuenta sale siempre del idToken.
-        google: { email, name: perfil.nombre, picture: perfil.foto },
+        google: {
+          email,
+          name: perfil.nombre,
+          picture: perfil.foto
+        }
       });
     }
-
-    const { userType, phone, paymentMethods, businessHours, name } = registro;
+    const {
+      userType,
+      phone,
+      paymentMethods,
+      businessHours,
+      name
+    } = registro;
 
     // El nombre del formulario gana: alguien puede querer registrarse con un
     // nombre de negocio distinto al de su cuenta personal de Google.
-    const nombre = (typeof name === 'string' && name.trim()) || perfil.nombre || '';
+    const nombre = typeof name === 'string' && name.trim() || perfil.nombre || '';
     const nameError = validateName(nombre);
-    if (nameError) return res.status(400).json({ error: nameError });
-
+    if (nameError) return res.status(400).json({
+      error: nameError
+    });
     const phoneError = validatePhone(phone);
-    if (phoneError) return res.status(400).json({ error: phoneError });
-
+    if (phoneError) return res.status(400).json({
+      error: phoneError
+    });
     let horarioNormalizado = {};
     if (userType === 'negocio' && businessHours !== undefined) {
       const resultado = validateBusinessHours(businessHours);
-      if (resultado.error) return res.status(400).json({ error: resultado.error });
+      if (resultado.error) return res.status(400).json({
+        error: resultado.error
+      });
       horarioNormalizado = resultado.value;
     }
-
-    const metodos = validatePaymentMethods(paymentMethods, { required: true });
-    if (metodos.error) return res.status(400).json({ error: metodos.error });
+    const metodos = validatePaymentMethods(paymentMethods, {
+      required: true
+    });
+    if (metodos.error) return res.status(400).json({
+      error: metodos.error
+    });
 
     // Misma regla que /api/auth/register: 'tarjeta' exige una cuenta de
     // Mercado Pago conectada, y una cuenta que nace en este request todavía
     // no puede tenerla (el OAuth ocurre después, desde el perfil).
     if ((metodos.value || []).includes('tarjeta')) {
       return res.status(400).json({
-        error: 'Para aceptar tarjeta primero conecta tu cuenta de Mercado Pago desde tu perfil.',
+        error: 'Para aceptar tarjeta primero conecta tu cuenta de Mercado Pago desde tu perfil.'
       });
     }
-
     const emailSlug = email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
     const sufijo = Math.random().toString(36).slice(2, 6);
     const sellerId = `u_${emailSlug}_${sufijo}`;
-
     let major = '';
-    if (userType === 'estudiante') major = 'Estudiante';
-    else if (userType === 'negocio') major = 'Negocio • Establecimiento';
-    else if (userType === 'particular') major = 'Particular';
+    if (userType === 'estudiante') major = 'Estudiante';else if (userType === 'negocio') major = 'Negocio • Establecimiento';else if (userType === 'particular') major = 'Particular';
 
     // Un userType desconocido cae a 'particular', el tipo menos privilegiado.
-    const tipoCuenta = ['estudiante', 'negocio', 'particular'].includes(userType)
-      ? userType
-      : 'particular';
+    const tipoCuenta = ['estudiante', 'negocio', 'particular'].includes(userType) ? userType : 'particular';
     if (!major) major = 'Particular';
-
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO sellers (id, name, email, phone, avatarInitials, major, isBusiness,
         rating, reviews, verified, tipo_cuenta, businessHours, paymentMethods,
         password_hash, auth_provider, google_sub, avatarUrl, created_at)
@@ -250,40 +272,39 @@ function crearRutasAuthGoogle({
       // fila como "cuenta legacy" y le ponga la contraseña que le manden.
       auth_provider: PROVEEDOR_GOOGLE,
       google_sub: perfil.sub,
-      avatarUrl: perfil.foto,
+      avatarUrl: perfil.foto
     });
     // Misma regla que el registro con contraseña para cuentas oficiales.
-    dbModule.anularMetodosPagoCuentasDueno();
+    await dbModule.anularMetodosPagoCuentasDueno();
     refrescarSellers();
-
     if (deviceId) vincularDispositivo(deviceId, sellerId);
-
-    const creado = db.prepare('SELECT * FROM sellers WHERE id = ?').get(sellerId);
+    const creado = await db.prepare('SELECT * FROM sellers WHERE id = ?').get(sellerId);
     return res.status(201).json({
-      ...generateSession(sellerId),
+      ...(await generateSession(sellerId)),
       seller: sellerParaCliente(creado),
-      created: true,
+      created: true
     });
   }
-
   return router;
 }
 
 /** Montaje real en la app (index.js). */
 function register(app) {
-  const { sellers } = require('../data');
-  app.use(
-    '/api/auth',
-    crearRutasAuthGoogle({
-      getDb: () => dbModule.getDb(),
-      verificarIdToken: googleAuth.verificarIdToken,
-      vincularDispositivo: (deviceId, userId) => dbModule.linkDeviceToUser(deviceId, userId),
-      refrescarSellers: () => {
-        sellers.length = 0;
-        sellers.push(...dbModule.getSellers());
-      },
-    }),
-  );
+  const {
+    sellers
+  } = require('../data');
+  app.use('/api/auth', crearRutasAuthGoogle({
+    getDb: () => dbModule.getDb(),
+    verificarIdToken: googleAuth.verificarIdToken,
+    vincularDispositivo: async (deviceId, userId) => await dbModule.linkDeviceToUser(deviceId, userId),
+    refrescarSellers: async () => {
+      sellers.length = 0;
+      sellers.push(...(await dbModule.getSellers()));
+    }
+  }));
 }
-
-module.exports = { register, crearRutasAuthGoogle, PROVEEDOR_GOOGLE };
+module.exports = {
+  register,
+  crearRutasAuthGoogle,
+  PROVEEDOR_GOOGLE
+};

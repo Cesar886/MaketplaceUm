@@ -30,7 +30,6 @@ const MAX_PETICIONES = 60;
  */
 function aVistaPublica(producto) {
   const vendedor = producto.sellerObj;
-
   return {
     // Discrimina la forma de la respuesta. Productos y búsquedas comparten la
     // URL /producto/:id (el botón de compartir de la app es el mismo para
@@ -43,9 +42,10 @@ function aVistaPublica(producto) {
     precio: producto.price,
     precioAnterior: producto.previousPrice ?? null,
     etiquetaDescuento: producto.discountLabel ?? null,
-    categoria: producto.categoryObj
-      ? { id: producto.categoryObj.id, nombre: producto.categoryObj.name }
-      : null,
+    categoria: producto.categoryObj ? {
+      id: producto.categoryObj.id,
+      nombre: producto.categoryObj.name
+    } : null,
     // Rutas relativas tal como las guarda el backend ('/uploads/x.webp'). El
     // sitio las vuelve absolutas con su propia URL de API — así este endpoint
     // no tiene que saber bajo qué dominio se le está sirviendo.
@@ -57,7 +57,7 @@ function aVistaPublica(producto) {
     disponible: !!producto.is_available,
     publicadoHace: producto.publishedAgo ?? null,
     ubicacion: aUbicacionPublica(producto, vendedor),
-    vendedor: aVendedorPublico(vendedor),
+    vendedor: aVendedorPublico(vendedor)
   };
 }
 
@@ -66,11 +66,12 @@ function aVistaPublica(producto) {
  * geolocalizado en una página pública indexable.
  */
 function aUbicacionPublica(publicacion, vendedor) {
-  const tieneCoordenadas =
-    publicacion.locationLat != null && publicacion.locationLng != null;
-
+  const tieneCoordenadas = publicacion.locationLat != null && publicacion.locationLng != null;
   if (!vendedor || !vendedor.isBusiness || !tieneCoordenadas) return null;
-  return { lat: publicacion.locationLat, lng: publicacion.locationLng };
+  return {
+    lat: publicacion.locationLat,
+    lng: publicacion.locationLng
+  };
 }
 
 /**
@@ -79,7 +80,6 @@ function aUbicacionPublica(publicacion, vendedor) {
  */
 function aVendedorPublico(vendedor) {
   if (!vendedor) return null;
-
   return {
     nombre: vendedor.name,
     iniciales: vendedor.avatarInitials || '',
@@ -94,7 +94,7 @@ function aVendedorPublico(vendedor) {
     // (lib/widgets/user_role.dart), para que la web muestre el mismo texto
     // bajo el nombre y no se desincronicen.
     carrera: vendedor.carrera || null,
-    tipoVerificacion: vendedor.tipoVerificacion || null,
+    tipoVerificacion: vendedor.tipoVerificacion || null
   };
 }
 
@@ -112,7 +112,6 @@ function aVendedorPublico(vendedor) {
  */
 function aVistaPublicaBusqueda(busqueda) {
   const publicante = busqueda.sellerObj;
-
   return {
     tipo: 'busqueda',
     id: busqueda.id,
@@ -125,9 +124,10 @@ function aVistaPublicaBusqueda(busqueda) {
     // 'producto' | 'servicio' — cambia el texto de la página ("Busca comprar"
     // vs "Busca contratar").
     busca: busqueda.type,
-    categoria: busqueda.categoryObj
-      ? { id: busqueda.categoryObj.id, nombre: busqueda.categoryObj.name }
-      : null,
+    categoria: busqueda.categoryObj ? {
+      id: busqueda.categoryObj.id,
+      nombre: busqueda.categoryObj.name
+    } : null,
     // Una búsqueda resuelta sigue siendo visible (el link compartido no debe
     // romperse), pero la página tiene que dejar claro que ya no está activa.
     abierta: busqueda.status === 'abierta',
@@ -136,63 +136,63 @@ function aVistaPublicaBusqueda(busqueda) {
     // antigüedad al momento de renderizar.
     publicadoEn: busqueda.createdAt ?? null,
     ubicacion: aUbicacionPublica(busqueda, publicante),
-    vendedor: aVendedorPublico(publicante),
+    vendedor: aVendedorPublico(publicante)
   };
 }
-
 function register(app) {
   const db = require('../database');
-  const { products } = require('../data');
-  const { attachRelations } = require('./products');
-  const { attachWantedRelations } = require('./wanted');
-
+  const {
+    products
+  } = require('../data');
+  const {
+    attachRelations
+  } = require('./products');
+  const {
+    attachWantedRelations
+  } = require('./wanted');
   const router = express.Router();
-
-  router.use(
-    rateLimit({
-      windowMs: VENTANA_MINUTOS * 60 * 1000,
-      limit: MAX_PETICIONES,
-      standardHeaders: 'draft-7',
-      legacyHeaders: false,
-      message: { error: 'Demasiadas peticiones. Inténtalo en un minuto.' },
-    }),
-  );
+  router.use(rateLimit({
+    windowMs: VENTANA_MINUTOS * 60 * 1000,
+    limit: MAX_PETICIONES,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: {
+      error: 'Demasiadas peticiones. Inténtalo en un minuto.'
+    }
+  }));
 
   // GET /api/public/productos — SOLO ids y fecha, para el sitemap del sitio.
   //
   // No devuelve el contenido de los productos a propósito: un listado
   // completo y sin paginar es exactamente el volcado de catálogo que el rate
   // limit intenta evitar. Con esto el sitemap se arma sin abrir esa puerta.
-  router.get('/productos', (_req, res) => {
+  router.get('/productos', async (_req, res) => {
     // Las búsquedas van en la misma lista porque comparten la ruta del sitio
     // (/producto/:id): separarlas obligaría al sitemap a pedir dos veces para
     // armar URLs idénticas. Solo las abiertas — una búsqueda ya resuelta no
     // debe empujarse al índice, aunque su link compartido siga funcionando.
-    const busquedas = db.listWantedPosts({ status: 'abierta' });
-
+    const busquedas = await db.listWantedPosts({
+      status: 'abierta'
+    });
     res.json({
-      productos: [
-        ...products.map(p => ({
-          id: p.id,
-          actualizado: p.updated_at || p.created_at || null,
-        })),
-        ...busquedas.map(b => ({
-          id: b.id,
-          actualizado: b.updatedAt || b.createdAt || null,
-        })),
-      ],
+      productos: [...products.map(p => ({
+        id: p.id,
+        actualizado: p.updated_at || p.created_at || null
+      })), ...busquedas.map(b => ({
+        id: b.id,
+        actualizado: b.updatedAt || b.createdAt || null
+      }))]
     });
   });
 
   // GET /api/public/productos/:id
-  router.get('/productos/:id', (req, res) => {
+  router.get('/productos/:id', async (req, res) => {
     const producto = products.find(p => p.id === req.params.id);
-
     if (producto) {
       // attachRelations es lo que resuelve sellerObj, categoryObj y el estado
       // calculado. Se reusa en vez de recalcularlo aquí para que la web no se
       // desincronice de la app cuando cambien las reglas de disponibilidad.
-      const completo = attachRelations([producto])[0];
+      const completo = (await attachRelations([producto]))[0];
       return res.json(aVistaPublica(completo));
     }
 
@@ -200,18 +200,22 @@ function register(app) {
     // URL: el botón de compartir de la app es uno solo y genera
     // /producto/:id para ambas. Se consulta después de products porque los
     // productos son el caso mayoritario, y los ids no colisionan entre tablas.
-    const busqueda = db.getWantedPostById(req.params.id);
+    const busqueda = await db.getWantedPostById(req.params.id);
     if (busqueda) {
-      return res.json(aVistaPublicaBusqueda(attachWantedRelations(busqueda)));
+      return res.json(aVistaPublicaBusqueda(await attachWantedRelations(busqueda)));
     }
 
     // Una publicación borrada desaparece de la tabla (no hay soft delete), así
     // que "no existe" y "fue eliminada" son el mismo 404 — y debe serlo: decir
     // cuál de los dos es confirmaría que ese id existió.
-    res.status(404).json({ error: 'Publicación no encontrada' });
+    res.status(404).json({
+      error: 'Publicación no encontrada'
+    });
   });
-
   app.use('/api/public', router);
 }
-
-module.exports = { register, aVistaPublica, aVistaPublicaBusqueda };
+module.exports = {
+  register,
+  aVistaPublica,
+  aVistaPublicaBusqueda
+};

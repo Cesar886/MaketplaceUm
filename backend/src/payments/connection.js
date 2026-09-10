@@ -13,12 +13,15 @@
  * comprador con un método que no cobra nada.
  */
 
-const { randomUUID } = require('crypto');
-
+const {
+  randomUUID
+} = require('crypto');
 const db = require('../database');
 const store = require('./store');
-const { validarTokenVendedor, MpError } = require('./mpClient');
-
+const {
+  validarTokenVendedor,
+  MpError
+} = require('./mpClient');
 const TIPO_NOTIFICACION = 'payment_account_disconnected';
 
 /** Método que deja de tener sentido cuando la cuenta se cae. */
@@ -31,12 +34,9 @@ const METODO_TARJETA = 'tarjeta';
  * menos un método, y dejarlo vacío le bloquearía guardar cualquier cambio
  * hasta que se diera cuenta de por qué.
  */
-function retirarTarjetaDeLosMetodos(vendorId) {
-  const fila = db.getDb()
-    .prepare('SELECT paymentMethods FROM sellers WHERE id = ?')
-    .get(vendorId);
+async function retirarTarjetaDeLosMetodos(vendorId) {
+  const fila = await db.getDb().prepare('SELECT paymentMethods FROM sellers WHERE id = ?').get(vendorId);
   if (!fila || !fila.paymentMethods) return;
-
   let lista;
   try {
     lista = JSON.parse(fila.paymentMethods);
@@ -44,23 +44,13 @@ function retirarTarjetaDeLosMetodos(vendorId) {
     return;
   }
   if (!Array.isArray(lista) || !lista.includes(METODO_TARJETA)) return;
-
   const restantes = lista.filter(m => m !== METODO_TARJETA);
-  db.getDb()
-    .prepare('UPDATE sellers SET paymentMethods = ? WHERE id = ?')
-    .run(JSON.stringify(restantes.length ? restantes : ['efectivo']), vendorId);
+  await db.getDb().prepare('UPDATE sellers SET paymentMethods = ? WHERE id = ?').run(JSON.stringify(restantes.length ? restantes : ['efectivo']), vendorId);
 }
-
-function avisarAlVendedor(vendorId, motivo) {
-  db.createNotification(
-    `ntf_${randomUUID()}`,
-    vendorId,
-    TIPO_NOTIFICACION,
-    'Tu cuenta de pagos se desconectó',
-    'Dejaste de poder cobrar con tarjeta en Marketplace UM. '
-      + 'Vuelve a conectar tu cuenta de Mercado Pago desde tu perfil para reactivarla.',
-    { motivo: motivo || null },
-  );
+async function avisarAlVendedor(vendorId, motivo) {
+  await db.createNotification(`ntf_${randomUUID()}`, vendorId, TIPO_NOTIFICACION, 'Tu cuenta de pagos se desconectó', 'Dejaste de poder cobrar con tarjeta en Marketplace UM. ' + 'Vuelve a conectar tu cuenta de Mercado Pago desde tu perfil para reactivarla.', {
+    motivo: motivo || null
+  });
 }
 
 /**
@@ -73,17 +63,21 @@ function avisarAlVendedor(vendorId, motivo) {
  *   desconectada — importante porque MP reenvía el webhook de revocación
  *   varias veces y el vendedor no debe recibir una ristra de avisos iguales.
  */
-function desconectar(vendorId, { motivo = null, por = 'user' } = {}) {
-  const cambio = store.desconectarVendedor(vendorId, { motivo, por });
+async function desconectar(vendorId, {
+  motivo = null,
+  por = 'user'
+} = {}) {
+  const cambio = await store.desconectarVendedor(vendorId, {
+    motivo,
+    por
+  });
   if (!cambio) return false;
-
-  retirarTarjetaDeLosMetodos(vendorId);
-  store.borrarTarjetasDeVendedor(vendorId);
+  await retirarTarjetaDeLosMetodos(vendorId);
+  await store.borrarTarjetasDeVendedor(vendorId);
 
   // Una desconexión que pidió el propio vendedor no necesita avisarle de
   // algo que acaba de hacer a propósito.
-  if (por !== 'user') avisarAlVendedor(vendorId, motivo);
-
+  if (por !== 'user') await avisarAlVendedor(vendorId, motivo);
   console.log(`[pagos] Vendedor ${vendorId} desconectado (${por}${motivo ? `: ${motivo}` : ''})`);
   return true;
 }
@@ -98,9 +92,11 @@ function desconectar(vendorId, { motivo = null, por = 'user' } = {}) {
  * @returns {Promise<{conectado: boolean, motivo?: string}>}
  */
 async function validarConexion(vendorId) {
-  const cuenta = store.getCuentaVendedorConToken(vendorId);
-  if (!cuenta?.accessToken) return { conectado: false, motivo: 'sin_cuenta' };
-
+  const cuenta = await store.getCuentaVendedorConToken(vendorId);
+  if (!cuenta?.accessToken) return {
+    conectado: false,
+    motivo: 'sin_cuenta'
+  };
   try {
     // La respuesta se devuelve, no se tira: `GET /users/me` con el token del
     // vendedor es lo ÚNICO que identifica de verdad la cuenta que va a
@@ -108,25 +104,33 @@ async function validarConexion(vendorId) {
     // también reciben tokens `APP_USR-`— y sin esto el diagnóstico solo
     // puede adivinar si se está cobrando contra una cuenta de prueba.
     const usuarioMp = await validarTokenVendedor(cuenta.accessToken);
-    return { conectado: true, usuarioMp };
+    return {
+      conectado: true,
+      usuarioMp
+    };
   } catch (err) {
     const revocado = err instanceof MpError && (err.status === 401 || err.status === 403);
     if (!revocado) {
       // Se registra pero no se toca el estado: no sabemos nada nuevo.
       console.warn(`[pagos] No se pudo validar el token de ${vendorId}: ${err.message}`);
-      return { conectado: true, motivo: 'validacion_no_concluyente' };
+      return {
+        conectado: true,
+        motivo: 'validacion_no_concluyente'
+      };
     }
-    desconectar(vendorId, {
+    await desconectar(vendorId, {
       motivo: 'Mercado Pago rechazó el token del vendedor',
-      por: 'token_check',
+      por: 'token_check'
     });
-    return { conectado: false, motivo: 'revocado' };
+    return {
+      conectado: false,
+      motivo: 'revocado'
+    };
   }
 }
-
 module.exports = {
   TIPO_NOTIFICACION,
   desconectar,
   validarConexion,
-  retirarTarjetaDeLosMetodos,
+  retirarTarjetaDeLosMetodos
 };

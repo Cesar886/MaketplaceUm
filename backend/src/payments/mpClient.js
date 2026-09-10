@@ -17,11 +17,20 @@
  * limpia cualquier objeto antes de que se acerque a un console.*.
  */
 
-const { config, MP_API_BASE, MP_AUTH_BASE, redirectUri } = require('./config');
+const {
+  config,
+  MP_API_BASE,
+  MP_AUTH_BASE,
+  redirectUri
+} = require('./config');
 
 /** Error de la API de MP. Su detalle es SOLO para el log del servidor. */
 class MpError extends Error {
-  constructor(mensaje, { status, detalle, causa } = {}) {
+  constructor(mensaje, {
+    status,
+    detalle,
+    causa
+  } = {}) {
     super(mensaje);
     this.name = 'MpError';
     this.status = status;
@@ -31,12 +40,7 @@ class MpError extends Error {
 }
 
 // Claves cuyo valor nunca puede aparecer en un log, venga de donde venga.
-const CLAVES_SENSIBLES = new Set([
-  'access_token', 'refresh_token', 'accessToken', 'refreshToken',
-  'token', 'card_token', 'cardToken', 'security_code', 'securityCode',
-  'cvv', 'card_number', 'cardNumber', 'number', 'public_key', 'client_secret',
-  'authorization', 'password',
-]);
+const CLAVES_SENSIBLES = new Set(['access_token', 'refresh_token', 'accessToken', 'refreshToken', 'token', 'card_token', 'cardToken', 'security_code', 'securityCode', 'cvv', 'card_number', 'cardNumber', 'number', 'public_key', 'client_secret', 'authorization', 'password']);
 
 /** Copia un objeto sustituyendo por '[REDACTADO]' todo lo sensible. */
 function redactar(valor, profundidad = 0) {
@@ -45,9 +49,7 @@ function redactar(valor, profundidad = 0) {
   if (typeof valor !== 'object') return valor;
   const salida = {};
   for (const [clave, v] of Object.entries(valor)) {
-    salida[clave] = CLAVES_SENSIBLES.has(clave.toLowerCase())
-      ? '[REDACTADO]'
-      : redactar(v, profundidad + 1);
+    salida[clave] = CLAVES_SENSIBLES.has(clave.toLowerCase()) ? '[REDACTADO]' : redactar(v, profundidad + 1);
   }
   return salida;
 }
@@ -58,7 +60,12 @@ function redactar(valor, profundidad = 0) {
  * un MpError cuyo `.message` es apto para el log y cuyo `.detalle` queda
  * disponible para diagnosticar, pero que las rutas nunca reenvían al cliente.
  */
-async function peticion(metodo, ruta, { accessToken, body, headers = {}, base = MP_API_BASE } = {}) {
+async function peticion(metodo, ruta, {
+  accessToken,
+  body,
+  headers = {},
+  base = MP_API_BASE
+} = {}) {
   const url = `${base}${ruta}`;
   let res;
   try {
@@ -66,17 +73,20 @@ async function peticion(metodo, ruta, { accessToken, body, headers = {}, base = 
       method: metodo,
       headers: {
         'Content-Type': 'application/json',
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        ...headers,
+        ...(accessToken ? {
+          Authorization: `Bearer ${accessToken}`
+        } : {}),
+        ...headers
       },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(20000)
     });
   } catch (err) {
     // Red caída, DNS, timeout: nunca llegó a haber respuesta.
-    throw new MpError(`No se pudo contactar a Mercado Pago (${metodo} ${ruta})`, { causa: err.message });
+    throw new MpError(`No se pudo contactar a Mercado Pago (${metodo} ${ruta})`, {
+      causa: err.message
+    });
   }
-
   const texto = await res.text();
   let datos = null;
   try {
@@ -84,13 +94,12 @@ async function peticion(metodo, ruta, { accessToken, body, headers = {}, base = 
   } catch {
     datos = null; // MP devolvió algo que no es JSON (un 502 de su CDN, p.ej.).
   }
-
   if (!res.ok) {
     // El detalle va redactado incluso aquí: los errores de MP a veces hacen
     // eco de parte del payload enviado.
     throw new MpError(`Mercado Pago respondió ${res.status} en ${metodo} ${ruta}`, {
       status: res.status,
-      detalle: datos ? redactar(datos) : texto.slice(0, 500),
+      detalle: datos ? redactar(datos) : texto.slice(0, 500)
     });
   }
   return datos;
@@ -112,7 +121,7 @@ function urlAutorizacion(state) {
     response_type: 'code',
     platform_id: 'mp',
     state,
-    redirect_uri: redirectUri(),
+    redirect_uri: redirectUri()
   });
   return `${MP_AUTH_BASE}/authorization?${params.toString()}`;
 }
@@ -123,14 +132,14 @@ function urlAutorizacion(state) {
  * Credencial: MP_CLIENT_ID + MP_CLIENT_SECRET (jamás salen del servidor).
  */
 async function canjearCodigoOAuth(code) {
-  return peticion('POST', '/oauth/token', {
+  return await peticion('POST', '/oauth/token', {
     body: {
       client_id: config.clientId,
       client_secret: config.clientSecret,
       grant_type: 'authorization_code',
       code,
-      redirect_uri: redirectUri(),
-    },
+      redirect_uri: redirectUri()
+    }
   });
 }
 
@@ -140,13 +149,13 @@ async function canjearCodigoOAuth(code) {
  * Credencial: MP_CLIENT_ID + MP_CLIENT_SECRET + refresh_token del vendedor.
  */
 async function refrescarTokenVendedor(refreshToken) {
-  return peticion('POST', '/oauth/token', {
+  return await peticion('POST', '/oauth/token', {
     body: {
       client_id: config.clientId,
       client_secret: config.clientSecret,
       grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-    },
+      refresh_token: refreshToken
+    }
   });
 }
 
@@ -169,7 +178,7 @@ async function refrescarTokenVendedor(refreshToken) {
  */
 async function buscarCustomerPorEmail(email, accessTokenVendedor) {
   const datos = await peticion('GET', `/v1/customers/search?email=${encodeURIComponent(email)}`, {
-    accessToken: accessTokenVendedor,
+    accessToken: accessTokenVendedor
   });
   return datos?.results?.[0] || null;
 }
@@ -179,10 +188,16 @@ async function buscarCustomerPorEmail(email, accessTokenVendedor) {
  * Endpoint: POST /v1/customers
  * Credencial: access_token DEL VENDEDOR.
  */
-async function crearCustomer({ email, nombre }, accessTokenVendedor) {
-  return peticion('POST', '/v1/customers', {
+async function crearCustomer({
+  email,
+  nombre
+}, accessTokenVendedor) {
+  return await peticion('POST', '/v1/customers', {
     accessToken: accessTokenVendedor,
-    body: { email, first_name: nombre || undefined },
+    body: {
+      email,
+      first_name: nombre || undefined
+    }
   });
 }
 
@@ -198,9 +213,11 @@ async function crearCustomer({ email, nombre }, accessTokenVendedor) {
  * el dispositivo. El token se usa aquí y se descarta — no se guarda.
  */
 async function guardarTarjetaEnCustomer(customerId, token, accessTokenVendedor) {
-  return peticion('POST', `/v1/customers/${encodeURIComponent(customerId)}/cards`, {
+  return await peticion('POST', `/v1/customers/${encodeURIComponent(customerId)}/cards`, {
     accessToken: accessTokenVendedor,
-    body: { token },
+    body: {
+      token
+    }
   });
 }
 
@@ -210,11 +227,9 @@ async function guardarTarjetaEnCustomer(customerId, token, accessTokenVendedor) 
  * Credencial: access_token DEL VENDEDOR.
  */
 async function eliminarTarjetaDeCustomer(customerId, cardId, accessTokenVendedor) {
-  return peticion(
-    'DELETE',
-    `/v1/customers/${encodeURIComponent(customerId)}/cards/${encodeURIComponent(cardId)}`,
-    { accessToken: accessTokenVendedor },
-  );
+  return await peticion('DELETE', `/v1/customers/${encodeURIComponent(customerId)}/cards/${encodeURIComponent(cardId)}`, {
+    accessToken: accessTokenVendedor
+  });
 }
 
 /**
@@ -227,7 +242,9 @@ async function eliminarTarjetaDeCustomer(customerId, cardId, accessTokenVendedor
  * Credencial: access_token DEL VENDEDOR.
  */
 async function validarTokenVendedor(accessTokenVendedor) {
-  return peticion('GET', '/users/me', { accessToken: accessTokenVendedor });
+  return await peticion('GET', '/users/me', {
+    accessToken: accessTokenVendedor
+  });
 }
 
 // ─── Cobro con split ────────────────────────────────────────
@@ -246,11 +263,17 @@ async function validarTokenVendedor(accessTokenVendedor) {
  * atada al id de la orden, así que MP devuelve el mismo pago en vez de
  * cobrar de nuevo.
  */
-async function crearPago({ accessTokenVendedor, idempotencyKey, pago }) {
-  return peticion('POST', '/v1/payments', {
+async function crearPago({
+  accessTokenVendedor,
+  idempotencyKey,
+  pago
+}) {
+  return await peticion('POST', '/v1/payments', {
     accessToken: accessTokenVendedor,
-    headers: { 'X-Idempotency-Key': idempotencyKey },
-    body: pago,
+    headers: {
+      'X-Idempotency-Key': idempotencyKey
+    },
+    body: pago
   });
 }
 
@@ -274,11 +297,17 @@ async function crearPago({ accessTokenVendedor, idempotencyKey, pago }) {
  * preferencia y la app reintenta, se recupera la misma en vez de dejar dos
  * preferencias vivas para una sola orden.
  */
-async function crearPreferencia({ accessTokenVendedor, idempotencyKey, preferencia }) {
-  return peticion('POST', '/checkout/preferences', {
+async function crearPreferencia({
+  accessTokenVendedor,
+  idempotencyKey,
+  preferencia
+}) {
+  return await peticion('POST', '/checkout/preferences', {
     accessToken: accessTokenVendedor,
-    headers: { 'X-Idempotency-Key': idempotencyKey },
-    body: preferencia,
+    headers: {
+      'X-Idempotency-Key': idempotencyKey
+    },
+    body: preferencia
   });
 }
 
@@ -297,8 +326,8 @@ async function crearPreferencia({ accessTokenVendedor, idempotencyKey, preferenc
  * Ver `scripts/verificar-marketplace-fee.js`.
  */
 async function obtenerPreferencia(preferenceId, accessTokenVendedor) {
-  return peticion('GET', `/checkout/preferences/${encodeURIComponent(preferenceId)}`, {
-    accessToken: accessTokenVendedor,
+  return await peticion('GET', `/checkout/preferences/${encodeURIComponent(preferenceId)}`, {
+    accessToken: accessTokenVendedor
   });
 }
 
@@ -311,11 +340,10 @@ async function obtenerPreferencia(preferenceId, accessTokenVendedor) {
  * Credencial: la del vendedor si se conoce; si no, la de la plataforma.
  */
 async function obtenerPago(paymentId, accessToken) {
-  return peticion('GET', `/v1/payments/${encodeURIComponent(paymentId)}`, {
-    accessToken: accessToken || config.accessToken,
+  return await peticion('GET', `/v1/payments/${encodeURIComponent(paymentId)}`, {
+    accessToken: accessToken || config.accessToken
   });
 }
-
 module.exports = {
   MpError,
   redactar,
@@ -330,5 +358,5 @@ module.exports = {
   crearPago,
   crearPreferencia,
   obtenerPreferencia,
-  obtenerPago,
+  obtenerPago
 };

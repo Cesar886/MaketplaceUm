@@ -1,48 +1,88 @@
+'use strict';
+
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const Database = require('better-sqlite3');
+const { spawn } = require('child_process');
 
-function safeBackupDirectory(database) {
+function safeBackupDirectory() {
   const configured = String(process.env.MERCADITO_BACKUP_DIR || '').trim();
-  const databaseFile = database.prepare('PRAGMA database_list').all()
-    .find(entry => entry.name === 'main')?.file;
-  if (!databaseFile) throw new Error('No se pudo resolver el archivo SQLite principal.');
   const directory = configured
     ? path.resolve(configured)
-    : path.join(path.dirname(databaseFile), 'backups');
+    : path.join(__dirname, '..', 'backups');
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   return directory;
 }
 
+function run(command, args, env) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      env,
+      shell: false,
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    let stderr = '';
+    child.stderr.on('data', chunk => {
+      if (stderr.length < 8_000) stderr += chunk.toString();
+    });
+    child.once('error', reject);
+    child.once('close', code => {
+      if (code === 0) return resolve();
+      reject(new Error(`${command} terminó con código ${code}: ${stderr.trim()}`));
+    });
+  });
+}
+
+async function createSqliteTestBackup(database, destination) {
+  await database.prepare('VACUUM INTO ?').run(destination);
+  fs.chmodSync(destination, 0o600);
+  return destination;
+}
+
 /**
- * Crea una instantanea consistente (incluye WAL) antes de una operacion
- * masiva. VACUUM INTO falla si el destino existe, asi que nunca sobrescribe
- * un respaldo previo. La comprobacion quick_check evita continuar con una
- * copia truncada o ilegible.
+ * Crea un pg_dump consistente antes de una operación administrativa masiva.
+ * La contraseña viaja por PGPASSWORD, no por argumentos visibles en `ps`.
  */
-function createAdminBackup(database, label = 'admin-bulk') {
+async function createAdminBackup(database, label = 'admin-bulk') {
   const safeLabel = String(label).replace(/[^a-z0-9_-]/gi, '-').slice(0, 40) || 'admin-bulk';
   const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace(/[.]/g, '-');
-  const filename = `mercadito-${safeLabel}-${timestamp}-${crypto.randomBytes(4).toString('hex')}.db`;
-  const destination = path.join(safeBackupDirectory(database), filename);
+  const extension = process.env.DATABASE_URL ? 'dump' : 'db';
+  const destination = path.join(
+    safeBackupDirectory(),
+    `mercadito-${safeLabel}-${timestamp}-${crypto.randomBytes(4).toString('hex')}.${extension}`,
+  );
 
-  database.prepare('VACUUM INTO ?').run(destination);
+  // Compatibilidad exclusiva con la suite legacy; producción exige URL PG.
+  if (!process.env.DATABASE_URL) return createSqliteTestBackup(database, destination);
+
+  const url = new URL(process.env.DATABASE_URL);
+  const env = {
+    ...process.env,
+    PGHOST: url.hostname,
+    PGPORT: url.port || '5432',
+    PGUSER: decodeURIComponent(url.username),
+    PGPASSWORD: decodeURIComponent(url.password),
+    PGDATABASE: decodeURIComponent(url.pathname.slice(1)),
+    PGSSLMODE: process.env.PGSSL === 'false' ? 'disable' : 'verify-full',
+    ...(process.env.PGSSL_CA_FILE ? { PGSSLROOTCERT: path.resolve(process.env.PGSSL_CA_FILE) } : {}),
+  };
+  const args = [
+    '--format=custom',
+    '--compress=6',
+    '--no-owner',
+    '--no-privileges',
+    '--file', destination,
+  ];
   try {
+    await run(process.env.PG_DUMP_BIN || 'pg_dump', args, env);
     fs.chmodSync(destination, 0o600);
-    const copy = new Database(destination, { readonly: true, fileMustExist: true });
-    try {
-      const check = copy.pragma('quick_check', { simple: true });
-      if (check !== 'ok') throw new Error(`quick_check: ${check}`);
-    } finally {
-      copy.close();
-    }
+    if (fs.statSync(destination).size < 64) throw new Error('pg_dump produjo un archivo vacío.');
+    await run(process.env.PG_RESTORE_BIN || 'pg_restore', ['--list', destination], env);
+    return destination;
   } catch (error) {
     try { fs.unlinkSync(destination); } catch {}
-    throw new Error(`El backup SQLite no paso la verificacion: ${error.message}`);
+    throw new Error(`El backup PostgreSQL no pasó la verificación: ${error.message}`);
   }
-
-  return destination;
 }
 
 module.exports = { createAdminBackup };
