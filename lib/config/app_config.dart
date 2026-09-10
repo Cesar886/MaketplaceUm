@@ -5,7 +5,7 @@ class AppConfig {
   // URL del servidor en producción
   static const String _prodApiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://mercaditoum.site',
+    defaultValue: 'https://marketplace-um.me',
   );
 
   // URL del servidor local
@@ -33,7 +33,7 @@ class AppConfig {
   // fallan de formas distintas si se desincronizan: el texto que genera
   // "Compartir", el parseo del link entrante, y el android:host del
   // intent-filter en AndroidManifest.xml (ese sí hay que cambiarlo a mano).
-  static const String webDomain = 'mercaditoum.site';
+  static const String webDomain = 'marketplace-um.me';
 
   static String get webBaseUrl => 'https://$webDomain';
 

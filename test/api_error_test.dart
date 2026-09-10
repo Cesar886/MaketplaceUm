@@ -1,8 +1,8 @@
 // Tests del manejo central de errores de red.
 //
 // Este archivo existe por un incidente: con el backend caído, la app pintaba
-// "SocketException: Connection refused... address = 157.245.247.45, port =
-// 47956, uri=http://157.245.247.45:3000/api/chat/send" en la pantalla de
+// "SocketException: Connection refused... address = 164.90.129.213, port =
+// 47956, uri=http://164.90.129.213:3000/api/chat/send" en la pantalla de
 // chat. La regla que se protege aquí es una sola y no admite excepciones:
 // NADA de lo que devuelva este módulo puede contener IP, puerto, URI, nombre
 // de excepción ni stack trace.
@@ -67,14 +67,14 @@ void main() {
       // Reproduce la forma completa del error reportado, con IP y URI dentro.
       final comoEnProduccion = http.ClientException(
         'SocketException: Connection refused (OS Error: Connection refused, '
-        'errno = 111), address = 157.245.247.45, port = 47956',
-        Uri.parse('http://157.245.247.45:3000/api/chat/send'),
+        'errno = 111), address = 164.90.129.213, port = 47956',
+        Uri.parse('http://164.90.129.213:3000/api/chat/send'),
       );
 
       final mensaje = mensajeDeError(comoEnProduccion);
 
       esperarSinFugas(mensaje);
-      expect(mensaje, isNot(contains('157.245.247.45')));
+      expect(mensaje, isNot(contains('164.90.129.213')));
       expect(mensaje, isNot(contains('47956')));
       expect(mensaje, isNot(contains('/api/chat/send')));
     });
@@ -202,8 +202,8 @@ void main() {
     test('interpolar la excepción en un string no filtra nada', () {
       final e = ApiException.deRed(
         http.ClientException(
-          'Connection refused, address = 157.245.247.45, port = 3000',
-          Uri.parse('http://157.245.247.45:3000/api/chat/send'),
+          'Connection refused, address = 164.90.129.213, port = 3000',
+          Uri.parse('http://164.90.129.213:3000/api/chat/send'),
         ),
       );
 

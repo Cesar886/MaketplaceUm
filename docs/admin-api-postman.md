@@ -4,10 +4,10 @@ Importa `Marketplace-UM-Admin.postman_collection.json` y usa exclusivamente
 las rutas bajo:
 
 ```text
-https://mercaditoum.site/revision-8f4d9c2a/api
+https://marketplace-um.me/revision-8f4d9c2a/api
 ```
 
-La ruta real del backend, `https://mercaditoum.site/api/admin/*`, está
+La ruta real del backend, `https://marketplace-um.me/api/admin/*`, está
 bloqueada en Apache. El intermediario del panel (BFF) accede por loopback,
 guarda el JWT en una cookie `Secure`, `HttpOnly`, `SameSite=Strict` y nunca lo
 devuelve en el JSON.

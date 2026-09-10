@@ -10,7 +10,7 @@ process.env.MERCADITO_DB_PATH = path.join(testDir, 'admin.db');
 process.env.JWT_SECRET = 'seller-jwt-secret-that-is-not-the-admin-secret';
 process.env.ADMIN_JWT_SECRET = 'admin-jwt-secret-with-at-least-thirty-two-characters';
 process.env.ADMIN_TOTP_ENCRYPTION_KEY = 'admin-totp-encryption-key-at-least-32-chars';
-process.env.ADMIN_PANEL_ORIGIN = 'https://mercaditoum.site';
+process.env.ADMIN_PANEL_ORIGIN = 'https://marketplace-um.me';
 
 const bcrypt = require('bcryptjs');
 const cors = require('cors');

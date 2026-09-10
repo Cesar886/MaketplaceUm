@@ -172,7 +172,7 @@ void main() async {
   // Inicializar Push Service (FCM)
   await PushService.instance.initialize();
 
-  // Escuchar los links de mercaditoum.site ANTES de runApp: en un arranque en
+  // Escuchar los links de marketplace-um.me ANTES de runApp: en un arranque en
   // frío, el link con el que se abrió la app ya está esperando, y suscribirse
   // después podría perderlo. El servicio lo guarda hasta que SplashScreen
   // avise que ya hay dónde navegar.

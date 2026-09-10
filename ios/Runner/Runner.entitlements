@@ -10,7 +10,7 @@
 
     1. Abrir ios/Runner.xcworkspace
     2. Runner → Signing & Capabilities → "+ Capability" → Associated Domains
-    3. Agregar la entrada: applinks:mercaditoum.site
+    3. Agregar la entrada: applinks:marketplace-um.me
        (Xcode enlaza este mismo archivo y escribe CODE_SIGN_ENTITLEMENTS)
     4. Poner APPLE_TEAM_ID en website/lib/app.ts con el Team ID real, para que
        /.well-known/apple-app-site-association deje de servir la lista vacía.
@@ -32,7 +32,7 @@
 		<!-- Sin ruta: iOS filtra por los `components` declarados en el
 		     apple-app-site-association del servidor (ahí se acota a
 		     /producto/*), no aquí. -->
-		<string>applinks:mercaditoum.site</string>
+		<string>applinks:marketplace-um.me</string>
 	</array>
 </dict>
 </plist>

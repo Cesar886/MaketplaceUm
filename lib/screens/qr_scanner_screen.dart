@@ -177,7 +177,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
   ///
   /// Reusa el mismo parser que los deep links (idDePublicacionEnLink) en vez
   /// de tener su propia copia: así un QR con la URL del sitio
-  /// (https://mercaditoum.site/producto/ID) funciona igual que uno con el
+  /// (https://marketplace-um.me/producto/ID) funciona igual que uno con el
   /// esquema propio, y las reglas de qué link se acepta viven en un solo
   /// lugar, con sus tests.
   String? _parseProductId(String raw) {

@@ -13,7 +13,7 @@ import '../config/app_config.dart';
 ///
 /// Existe por un incidente concreto: al caerse el backend, la pantalla de
 /// chat pintaba tal cual "SocketException: Connection refused... address =
-/// 157.245.247.45, port = 47956, uri=http://.../api/chat/send". Es decir, la
+/// 164.90.129.213, port = 47956, uri=http://.../api/chat/send". Es decir, la
 /// app le enseñaba a cualquier usuario la IP, el puerto y la ruta interna de
 /// la API. El texto de una excepción de red NUNCA es para el usuario: es para
 /// quien desarrolla, y ahí es donde tiene que quedarse.

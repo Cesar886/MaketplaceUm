@@ -44,12 +44,12 @@
                 <data android:scheme="mercaditoum" android:host="payments"/>
             </intent-filter>
             <!-- App Links: los links compartidos de una publicación
-                 (https://mercaditoum.site/producto/<id>) abren la app directo,
+                 (https://marketplace-um.me/producto/<id>) abren la app directo,
                  sin pasar por el navegador y sin preguntarle al usuario.
 
                  android:autoVerify="true" es lo que elimina el diálogo de
                  "¿con qué app abrir?": al instalar, Android descarga
-                 https://mercaditoum.site/.well-known/assetlinks.json y solo
+                 https://marketplace-um.me/.well-known/assetlinks.json y solo
                  concede el link si la huella SHA-256 de ahí coincide con la
                  del certificado que firmó ESTE APK. Si no coincide (o la
                  lista está vacía), no hay error visible: el link simplemente
@@ -69,15 +69,15 @@
                  Para verificar en un dispositivo:
                    adb shell pm get-app-links site.marketplaceum.app
                    adb shell am start -a android.intent.action.VIEW \
-                     -d "https://mercaditoum.site/producto/<id>" -->
+                     -d "https://marketplace-um.me/producto/<id>" -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https"
-                      android:host="mercaditoum.site"
+                      android:host="marketplace-um.me"
                       android:pathPrefix="/producto/"/>
-                <!-- Solo el host desnudo. `www.mercaditoum.site` es un dominio
+                <!-- Solo el host desnudo. `www.marketplace-um.me` es un dominio
                      DISTINTO para la verificación y necesitaría su propio
                      assetlinks.json; agregarlo aquí sin eso haría fallar la
                      verificación del filtro entero en Android 11 y anteriores,

@@ -5,8 +5,8 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "base_url", "value": "https://mercaditoum.site" },
-    { "key": "admin_origin", "value": "https://mercaditoum.site" },
+    { "key": "base_url", "value": "https://marketplace-um.me" },
+    { "key": "admin_origin", "value": "https://marketplace-um.me" },
     { "key": "username", "value": "" },
     { "key": "password", "value": "" },
     { "key": "totp", "value": "" },
