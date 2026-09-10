@@ -25,18 +25,18 @@ db.getDb().prepare(
    VALUES ('usuario-refresh', 'Usuario Refresh', 'refresh@example.com', 'UR')`,
 ).run();
 
-test('el JWT de acceso dura treinta días', () => {
-  const session = generateSession('usuario-refresh');
+test('el JWT de acceso dura treinta días', async () => {
+  const session = await generateSession('usuario-refresh');
   const payload = jwt.decode(session.token);
   assert.ok(payload.exp - payload.iat >= 30 * 24 * 60 * 60 - 2);
-  assert.equal(verificarToken(session.token), 'usuario-refresh');
+  assert.equal(await verificarToken(session.token), 'usuario-refresh');
 });
 
-test('la credencial persistente emite tokens nuevos y no se guarda en claro', () => {
-  const session = generateSession('usuario-refresh');
-  const renewed = refreshSession(session.refreshToken);
+test('la credencial persistente emite tokens nuevos y no se guarda en claro', async () => {
+  const session = await generateSession('usuario-refresh');
+  const renewed = await refreshSession(session.refreshToken);
 
-  assert.equal(verificarToken(renewed.token), 'usuario-refresh');
+  assert.equal(await verificarToken(renewed.token), 'usuario-refresh');
   assert.notEqual(renewed.token, session.token);
   const stored = db.getDb().prepare(
     'SELECT token_hash, revoked_at FROM refresh_sessions WHERE user_id = ?',
@@ -46,15 +46,15 @@ test('la credencial persistente emite tokens nuevos y no se guarda en claro', ()
   assert.ok(stored.every(row => row.revoked_at === null));
 });
 
-test('logout revoca la renovación persistente', () => {
-  const session = generateSession('usuario-refresh');
-  assert.ok(refreshSession(session.refreshToken));
+test('logout revoca la renovación persistente', async () => {
+  const session = await generateSession('usuario-refresh');
+  assert.ok(await refreshSession(session.refreshToken));
 
-  revokeRefreshToken(session.refreshToken, 'usuario-refresh');
+  await revokeRefreshToken(session.refreshToken, 'usuario-refresh');
 
-  assert.equal(refreshSession(session.refreshToken), null);
+  assert.equal(await refreshSession(session.refreshToken), null);
 });
 
-test('una credencial inventada no renueva ninguna sesión', () => {
-  assert.equal(refreshSession('x'.repeat(64)), null);
+test('una credencial inventada no renueva ninguna sesión', async () => {
+  assert.equal(await refreshSession('x'.repeat(64)), null);
 });

@@ -1,5 +1,10 @@
 'use strict';
 
+// Las rutas se montan también de forma aislada en pruebas y herramientas;
+// instalar aquí el puente garantiza propagación de errores async aun cuando
+// no se haya cargado todavía el entrypoint principal.
+require('./asyncExpress').installAsyncExpressBridge();
+
 // PostgreSQL es la base de producción. La implementación SQLite se conserva
 // únicamente para la suite legacy y para leer el archivo durante el traspaso;
 // nunca se selecciona silenciosamente en un proceso normal.

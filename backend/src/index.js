@@ -47,20 +47,7 @@ assertProductionSecurityConfig();
 // y ese fue justo el incidente de 2026-08.
 console.log(`[boot] JWT_SECRET: ${process.env.JWT_SECRET ? 'OK' : 'FALTA'} — ` + `VERIFICATION_STUDENT_DOMAINS: ${process.env.VERIFICATION_STUDENT_DOMAINS || '(default)'}`);
 const express = require('express');
-// Express 4 no propaga automáticamente rechazos de handlers async. La base
-// PostgreSQL vuelve asíncronas las rutas; este puente entrega cada rechazo al
-// middleware de errores en vez de dejar una Promise no atendida.
-const Layer = require('express/lib/router/layer');
-Layer.prototype.handle_request = function handleAsyncRequest(req, res, next) {
-  const handler = this.handle;
-  if (handler.length > 3) return next();
-  try {
-    const result = handler(req, res, next);
-    if (result && typeof result.then === 'function') result.catch(next);
-  } catch (error) {
-    next(error);
-  }
-};
+require('./asyncExpress').installAsyncExpressBridge();
 const http = require('http');
 const {
   Server

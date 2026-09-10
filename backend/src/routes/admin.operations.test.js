@@ -94,7 +94,7 @@ test('dashboard y operaciones quedan protegidos por el JWT admin', async () => {
 
 test('suspender una cuenta corta JWT y refresh y registra auditoría atómica', async () => {
   const id = seller();
-  const session = generateSession(id);
+  const session = await generateSession(id);
   const response = await request(`/api/admin/users/${id}/status`, {
     method: 'PATCH',
     body: {
@@ -104,7 +104,7 @@ test('suspender una cuenta corta JWT y refresh y registra auditoría atómica', 
     },
   });
   assert.equal(response.status, 200, await response.text());
-  assert.equal(refreshSession(session.refreshToken), null);
+  assert.equal(await refreshSession(session.refreshToken), null);
   const row = database.prepare('SELECT admin_status FROM sellers WHERE id = ?').get(id);
   assert.equal(row.admin_status, 'suspended');
   const audit = database.prepare(

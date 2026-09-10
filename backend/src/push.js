@@ -193,12 +193,12 @@ async function sendPush(userIds, title, body, data = {}) {
   // Eliminar tokens inválidos de la BD
   if (tokensToRemove.length > 0) {
     const removeStmt = db.getDb().prepare('DELETE FROM push_tokens WHERE player_id = ?');
-    const removeMany = db.getDb().transaction(tokens => {
+    const removeMany = db.getDb().transaction(async tokens => {
       for (const t of tokens) {
-        removeStmt.run(t);
+        await removeStmt.run(t);
       }
     });
-    removeMany(tokensToRemove);
+    await removeMany(tokensToRemove);
     console.log(`  🧹 Eliminados ${tokensToRemove.length} token(s) inválido(s)`);
   }
   console.log(`📬 Push completado: ${successCount} éxito, ${failCount} fallo(s)`);

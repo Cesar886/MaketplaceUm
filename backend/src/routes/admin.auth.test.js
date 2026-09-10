@@ -300,14 +300,14 @@ test('rate limit bloquea fuerza bruta por nombre de administrador', async () => 
   assert.equal(limited, true);
 });
 
-test('admin_audit_log tiene FK e impone identidad validada y detalles acotados', () => {
+test('admin_audit_log tiene FK e impone identidad validada y detalles acotados', async () => {
   const foreignKeys = database.prepare("PRAGMA foreign_key_list('admin_audit_log')").all();
   assert.equal(
     foreignKeys.some(key => key.table === 'admins' && key.from === 'admin_id'),
     true,
   );
-  assert.throws(
-    () => registrarAuditoriaAdmin(database, {}, {
+  await assert.rejects(
+    registrarAuditoriaAdmin(database, {}, {
       action: 'verification.approve',
       entityType: 'verification',
       entityId: 'cuenta-sin-admin',

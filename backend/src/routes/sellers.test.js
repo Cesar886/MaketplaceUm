@@ -275,7 +275,7 @@ test('el perfil público refleja la insignia otorgada a mano', async () => {
   // el que el script real (otorgar-socio-fundador.js) necesita un reinicio
   // del proceso del servidor para que su cambio se vea sin tener que
   // esperar a este test.
-  updateSellerField(vendedor.id, 'socio_fundador', 1);
+  await updateSellerField(vendedor.id, 'socio_fundador', 1);
 
   const res = await get(vendedor.id);
 

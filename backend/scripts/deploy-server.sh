@@ -13,13 +13,14 @@ fi
 npm install --omit=dev
 npm run db:backup
 
-set -a
-# Archivo local del servidor, protegido por rsync y gitignore. Sólo contiene
-# variables para este comando; PM2 continúa leyendo .env con el rol limitado.
-source ./.env.migrator
-set +a
-NODE_ENV=production PG_RUN_MIGRATIONS=true npm run db:migrate
-unset DATABASE_URL
+# El subshell evita que las credenciales privilegiadas del migrador lleguen
+# al entorno de PM2. La aplicación sólo lee el rol limitado desde .env.
+(
+  set -a
+  source ./.env.migrator
+  set +a
+  NODE_ENV=production PG_RUN_MIGRATIONS=true npm run db:migrate
+)
 
 pm2 restart ecosystem.config.js --update-env
 pm2 save

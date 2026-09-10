@@ -505,12 +505,12 @@ test('no se puede pagar a un vendedor cerrado', async () => {
   assert.strictEqual(llamadasCrearPago.length, 0, 'no se debió llamar a MP');
 });
 
-test('un vendedor sin horario configurado sí puede cobrar', () => {
+test('un vendedor sin horario configurado sí puede cobrar', async () => {
   // La exigencia de tener horario vive en la verificación. Cortarle las
   // ventas aquí castigaría al comprador por un requisito de perfil ajeno.
   const vendedor = crearUsuario({ tipoCuenta: 'negocio', metodos: ['tarjeta'] });
   const { estadoDeAtencion } = require('../validation/horarioNegocio');
-  assert.strictEqual(estadoDeAtencion(vendedor.id).abierto, true);
+  assert.strictEqual((await estadoDeAtencion(vendedor.id)).abierto, true);
 });
 
 test('no se puede pagar un producto que ya no tiene existencias', async () => {

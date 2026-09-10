@@ -976,7 +976,7 @@ test('conectar la cuenta cierra una verificación que solo esperaba eso', async 
   assert.strictEqual(estaVerificado(usuario.id), false);
 
   conectarPagos(usuario.id);
-  const cerrada = completarVerificacionPendientePorPagos(usuario.id);
+  const cerrada = await completarVerificacionPendientePorPagos(usuario.id);
 
   assert.strictEqual(cerrada, true);
   assert.strictEqual(estaVerificado(usuario.id), true);
@@ -1005,11 +1005,11 @@ test('conectar la cuenta NO verifica a quien nunca confirmó su código', async 
 
   // Tener con qué cobrar no dice nada sobre quién eres: sin OTP no hay
   // identidad probada, y conectar una cuenta no puede ser un atajo.
-  assert.strictEqual(completarVerificacionPendientePorPagos(usuario.id), false);
+  assert.strictEqual(await completarVerificacionPendientePorPagos(usuario.id), false);
   assert.strictEqual(estaVerificado(usuario.id), false);
 });
 
-test('una verificación externa pendiente de antes no se completa al conectar pagos', () => {
+test('una verificación externa pendiente de antes no se completa al conectar pagos', async () => {
   const usuario = crearUsuario('particular');
   db.getDb()
     .prepare(
@@ -1021,7 +1021,7 @@ test('una verificación externa pendiente de antes no se completa al conectar pa
 
   conectarPagos(usuario.id);
 
-  assert.strictEqual(completarVerificacionPendientePorPagos(usuario.id), false);
+  assert.strictEqual(await completarVerificacionPendientePorPagos(usuario.id), false);
   assert.strictEqual(estaVerificado(usuario.id), false);
   assert.strictEqual(filaVerificacion(usuario.id).estado, 'pendiente');
 });
@@ -1039,7 +1039,7 @@ test('conectar la cuenta no rescata una verificación rechazada por el link', as
 
   conectarPagos(usuario.id);
 
-  assert.strictEqual(completarVerificacionPendientePorPagos(usuario.id), false);
+  assert.strictEqual(await completarVerificacionPendientePorPagos(usuario.id), false);
   assert.strictEqual(estaVerificado(usuario.id), false);
   assert.strictEqual(filaVerificacion(usuario.id).campo_rechazado, 'link_red_social');
 });
@@ -1196,7 +1196,7 @@ test('conectar Mercado Pago NO verifica si además falta el inventario', async (
 
   conectarPagos(usuario.id);
 
-  assert.strictEqual(completarVerificacionPendientePorPagos(usuario.id), false);
+  assert.strictEqual(await completarVerificacionPendientePorPagos(usuario.id), false);
   assert.strictEqual(estaVerificado(usuario.id), false);
 });
 
@@ -1499,7 +1499,7 @@ test('el expediente histórico queda congelado y una cuenta antigua se puede ret
     'hash-daniel-original',
   );
 
-  const expedienteEnviado = obtenerExpedienteVerificacion(database, daniel.id);
+  const expedienteEnviado = await obtenerExpedienteVerificacion(database, daniel.id);
   database.prepare(
     'UPDATE verificaciones SET solicitud_json = ? WHERE usuario_id = ?',
   ).run(JSON.stringify(expedienteEnviado), daniel.id);
@@ -1670,7 +1670,7 @@ test('reconciliarVerificacionesPendientesPorMercadoPago desatora, con el flag ap
     const {
       reconciliarVerificacionesPendientesPorMercadoPago,
     } = require('./verificacion');
-    const resueltas = reconciliarVerificacionesPendientesPorMercadoPago();
+    const resueltas = await reconciliarVerificacionesPendientesPorMercadoPago();
 
     assert.ok(resueltas >= 1);
     assert.strictEqual(estaVerificado(usuario.id), true);

@@ -45,6 +45,10 @@ module.exports = {
       // Es la corrección oficial de PM2 para "too many unstable restarts".
       exp_backoff_restart_delay: 3000,
 
+      // Permite terminar peticiones y cerrar el pool PostgreSQL antes de que
+      // PM2 fuerce la salida durante un deploy o reinicio.
+      kill_timeout: 10000,
+
       max_memory_restart: '300M',
 
       env: {

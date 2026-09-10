@@ -1,4 +1,4 @@
-// Fuente canonica de los valores iniciales. SQLite recibe estas cifras al
+// Fuente canonica de los valores iniciales. La base recibe estas cifras al
 // crear cada fila y DELETE /api/admin/config/:key las reutiliza para resetear;
 // durante la operacion normal los limites efectivos se leen de la tabla.
 const DEFAULT_PUBLICATION_POLICIES = Object.freeze({
@@ -102,9 +102,22 @@ async function getPublicationPolicy(seller) {
     }
     throw error;
   }
-  const row = await database.prepare(`SELECT key, products_active, products_daily, wanted_active, wanted_daily,
-       duration_days, updated_by_admin_id, updated_at
-     FROM config WHERE key = ?`).get(key);
+  let row;
+  try {
+    row = await database.prepare(`SELECT key, products_active, products_daily, wanted_active, wanted_daily,
+         duration_days, updated_by_admin_id, updated_at
+       FROM config WHERE key = ?`).get(key);
+  } catch (error) {
+    // En PostgreSQL getDb() devuelve la fachada antes de abrir el pool; la
+    // falta de inicialización aparece al ejecutar la consulta, no al pedirla.
+    if (error?.message === 'Database not initialized. Call initDatabase() first.') {
+      return {
+        key,
+        ...DEFAULT_PUBLICATION_POLICIES[key]
+      };
+    }
+    throw error;
+  }
   if (!row) {
     throw new Error(`Falta la configuracion de publicaciones para ${key}.`);
   }

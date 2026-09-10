@@ -80,7 +80,7 @@ async function updateSellerField(sellerId, field, value) {
   // Los nombres de columna nunca vienen de una petición directa. Esta lista
   // evita que una futura llamada accidental convierta el template en SQL
   // inyectable.
-  const allowedFields = new Set(['password_hash', 'phone', 'name', 'avatarInitials', 'major', 'isBusiness', 'logoUrl', 'businessDescription', 'businessCategory', 'businessHours', 'paymentMethods', 'location_lat', 'location_lng', 'colorAcento', 'producto_fijado_id', 'facebook_url', 'instagram_url', 'whatsapp_number', 'tiktok_url', 'twitter_url', 'insignias_ocultas']);
+  const allowedFields = new Set(['password_hash', 'phone', 'name', 'avatarInitials', 'major', 'isBusiness', 'logoUrl', 'businessDescription', 'businessCategory', 'businessHours', 'paymentMethods', 'location_lat', 'location_lng', 'colorAcento', 'producto_fijado_id', 'facebook_url', 'instagram_url', 'whatsapp_number', 'tiktok_url', 'twitter_url', 'insignias_ocultas', 'socio_fundador']);
   if (!allowedFields.has(field)) throw new Error(`Campo de vendedor no permitido: ${field}`);
   const valorPersistido = field === 'paymentMethods' && db.esUsuarioTodosLosBadges(sellerId) ? null : value;
   await db.getDb().prepare(`UPDATE sellers SET ${field} = ? WHERE id = ?`).run(valorPersistido, sellerId);

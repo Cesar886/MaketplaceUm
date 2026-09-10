@@ -15,9 +15,12 @@ const DB_PATH =
   process.env.MERCADITO_DB_PATH || path.join(__dirname, '..', 'mercadito_um.db');
 
 let db;
+let testDbFacade;
+let testSavepointCounter = 0;
 
 function initDatabase() {
   db = new Database(DB_PATH);
+  testDbFacade = undefined;
 
   // WAL mode para mejor rendimiento
   db.pragma('journal_mode = WAL');
@@ -2960,7 +2963,49 @@ function addListing(listing) {
 
 function getDb() {
   if (!db) throw new Error('Database not initialized. Call initDatabase() first.');
-  return db;
+  if (process.env.NODE_ENV !== 'test') return db;
+  if (testDbFacade) return testDbFacade;
+
+  // Los módulos compartidos con PostgreSQL usan callbacks async. La API
+  // nativa de better-sqlite3 rechaza que una transacción devuelva Promise,
+  // así que en pruebas se ofrece una fachada que conserva statements
+  // síncronos pero mantiene BEGIN/COMMIT abierto hasta resolver el callback.
+  testDbFacade = new Proxy(db, {
+    get(target, property) {
+      if (property === 'transaction') {
+        return callback => (...args) => {
+          const nested = target.inTransaction;
+          const savepoint = `test_async_${++testSavepointCounter}`;
+          target.exec(nested ? `SAVEPOINT ${savepoint}` : 'BEGIN');
+          const commit = () => target.exec(nested ? `RELEASE ${savepoint}` : 'COMMIT');
+          const rollback = () => {
+            if (nested) target.exec(`ROLLBACK TO ${savepoint}; RELEASE ${savepoint}`);
+            else target.exec('ROLLBACK');
+          };
+          try {
+            const result = callback(...args);
+            if (result && typeof result.then === 'function') {
+              return Promise.resolve(result).then(value => {
+                commit();
+                return value;
+              }, error => {
+                rollback();
+                throw error;
+              });
+            }
+            commit();
+            return result;
+          } catch (error) {
+            rollback();
+            throw error;
+          }
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+  return testDbFacade;
 }
 
 // ─── Price History ─────────────────────────────────────────────

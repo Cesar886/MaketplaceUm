@@ -301,10 +301,10 @@ async function getSeller(id) {
  * rechazar el cobro por eso castigaría al comprador por un dato que solo el
  * vendedor puede arreglar.
  */
-function existenciasInsuficientes(orden) {
+async function existenciasInsuficientes(orden) {
   const consultar = db.getDb().prepare('SELECT id, title, stock_quantity FROM products WHERE id = ?');
   for (const item of orden.items || []) {
-    const producto = consultar.get(item.product_id);
+    const producto = await consultar.get(item.product_id);
     if (!producto || producto.stock_quantity === null) continue;
     const pedido = item.quantity || 1;
     if (producto.stock_quantity < pedido) {
@@ -579,7 +579,7 @@ async function prepararCobro(req, res, orderId, {
   // aquí no elimina la carrera (dos cobros simultáneos pueden pasar los dos),
   // pero sí el caso común, y el descuento usa MAX(0, ...) para que ni
   // siquiera esa carrera deje el inventario en negativo.
-  const sinExistencias = existenciasInsuficientes(orden);
+  const sinExistencias = await existenciasInsuficientes(orden);
   if (sinExistencias) {
     res.status(409).json({
       error: `${sinExistencias.title} ya no está disponible: ` + `quedan ${sinExistencias.disponible} y pediste ${sinExistencias.pedido}.`,

@@ -156,6 +156,8 @@ function sqliteFunctionsToPostgres(input) {
   sql = sql.replace(/json_extract\(\s*([^,]+),\s*'\$\.([A-Za-z0-9_]+)'\s*\)/gi,
     "(($1)::jsonb ->> '$2')");
   sql = sql.replace(/\bMAX\(\s*0\s*,/gi, 'GREATEST(0,');
+  sql = sql.replace(/\bMAX\(COALESCE\(auth_invalid_before,\s*0\),\s*\?\)/gi,
+    'GREATEST(COALESCE(auth_invalid_before, 0), ?)');
   sql = sql.replace(/\bCASE\s+WHEN\s+(\?|[@:$][A-Za-z_][A-Za-z0-9_]*)\s+THEN\b/gi,
     'CASE WHEN $1 = 1 THEN');
   sql = sql.replace(/\b([A-Za-z_][A-Za-z0-9_.]*)\s+IS\s+(\?|[@:$][A-Za-z_][A-Za-z0-9_]*)/gi,

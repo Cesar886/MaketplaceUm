@@ -128,7 +128,7 @@ test('un reporte se crea como caso estructurado y admin puede resolverlo con aud
 test('seguridad lista bloqueados/silenciados y el borrado de cuenta revoca datos personales', async () => {
   const owner = seller();
   const target = seller();
-  const session = generateSession(owner.id);
+  const session = await generateSession(owner.id);
   db.setChatUserSetting(owner.id, target.id, 'blocked', true);
   db.setChatUserSetting(owner.id, target.id, 'muted', true);
 

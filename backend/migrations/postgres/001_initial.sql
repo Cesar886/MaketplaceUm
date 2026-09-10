@@ -151,7 +151,7 @@ CREATE TABLE refresh_sessions (
 CREATE TABLE revoked_sessions (
       jti TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
-      expires_at INTEGER NOT NULL,
+      expires_at BIGINT NOT NULL,
       revoked_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -180,7 +180,7 @@ CREATE TABLE sellers (
       reviews INTEGER DEFAULT 0,
       verified INTEGER DEFAULT 0
     , businessDescription TEXT, businessCategory TEXT, password_hash TEXT, failed_login_attempts INTEGER DEFAULT 0, locked_until TIMESTAMPTZ, businessHours TEXT, location_lat DOUBLE PRECISION, location_lng DOUBLE PRECISION, paymentMethods TEXT, tipo_cuenta TEXT, carrera TEXT, tipo_verificacion TEXT, colorAcento TEXT, producto_fijado_id TEXT, median_response_minutes INTEGER, facebook_url TEXT, instagram_url TEXT, whatsapp_number TEXT, tiktok_url TEXT, twitter_url TEXT, last_active TIMESTAMPTZ, show_online_status INTEGER NOT NULL DEFAULT 1, auth_provider TEXT NOT NULL DEFAULT 'password', google_sub TEXT, avatarUrl TEXT, socio_fundador INTEGER DEFAULT 0, created_at TIMESTAMPTZ, insignias_ocultas TEXT, profile_views INTEGER NOT NULL DEFAULT 0, admin_status TEXT NOT NULL DEFAULT 'active'
-        CHECK(admin_status IN ('active', 'suspended', 'banned')), admin_status_reason TEXT, admin_status_until TIMESTAMPTZ, auth_invalid_before INTEGER NOT NULL DEFAULT 0
+        CHECK(admin_status IN ('active', 'suspended', 'banned')), admin_status_reason TEXT, admin_status_until TIMESTAMPTZ, auth_invalid_before BIGINT NOT NULL DEFAULT 0
         CHECK(auth_invalid_before >= 0), deleted_at TIMESTAMPTZ);
 
 CREATE TABLE user_category_interest (
@@ -242,7 +242,7 @@ CREATE TABLE admin_audit_log (
 CREATE TABLE admin_revoked_tokens (
       jti TEXT PRIMARY KEY,
       admin_id BIGINT NOT NULL,
-      expires_at INTEGER NOT NULL,
+      expires_at BIGINT NOT NULL,
       revoked_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (admin_id) REFERENCES admins(id) ON DELETE CASCADE
     );

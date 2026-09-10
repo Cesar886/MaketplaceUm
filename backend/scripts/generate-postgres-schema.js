@@ -30,6 +30,9 @@ function postgresTable(sql, name) {
     .replace(/DEFAULT\s*\(datetime\('now'\)\)/gi, 'DEFAULT CURRENT_TIMESTAMP')
     .replace(/\bCOLLATE\s+NOCASE\b/gi, '')
     .replace(/!=/g, '<>')
+    // Epochs y marcas de invalidación están en segundos/milisegundos y
+    // desbordan INTEGER (32 bits), aunque SQLite los aceptaba sin problema.
+    .replace(/\b(auth_invalid_before|expires_at)\s+INTEGER\b/gi, '$1 BIGINT')
     .replace(/\b(admin_id|resolved_by_admin_id|updated_by_admin_id|moderated_by_admin_id)\s+INTEGER\b/gi, '$1 BIGINT');
 
   if (name === 'messages') {
