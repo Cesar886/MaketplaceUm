@@ -29,6 +29,12 @@ docker compose up -d
 docker compose ps
 ```
 
+Instala también en el host las herramientas cliente de PostgreSQL 16 y
+comprueba `pg_dump --version`. El respaldo previo que exige una operación
+administrativa sensible se ejecuta desde la API, no dentro del contenedor, y
+por eso necesita `pg_dump` y `pg_restore` disponibles para el usuario de PM2.
+El cliente debe ser de la misma versión mayor del servidor o una posterior.
+
 El script `init/01-roles.sh` sólo corre cuando el volumen está vacío. Si el
 volumen ya existía antes de agregarlo, crea los roles manualmente o recrea un
 volumen vacío antes de importar datos.

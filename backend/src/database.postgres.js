@@ -2464,9 +2464,9 @@ async function getFeedRanked({
           -- Recencia: decae con los días de antigüedad, sin bajar de 0
           MAX(0, @recencyBase - @recencyDecayPerDay * (julianday('now') - julianday(p.created_at)))
           -- Popularidad: vistas, favoritos y contactos, cada uno con su propio peso
-          + @wViews * COALESCE(ps.vistas, 0)
-          + @wFavoritos * COALESCE(ps.favoritos, 0)
-          + @wContactos * COALESCE(ps.contactos, 0)
+          + CAST(@wViews AS DOUBLE PRECISION) * COALESCE(ps.vistas, 0)
+          + CAST(@wFavoritos AS DOUBLE PRECISION) * COALESCE(ps.favoritos, 0)
+          + CAST(@wContactos AS DOUBLE PRECISION) * COALESCE(ps.contactos, 0)
           -- Tasa de interacción: qué tan bien conviertes vistas en contactos.
           -- COALESCE externo porque NULLIF(ps.vistas, 0) es NULL sin vistas,
           -- lo que sin este COALESCE volvería NULL toda la suma del score.
@@ -2565,9 +2565,9 @@ const SQL_PRODUCTO_ACTIVO = `
  */
 const SQL_SCORE_RELACIONADOS = `
   MAX(0, @recencyBase - @recencyDecayPerDay * (julianday('now') - julianday(p.created_at)))
-  + @wViews * COALESCE(ps.vistas, 0)
-  + @wFavoritos * COALESCE(ps.favoritos, 0)
-  + @wContactos * COALESCE(ps.contactos, 0)
+  + CAST(@wViews AS DOUBLE PRECISION) * COALESCE(ps.vistas, 0)
+  + CAST(@wFavoritos AS DOUBLE PRECISION) * COALESCE(ps.favoritos, 0)
+  + CAST(@wContactos AS DOUBLE PRECISION) * COALESCE(ps.contactos, 0)
 `;
 const SQL_STATS_POPULARIDAD = `
   SELECT
@@ -2650,7 +2650,7 @@ async function getRelatedProducts(product, {
     WHERE p.id != @productId
       AND (@seller IS NULL OR p.seller IS NULL OR p.seller != @seller)
       AND (p.category = @category OR ${condicionKeywords})
-    ORDER BY tramoDisponibilidad ASC, tramo ASC, score DESC, p.created_at DESC
+    ORDER BY "tramoDisponibilidad" ASC, tramo ASC, score DESC, p.created_at DESC
     LIMIT @limit
   `).all({
     ...paramsScore(),
@@ -2925,14 +2925,13 @@ async function getFallbackSearchTerms({
     SELECT
       p.title AS queryText,
       (
-        @wViews * COALESCE(ps.vistas, 0)
-        + @wFavoritos * COALESCE(ps.favoritos, 0)
-        + @wContactos * COALESCE(ps.contactos, 0)
+        CAST(@wViews AS DOUBLE PRECISION) * COALESCE(ps.vistas, 0)
+        + CAST(@wFavoritos AS DOUBLE PRECISION) * COALESCE(ps.favoritos, 0)
+        + CAST(@wContactos AS DOUBLE PRECISION) * COALESCE(ps.contactos, 0)
       ) AS score
     FROM products p
     LEFT JOIN product_stats ps ON ps.product_id = p.id
     WHERE ${SQL_PRODUCTO_ACTIVO}
-    GROUP BY p.id
     ORDER BY score DESC, p.created_at DESC
     LIMIT @limit
   `).all({

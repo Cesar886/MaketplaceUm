@@ -43,6 +43,13 @@ test('INSERT OR IGNORE se convierte en ON CONFLICT DO NOTHING', () => {
   );
 });
 
+test('los epochs traducidos no desbordan en 2038', () => {
+  assert.match(
+    sqliteFunctionsToPostgres("SELECT CAST(strftime('%s', created_at) AS INTEGER) FROM products"),
+    /AS BIGINT/,
+  );
+});
+
 test('preserva alias camelCase que PostgreSQL plegaría a minúsculas', () => {
   assert.equal(
     sqliteFunctionsToPostgres('SELECT created_at AS createdAt FROM products'),

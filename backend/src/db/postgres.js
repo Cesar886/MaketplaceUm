@@ -93,11 +93,13 @@ function createPool() {
 
   const statementTimeout = intEnv('PG_STATEMENT_TIMEOUT_MS', 15_000, { min: 1_000, max: 120_000 });
   const lockTimeout = intEnv('PG_LOCK_TIMEOUT_MS', 5_000, { min: 500, max: 60_000 });
+  const poolMax = intEnv('PGPOOL_MAX', 10, { min: 2, max: 50 });
+  const poolMin = Math.min(intEnv('PGPOOL_MIN', 1, { min: 0, max: 10 }), poolMax);
   const nextPool = new Pool({
     connectionString,
     ssl: loadSslConfig(connectionString),
-    max: intEnv('PGPOOL_MAX', 10, { min: 2, max: 50 }),
-    min: intEnv('PGPOOL_MIN', 1, { min: 0, max: 10 }),
+    max: poolMax,
+    min: poolMin,
     idleTimeoutMillis: intEnv('PGPOOL_IDLE_TIMEOUT_MS', 30_000, { min: 1_000, max: 300_000 }),
     connectionTimeoutMillis: intEnv('PG_CONNECT_TIMEOUT_MS', 5_000, { min: 1_000, max: 30_000 }),
     allowExitOnIdle: process.env.NODE_ENV === 'test',
@@ -137,7 +139,7 @@ function sqliteFunctionsToPostgres(input) {
   sql = sql.replace(/strftime\(\s*'%Y-%m-%dT%H:%M:%SZ'\s*,\s*([^)]+)\)/gi,
     "to_char(($1)::timestamptz AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')");
   sql = sql.replace(/CAST\(strftime\(\s*'%s'\s*,\s*([^)]+)\)\s+AS\s+INTEGER\)/gi,
-    'CAST(EXTRACT(EPOCH FROM ($1)::timestamptz) AS INTEGER)');
+    'CAST(EXTRACT(EPOCH FROM ($1)::timestamptz) AS BIGINT)');
   sql = sql.replace(/\(julianday\('now'\)\s*-\s*julianday\(MAX\(([^)]+)\)\)\)/gi,
     '(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MAX(($1)::timestamptz))) / 86400.0)');
   sql = sql.replace(/\(julianday\('now'\)\s*-\s*julianday\(([^)]+)\)\)/gi,
@@ -162,7 +164,7 @@ function sqliteFunctionsToPostgres(input) {
     'CASE WHEN $1 = 1 THEN');
   // PostgreSQL no puede inferir el tipo de un parámetro usado sólo en
   // `? IS NULL`; el cast no altera la semántica de esa comprobación.
-  sql = sql.replace(/\b(\?|[@:$][A-Za-z_][A-Za-z0-9_]*)\s+IS\s+(NOT\s+)?NULL\b/gi,
+  sql = sql.replace(/(\?|[@:$][A-Za-z_][A-Za-z0-9_]*)\s+IS\s+(NOT\s+)?NULL\b/gi,
     'CAST($1 AS TEXT) IS $2NULL');
   sql = sql.replace(/\b([A-Za-z_][A-Za-z0-9_.]*)\s+IS\s+(\?|[@:$][A-Za-z_][A-Za-z0-9_]*)/gi,
     '$1 IS NOT DISTINCT FROM $2');

@@ -423,20 +423,20 @@ function router() {
       params.push(kind);
     }
     if (status !== 'all') {
-      where.push('moderationStatus = ?');
+      where.push('"moderationStatus" = ?');
       params.push(status);
     }
     if (search) {
       const like = `%${escapeLike(search)}%`;
-      where.push(`(title LIKE ? ESCAPE '\\' OR ownerName LIKE ? ESCAPE '\\'
-        OR ownerId LIKE ? ESCAPE '\\')`);
+      where.push(`(title LIKE ? ESCAPE '\\' OR "ownerName" LIKE ? ESCAPE '\\'
+        OR "ownerId" LIKE ? ESCAPE '\\')`);
       params.push(like, like, like);
     }
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const database = db.getDb();
     const total = (await database.prepare(`SELECT COUNT(*) AS total FROM (${publicationUnion}) ${clause}`).get(...params)).total;
     const publications = await database.prepare(`SELECT * FROM (${publicationUnion}) ${clause}
-      ORDER BY createdAt DESC, id DESC LIMIT ? OFFSET ?`).all(...params, pagination.limit, pagination.offset);
+      ORDER BY "createdAt" DESC, id DESC LIMIT ? OFFSET ?`).all(...params, pagination.limit, pagination.offset);
     return res.json({
       publications,
       total,
