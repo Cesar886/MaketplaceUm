@@ -2291,17 +2291,16 @@ function runMigrations() {
       const listDeletions = db.prepare(
         'SELECT * FROM conversation_deletions WHERE conversation_id = ?',
       );
+      const cutoffPosition = db.prepare(
+        'SELECT rowid AS position FROM messages WHERE id = ?',
+      );
       const mergeDeletion = db.prepare(`
         INSERT INTO conversation_deletions (
           conversation_id, user_id, deleted_through_message_id, deleted_at
         ) VALUES (?, ?, ?, ?)
         ON CONFLICT(conversation_id, user_id) DO UPDATE SET
-          deleted_through_message_id = CASE
-            WHEN excluded.deleted_at >= conversation_deletions.deleted_at
-              THEN excluded.deleted_through_message_id
-            ELSE conversation_deletions.deleted_through_message_id
-          END,
-          deleted_at = MAX(excluded.deleted_at, conversation_deletions.deleted_at)
+          deleted_through_message_id = excluded.deleted_through_message_id,
+          deleted_at = excluded.deleted_at
       `);
       const removeDeletions = db.prepare(
         'DELETE FROM conversation_deletions WHERE conversation_id = ?',
@@ -2309,23 +2308,62 @@ function runMigrations() {
       const moveReports = db.prepare(
         "UPDATE reports SET target_id = ? WHERE target_type = 'chat' AND target_id = ?",
       );
+      const possibleNotifications = db.prepare(
+        'SELECT id, data FROM notifications WHERE data LIKE ?',
+      );
+      const updateNotification = db.prepare('UPDATE notifications SET data = ? WHERE id = ?');
       const removeConversation = db.prepare('DELETE FROM conversations WHERE id = ?');
       const affectedWinners = new Set();
+      const deletionWinners = new Map();
+
+      const considerDeletion = (winnerId, deletion) => {
+        const key = JSON.stringify([winnerId, deletion.user_id]);
+        const position = deletion.deleted_through_message_id
+          ? cutoffPosition.get(deletion.deleted_through_message_id)?.position ?? 0
+          : 0;
+        const candidate = { ...deletion, winnerId, position };
+        const previous = deletionWinners.get(key);
+        if (!previous || candidate.position > previous.position
+            || candidate.position === previous.position
+              && String(candidate.deleted_at) > String(previous.deleted_at)) {
+          deletionWinners.set(key, candidate);
+        }
+      };
+
+      for (const winnerId of new Set(duplicates.map(item => item.winnerId))) {
+        for (const deletion of listDeletions.all(winnerId)) considerDeletion(winnerId, deletion);
+      }
+      for (const { duplicateId, winnerId } of duplicates) {
+        for (const deletion of listDeletions.all(duplicateId)) considerDeletion(winnerId, deletion);
+      }
 
       for (const { duplicateId, winnerId } of duplicates) {
         moveMessages.run(winnerId, duplicateId);
-        for (const deletion of listDeletions.all(duplicateId)) {
-          mergeDeletion.run(
-            winnerId,
-            deletion.user_id,
-            deletion.deleted_through_message_id,
-            deletion.deleted_at,
-          );
-        }
         removeDeletions.run(duplicateId);
         moveReports.run(winnerId, duplicateId);
+        for (const notification of possibleNotifications.all(`%${duplicateId}%`)) {
+          try {
+            const payload = JSON.parse(notification.data);
+            if (payload && !Array.isArray(payload)
+                && payload.conversationId === duplicateId) {
+              payload.conversationId = winnerId;
+              updateNotification.run(JSON.stringify(payload), notification.id);
+            }
+          } catch {
+            // Datos legacy malformados no deben impedir la migración completa.
+          }
+        }
         removeConversation.run(duplicateId);
         affectedWinners.add(winnerId);
+      }
+
+      for (const deletion of deletionWinners.values()) {
+        mergeDeletion.run(
+          deletion.winnerId,
+          deletion.user_id,
+          deletion.deleted_through_message_id,
+          deletion.deleted_at,
+        );
       }
 
       const latestMessage = db.prepare(`
@@ -4180,15 +4218,16 @@ function findConversation(productId, buyerId, sellerId) {
  *  el que abre el botón "Contactar por chat" del perfil público. */
 function createDirectConversation(id, buyerId, sellerId) {
   db.prepare(`
-    INSERT OR IGNORE INTO conversations (id, product_id, wanted_post_id, buyer_id, seller_id, created_at, last_message_at, last_message_preview)
+    INSERT INTO conversations (id, product_id, wanted_post_id, buyer_id, seller_id, created_at, last_message_at, last_message_preview)
     VALUES (?, NULL, NULL, ?, ?, datetime('now'), datetime('now'), '')
+    ON CONFLICT(
+      CASE WHEN buyer_id < seller_id THEN buyer_id ELSE seller_id END,
+      CASE WHEN buyer_id < seller_id THEN seller_id ELSE buyer_id END
+    ) WHERE product_id IS NULL AND wanted_post_id IS NULL
+    DO NOTHING
   `).run(id, buyerId, sellerId);
   const conversation = findDirectConversation(buyerId, sellerId);
-  if (!conversation) {
-    // INSERT OR IGNORE también cubre una colisión de PK. No podemos confundir
-    // ese caso con el conflicto esperado del índice por pareja.
-    throw new Error('No se pudo crear el chat directo: el id ya pertenece a otro hilo.');
-  }
+  if (!conversation) throw new Error('No se pudo recuperar el chat directo recién creado.');
   return conversation;
 }
 

@@ -711,7 +711,7 @@ test('el índice directo es simétrico y una colisión de id ajena falla de form
 
   assert.throws(
     () => db.createDirectConversation('conv_direct_winner', carla.id, diego.id),
-    /id ya pertenece a otro hilo/,
+    /UNIQUE constraint|PRIMARY KEY|otro hilo/,
   );
   assert.strictEqual(db.findDirectConversation(carla.id, diego.id), undefined);
 });

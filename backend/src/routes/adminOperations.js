@@ -216,7 +216,6 @@ async function createOfficialReportMessage(database, report, account, text) {
     const conversationId = `conv_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
     // La cuenta oficial queda como seller para que el hilo tenga el mismo
     // sentido estable aunque quien reportó sea un invitado sin fila seller.
-    await db.createDirectConversation(conversationId, report.reporter_id, account.id);
     // Otra resolución puede haber creado el hilo de la misma pareja mientras
     // esta transacción esperaba el índice único. Recuperamos siempre la fila
     // ganadora en vez de asumir que sobrevivió nuestro id candidato.

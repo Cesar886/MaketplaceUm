@@ -91,12 +91,20 @@ test('la migración 004 fusiona chats directos duplicados antes de imponer unici
     INSERT INTO conversation_deletions (
       conversation_id, user_id, deleted_through_message_id, deleted_at
     ) VALUES
-      ('conv_keep', 'alice', 'msg_keep', '2026-01-01T01:00:00Z'),
+      -- Este borrado ocurrió después, pero corta antes. La migración debe
+      -- conservar msg_duplicate por su seq mayor, no elegir por deleted_at.
+      ('conv_keep', 'alice', 'msg_keep', '2026-03-01T01:00:00Z'),
       ('conv_duplicate', 'alice', 'msg_duplicate', '2026-01-02T01:00:00Z');
 
     INSERT INTO reports (
       id, reporter_id, target_type, target_id, reason
     ) VALUES ('report_duplicate_chat', 'alice', 'chat', 'conv_duplicate', 'Mensajes sospechosos');
+
+    INSERT INTO notifications (id, user_id, type, title, body, data)
+    VALUES
+      ('notification_duplicate_chat', 'alice', 'new_message', 'Mensaje', 'Contenido',
+       '{"conversationId":"conv_duplicate","preserve":"yes"}'),
+      ('notification_invalid_json', 'alice', 'legacy', 'Legacy', 'Contenido', '{invalid-json');
   `);
 
   await database.exec(fs.readFileSync(
@@ -133,6 +141,16 @@ test('la migración 004 fusiona chats directos duplicados antes de imponer unici
     SELECT target_id FROM reports WHERE id = 'report_duplicate_chat'
   `);
   assert.equal(report.rows[0].target_id, 'conv_keep');
+  const notifications = await database.query(`
+    SELECT id, data FROM notifications
+     WHERE id IN ('notification_duplicate_chat', 'notification_invalid_json')
+     ORDER BY id
+  `);
+  assert.deepEqual(JSON.parse(notifications.rows[0].data), {
+    conversationId: 'conv_keep',
+    preserve: 'yes',
+  });
+  assert.equal(notifications.rows[1].data, '{invalid-json');
 
   // El mismo conflict target que usa database.postgres.js debe inferir el
   // índice parcial/de expresión y recuperar el hilo existente sin duplicarlo.

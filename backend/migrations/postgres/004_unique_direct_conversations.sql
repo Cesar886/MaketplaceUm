@@ -35,36 +35,54 @@ SET conversation_id = merge.keep_id
 FROM direct_conversation_merge_map AS merge
 WHERE message.conversation_id = merge.duplicate_id;
 
--- Puede existir un corte de historial para la misma persona en ambos hilos.
--- Conservamos el más reciente y evitamos que el UPSERT intente modificar la
--- misma clave dos veces cuando había más de dos duplicados.
+-- Puede existir un corte de historial para la misma persona en varios hilos.
+-- `deleted_at` no indica qué tanto historial se ocultó: una acción posterior
+-- sobre un hilo viejo podría apuntar a un mensaje anterior. Se conserva el
+-- mensaje con mayor seq dentro del historial ya reunido para no resucitar
+-- contenido que la persona había eliminado.
+CREATE TEMP TABLE direct_conversation_deletion_winners
+ON COMMIT DROP
+AS
+WITH source_conversations AS (
+  SELECT duplicate_id AS source_id, keep_id
+  FROM direct_conversation_merge_map
+  UNION ALL
+  SELECT DISTINCT keep_id AS source_id, keep_id
+  FROM direct_conversation_merge_map
+)
+SELECT DISTINCT ON (source.keep_id, deletion.user_id)
+  source.keep_id AS conversation_id,
+  deletion.user_id,
+  deletion.deleted_through_message_id,
+  deletion.deleted_at
+FROM source_conversations AS source
+JOIN conversation_deletions AS deletion
+  ON deletion.conversation_id = source.source_id
+LEFT JOIN messages AS cutoff
+  ON cutoff.id = deletion.deleted_through_message_id
+ORDER BY
+  source.keep_id,
+  deletion.user_id,
+  COALESCE(cutoff.seq, 0) DESC,
+  deletion.deleted_at DESC,
+  deletion.conversation_id ASC;
+
+DELETE FROM conversation_deletions AS deletion
+USING direct_conversation_merge_map AS merge
+WHERE deletion.conversation_id = merge.duplicate_id;
+
 INSERT INTO conversation_deletions (
   conversation_id,
   user_id,
   deleted_through_message_id,
   deleted_at
 )
-SELECT DISTINCT ON (merge.keep_id, deletion.user_id)
-  merge.keep_id,
-  deletion.user_id,
-  deletion.deleted_through_message_id,
-  deletion.deleted_at
-FROM conversation_deletions AS deletion
-JOIN direct_conversation_merge_map AS merge
-  ON merge.duplicate_id = deletion.conversation_id
-ORDER BY merge.keep_id, deletion.user_id, deletion.deleted_at DESC, deletion.conversation_id ASC
+SELECT conversation_id, user_id, deleted_through_message_id, deleted_at
+FROM direct_conversation_deletion_winners
 ON CONFLICT (conversation_id, user_id) DO UPDATE
 SET
-  deleted_through_message_id = CASE
-    WHEN EXCLUDED.deleted_at >= conversation_deletions.deleted_at
-      THEN EXCLUDED.deleted_through_message_id
-    ELSE conversation_deletions.deleted_through_message_id
-  END,
-  deleted_at = GREATEST(EXCLUDED.deleted_at, conversation_deletions.deleted_at);
-
-DELETE FROM conversation_deletions AS deletion
-USING direct_conversation_merge_map AS merge
-WHERE deletion.conversation_id = merge.duplicate_id;
+  deleted_through_message_id = EXCLUDED.deleted_through_message_id,
+  deleted_at = EXCLUDED.deleted_at;
 
 -- Un reporte de chat debe seguir abriendo el hilo que sobrevivió.
 UPDATE reports AS report
@@ -72,6 +90,27 @@ SET target_id = merge.keep_id
 FROM direct_conversation_merge_map AS merge
 WHERE report.target_type = 'chat'
   AND report.target_id = merge.duplicate_id;
+
+-- Conserva operativos los deep-links y el marcado de notificaciones. `data`
+-- es TEXT por compatibilidad legacy, por eso el CASE valida JSON antes del
+-- cast y deja intacta cualquier fila histórica malformada.
+WITH parsed_notifications AS MATERIALIZED (
+  SELECT
+    id,
+    CASE WHEN data IS JSON THEN data::jsonb ELSE NULL END AS payload
+  FROM notifications
+)
+UPDATE notifications AS notification
+SET data = jsonb_set(
+  parsed.payload,
+  '{conversationId}',
+  to_jsonb(merge.keep_id),
+  false
+)::text
+FROM parsed_notifications AS parsed
+JOIN direct_conversation_merge_map AS merge
+  ON parsed.payload ->> 'conversationId' = merge.duplicate_id
+WHERE notification.id = parsed.id;
 
 -- Recalcula la vista previa después de reunir mensajes que antes estaban en
 -- hilos distintos.
