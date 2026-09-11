@@ -45,6 +45,13 @@ type ReviewPanelProps = {
   onComplete: () => void;
   onExit: () => void;
 };
+type ReportUpdateResult = {
+  report: Report;
+  reporterMessageSent: boolean;
+  reporterMessageAlreadySent?: boolean;
+  reporterMessageSkipped?: string | null;
+  warning?: string;
+};
 type ConfigRow = {
   key: string; productsActive: number; productsDaily: number; wantedActive: number;
   wantedDaily: number; durationDays: number; updatedAt?: string | null;
@@ -96,29 +103,42 @@ function reportUserTargetId(report: Report) {
   return '';
 }
 
+function reportDestination(report: Report): Section {
+  return report.target_type === 'product' || report.target_type === 'wanted' ? 'publicaciones' : 'usuarios';
+}
+
+const defaultReporterMessage = 'Gracias por tu reporte. Ya revisamos el caso y finalizamos la revisión.';
+
 function ReportReviewPanel({ report, targetFound, onComplete, onExit }: ReviewPanelProps) {
   const [sendMessage, setSendMessage] = useState(false);
   const [reporterMessage, setReporterMessage] = useState('');
   const [working, setWorking] = useState<Report['status'] | ''>('');
   const [error, setError] = useState('');
+  const [completion, setCompletion] = useState<{ status: 'resolved' | 'dismissed'; warning: string } | null>(null);
 
   useEffect(() => {
     setSendMessage(false);
     setReporterMessage('');
     setError('');
+    setCompletion(null);
   }, [report.id]);
 
   async function closeReport(status: 'resolved' | 'dismissed') {
     setWorking(status);
     setError('');
     try {
-      await adminFetch(`/admin/reports/${encodeURIComponent(report.id)}`, {
+      const result = await adminFetch<ReportUpdateResult>(`/admin/reports/${encodeURIComponent(report.id)}`, {
         method: 'PATCH',
         body: JSON.stringify({
           status,
+          expectedStatus: report.status,
           reporterMessage: sendMessage ? reporterMessage.trim() : undefined,
         }),
       });
+      if (result.warning) {
+        setCompletion({ status, warning: result.warning });
+        return;
+      }
       onComplete();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No se pudo cerrar el reporte.');
@@ -134,18 +154,23 @@ function ReportReviewPanel({ report, targetFound, onComplete, onExit }: ReviewPa
         <div>
           <p className={styles.eyebrow}>Revisión activa · {report.id}</p>
           <h3 id="active-report-title">{reportTargetLabel(report)}</h3>
+          <p className={styles.reportMeta}>Reportó <strong>{report.reporterName || report.reporter_id}</strong> · {formatDate(report.created_at)}</p>
           <p><strong>{report.reason}</strong>{report.details ? ` · ${report.details}` : ''}</p>
         </div>
-        <StatusBadge status={report.status === 'received' ? 'reviewing' : report.status} />
+        <StatusBadge status={completion?.status || (report.status === 'received' ? 'reviewing' : report.status)} />
       </div>
       {targetFound === false && (
         <div className={styles.targetMissing} role="status">
           El objetivo ya no está disponible o no tiene un usuario asociado. Aun así puedes resolver o descartar el reporte.
         </div>
       )}
-      <div className={styles.reportResolution}>
+      {!completion && <div className={styles.reportResolution}>
         <label className={styles.optionalMessageToggle}>
-          <input checked={sendMessage} onChange={event => setSendMessage(event.target.checked)} type="checkbox" />
+          <input checked={sendMessage} onChange={event => {
+            const checked = event.target.checked;
+            setSendMessage(checked);
+            if (checked && !reporterMessage.trim()) setReporterMessage(defaultReporterMessage);
+          }} type="checkbox" />
           <span><strong>Enviar mensaje al reportante</strong><small>Opcional · desactivado por defecto</small></span>
         </label>
         {sendMessage && (
@@ -161,12 +186,13 @@ function ReportReviewPanel({ report, targetFound, onComplete, onExit }: ReviewPa
             <small>Se enviará desde Reportes · cesar8herrera@gmail.com · {reporterMessage.trim().length}/1000</small>
           </label>
         )}
-      </div>
+      </div>}
+      {completion && <div className={styles.inlineWarning} role="status">{completion.warning}</div>}
       {error && <div className={styles.inlineError} role="alert">{error}</div>}
       <div className={styles.reportReviewActions}>
-        <button disabled={!!working} onClick={onExit} type="button">Volver a reportes</button>
-        <button className={styles.dangerText} disabled={!!working || invalidMessage} onClick={() => closeReport('dismissed')} type="button">{working === 'dismissed' ? 'Descartando…' : 'Descartar'}</button>
-        <button className={styles.primaryButton} disabled={!!working || invalidMessage} onClick={() => closeReport('resolved')} type="button">{working === 'resolved' ? 'Resolviendo…' : 'Marcar como resuelto'}</button>
+        <button disabled={!!working} onClick={completion ? onComplete : onExit} type="button">Volver a reportes</button>
+        {!completion && <button className={styles.dangerText} disabled={!!working || invalidMessage} onClick={() => closeReport('dismissed')} type="button">{working === 'dismissed' ? 'Descartando…' : 'Descartar'}</button>}
+        {!completion && <button className={styles.primaryButton} disabled={!!working || invalidMessage} onClick={() => closeReport('resolved')} type="button">{working === 'resolved' ? 'Resolviendo…' : 'Marcar como resuelto'}</button>}
       </div>
     </aside>
   );
@@ -221,8 +247,9 @@ function UsersPanel({ review, onReviewComplete, onExitReview }: {
   onReviewComplete: () => void;
   onExitReview: () => void;
 }) {
-  const [queryInput, setQueryInput] = useState('');
-  const [query, setQuery] = useState('');
+  const reviewTargetId = review ? reportUserTargetId(review) : '';
+  const [queryInput, setQueryInput] = useState(reviewTargetId);
+  const [query, setQuery] = useState(reviewTargetId);
   const [status, setStatus] = useState('all');
   const [users, setUsers] = useState<User[]>([]);
   const [total, setTotal] = useState(0);
@@ -235,7 +262,6 @@ function UsersPanel({ review, onReviewComplete, onExitReview }: {
   const [until, setUntil] = useState('');
   const [working, setWorking] = useState(false);
   const reviewTargetRef = useRef<HTMLTableRowElement>(null);
-  const reviewTargetId = review ? reportUserTargetId(review) : '';
 
   const load = () => {
     setLoading(true); setError('');
@@ -315,8 +341,10 @@ function PublicationsPanel({ review, onReviewComplete, onExitReview }: {
   onReviewComplete: () => void;
   onExitReview: () => void;
 }) {
-  const [queryInput, setQueryInput] = useState(''); const [query, setQuery] = useState('');
-  const [kind, setKind] = useState('all'); const [status, setStatus] = useState('all');
+  const initialTargetId = review?.target_id || '';
+  const initialKind = review?.target_type === 'product' || review?.target_type === 'wanted' ? review.target_type : 'all';
+  const [queryInput, setQueryInput] = useState(initialTargetId); const [query, setQuery] = useState(initialTargetId);
+  const [kind, setKind] = useState(initialKind); const [status, setStatus] = useState('all');
   const [items, setItems] = useState<Publication[]>([]); const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true); const [error, setError] = useState('');
   const [action, setAction] = useState<{ item: Publication; target: 'spam' | 'removed' } | null>(null);
@@ -339,16 +367,14 @@ function PublicationsPanel({ review, onReviewComplete, onExitReview }: {
   return <section aria-labelledby="publications-title" className={styles.sectionPanel}><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Catálogo global</p><h2 id="publications-title">Publicaciones</h2><p>Modera productos y solicitudes sin destruir la evidencia.</p></div><span className={styles.countPill}>{total} registros</span></div>{review && <ReportReviewPanel onComplete={onReviewComplete} onExit={onExitReview} report={review} targetFound={loading ? null : !!reviewedPublication} />}<form className={styles.toolbar} onSubmit={e => { e.preventDefault(); setQuery(queryInput.trim()); }}><label className={styles.searchField}><span>Buscar</span><input maxLength={100} onChange={e => setQueryInput(e.target.value)} placeholder="Título, autor o ID" value={queryInput} /></label><label><span>Tipo</span><select onChange={e => setKind(e.target.value)} value={kind}><option value="all">Todos</option><option value="product">Productos</option><option value="wanted">Se busca</option></select></label><label><span>Moderación</span><select onChange={e => setStatus(e.target.value)} value={status}><option value="all">Todos</option><option value="visible">Visible</option><option value="spam">Spam</option><option value="removed">Retirada</option></select></label><button className={styles.secondaryButton} type="submit">Filtrar</button></form>{error && <PanelState error>{error}</PanelState>}{loading ? <PanelState>Cargando catálogo…</PanelState> : items.length === 0 ? <PanelState>No hay publicaciones con estos filtros.</PanelState> : <div className={styles.tableWrap}><table className={styles.dataTable}><thead><tr><th>Publicación</th><th>Tipo</th><th>Autor</th><th>Fecha</th><th>Estado</th><th>Vistas</th><th><span className={styles.srOnly}>Acciones</span></th></tr></thead><tbody>{items.map(item => { const isReviewTarget = !!review && item.kind === review.target_type && item.id === review.target_id; return <tr className={isReviewTarget ? styles.reviewTarget : undefined} key={`${item.kind}-${item.id}`} ref={isReviewTarget ? reviewTargetRef : undefined} tabIndex={isReviewTarget ? -1 : undefined}><td><strong>{item.title}</strong><small>{item.id}</small></td><td>{item.kind === 'product' ? 'Producto' : 'Se busca'}</td><td><strong>{item.ownerName}</strong><small>{item.ownerId}</small></td><td>{formatDate(item.createdAt)}</td><td><StatusBadge status={item.moderationStatus} /></td><td>{item.views}</td><td>{item.moderationStatus === 'visible' ? <div className={styles.rowActions}><button onClick={() => setAction({ item, target: 'spam' })} type="button">Spam</button><button className={styles.dangerText} onClick={() => setAction({ item, target: 'removed' })} type="button">Retirar</button></div> : <span className={styles.muted}>Moderada</span>}</td></tr>; })}</tbody></table></div>}{action && <ActionDialog eyebrow="Moderación" onClose={() => setAction(null)} title={action.target === 'spam' ? 'Marcar como spam' : 'Retirar publicación'}><form className={styles.actionForm} onSubmit={moderate}><p className={styles.warningText}>La publicación dejará de aparecer en feeds, búsquedas y detalles, pero la fila se conservará para auditoría.</p><label><span>Motivo obligatorio</span><textarea autoFocus maxLength={500} minLength={10} onChange={e => setReasonText(e.target.value)} required value={reasonText} /><small>{reasonText.trim().length}/500 · mínimo 10</small></label><div className={styles.dialogFooter}><button onClick={() => setAction(null)} type="button">Cancelar</button><button className={styles.dangerButton} disabled={working || reasonText.trim().length < 10} type="submit">{working ? 'Aplicando…' : 'Confirmar moderación'}</button></div></form></ActionDialog>}</section>;
 }
 
-function ReportsPanel() {
-  const [status, setStatus] = useState('received');
+function ReportsPanel({ initialStatus = 'received', onReview }: { initialStatus?: string; onReview: (report: Report) => void }) {
+  const [status, setStatus] = useState(() => ['all', 'received', 'reviewing', 'resolved', 'dismissed'].includes(initialStatus) ? initialStatus : 'received');
   const [targetType, setTargetType] = useState('all');
   const [reports, setReports] = useState<Report[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [action, setAction] = useState<{ report: Report; status: Report['status'] } | null>(null);
-  const [note, setNote] = useState('');
-  const [working, setWorking] = useState(false);
+  const [openingId, setOpeningId] = useState('');
   const load = () => {
     setLoading(true); setError('');
     const params = new URLSearchParams({ page: '1', limit: '50', status, targetType });
@@ -358,23 +384,40 @@ function ReportsPanel() {
       .finally(() => setLoading(false));
   };
   useEffect(load, [status, targetType]);
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!action) return;
-    setWorking(true);
+
+  async function openReview(report: Report) {
+    setOpeningId(report.id);
+    setError('');
     try {
-      await adminFetch(`/admin/reports/${encodeURIComponent(action.report.id)}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: action.status, adminNote: note.trim() }),
-      });
-      setAction(null); setNote(''); load();
+      if (report.status === 'received') {
+        await adminFetch(`/admin/reports/${encodeURIComponent(report.id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: 'reviewing', expectedStatus: report.status }),
+        });
+      }
+      onReview({ ...report, status: report.status === 'received' ? 'reviewing' : report.status });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo actualizar el reporte.');
+      setError(e instanceof Error ? e.message : 'No se pudo abrir la revisión.');
     } finally {
-      setWorking(false);
+      setOpeningId('');
     }
   }
-  return <section aria-labelledby="reports-title" className={styles.sectionPanel}><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Confianza y seguridad</p><h2 id="reports-title">Reportes</h2><p>Casos creados desde perfiles, chats y publicaciones.</p></div><span className={styles.countPill}>{total} reportes</span></div><form className={styles.toolbar}><label><span>Estado</span><select onChange={e => setStatus(e.target.value)} value={status}><option value="all">Todos</option><option value="received">Recibidos</option><option value="reviewing">En revisión</option><option value="resolved">Resueltos</option><option value="dismissed">Descartados</option></select></label><label><span>Tipo</span><select onChange={e => setTargetType(e.target.value)} value={targetType}><option value="all">Todos</option><option value="user">Usuario</option><option value="product">Producto</option><option value="wanted">Se busca</option><option value="chat">Chat</option></select></label></form>{error && <PanelState error>{error}</PanelState>}{loading ? <PanelState>Cargando reportes…</PanelState> : reports.length === 0 ? <PanelState>No hay reportes con estos filtros.</PanelState> : <div className={styles.tableWrap}><table className={styles.dataTable}><thead><tr><th>Reporte</th><th>Reporta</th><th>Objetivo</th><th>Motivo</th><th>Estado</th><th>Fecha</th><th><span className={styles.srOnly}>Acciones</span></th></tr></thead><tbody>{reports.map(report => <tr key={report.id}><td><strong>{report.id}</strong><small>{report.details || 'Sin detalle adicional'}</small></td><td><strong>{report.reporterName || report.reporter_id}</strong><small>{report.reporter_id}</small></td><td><strong>{report.target_type}: {report.target_id}</strong><small>{report.targetUserName || report.target_user_id || 'Sin usuario asociado'}</small></td><td>{report.reason}</td><td><StatusBadge status={report.status} /></td><td>{formatDate(report.created_at)}</td><td><div className={styles.rowActions}>{report.status !== 'reviewing' && <button onClick={() => setAction({ report, status: 'reviewing' })} type="button">Revisar</button>}{report.status !== 'resolved' && <button onClick={() => setAction({ report, status: 'resolved' })} type="button">Resolver</button>}{report.status !== 'dismissed' && <button className={styles.dangerText} onClick={() => setAction({ report, status: 'dismissed' })} type="button">Descartar</button>}</div></td></tr>)}</tbody></table></div>}{action && <ActionDialog eyebrow="Reporte" onClose={() => setAction(null)} title={`${statusLabel(action.status)} ${action.report.id}`}><form className={styles.actionForm} onSubmit={submit}><p className={styles.warningText}>La decisión quedará en auditoría y el reporte conservará su evidencia.</p><label><span>Nota interna</span><textarea autoFocus maxLength={1000} onChange={e => setNote(e.target.value)} value={note} /></label><div className={styles.dialogFooter}><button onClick={() => setAction(null)} type="button">Cancelar</button><button className={action.status === 'dismissed' ? styles.dangerButton : styles.primaryButton} disabled={working} type="submit">{working ? 'Guardando…' : 'Guardar estado'}</button></div></form></ActionDialog>}</section>;
+  return (
+    <section aria-labelledby="reports-title" className={styles.sectionPanel}>
+      <div className={styles.sectionHeading}>
+        <div><p className={styles.eyebrow}>Confianza y seguridad</p><h2 id="reports-title">Reportes</h2><p>Abre el objetivo, toma la medida necesaria y cierra el caso desde su contexto.</p></div>
+        <span className={styles.countPill}>{total} reportes</span>
+      </div>
+      <form className={styles.toolbar}>
+        <label><span>Estado</span><select onChange={e => setStatus(e.target.value)} value={status}><option value="all">Todos</option><option value="received">Recibidos</option><option value="reviewing">En revisión</option><option value="resolved">Resueltos</option><option value="dismissed">Descartados</option></select></label>
+        <label><span>Tipo</span><select onChange={e => setTargetType(e.target.value)} value={targetType}><option value="all">Todos</option><option value="user">Usuario</option><option value="product">Producto</option><option value="wanted">Se busca</option><option value="chat">Chat</option></select></label>
+      </form>
+      {error && <PanelState error>{error}</PanelState>}
+      {loading ? <PanelState>Cargando reportes…</PanelState> : reports.length === 0 ? <PanelState>No hay reportes con estos filtros.</PanelState> : (
+        <div className={styles.tableWrap}><table className={styles.dataTable}><thead><tr><th>Reporte</th><th>Reporta</th><th>Objetivo</th><th>Motivo</th><th>Estado</th><th>Fecha</th><th><span className={styles.srOnly}>Acciones</span></th></tr></thead><tbody>{reports.map(report => <tr key={report.id}><td><strong>{report.id}</strong><small>{report.details || 'Sin detalle adicional'}</small></td><td><strong>{report.reporterName || report.reporter_id}</strong><small>{report.reporter_id}</small></td><td><strong>{report.target_type}: {report.target_id}</strong><small>{report.targetUserName || report.target_user_id || 'Sin usuario asociado'}</small></td><td>{report.reason}</td><td><StatusBadge status={report.status} /></td><td>{formatDate(report.created_at)}</td><td><button className={styles.rowButton} disabled={Boolean(openingId)} onClick={() => openReview(report)} type="button">{openingId === report.id ? 'Abriendo…' : 'Revisar objetivo'}</button></td></tr>)}</tbody></table></div>
+      )}
+    </section>
+  );
 }
 
 const configNames: Record<string, string> = { negocio_verificado: 'Negocio verificado', negocio_sin_verificar: 'Negocio sin verificar', um_verificado: 'UM verificado', um_sin_verificar: 'UM sin verificar', externo: 'Externo' };
@@ -396,14 +439,65 @@ function AuditPanel() {
 }
 
 export default function AdminPanel() {
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const [activeReview, setActiveReview] = useState<Report | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(() => Boolean(searchParams.get('report')));
+  const [reviewError, setReviewError] = useState('');
   const requested = searchParams.get('section') as Section | null;
   const active = useMemo<Section>(() => sections.some(([key]) => key === requested) ? requested! : 'verificaciones', [requested]);
+  const reportId = searchParams.get('report') || '';
+
+  useEffect(() => {
+    if (!reportId) {
+      if (activeReview) setActiveReview(null);
+      setReviewLoading(false);
+      setReviewError('');
+      return;
+    }
+    if (activeReview?.id === reportId) {
+      const destination = reportDestination(activeReview);
+      setReviewLoading(false);
+      setReviewError('');
+      if (active !== destination) router.replace(`?section=${destination}&report=${encodeURIComponent(reportId)}`);
+      return;
+    }
+
+    let cancelled = false;
+    setActiveReview(null);
+    setReviewLoading(true);
+    setReviewError('');
+    adminFetch<{ report: Report }>(`/admin/reports/${encodeURIComponent(reportId)}`)
+      .then(({ report }) => {
+        if (cancelled) return;
+        setActiveReview(report);
+        const destination = reportDestination(report);
+        if (active !== destination) router.replace(`?section=${destination}&report=${encodeURIComponent(report.id)}`);
+      })
+      .catch(cause => {
+        if (!cancelled) setReviewError(cause instanceof Error ? cause.message : 'No se pudo recuperar la revisión.');
+      })
+      .finally(() => { if (!cancelled) setReviewLoading(false); });
+    return () => { cancelled = true; };
+  }, [active, activeReview, reportId, router]);
+
+  function beginReview(report: Report) {
+    setActiveReview(report);
+    setReviewError('');
+    const destination = reportDestination(report);
+    router.push(`?section=${destination}&report=${encodeURIComponent(report.id)}`);
+  }
+
+  function leaveReview(completed = false) {
+    setActiveReview(null);
+    router.push(`?section=reportes&reportStatus=${completed ? 'received' : 'reviewing'}`);
+  }
+
   return (
     <div className={styles.shell}>
       <header className={styles.hero}><div className={styles.brandMark} aria-hidden="true">UM</div><div><p className={styles.eyebrow}>Marketplace UM · Operaciones</p><h1>Centro de administración</h1><p>Confianza, catálogo y límites en un solo lugar.</p></div><div className={styles.securitySeal}><span aria-hidden="true">◆</span><div><strong>Sesión reforzada</strong><small>JWT · 2FA · Auditoría</small></div></div></header>
-      <nav aria-label="Secciones administrativas" className={styles.nav}>{sections.map(([key, label], index) => <a aria-current={active === key ? 'page' : undefined} href={`?section=${key}`} key={key}><span>{String(index + 1).padStart(2, '0')}</span>{label}</a>)}</nav>
-      <div className={styles.workspace}>{active === 'verificaciones' && <section className={styles.sectionPanel}><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Confianza de la comunidad</p><h2>Verificaciones</h2><p>La cola original permanece completa: pendientes, padrón e historial.</p></div></div><RevisionQueue /></section>}{active === 'dashboard' && <DashboardPanel />}{active === 'reportes' && <ReportsPanel />}{active === 'usuarios' && <UsersPanel />}{active === 'publicaciones' && <PublicationsPanel />}{active === 'configuracion' && <ConfigPanel />}{active === 'auditoria' && <AuditPanel />}</div>
+      <nav aria-label="Secciones administrativas" className={styles.nav}>{sections.map(([key, label], index) => <a aria-current={active === key ? 'page' : undefined} href={`?section=${key}`} key={key} onClick={() => setActiveReview(null)}><span>{String(index + 1).padStart(2, '0')}</span>{label}</a>)}</nav>
+      <div className={styles.workspace}>{reportId && !activeReview && reviewLoading ? <PanelState>Cargando contexto del reporte…</PanelState> : reportId && !activeReview && reviewError ? <PanelState error>{reviewError} Puedes volver a Reportes desde la navegación superior.</PanelState> : <>{active === 'verificaciones' && <section className={styles.sectionPanel}><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Confianza de la comunidad</p><h2>Verificaciones</h2><p>La cola original permanece completa: pendientes, padrón e historial.</p></div></div><RevisionQueue /></section>}{active === 'dashboard' && <DashboardPanel />}{active === 'reportes' && <ReportsPanel initialStatus={searchParams.get('reportStatus') || undefined} onReview={beginReview} />}{active === 'usuarios' && <UsersPanel onExitReview={() => leaveReview(false)} onReviewComplete={() => leaveReview(true)} review={activeReview} />}{active === 'publicaciones' && <PublicationsPanel onExitReview={() => leaveReview(false)} onReviewComplete={() => leaveReview(true)} review={activeReview} />}{active === 'configuracion' && <ConfigPanel />}{active === 'auditoria' && <AuditPanel />}</>}</div>
       <footer className={styles.footer}><span>Marketplace UM</span><p>Panel privado · Todas las acciones sensibles quedan registradas.</p></footer>
     </div>
   );

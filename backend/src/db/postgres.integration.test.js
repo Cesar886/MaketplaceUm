@@ -50,11 +50,11 @@ test('PostgreSQL planifica la consulta administrativa dinámica', async t => {
     FROM wanted_posts w LEFT JOIN sellers s ON s.id = w.user_id`;
   const sql = `SELECT * FROM (${publicationUnion})
     WHERE kind = ? AND "moderationStatus" = ?
-      AND (title LIKE ? ESCAPE '\\' OR "ownerName" LIKE ? ESCAPE '\\'
-        OR "ownerId" LIKE ? ESCAPE '\\')
+      AND (id LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\'
+        OR "ownerName" LIKE ? ESCAPE '\\' OR "ownerId" LIKE ? ESCAPE '\\')
     ORDER BY "createdAt" DESC, id DESC LIMIT ? OFFSET ?`;
   const query = bindParameters(sql, [
-    'product', 'pending', '%libro%', '%libro%', '%libro%', 20, 0,
+    'product', 'pending', '%libro%', '%libro%', '%libro%', '%libro%', 20, 0,
   ]);
 
   const plan = await database.query(`EXPLAIN ${query.text}`, query.values);

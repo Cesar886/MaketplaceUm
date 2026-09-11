@@ -2263,6 +2263,105 @@ function runMigrations() {
     );
   `);
 
+  // 51. Un chat directo es único por pareja sin importar quién inició. La
+  // búsqueda previa seguida de INSERT dejaba una ventana para que dos envíos
+  // simultáneos crearan hilos invertidos. Primero se consolidan duplicados de
+  // instalaciones legacy y después el índice hace atómica esa garantía.
+  const directConversations = db.prepare(`
+    SELECT id, buyer_id, seller_id
+      FROM conversations
+     WHERE product_id IS NULL AND wanted_post_id IS NULL
+     ORDER BY created_at ASC, id ASC
+  `).all();
+  const directWinnerByPair = new Map();
+  const directDuplicates = [];
+  for (const conversation of directConversations) {
+    const pair = [conversation.buyer_id, conversation.seller_id].sort();
+    const key = JSON.stringify(pair);
+    const winner = directWinnerByPair.get(key);
+    if (winner) directDuplicates.push({ duplicateId: conversation.id, winnerId: winner });
+    else directWinnerByPair.set(key, conversation.id);
+  }
+
+  if (directDuplicates.length > 0) {
+    db.transaction(duplicates => {
+      const moveMessages = db.prepare(
+        'UPDATE messages SET conversation_id = ? WHERE conversation_id = ?',
+      );
+      const listDeletions = db.prepare(
+        'SELECT * FROM conversation_deletions WHERE conversation_id = ?',
+      );
+      const mergeDeletion = db.prepare(`
+        INSERT INTO conversation_deletions (
+          conversation_id, user_id, deleted_through_message_id, deleted_at
+        ) VALUES (?, ?, ?, ?)
+        ON CONFLICT(conversation_id, user_id) DO UPDATE SET
+          deleted_through_message_id = CASE
+            WHEN excluded.deleted_at >= conversation_deletions.deleted_at
+              THEN excluded.deleted_through_message_id
+            ELSE conversation_deletions.deleted_through_message_id
+          END,
+          deleted_at = MAX(excluded.deleted_at, conversation_deletions.deleted_at)
+      `);
+      const removeDeletions = db.prepare(
+        'DELETE FROM conversation_deletions WHERE conversation_id = ?',
+      );
+      const moveReports = db.prepare(
+        "UPDATE reports SET target_id = ? WHERE target_type = 'chat' AND target_id = ?",
+      );
+      const removeConversation = db.prepare('DELETE FROM conversations WHERE id = ?');
+      const affectedWinners = new Set();
+
+      for (const { duplicateId, winnerId } of duplicates) {
+        moveMessages.run(winnerId, duplicateId);
+        for (const deletion of listDeletions.all(duplicateId)) {
+          mergeDeletion.run(
+            winnerId,
+            deletion.user_id,
+            deletion.deleted_through_message_id,
+            deletion.deleted_at,
+          );
+        }
+        removeDeletions.run(duplicateId);
+        moveReports.run(winnerId, duplicateId);
+        removeConversation.run(duplicateId);
+        affectedWinners.add(winnerId);
+      }
+
+      const latestMessage = db.prepare(`
+        SELECT created_at, text, image_url
+          FROM messages
+         WHERE conversation_id = ?
+         ORDER BY created_at DESC, rowid DESC
+         LIMIT 1
+      `);
+      const updatePreview = db.prepare(`
+        UPDATE conversations
+           SET last_message_at = ?, last_message_preview = ?
+         WHERE id = ?
+      `);
+      for (const winnerId of affectedWinners) {
+        const latest = latestMessage.get(winnerId);
+        if (latest) {
+          updatePreview.run(
+            latest.created_at,
+            latest.image_url ? '📷 Foto' : latest.text,
+            winnerId,
+          );
+        }
+      }
+    })(directDuplicates);
+  }
+
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_direct_pair_unique
+      ON conversations (
+        CASE WHEN buyer_id < seller_id THEN buyer_id ELSE seller_id END,
+        CASE WHEN buyer_id < seller_id THEN seller_id ELSE buyer_id END
+      )
+      WHERE product_id IS NULL AND wanted_post_id IS NULL
+  `);
+
   // Recoge estadisticas para que SQLite pueda elegir los indices nuevos desde
   // el primer arranque posterior al despliegue.
   db.pragma('optimize');
@@ -4081,9 +4180,10 @@ function findConversation(productId, buyerId, sellerId) {
  *  el que abre el botón "Contactar por chat" del perfil público. */
 function createDirectConversation(id, buyerId, sellerId) {
   db.prepare(`
-    INSERT INTO conversations (id, product_id, wanted_post_id, buyer_id, seller_id, created_at, last_message_at, last_message_preview)
+    INSERT OR IGNORE INTO conversations (id, product_id, wanted_post_id, buyer_id, seller_id, created_at, last_message_at, last_message_preview)
     VALUES (?, NULL, NULL, ?, ?, datetime('now'), datetime('now'), '')
   `).run(id, buyerId, sellerId);
+  return findDirectConversation(buyerId, sellerId);
 }
 
 /** El chat directo entre dos personas, mirado en los DOS sentidos.
@@ -4103,6 +4203,8 @@ function findDirectConversation(unoId, otroId) {
     SELECT * FROM conversations
     WHERE product_id IS NULL AND wanted_post_id IS NULL
       AND ((buyer_id = ? AND seller_id = ?) OR (buyer_id = ? AND seller_id = ?))
+    ORDER BY created_at ASC, id ASC
+    LIMIT 1
   `).get(unoId, otroId, otroId, unoId);
 }
 
@@ -4284,18 +4386,56 @@ function listReports({ status = 'all', targetType = 'all', limit = 50, offset = 
   return { reports, total };
 }
 
-function updateReportStatus({ id, status, adminNote = '', adminId }) {
-  if (!REPORT_STATUSES.has(status)) return null;
+function reportTransitionAllowed(from, to) {
+  if (from === to) return true;
+  if (from === 'received') return ['reviewing', 'resolved', 'dismissed'].includes(to);
+  if (from === 'reviewing') return ['resolved', 'dismissed'].includes(to);
+  return false;
+}
+
+function updateReportStatus({ id, status, expectedStatus, adminNote = '', adminId }) {
+  if (!REPORT_STATUSES.has(status) || !REPORT_STATUSES.has(expectedStatus)) return null;
   const before = getReportById(id);
   if (!before) return null;
+  if (before.status !== expectedStatus) {
+    return { conflict: true, currentStatus: before.status, invalidTransition: false };
+  }
+  if (!reportTransitionAllowed(expectedStatus, status)) {
+    return { conflict: true, currentStatus: before.status, invalidTransition: true };
+  }
+
+  // Incluso un reintento al mismo estado ejecuta un UPDATE condicional. En
+  // PostgreSQL esto toma el lock de la fila y en SQLite serializa la escritura;
+  // si otra petición cambió el caso después de leer `before`, changes queda en
+  // cero y no se envía un mensaje ni se registra una decisión obsoleta.
+  if (status === expectedStatus) {
+    const unchanged = db.prepare(`
+      UPDATE reports SET status = status WHERE id = ? AND status = ?
+    `).run(id, expectedStatus);
+    if (unchanged.changes === 0) {
+      const current = getReportById(id);
+      return current
+        ? { conflict: true, currentStatus: current.status, invalidTransition: false }
+        : null;
+    }
+    return { before, after: getReportById(id), unchanged: true };
+  }
+
   const resolved = status === 'resolved' || status === 'dismissed';
-  db.prepare(`
+  const updated = db.prepare(`
     UPDATE reports
        SET status = ?, admin_note = ?, updated_at = datetime('now'),
            resolved_at = CASE WHEN ? THEN datetime('now') ELSE NULL END,
            resolved_by_admin_id = CASE WHEN ? THEN ? ELSE NULL END
-     WHERE id = ?
-  `).run(status, String(adminNote || '').trim().slice(0, 1000), resolved ? 1 : 0, resolved ? 1 : 0, adminId, id);
+     WHERE id = ? AND status = ?
+  `).run(status, String(adminNote || '').trim().slice(0, 1000), resolved ? 1 : 0,
+    resolved ? 1 : 0, adminId, id, expectedStatus);
+  if (updated.changes === 0) {
+    const current = getReportById(id);
+    return current
+      ? { conflict: true, currentStatus: current.status, invalidTransition: false }
+      : null;
+  }
   return { before, after: getReportById(id) };
 }
 

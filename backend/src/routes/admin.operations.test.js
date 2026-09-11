@@ -232,6 +232,42 @@ test('listados de usuarios, publicaciones y auditoría son paginados', async () 
   }
 });
 
+test('publicaciones se pueden localizar por id exacto para enfocar un reporte', async () => {
+  const owner = seller();
+  const productId = product(owner, 'Título que no contiene el identificador');
+  const wantedId = wanted(owner, 'Solicitud sin el identificador en el título');
+
+  for (const [kind, id] of [['product', productId], ['wanted', wantedId]]) {
+    const response = await request(`/api/admin/publications?q=${encodeURIComponent(id)}&kind=${kind}`);
+    const responseText = await response.text();
+    assert.equal(response.status, 200, responseText);
+    const payload = JSON.parse(responseText);
+    assert.equal(payload.total, 1);
+    assert.equal(payload.publications[0].id, id);
+    assert.equal(payload.publications[0].kind, kind);
+  }
+});
+
+test('un enlace de revisión recupera el reporte exacto después de recargar', async () => {
+  const reporterId = seller();
+  const targetId = seller();
+  const report = db.createReport({
+    reporterId,
+    targetType: 'user',
+    targetId,
+    targetUserId: targetId,
+    reason: 'Actividad sospechosa',
+  });
+
+  const response = await request(`/api/admin/reports/${encodeURIComponent(report.id)}`);
+  const responseText = await response.text();
+  assert.equal(response.status, 200, responseText);
+  const payload = JSON.parse(responseText);
+  assert.equal(payload.report.id, report.id);
+  assert.equal(payload.report.reporter_id, reporterId);
+  assert.equal(payload.report.target_user_id, targetId);
+});
+
 test('el detalle administrativo expone las visitas acumuladas del perfil', async () => {
   const id = seller();
   database.prepare('UPDATE sellers SET profile_views = 37 WHERE id = ?').run(id);

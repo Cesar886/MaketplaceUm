@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const crypto = require('crypto');
 const {
   registrarAuditoriaAdmin
 } = require('../adminAudit');
@@ -21,8 +22,11 @@ const MAX_ID = 180;
 const MAX_REASON = 500;
 const MAX_SEARCH = 100;
 const MAX_BULK = 100;
+const MAX_REPORTER_MESSAGE = 1000;
 const ACCOUNT_STATUSES = new Set(['active', 'suspended', 'banned']);
 const MODERATION_STATUSES = new Set(['visible', 'removed', 'spam']);
+const REPORT_STATUSES = new Set(['received', 'reviewing', 'resolved', 'dismissed']);
+const CLOSED_REPORT_STATUSES = new Set(['resolved', 'dismissed']);
 function validId(value) {
   return typeof value === 'string' && value.length > 0 && value.length <= MAX_ID && !/[\u0000-\u001f\u007f]/.test(value);
 }
@@ -130,16 +134,156 @@ async function notifyPublicationModerated(ownerId, kind, publication, status, mo
     reason: moderationReason
   });
 }
-async function notifyReportUpdated(report) {
-  if (!report?.reporter_id || !['resolved', 'dismissed'].includes(report.status)) return;
-  const title = report.status === 'resolved' ? 'Tu reporte fue resuelto' : 'Tu reporte fue revisado';
-  const body = report.admin_note ? `El equipo de Reportes actualizó tu reporte: ${report.admin_note}` : 'El equipo de Reportes terminó de revisar tu reporte.';
-  await notifyModeration(report.reporter_id, 'report_status_updated', title, body, {
+
+function parseReportUpdate(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const allowed = new Set(['status', 'reporterMessage', 'adminNote']);
+  if (Object.keys(body).some(key => !allowed.has(key)) || !REPORT_STATUSES.has(body.status)) return null;
+
+  if (body.reporterMessage !== undefined && typeof body.reporterMessage !== 'string') return null;
+  if (body.adminNote !== undefined && typeof body.adminNote !== 'string') return null;
+  const reporterMessage = (body.reporterMessage || '').trim();
+  const adminNote = (body.adminNote || '').trim();
+  if (reporterMessage.length > MAX_REPORTER_MESSAGE || adminNote.length > MAX_REASON * 2) return null;
+  if (reporterMessage && !CLOSED_REPORT_STATUSES.has(body.status)) return null;
+  if (/\u0000/.test(reporterMessage) || /\u0000/.test(adminNote)) return null;
+  return {
+    status: body.status,
+    reporterMessage,
+    adminNote
+  };
+}
+
+async function configuredReportsAccount(database) {
+  const email = String(process.env.REPORTS_ACCOUNT_EMAIL || '').trim().toLowerCase();
+  if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+  const account = await database.prepare(`SELECT id, name, email, admin_status AS adminStatus
+    FROM sellers WHERE lower(email) = lower(?)`).get(email);
+  if (!account || account.adminStatus && account.adminStatus !== 'active') return null;
+  return account;
+}
+
+/**
+ * Crea una respuesta de chat usando únicamente la cuenta que el servidor
+ * identifica por REPORTS_ACCOUNT_EMAIL. Ni el id del remitente ni el correo
+ * se aceptan en el payload administrativo, para impedir suplantaciones.
+ *
+ * conversations/messages no tienen FK hacia sellers a propósito: el otro
+ * participante puede ser una sesión invitada que conserva su id firmado.
+ */
+async function createOfficialReportMessage(database, report, account, text) {
+  const messageId = `msg_report_${crypto.createHash('sha256').update(report.id).digest('hex').slice(0, 32)}`;
+  const existingMessage = await database.prepare(`SELECT id, conversation_id, sender_id, text, created_at, read
+    FROM messages WHERE id = ?`).get(messageId);
+  if (existingMessage) {
+    const existingConversation = await database.prepare('SELECT * FROM conversations WHERE id = ?').get(existingMessage.conversation_id);
+    if (!existingConversation || existingMessage.sender_id !== account.id
+        || ![existingConversation.buyer_id, existingConversation.seller_id].includes(report.reporter_id)) {
+      throw new Error('El identificador de respuesta del reporte ya esta ocupado por otro mensaje.');
+    }
+    return {
+      account,
+      alreadySent: true,
+      conversation: existingConversation,
+      created: false,
+      message: existingMessage,
+      skipped: null
+    };
+  }
+
+  if (account.id === report.reporter_id) {
+    return {
+      account,
+      alreadySent: false,
+      created: false,
+      skipped: 'same_account'
+    };
+  }
+  if (await db.areUsersBlocked(account.id, report.reporter_id)) {
+    return {
+      account,
+      alreadySent: false,
+      created: false,
+      skipped: 'blocked'
+    };
+  }
+
+  let conversation = await db.findDirectConversation(account.id, report.reporter_id);
+  let firstMessage = false;
+  if (!conversation) {
+    const conversationId = `conv_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
+    // La cuenta oficial queda como seller para que el hilo tenga el mismo
+    // sentido estable aunque quien reportó sea un invitado sin fila seller.
+    await db.createDirectConversation(conversationId, report.reporter_id, account.id);
+    conversation = await database.prepare('SELECT * FROM conversations WHERE id = ?').get(conversationId);
+    firstMessage = true;
+  } else {
+    const count = await database.prepare('SELECT COUNT(*) AS total FROM messages WHERE conversation_id = ?').get(conversation.id);
+    firstMessage = Number(count?.total || 0) === 0;
+  }
+
+  await db.createMessage(messageId, conversation.id, account.id, text);
+  const message = await database.prepare(`SELECT id, conversation_id, sender_id, text, created_at, read
+    FROM messages WHERE id = ?`).get(messageId);
+  const type = firstMessage ? 'new_chat' : 'new_message';
+  const title = firstMessage ? 'Nuevo chat' : 'Nuevo mensaje';
+  const preview = text.length > 100 ? `${text.slice(0, 99)}…` : text;
+  const body = `${account.name || 'Reportes'}: ${preview}`;
+  const payload = {
+    conversationId: conversation.id,
+    productId: null,
+    senderId: account.id,
     reportId: report.id,
-    status: report.status,
-    targetType: report.target_type,
-    targetId: report.target_id
-  });
+    type
+  };
+  const muted = await db.isChatUserMuted(report.reporter_id, account.id);
+  if (!muted) {
+    await db.createNotification(notificationId(), report.reporter_id, type, title, body, payload);
+  }
+  return {
+    account,
+    alreadySent: false,
+    body,
+    conversation,
+    created: true,
+    message,
+    muted,
+    payload,
+    skipped: null,
+    title
+  };
+}
+
+async function deliverOfficialReportMessage(app, report, delivery) {
+  try {
+    if (!delivery.muted) {
+      await sendPush([report.reporter_id], delivery.title, delivery.body, delivery.payload);
+    }
+    const io = app.get('io');
+    if (!io) return;
+    io.to?.(`conv:${delivery.conversation.id}`).emit?.('new:message', {
+      message: {
+        id: delivery.message.id,
+        conversationId: delivery.message.conversation_id,
+        senderId: delivery.message.sender_id,
+        text: delivery.message.text,
+        imageUrl: null,
+        createdAt: delivery.message.created_at,
+        read: !!delivery.message.read,
+        replyToMessageId: null,
+        replyTo: null
+      },
+      conversationId: delivery.conversation.id
+    });
+    io.to?.(`user:${report.reporter_id}`).emit?.('conversation:updated', {
+      conversationId: delivery.conversation.id
+    });
+  } catch (error) {
+    // El mensaje ya quedó guardado de forma atómica con el cierre. Una falla
+    // transitoria de push/socket no debe convertir una entrega persistida en
+    // error ni provocar que el administrador reintente y duplique el chat.
+    console.error('[reports] No se pudo emitir la respuesta ya guardada:', error.message);
+  }
 }
 async function applyAccountStatus(database, req, id, parsed, createdAt) {
   const before = await userRow(database, id);
@@ -428,9 +572,9 @@ function router() {
     }
     if (search) {
       const like = `%${escapeLike(search)}%`;
-      where.push(`(title LIKE ? ESCAPE '\\' OR "ownerName" LIKE ? ESCAPE '\\'
-        OR "ownerId" LIKE ? ESCAPE '\\')`);
-      params.push(like, like, like);
+      where.push(`(id LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\'
+        OR "ownerName" LIKE ? ESCAPE '\\' OR "ownerId" LIKE ? ESCAPE '\\')`);
+      params.push(like, like, like, like);
     }
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const database = db.getDb();
@@ -580,41 +724,84 @@ function router() {
       limit: pagination.limit
     });
   });
+  api.get('/reports/:id', async (req, res) => {
+    if (!validId(req.params.id)) return res.status(400).json({
+      error: 'Reporte invalido.'
+    });
+    const report = await db.getReportById(req.params.id);
+    if (!report) return res.status(404).json({
+      error: 'Reporte no encontrado.'
+    });
+    return res.json({ report });
+  });
   api.patch('/reports/:id', async (req, res) => {
     if (!validId(req.params.id)) return res.status(400).json({
       error: 'Reporte invalido.'
     });
-    const status = String(req.body?.status || '');
-    const adminNote = typeof req.body?.adminNote === 'string' ? req.body.adminNote.trim() : '';
-    if (!['received', 'reviewing', 'resolved', 'dismissed'].includes(status) || adminNote.length > MAX_REASON * 2) {
+    const parsed = parseReportUpdate(req.body);
+    if (!parsed) {
       return res.status(400).json({
-        error: 'Estado o nota invalidos.'
+        error: 'Estado o mensaje invalidos.'
       });
     }
-    const result = await db.updateReportStatus({
-      id: req.params.id,
-      status,
-      adminNote,
-      adminId: req.admin.id
-    });
-    if (!result) return res.status(404).json({
+
+    const database = db.getDb();
+    const current = await db.getReportById(req.params.id);
+    if (!current) return res.status(404).json({
       error: 'Reporte no encontrado.'
     });
-    await registrarAuditoriaAdmin(db.getDb(), req, {
-      action: 'report.update',
-      entityType: 'report',
-      entityId: req.params.id,
-      details: {
-        before: result.before.status,
-        after: result.after.status,
-        targetType: result.after.target_type,
-        targetId: result.after.target_id
-      },
-      createdAt: new Date().toISOString()
-    });
-    await notifyReportUpdated(result.after);
+
+    let account = null;
+    if (parsed.reporterMessage) {
+      account = await configuredReportsAccount(database);
+      if (!account) return res.status(503).json({
+        error: 'La cuenta oficial de Reportes no esta configurada o no esta activa.'
+      });
+    }
+
+    let result;
+    let delivery = null;
+    await database.transaction(async () => {
+      result = await db.updateReportStatus({
+        id: req.params.id,
+        status: parsed.status,
+        adminNote: parsed.adminNote,
+        adminId: req.admin.id
+      });
+      if (!result) throw new Error('El reporte dejo de existir durante la operacion.');
+      if (parsed.reporterMessage) {
+        delivery = await createOfficialReportMessage(database, result.after, account, parsed.reporterMessage);
+      }
+      await registrarAuditoriaAdmin(database, req, {
+        action: 'report.update',
+        entityType: 'report',
+        entityId: req.params.id,
+        details: {
+          before: result.before.status,
+          after: result.after.status,
+          targetType: result.after.target_type,
+          targetId: result.after.target_id,
+          reporterNotified: Boolean(delivery?.created || delivery?.alreadySent),
+          reporterMessageCreated: Boolean(delivery?.created),
+          notificationChannel: delivery?.created || delivery?.alreadySent ? 'chat' : null,
+          notificationSkipped: delivery?.skipped || null
+        },
+        createdAt: new Date().toISOString()
+      });
+    })();
+    if (delivery?.created) await deliverOfficialReportMessage(req.app, result.after, delivery);
+    const reporterMessageSent = Boolean(delivery?.created || delivery?.alreadySent);
+    const reporterMessageSkipped = delivery?.skipped || null;
     return res.json({
-      report: result.after
+      report: result.after,
+      reporterMessageSent,
+      reporterMessageAlreadySent: Boolean(delivery?.alreadySent),
+      reporterMessageSkipped,
+      ...(reporterMessageSkipped ? {
+        warning: reporterMessageSkipped === 'blocked'
+          ? 'El reporte se cerro, pero no se envio el mensaje porque existe un bloqueo entre las cuentas.'
+          : 'El reporte se cerro, pero la cuenta oficial no puede enviarse un mensaje a si misma.'
+      } : {})
     });
   });
   return api;

@@ -1672,7 +1672,9 @@ async function createDirectConversation(id, buyerId, sellerId) {
   await db.prepare(`
     INSERT INTO conversations (id, product_id, wanted_post_id, buyer_id, seller_id, created_at, last_message_at, last_message_preview)
     VALUES (?, NULL, NULL, ?, ?, datetime('now'), datetime('now'), '')
+    ON CONFLICT DO NOTHING
   `).run(id, buyerId, sellerId);
+  return await findDirectConversation(buyerId, sellerId);
 }
 
 /** El chat directo entre dos personas, mirado en los DOS sentidos.
@@ -1692,6 +1694,8 @@ async function findDirectConversation(unoId, otroId) {
     SELECT * FROM conversations
     WHERE product_id IS NULL AND wanted_post_id IS NULL
       AND ((buyer_id = ? AND seller_id = ?) OR (buyer_id = ? AND seller_id = ?))
+    ORDER BY created_at ASC, id ASC
+    LIMIT 1
   `).get(unoId, otroId, otroId, unoId);
 }
 const MENSAJES_PRIMER_CONTACTO = 5;
@@ -1872,23 +1876,57 @@ async function listReports({
     total
   };
 }
+function reportTransitionAllowed(from, to) {
+  if (from === to) return true;
+  if (from === 'received') return ['reviewing', 'resolved', 'dismissed'].includes(to);
+  if (from === 'reviewing') return ['resolved', 'dismissed'].includes(to);
+  return false;
+}
 async function updateReportStatus({
   id,
   status,
+  expectedStatus,
   adminNote = '',
   adminId
 }) {
-  if (!REPORT_STATUSES.has(status)) return null;
+  if (!REPORT_STATUSES.has(status) || !REPORT_STATUSES.has(expectedStatus)) return null;
   const before = await getReportById(id);
   if (!before) return null;
+  if (before.status !== expectedStatus) {
+    return { conflict: true, currentStatus: before.status, invalidTransition: false };
+  }
+  if (!reportTransitionAllowed(expectedStatus, status)) {
+    return { conflict: true, currentStatus: before.status, invalidTransition: true };
+  }
+
+  if (status === expectedStatus) {
+    const unchanged = await db.prepare(`
+      UPDATE reports SET status = status WHERE id = ? AND status = ?
+    `).run(id, expectedStatus);
+    if (unchanged.changes === 0) {
+      const current = await getReportById(id);
+      return current
+        ? { conflict: true, currentStatus: current.status, invalidTransition: false }
+        : null;
+    }
+    return { before, after: await getReportById(id), unchanged: true };
+  }
+
   const resolved = status === 'resolved' || status === 'dismissed';
-  await db.prepare(`
+  const updated = await db.prepare(`
     UPDATE reports
        SET status = ?, admin_note = ?, updated_at = datetime('now'),
            resolved_at = CASE WHEN ? THEN datetime('now') ELSE NULL END,
            resolved_by_admin_id = CASE WHEN ? THEN (?::bigint) ELSE NULL END
-     WHERE id = ?
-  `).run(status, String(adminNote || '').trim().slice(0, 1000), resolved ? 1 : 0, resolved ? 1 : 0, adminId, id);
+     WHERE id = ? AND status = ?
+  `).run(status, String(adminNote || '').trim().slice(0, 1000), resolved ? 1 : 0,
+    resolved ? 1 : 0, adminId, id, expectedStatus);
+  if (updated.changes === 0) {
+    const current = await getReportById(id);
+    return current
+      ? { conflict: true, currentStatus: current.status, invalidTransition: false }
+      : null;
+  }
   return {
     before,
     after: await getReportById(id)
