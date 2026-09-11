@@ -7,6 +7,7 @@
     "start": "node src/index.js",
     "test": "find src -name '*.test.js' -print0 | xargs -0 env NODE_ENV=test node --test --test-concurrency=1",
     "admin:create": "node scripts/crear-admin.js",
+    "db:snapshot-sqlite": "node scripts/snapshot-sqlite.js",
     "db:migrate": "node scripts/migrate-postgres.js",
     "db:import-sqlite": "node scripts/migrate-sqlite-to-postgres.js",
     "db:backup": "./infra/postgres/backup.sh"
@@ -21,6 +22,7 @@
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.11.1",
     "cors": "^2.8.6",
     "dotenv": "16.4.5",
     "express": "^4.21.0",
@@ -38,7 +40,6 @@
     "twilio": "^6.0.2"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.3.16",
-    "better-sqlite3": "^12.11.1"
+    "@electric-sql/pglite": "^0.3.16"
   }
 }

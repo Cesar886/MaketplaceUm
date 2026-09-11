@@ -1,0 +1,11 @@
+[Unit]
+Description=Respaldo diario de PostgreSQL para Marketplace UM
+
+[Timer]
+OnCalendar=*-*-* 04:17:00 UTC
+Persistent=true
+RandomizedDelaySec=15m
+Unit=marketplace-postgres-backup.service
+
+[Install]
+WantedBy=timers.target

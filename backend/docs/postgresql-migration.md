@@ -1,8 +1,8 @@
 # Migración de Marketplace UM a PostgreSQL
 
-La API usa PostgreSQL como única base de producción. SQLite queda como
-dependencia de desarrollo únicamente para leer el archivo histórico y para
-las pruebas legacy.
+La API usa PostgreSQL como única base de producción. El lector SQLite queda
+instalado únicamente para crear snapshots, importar el archivo histórico y
+ejecutar las pruebas legacy; la API de producción nunca lo selecciona.
 
 ## Arquitectura y seguridad
 
@@ -64,25 +64,30 @@ permisos DDL.
 
 ## 3. Trasladar el SQLite actual
 
-Programa una ventana breve sin escrituras. Detén PM2 y conserva juntos el
-archivo `.db`, `-wal` y `-shm`. Crea primero una copia consistente con la API
-de backup de SQLite o con el respaldo administrativo existente; no copies el
-`.db` en caliente ignorando WAL.
+Programa una ventana breve sin escrituras y detén PM2. El comando de snapshot
+usa la API de backup de SQLite, valida tanto el origen como el resultado con
+`quick_check` y llaves foráneas, registra conteos y genera SHA-256. Así consolida
+correctamente cualquier WAL; no copies el `.db` en caliente ignorándolo.
 
 Con PostgreSQL vacío y la API detenida:
 
 ```sh
 cd /root/mercaditoUmBack
+pm2 stop mercadito-backend
+npm run db:snapshot-sqlite -- ./mercadito_um.db /root/marketplace-migration-snapshots
+cd /root/marketplace-migration-snapshots
+sha256sum -c mercadito_um-FECHA.db.sha256
+cd /root/mercaditoUmBack
 set -a; source ./.env.migrator; set +a
-npm install
-npm run db:import-sqlite -- /ruta/al/snapshot/mercadito_um.db --replace
+NODE_ENV=production npm run db:import-sqlite -- /root/marketplace-migration-snapshots/mercadito_um-FECHA.db --replace
 unset DATABASE_URL
 ```
 
-`--replace` trunca el destino dentro de la misma transacción y sólo debe
-usarse con la API detenida. El importador valida `quick_check`, llaves foráneas,
-orden de dependencias, conteos por tabla y secuencias. Cualquier diferencia
-hace rollback completo.
+`--replace` sustituye únicamente tablas representadas por el snapshot, nunca
+usa `CASCADE` y sólo debe usarse con la API detenida. El preflight compara todas
+las tablas y columnas en ambos motores; cualquier omisión no clasificada,
+catálogo incompleto, diferencia de conteos o cambio en una tabla preservada
+hace rollback completo. También valida llaves foráneas, orden y secuencias.
 
 ## 4. Configurar y arrancar la API
 
@@ -109,16 +114,23 @@ el SQLite y el release anterior sin modificaciones hasta cerrar la validación.
 
 ## Respaldos y restauración
 
-`npm run db:backup` produce un dump custom, lo valida con `pg_restore --list`
-y usa permisos `600`. Ejecútalo desde cron y copia los respaldos cifrados a
-otro host; un volumen Docker no es un respaldo.
-
-Ejemplo de política: diario por 14 días, semanal por 8 semanas y mensual por
-12 meses. Prueba una restauración periódicamente en una base distinta:
+`npm run db:backup` produce un dump custom con ACL, lo valida con
+`pg_restore --list` y usa permisos `600`. Instala el timer diario incluido:
 
 ```sh
-createdb marketplace_um_restore_test
-pg_restore --clean --if-exists --no-owner --dbname marketplace_um_restore_test respaldo.dump
+cd /root/mercaditoUmBack
+sudo ./scripts/install-postgres-backup-timer.sh
+systemctl status marketplace-postgres-backup.timer
+```
+
+Por defecto conserva 14 días. `MERCADITO_BACKUP_MIRROR_DIR` permite copiar cada
+dump a un volumen montado aparte; para tolerar la pérdida completa del servidor,
+ese destino debe terminar replicado o montado desde otro host.
+
+Prueba periódicamente una restauración completa, incluidos los privilegios:
+
+```sh
+./scripts/test-postgres-restore.sh infra/postgres/backups/marketplace_um-FECHA.dump
 ```
 
 Para volver atrás durante la primera ventana, detén la API nueva, restaura el
