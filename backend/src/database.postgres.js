@@ -1672,9 +1672,13 @@ async function createDirectConversation(id, buyerId, sellerId) {
   await db.prepare(`
     INSERT INTO conversations (id, product_id, wanted_post_id, buyer_id, seller_id, created_at, last_message_at, last_message_preview)
     VALUES (?, NULL, NULL, ?, ?, datetime('now'), datetime('now'), '')
-    ON CONFLICT DO NOTHING
+    ON CONFLICT (LEAST(buyer_id, seller_id), GREATEST(buyer_id, seller_id))
+      WHERE product_id IS NULL AND wanted_post_id IS NULL
+      DO NOTHING
   `).run(id, buyerId, sellerId);
-  return await findDirectConversation(buyerId, sellerId);
+  const conversation = await findDirectConversation(buyerId, sellerId);
+  if (!conversation) throw new Error('No se pudo recuperar el chat directo recién creado.');
+  return conversation;
 }
 
 /** El chat directo entre dos personas, mirado en los DOS sentidos.

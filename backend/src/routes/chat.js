@@ -111,8 +111,9 @@ async function resolveConversation({
     let conversation = await db.findDirectConversation(userId, sellerId);
     if (!conversation) {
       const convId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      await db.createDirectConversation(convId, userId, sellerId);
-      conversation = await db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(convId);
+      // El INSERT es idempotente y el índice simétrico decide cuál petición
+      // concurrente ganó. Nunca asumimos que sobrevivió nuestro `convId`.
+      conversation = await db.createDirectConversation(convId, userId, sellerId);
     }
     return {
       conversation

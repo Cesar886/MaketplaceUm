@@ -137,9 +137,11 @@ async function notifyPublicationModerated(ownerId, kind, publication, status, mo
 
 function parseReportUpdate(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
-  const allowed = new Set(['status', 'reporterMessage', 'adminNote']);
+  const allowed = new Set(['status', 'expectedStatus', 'reporterMessage', 'adminNote']);
   if (Object.keys(body).some(key => !allowed.has(key)) || !REPORT_STATUSES.has(body.status)) return null;
 
+  const expectedStatus = body.expectedStatus === undefined ? null : body.expectedStatus;
+  if (expectedStatus !== null && !REPORT_STATUSES.has(expectedStatus)) return null;
   if (body.reporterMessage !== undefined && typeof body.reporterMessage !== 'string') return null;
   if (body.adminNote !== undefined && typeof body.adminNote !== 'string') return null;
   const reporterMessage = (body.reporterMessage || '').trim();
@@ -149,6 +151,7 @@ function parseReportUpdate(body) {
   if (/\u0000/.test(reporterMessage) || /\u0000/.test(adminNote)) return null;
   return {
     status: body.status,
+    expectedStatus,
     reporterMessage,
     adminNote
   };
@@ -209,18 +212,18 @@ async function createOfficialReportMessage(database, report, account, text) {
   }
 
   let conversation = await db.findDirectConversation(account.id, report.reporter_id);
-  let firstMessage = false;
   if (!conversation) {
     const conversationId = `conv_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
     // La cuenta oficial queda como seller para que el hilo tenga el mismo
     // sentido estable aunque quien reportó sea un invitado sin fila seller.
     await db.createDirectConversation(conversationId, report.reporter_id, account.id);
-    conversation = await database.prepare('SELECT * FROM conversations WHERE id = ?').get(conversationId);
-    firstMessage = true;
-  } else {
-    const count = await database.prepare('SELECT COUNT(*) AS total FROM messages WHERE conversation_id = ?').get(conversation.id);
-    firstMessage = Number(count?.total || 0) === 0;
+    // Otra resolución puede haber creado el hilo de la misma pareja mientras
+    // esta transacción esperaba el índice único. Recuperamos siempre la fila
+    // ganadora en vez de asumir que sobrevivió nuestro id candidato.
+    conversation = await db.createDirectConversation(conversationId, report.reporter_id, account.id);
   }
+  const count = await database.prepare('SELECT COUNT(*) AS total FROM messages WHERE conversation_id = ?').get(conversation.id);
+  const firstMessage = Number(count?.total || 0) === 0;
 
   await db.createMessage(messageId, conversation.id, account.id, text);
   const message = await database.prepare(`SELECT id, conversation_id, sender_id, text, created_at, read
@@ -750,6 +753,26 @@ function router() {
     if (!current) return res.status(404).json({
       error: 'Reporte no encontrado.'
     });
+    const expectedStatus = parsed.expectedStatus || current.status;
+    if (current.status !== expectedStatus) {
+      return res.status(409).json({
+        error: 'El reporte cambió en otra sesión. Recarga el caso antes de continuar.',
+        code: 'REPORT_STATUS_CONFLICT',
+        currentStatus: current.status
+      });
+    }
+    const validTransition = current.status === parsed.status
+      || current.status === 'received' && ['reviewing', 'resolved', 'dismissed'].includes(parsed.status)
+      || current.status === 'reviewing' && ['resolved', 'dismissed'].includes(parsed.status);
+    if (!validTransition) {
+      return res.status(409).json({
+        error: CLOSED_REPORT_STATUSES.has(current.status)
+          ? 'El reporte ya está cerrado y su decisión es definitiva.'
+          : 'La transición de estado solicitada no está permitida.',
+        code: 'REPORT_INVALID_TRANSITION',
+        currentStatus: current.status
+      });
+    }
 
     let account = null;
     if (parsed.reporterMessage) {
@@ -765,10 +788,12 @@ function router() {
       result = await db.updateReportStatus({
         id: req.params.id,
         status: parsed.status,
+        expectedStatus,
         adminNote: parsed.adminNote,
         adminId: req.admin.id
       });
       if (!result) throw new Error('El reporte dejo de existir durante la operacion.');
+      if (result.conflict) return;
       if (parsed.reporterMessage) {
         delivery = await createOfficialReportMessage(database, result.after, account, parsed.reporterMessage);
       }
@@ -789,6 +814,15 @@ function router() {
         createdAt: new Date().toISOString()
       });
     })();
+    if (result?.conflict) {
+      return res.status(409).json({
+        error: result.invalidTransition
+          ? 'La transición de estado solicitada no está permitida.'
+          : 'El reporte cambió en otra sesión. Recarga el caso antes de continuar.',
+        code: result.invalidTransition ? 'REPORT_INVALID_TRANSITION' : 'REPORT_STATUS_CONFLICT',
+        currentStatus: result.currentStatus
+      });
+    }
     if (delivery?.created) await deliverOfficialReportMessage(req.app, result.after, delivery);
     const reporterMessageSent = Boolean(delivery?.created || delivery?.alreadySent);
     const reporterMessageSkipped = delivery?.skipped || null;

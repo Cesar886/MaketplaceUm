@@ -135,7 +135,11 @@ test('admin puede resolver sin explicacion y no se envia mensaje ni notificacion
   const updated = await jsonRequest(`/api/admin/reports/${created.body.report.id}`, {
     method: 'PATCH',
     headers: adminHeaders(),
-    body: { status: 'resolved', adminNote: 'Se contacto al usuario reportado.' },
+    body: {
+      status: 'resolved',
+      expectedStatus: 'received',
+      adminNote: 'Se contacto al usuario reportado.',
+    },
   });
   assert.equal(updated.status, 200, JSON.stringify(updated.body));
   assert.equal(updated.body.report.status, 'resolved');
@@ -182,7 +186,7 @@ test('respuesta opcional crea un chat real desde la cuenta oficial sin auditar e
   const updated = await jsonRequest(`/api/admin/reports/${created.body.report.id}`, {
     method: 'PATCH',
     headers: adminHeaders(),
-    body: { status: 'resolved', reporterMessage },
+    body: { status: 'resolved', expectedStatus: 'received', reporterMessage },
   });
 
   assert.equal(updated.status, 200, JSON.stringify(updated.body));
@@ -212,7 +216,11 @@ test('respuesta opcional crea un chat real desde la cuenta oficial sin auditar e
   const retried = await jsonRequest(`/api/admin/reports/${created.body.report.id}`, {
     method: 'PATCH',
     headers: adminHeaders(),
-    body: { status: 'resolved', reporterMessage: 'Este reintento no debe crear otro mensaje.' },
+    body: {
+      status: 'resolved',
+      expectedStatus: 'resolved',
+      reporterMessage: 'Este reintento no debe crear otro mensaje.',
+    },
   });
   assert.equal(retried.status, 200, JSON.stringify(retried.body));
   assert.equal(retried.body.reporterMessageSent, true);
@@ -228,7 +236,7 @@ test('respuesta opcional crea un chat real desde la cuenta oficial sin auditar e
   assert.doesNotMatch(retryAudit.details_json, /Este reintento/);
 });
 
-test('dos reintentos concurrentes solo crean una respuesta de chat', async () => {
+test('CAS deja una sola decisión y una sola respuesta ante dos cierres concurrentes', async () => {
   const reporter = seller();
   const target = seller();
   const created = await jsonRequest('/api/reports', {
@@ -239,20 +247,23 @@ test('dos reintentos concurrentes solo crean una respuesta de chat', async () =>
   const [first, second] = await Promise.all([
     jsonRequest(route, {
       method: 'PATCH', headers: adminHeaders(),
-      body: { status: 'resolved', reporterMessage: 'Atendimos tu reporte.' },
+      body: {
+        status: 'resolved', expectedStatus: 'received', reporterMessage: 'Atendimos tu reporte.',
+      },
     }),
     jsonRequest(route, {
       method: 'PATCH', headers: adminHeaders(),
-      body: { status: 'resolved', reporterMessage: 'Atendimos tu reporte.' },
+      body: {
+        status: 'resolved', expectedStatus: 'received', reporterMessage: 'Atendimos tu reporte.',
+      },
     }),
   ]);
 
-  assert.equal(first.status, 200, JSON.stringify(first.body));
-  assert.equal(second.status, 200, JSON.stringify(second.body));
-  assert.deepEqual(
-    [first.body.reporterMessageAlreadySent, second.body.reporterMessageAlreadySent].sort(),
-    [false, true],
-  );
+  const responses = [first, second].sort((a, b) => a.status - b.status);
+  assert.equal(responses[0].status, 200, JSON.stringify(responses[0].body));
+  assert.equal(responses[1].status, 409, JSON.stringify(responses[1].body));
+  assert.equal(responses[1].body.code, 'REPORT_STATUS_CONFLICT');
+  assert.equal(responses[1].body.currentStatus, 'resolved');
   const conversation = database.prepare(`SELECT id FROM conversations
     WHERE buyer_id = ? AND seller_id = ?`).get(reporter.id, reportsAccountId);
   assert.ok(conversation);
@@ -260,6 +271,93 @@ test('dos reintentos concurrentes solo crean una respuesta de chat', async () =>
     .get(conversation.id).total, 1);
   assert.equal(database.prepare('SELECT COUNT(*) AS total FROM notifications WHERE user_id = ?')
     .get(reporter.id).total, 1);
+});
+
+test('dos reportes distintos cerrados a la vez comparten un único chat oficial', async () => {
+  const reporter = seller();
+  const firstTarget = seller();
+  const secondTarget = seller();
+  const [firstReport, secondReport] = await Promise.all([
+    createReport(reporter, {
+      targetType: 'user', targetId: firstTarget.id, reason: 'Primer caso sospechoso',
+    }),
+    createReport(reporter, {
+      targetType: 'user', targetId: secondTarget.id, reason: 'Segundo caso sospechoso',
+    }),
+  ]);
+  assert.equal(firstReport.status, 201, JSON.stringify(firstReport.body));
+  assert.equal(secondReport.status, 201, JSON.stringify(secondReport.body));
+
+  const responses = await Promise.all([
+    jsonRequest(`/api/admin/reports/${firstReport.body.report.id}`, {
+      method: 'PATCH', headers: adminHeaders(),
+      body: {
+        status: 'resolved', expectedStatus: 'received', reporterMessage: 'Atendimos el primer caso.',
+      },
+    }),
+    jsonRequest(`/api/admin/reports/${secondReport.body.report.id}`, {
+      method: 'PATCH', headers: adminHeaders(),
+      body: {
+        status: 'dismissed', expectedStatus: 'received', reporterMessage: 'Revisamos el segundo caso.',
+      },
+    }),
+  ]);
+  for (const response of responses) assert.equal(response.status, 200, JSON.stringify(response.body));
+
+  const conversations = database.prepare(`
+    SELECT id FROM conversations
+     WHERE product_id IS NULL AND wanted_post_id IS NULL
+       AND ((buyer_id = ? AND seller_id = ?) OR (buyer_id = ? AND seller_id = ?))
+  `).all(reporter.id, reportsAccountId, reportsAccountId, reporter.id);
+  assert.equal(conversations.length, 1);
+  const messages = database.prepare(`
+    SELECT id, text FROM messages WHERE conversation_id = ? ORDER BY created_at, rowid
+  `).all(conversations[0].id);
+  assert.equal(messages.length, 2);
+  assert.deepEqual(new Set(messages.map(message => message.text)), new Set([
+    'Atendimos el primer caso.',
+    'Revisamos el segundo caso.',
+  ]));
+});
+
+test('estados cerrados son terminales y expectedStatus obsoleto devuelve el estado actual', async () => {
+  const reporter = seller();
+  const target = seller();
+  const created = await createReport(reporter, {
+    targetType: 'user', targetId: target.id, reason: 'Actividad sospechosa',
+  });
+  const route = `/api/admin/reports/${created.body.report.id}`;
+
+  const reviewing = await jsonRequest(route, {
+    method: 'PATCH', headers: adminHeaders(),
+    body: { status: 'reviewing', expectedStatus: 'received' },
+  });
+  assert.equal(reviewing.status, 200, JSON.stringify(reviewing.body));
+
+  const stale = await jsonRequest(route, {
+    method: 'PATCH', headers: adminHeaders(),
+    body: { status: 'resolved', expectedStatus: 'received' },
+  });
+  assert.equal(stale.status, 409, JSON.stringify(stale.body));
+  assert.equal(stale.body.code, 'REPORT_STATUS_CONFLICT');
+  assert.equal(stale.body.currentStatus, 'reviewing');
+
+  const resolved = await jsonRequest(route, {
+    method: 'PATCH', headers: adminHeaders(),
+    body: { status: 'resolved', expectedStatus: 'reviewing' },
+  });
+  assert.equal(resolved.status, 200, JSON.stringify(resolved.body));
+
+  for (const nextStatus of ['reviewing', 'dismissed']) {
+    const forbidden = await jsonRequest(route, {
+      method: 'PATCH', headers: adminHeaders(),
+      body: { status: nextStatus, expectedStatus: 'resolved' },
+    });
+    assert.equal(forbidden.status, 409, JSON.stringify(forbidden.body));
+    assert.equal(forbidden.body.code, 'REPORT_INVALID_TRANSITION');
+    assert.equal(forbidden.body.currentStatus, 'resolved');
+  }
+  assert.equal(db.getReportById(created.body.report.id).status, 'resolved');
 });
 
 test('un bloqueo no impide cerrar el reporte y evita por completo el chat oficial', async () => {
@@ -273,7 +371,9 @@ test('un bloqueo no impide cerrar el reporte y evita por completo el chat oficia
 
   const updated = await jsonRequest(`/api/admin/reports/${created.body.report.id}`, {
     method: 'PATCH', headers: adminHeaders(),
-    body: { status: 'resolved', reporterMessage: 'El caso fue atendido.' },
+    body: {
+      status: 'resolved', expectedStatus: 'received', reporterMessage: 'El caso fue atendido.',
+    },
   });
   assert.equal(updated.status, 200, JSON.stringify(updated.body));
   assert.equal(updated.body.report.status, 'resolved');
@@ -305,7 +405,9 @@ test('silenciar la cuenta oficial conserva el chat pero omite su notificacion', 
 
   const updated = await jsonRequest(`/api/admin/reports/${created.body.report.id}`, {
     method: 'PATCH', headers: adminHeaders(),
-    body: { status: 'dismissed', reporterMessage: 'Terminamos de revisar el caso.' },
+    body: {
+      status: 'dismissed', expectedStatus: 'received', reporterMessage: 'Terminamos de revisar el caso.',
+    },
   });
   assert.equal(updated.status, 200, JSON.stringify(updated.body));
   assert.equal(updated.body.reporterMessageSent, true);
@@ -439,7 +541,11 @@ test('un invitado puede reportar sin iniciar sesion ni crear una cuenta', async 
 
   const updated = await jsonRequest(`/api/admin/reports/${created.body.report.id}`, {
     method: 'PATCH', headers: adminHeaders(),
-    body: { status: 'dismissed', reporterMessage: 'Revisamos tu reporte y cerramos el caso.' },
+    body: {
+      status: 'dismissed',
+      expectedStatus: 'received',
+      reporterMessage: 'Revisamos tu reporte y cerramos el caso.',
+    },
   });
   assert.equal(updated.status, 200, JSON.stringify(updated.body));
   assert.equal(updated.body.reporterMessageSent, true);

@@ -4183,7 +4183,13 @@ function createDirectConversation(id, buyerId, sellerId) {
     INSERT OR IGNORE INTO conversations (id, product_id, wanted_post_id, buyer_id, seller_id, created_at, last_message_at, last_message_preview)
     VALUES (?, NULL, NULL, ?, ?, datetime('now'), datetime('now'), '')
   `).run(id, buyerId, sellerId);
-  return findDirectConversation(buyerId, sellerId);
+  const conversation = findDirectConversation(buyerId, sellerId);
+  if (!conversation) {
+    // INSERT OR IGNORE también cubre una colisión de PK. No podemos confundir
+    // ese caso con el conflicto esperado del índice por pareja.
+    throw new Error('No se pudo crear el chat directo: el id ya pertenece a otro hilo.');
+  }
+  return conversation;
 }
 
 /** El chat directo entre dos personas, mirado en los DOS sentidos.

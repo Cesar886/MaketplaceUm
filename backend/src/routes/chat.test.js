@@ -693,6 +693,29 @@ test('si el otro contesta desde MI perfil, sigue siendo el mismo hilo', async ()
   assert.strictEqual(deBeto.body.conversationId, deAna.body.conversationId);
 });
 
+test('el índice directo es simétrico y una colisión de id ajena falla de forma segura', () => {
+  const ana = crearUsuario();
+  const beto = crearUsuario();
+  const carla = crearUsuario();
+  const diego = crearUsuario();
+
+  const winner = db.createDirectConversation('conv_direct_winner', ana.id, beto.id);
+  const reused = db.createDirectConversation('conv_direct_loser', beto.id, ana.id);
+  assert.strictEqual(reused.id, winner.id);
+  const pairCount = db.getDb().prepare(`
+    SELECT COUNT(*) AS total FROM conversations
+     WHERE product_id IS NULL AND wanted_post_id IS NULL
+       AND ((buyer_id = ? AND seller_id = ?) OR (buyer_id = ? AND seller_id = ?))
+  `).get(ana.id, beto.id, beto.id, ana.id).total;
+  assert.strictEqual(pairCount, 1);
+
+  assert.throws(
+    () => db.createDirectConversation('conv_direct_winner', carla.id, diego.id),
+    /id ya pertenece a otro hilo/,
+  );
+  assert.strictEqual(db.findDirectConversation(carla.id, diego.id), undefined);
+});
+
 test('un chat directo aparece en la bandeja sin producto ni "se busca"', async () => {
   const comprador = crearUsuario();
   const vendedor = crearUsuario();
