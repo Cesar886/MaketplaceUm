@@ -2391,6 +2391,34 @@ function runMigrations() {
     })(directDuplicates);
   }
 
+  // target_user_id fue controlable por clientes antiguos. Se deriva de nuevo
+  // en cada arranque usando únicamente relaciones persistidas; un reporte de
+  // chat ajeno queda en NULL en vez de enfocar una cuenta inocente.
+  db.exec(`
+    UPDATE reports
+       SET target_user_id = CASE target_type
+         WHEN 'user' THEN (
+           SELECT seller.id FROM sellers AS seller WHERE seller.id = reports.target_id
+         )
+         WHEN 'product' THEN (
+           SELECT product.seller FROM products AS product WHERE product.id = reports.target_id
+         )
+         WHEN 'wanted' THEN (
+           SELECT wanted.user_id FROM wanted_posts AS wanted WHERE wanted.id = reports.target_id
+         )
+         WHEN 'chat' THEN (
+           SELECT CASE
+             WHEN conversation.buyer_id = reports.reporter_id THEN conversation.seller_id
+             WHEN conversation.seller_id = reports.reporter_id THEN conversation.buyer_id
+             ELSE NULL
+           END
+             FROM conversations AS conversation
+            WHERE conversation.id = reports.target_id
+         )
+         ELSE NULL
+       END
+  `);
+
   db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_direct_pair_unique
       ON conversations (

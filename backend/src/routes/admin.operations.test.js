@@ -186,6 +186,28 @@ test('spam y eliminación lógica ocultan publicaciones públicas y conservan ev
   assert.equal(JSON.parse(notifications[1].data).publicationId, wantedId);
 });
 
+test('una moderación desde reportes puede omitir toda explicación al propietario', async () => {
+  const owner = seller();
+  const productId = product(owner, 'Producto reportado');
+
+  const response = await request(`/api/admin/publications/product/${productId}/spam`, {
+    method: 'PATCH',
+    body: {
+      reason: 'Medida administrativa vinculada al reporte rep_prueba',
+      expectedStatus: 'visible',
+      notifyOwner: false,
+    },
+  });
+  assert.equal(response.status, 200, await response.text());
+  assert.equal(database.prepare(
+    'SELECT COUNT(*) AS total FROM notifications WHERE user_id = ?',
+  ).get(owner).total, 0);
+  const audit = database.prepare(
+    'SELECT details_json FROM admin_audit_log WHERE entity_id = ? ORDER BY id DESC LIMIT 1',
+  ).get(productId);
+  assert.equal(JSON.parse(audit.details_json).ownerNotified, false);
+});
+
 test('operación masiva aborta si no puede respaldar y crea backup antes de aplicar', async () => {
   const first = seller();
   const second = seller();

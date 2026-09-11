@@ -91,6 +91,32 @@ FROM direct_conversation_merge_map AS merge
 WHERE report.target_type = 'chat'
   AND report.target_id = merge.duplicate_id;
 
+-- Versiones antiguas aceptaban target_user_id del cliente. Nunca se usa ese
+-- dato para dirigir al panel: se reconstruye exclusivamente desde el objetivo
+-- persistido y, en chat, solo si quien reportó pertenece a la conversación.
+UPDATE reports AS report
+SET target_user_id = CASE report.target_type
+  WHEN 'user' THEN (
+    SELECT seller.id FROM sellers AS seller WHERE seller.id = report.target_id
+  )
+  WHEN 'product' THEN (
+    SELECT product.seller FROM products AS product WHERE product.id = report.target_id
+  )
+  WHEN 'wanted' THEN (
+    SELECT wanted.user_id FROM wanted_posts AS wanted WHERE wanted.id = report.target_id
+  )
+  WHEN 'chat' THEN (
+    SELECT CASE
+      WHEN conversation.buyer_id = report.reporter_id THEN conversation.seller_id
+      WHEN conversation.seller_id = report.reporter_id THEN conversation.buyer_id
+      ELSE NULL
+    END
+    FROM conversations AS conversation
+    WHERE conversation.id = report.target_id
+  )
+  ELSE NULL
+END;
+
 -- Conserva operativos los deep-links y el marcado de notificaciones. `data`
 -- es TEXT por compatibilidad legacy, por eso el CASE valida JSON antes del
 -- cast y deja intacta cualquier fila histórica malformada.

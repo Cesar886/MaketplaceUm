@@ -599,11 +599,16 @@ function router() {
     }
     const body = req.body;
     const safeReason = reason(body?.reason);
-    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => !['reason', 'expectedStatus'].includes(key)) || !safeReason || body.expectedStatus !== undefined && !MODERATION_STATUSES.has(body.expectedStatus)) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)
+        || Object.keys(body).some(key => !['reason', 'expectedStatus', 'notifyOwner'].includes(key))
+        || !safeReason
+        || body.expectedStatus !== undefined && !MODERATION_STATUSES.has(body.expectedStatus)
+        || body.notifyOwner !== undefined && typeof body.notifyOwner !== 'boolean') {
       return res.status(400).json({
         error: 'Motivo o estado esperado inválido.'
       });
     }
+    const notifyOwner = body.notifyOwner !== false;
     const table = kind === 'product' ? 'products' : 'wanted_posts';
     const database = db.getDb();
     const ownerColumn = kind === 'product' ? 'seller' : 'user_id';
@@ -638,11 +643,14 @@ function router() {
           title: before.title,
           before: before.status,
           after: targetStatus,
-          reason: safeReason
+          reason: safeReason,
+          ownerNotified: notifyOwner
         },
         createdAt: now
       });
-      await notifyPublicationModerated(before.ownerId, kind, before, targetStatus, safeReason);
+      if (notifyOwner) {
+        await notifyPublicationModerated(before.ownerId, kind, before, targetStatus, safeReason);
+      }
     })();
     if (kind === 'product') {
       const index = products.findIndex(product => product.id === req.params.id);

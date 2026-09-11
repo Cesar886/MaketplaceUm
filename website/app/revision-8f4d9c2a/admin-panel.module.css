@@ -99,6 +99,9 @@
 .inlineError { background: #fff7f6; border: 1px solid #ebc0bb; border-radius: 9px; color: var(--admin-danger); font-size: 11px; padding: 10px 12px; }
 .inlineWarning { background: #fff5d9; border: 1px solid #ead598; border-radius: 9px; color: #634b11; font-size: 11px; padding: 10px 12px; }
 .reportReviewActions { align-items: center; display: flex; gap: 8px; justify-content: flex-end; }
+.pagination { align-items: center; display: flex; gap: 10px; justify-content: flex-end; }
+.pagination span { color: var(--admin-muted); font-size: 11px; font-weight: 700; }
+.pagination button { background: #e9ebef; border: 0; border-radius: 9px; color: var(--admin-brand); cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; min-height: 38px; padding: 8px 12px; }
 .tableWrap { background: #fff; border: 1px solid var(--admin-border); border-radius: 14px; overflow: auto; }
 .dataTable { border-collapse: collapse; min-width: 880px; width: 100%; }
 .dataTable th { background: #f7f7f4; color: var(--admin-muted); font-size: 10px; font-weight: 700; letter-spacing: .06em; padding: 11px 13px; text-align: left; text-transform: uppercase; }

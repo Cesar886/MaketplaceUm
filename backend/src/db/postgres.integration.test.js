@@ -73,6 +73,13 @@ test('la migración 004 fusiona chats directos duplicados antes de imponer unici
   }
 
   await database.exec(`
+    INSERT INTO sellers (id, name) VALUES
+      ('alice', 'Alice'),
+      ('bob', 'Bob'),
+      ('owner', 'Owner'),
+      ('real_user', 'Real user'),
+      ('innocent', 'Innocent');
+
     INSERT INTO conversations (
       id, product_id, wanted_post_id, buyer_id, seller_id, created_at,
       last_message_at, last_message_preview
@@ -96,9 +103,21 @@ test('la migración 004 fusiona chats directos duplicados antes de imponer unici
       ('conv_keep', 'alice', 'msg_keep', '2026-03-01T01:00:00Z'),
       ('conv_duplicate', 'alice', 'msg_duplicate', '2026-01-02T01:00:00Z');
 
+    INSERT INTO products (id, title, seller)
+    VALUES ('legacy_product', 'Producto legado', 'owner');
+
+    INSERT INTO wanted_posts (id, user_id, title, category_id, type)
+    VALUES ('legacy_wanted', 'owner', 'Solicitud legada', 'otros', 'producto');
+
     INSERT INTO reports (
-      id, reporter_id, target_type, target_id, reason
-    ) VALUES ('report_duplicate_chat', 'alice', 'chat', 'conv_duplicate', 'Mensajes sospechosos');
+      id, reporter_id, target_type, target_id, target_user_id, reason
+    ) VALUES
+      ('report_duplicate_chat', 'alice', 'chat', 'conv_duplicate', 'innocent', 'Mensajes sospechosos'),
+      ('report_outsider_chat', 'mallory', 'chat', 'conv_duplicate', 'innocent', 'Chat ajeno'),
+      ('report_user', 'alice', 'user', 'real_user', 'innocent', 'Usuario sospechoso'),
+      ('report_product', 'alice', 'product', 'legacy_product', 'innocent', 'Producto sospechoso'),
+      ('report_wanted', 'alice', 'wanted', 'legacy_wanted', 'innocent', 'Solicitud sospechosa'),
+      ('report_missing', 'alice', 'user', 'missing', 'innocent', 'Objetivo inexistente');
 
     INSERT INTO notifications (id, user_id, type, title, body, data)
     VALUES
@@ -137,10 +156,17 @@ test('la migración 004 fusiona chats directos duplicados antes de imponer unici
     conversation_id: 'conv_keep',
     deleted_through_message_id: 'msg_duplicate',
   }]);
-  const report = await database.query(`
-    SELECT target_id FROM reports WHERE id = 'report_duplicate_chat'
+  const reports = await database.query(`
+    SELECT id, target_id, target_user_id FROM reports ORDER BY id
   `);
-  assert.equal(report.rows[0].target_id, 'conv_keep');
+  assert.deepEqual(reports.rows, [
+    { id: 'report_duplicate_chat', target_id: 'conv_keep', target_user_id: 'bob' },
+    { id: 'report_missing', target_id: 'missing', target_user_id: null },
+    { id: 'report_outsider_chat', target_id: 'conv_keep', target_user_id: null },
+    { id: 'report_product', target_id: 'legacy_product', target_user_id: 'owner' },
+    { id: 'report_user', target_id: 'real_user', target_user_id: 'real_user' },
+    { id: 'report_wanted', target_id: 'legacy_wanted', target_user_id: 'owner' },
+  ]);
   const notifications = await database.query(`
     SELECT id, data FROM notifications
      WHERE id IN ('notification_duplicate_chat', 'notification_invalid_json')
