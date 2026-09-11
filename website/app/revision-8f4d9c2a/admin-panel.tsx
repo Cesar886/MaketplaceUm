@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 import RevisionQueue from './revision-queue';
 import styles from './admin-panel.module.css';
@@ -38,6 +38,12 @@ type Report = {
   reason: string; details?: string | null;
   status: 'received' | 'reviewing' | 'resolved' | 'dismissed';
   admin_note?: string | null; created_at: string; updated_at: string;
+};
+type ReviewPanelProps = {
+  report: Report;
+  targetFound: boolean | null;
+  onComplete: () => void;
+  onExit: () => void;
 };
 type ConfigRow = {
   key: string; productsActive: number; productsDaily: number; wantedActive: number;
@@ -76,6 +82,94 @@ function StatusBadge({ status }: { status: string }) {
 
 function PanelState({ children, error = false }: { children: ReactNode; error?: boolean }) {
   return <div className={`${styles.panelState} ${error ? styles.panelError : ''}`} role={error ? 'alert' : 'status'}>{children}</div>;
+}
+
+function reportTargetLabel(report: Report) {
+  if (report.target_type === 'user') return `Usuario ${report.targetUserName || report.target_id}`;
+  if (report.target_type === 'chat') return `Usuario del chat ${report.targetUserName || report.target_user_id || report.target_id}`;
+  return `${report.target_type === 'product' ? 'Producto' : 'Se busca'} ${report.target_id}`;
+}
+
+function reportUserTargetId(report: Report) {
+  if (report.target_type === 'user') return report.target_id;
+  if (report.target_type === 'chat') return report.target_user_id || '';
+  return '';
+}
+
+function ReportReviewPanel({ report, targetFound, onComplete, onExit }: ReviewPanelProps) {
+  const [sendMessage, setSendMessage] = useState(false);
+  const [reporterMessage, setReporterMessage] = useState('');
+  const [working, setWorking] = useState<Report['status'] | ''>('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setSendMessage(false);
+    setReporterMessage('');
+    setError('');
+  }, [report.id]);
+
+  async function closeReport(status: 'resolved' | 'dismissed') {
+    setWorking(status);
+    setError('');
+    try {
+      await adminFetch(`/admin/reports/${encodeURIComponent(report.id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status,
+          reporterMessage: sendMessage ? reporterMessage.trim() : undefined,
+        }),
+      });
+      onComplete();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo cerrar el reporte.');
+    } finally {
+      setWorking('');
+    }
+  }
+
+  const invalidMessage = sendMessage && reporterMessage.trim().length < 3;
+  return (
+    <aside aria-labelledby="active-report-title" className={styles.reportReview}>
+      <div className={styles.reportReviewHeading}>
+        <div>
+          <p className={styles.eyebrow}>Revisión activa · {report.id}</p>
+          <h3 id="active-report-title">{reportTargetLabel(report)}</h3>
+          <p><strong>{report.reason}</strong>{report.details ? ` · ${report.details}` : ''}</p>
+        </div>
+        <StatusBadge status={report.status === 'received' ? 'reviewing' : report.status} />
+      </div>
+      {targetFound === false && (
+        <div className={styles.targetMissing} role="status">
+          El objetivo ya no está disponible o no tiene un usuario asociado. Aun así puedes resolver o descartar el reporte.
+        </div>
+      )}
+      <div className={styles.reportResolution}>
+        <label className={styles.optionalMessageToggle}>
+          <input checked={sendMessage} onChange={event => setSendMessage(event.target.checked)} type="checkbox" />
+          <span><strong>Enviar mensaje al reportante</strong><small>Opcional · desactivado por defecto</small></span>
+        </label>
+        {sendMessage && (
+          <label className={styles.reportMessageField}>
+            <span>Mensaje de cierre</span>
+            <textarea
+              autoFocus
+              maxLength={1000}
+              onChange={event => setReporterMessage(event.target.value)}
+              placeholder="Ejemplo: Revisamos tu reporte y tomamos las medidas correspondientes."
+              value={reporterMessage}
+            />
+            <small>Se enviará desde Reportes · cesar8herrera@gmail.com · {reporterMessage.trim().length}/1000</small>
+          </label>
+        )}
+      </div>
+      {error && <div className={styles.inlineError} role="alert">{error}</div>}
+      <div className={styles.reportReviewActions}>
+        <button disabled={!!working} onClick={onExit} type="button">Volver a reportes</button>
+        <button className={styles.dangerText} disabled={!!working || invalidMessage} onClick={() => closeReport('dismissed')} type="button">{working === 'dismissed' ? 'Descartando…' : 'Descartar'}</button>
+        <button className={styles.primaryButton} disabled={!!working || invalidMessage} onClick={() => closeReport('resolved')} type="button">{working === 'resolved' ? 'Resolviendo…' : 'Marcar como resuelto'}</button>
+      </div>
+    </aside>
+  );
 }
 
 function ActionDialog({ title, eyebrow, children, onClose }: {
@@ -122,7 +216,11 @@ function DashboardPanel() {
   );
 }
 
-function UsersPanel() {
+function UsersPanel({ review, onReviewComplete, onExitReview }: {
+  review?: Report | null;
+  onReviewComplete: () => void;
+  onExitReview: () => void;
+}) {
   const [queryInput, setQueryInput] = useState('');
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('all');
@@ -136,6 +234,8 @@ function UsersPanel() {
   const [reasonText, setReasonText] = useState('');
   const [until, setUntil] = useState('');
   const [working, setWorking] = useState(false);
+  const reviewTargetRef = useRef<HTMLTableRowElement>(null);
+  const reviewTargetId = review ? reportUserTargetId(review) : '';
 
   const load = () => {
     setLoading(true); setError('');
@@ -146,6 +246,18 @@ function UsersPanel() {
       .catch(e => setError(e.message)).finally(() => setLoading(false));
   };
   useEffect(load, [query, status]);
+
+  useEffect(() => {
+    if (!review) return;
+    setStatus('all');
+    setQueryInput(reviewTargetId);
+    setQuery(reviewTargetId);
+  }, [review?.id, reviewTargetId]);
+
+  const reviewedUser = reviewTargetId ? users.find(user => user.id === reviewTargetId) : undefined;
+  useEffect(() => {
+    if (!loading && reviewedUser) reviewTargetRef.current?.focus({ preventScroll: false });
+  }, [loading, reviewedUser]);
 
   async function openDetail(id: string) {
     try { setSelected(await adminFetch(`/admin/users/${encodeURIComponent(id)}`)); }
@@ -181,6 +293,7 @@ function UsersPanel() {
   return (
     <section aria-labelledby="users-title" className={styles.sectionPanel}>
       <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Control de cuentas</p><h2 id="users-title">Usuarios</h2><p>Busca, revisa actividad y aplica medidas con trazabilidad.</p></div><span className={styles.countPill}>{total} cuentas</span></div>
+      {review && <ReportReviewPanel onComplete={onReviewComplete} onExit={onExitReview} report={review} targetFound={loading ? null : !!reviewedUser} />}
       <form className={styles.toolbar} onSubmit={event => { event.preventDefault(); setQuery(queryInput.trim()); }}>
         <label className={styles.searchField}><span>Buscar cuenta</span><input maxLength={100} onChange={e => setQueryInput(e.target.value)} placeholder="Nombre, correo o ID" value={queryInput} /></label>
         <label><span>Estado</span><select onChange={e => setStatus(e.target.value)} value={status}><option value="all">Todos</option><option value="active">Activas</option><option value="suspended">Suspendidas</option><option value="banned">Baneadas</option></select></label>
@@ -189,7 +302,7 @@ function UsersPanel() {
       {selectedIds.size > 0 && <div className={styles.selectionBar}><strong>{selectedIds.size} seleccionadas</strong><span>Se creará y verificará un backup antes de una acción masiva.</span><button onClick={() => setAction({ ids: [...selectedIds], status: 'suspended' })} type="button">Suspender</button><button className={styles.dangerText} onClick={() => setAction({ ids: [...selectedIds], status: 'banned' })} type="button">Banear</button></div>}
       {error && <PanelState error>{error}</PanelState>}
       {loading ? <PanelState>Cargando usuarios…</PanelState> : users.length === 0 ? <PanelState>No hay cuentas con estos filtros.</PanelState> : (
-        <div className={styles.tableWrap}><table className={styles.dataTable}><thead><tr><th><input aria-label="Seleccionar todas" checked={allSelected} onChange={e => setSelectedIds(e.target.checked ? new Set(users.map(user => user.id)) : new Set())} type="checkbox" /></th><th>Cuenta</th><th>Tipo</th><th>Actividad</th><th>Verificación</th><th>Estado</th><th><span className={styles.srOnly}>Acciones</span></th></tr></thead><tbody>{users.map(user => <tr key={user.id}><td><input aria-label={`Seleccionar ${user.name}`} checked={selectedIds.has(user.id)} onChange={e => { const next = new Set(selectedIds); e.target.checked ? next.add(user.id) : next.delete(user.id); setSelectedIds(next); }} type="checkbox" /></td><td><strong>{user.name}</strong><small>{user.email || user.id}</small></td><td>{user.isBusiness ? 'Negocio' : user.accountType === 'particular' ? 'Externo' : 'UM'}</td><td><strong>{user.productCount + user.wantedCount}</strong><small>{formatDate(user.lastActive)}</small></td><td>{user.verified ? <span className={styles.verified}>Verificada</span> : <span className={styles.muted}>Sin verificar</span>}</td><td><StatusBadge status={user.adminStatus} /></td><td><button className={styles.rowButton} onClick={() => openDetail(user.id)} type="button">Administrar</button></td></tr>)}</tbody></table></div>
+        <div className={styles.tableWrap}><table className={styles.dataTable}><thead><tr><th><input aria-label="Seleccionar todas" checked={allSelected} onChange={e => setSelectedIds(e.target.checked ? new Set(users.map(user => user.id)) : new Set())} type="checkbox" /></th><th>Cuenta</th><th>Tipo</th><th>Actividad</th><th>Verificación</th><th>Estado</th><th><span className={styles.srOnly}>Acciones</span></th></tr></thead><tbody>{users.map(user => { const isReviewTarget = !!review && user.id === reviewTargetId; return <tr className={isReviewTarget ? styles.reviewTarget : undefined} key={user.id} ref={isReviewTarget ? reviewTargetRef : undefined} tabIndex={isReviewTarget ? -1 : undefined}><td><input aria-label={`Seleccionar ${user.name}`} checked={selectedIds.has(user.id)} onChange={e => { const next = new Set(selectedIds); e.target.checked ? next.add(user.id) : next.delete(user.id); setSelectedIds(next); }} type="checkbox" /></td><td><strong>{user.name}</strong><small>{user.email || user.id}</small></td><td>{user.isBusiness ? 'Negocio' : user.accountType === 'particular' ? 'Externo' : 'UM'}</td><td><strong>{user.productCount + user.wantedCount}</strong><small>{formatDate(user.lastActive)}</small></td><td>{user.verified ? <span className={styles.verified}>Verificada</span> : <span className={styles.muted}>Sin verificar</span>}</td><td><StatusBadge status={user.adminStatus} /></td><td><button className={styles.rowButton} onClick={() => openDetail(user.id)} type="button">Administrar</button></td></tr>; })}</tbody></table></div>
       )}
       {selected && <ActionDialog eyebrow="Expediente de cuenta" onClose={() => setSelected(null)} title={selected.user.name}><div className={styles.detailGrid}><div><span>Correo</span><strong>{selected.user.email || 'Sin correo'}</strong></div><div><span>Estado</span><StatusBadge status={selected.user.adminStatus} /></div><div><span>Publicaciones</span><strong>{selected.user.productCount} productos · {selected.user.wantedCount} búsquedas</strong></div><div><span>Visitas al perfil</span><strong>{selected.user.profileViews ?? 0}</strong></div><div><span>Conversaciones</span><strong>{selected.user.conversationCount ?? 0}</strong></div><div><span>Última actividad</span><strong>{formatDate(selected.user.lastActive)}</strong></div><div><span>Alta</span><strong>{formatDate(selected.user.createdAt)}</strong></div></div><div className={styles.dialogActions}><button onClick={() => setAction({ ids: [selected.user.id], reset: true })} type="button">Resetear cupos</button><button onClick={() => setAction({ ids: [selected.user.id], verification: !selected.user.verified })} type="button">{selected.user.verified ? 'Quitar verificación' : 'Forzar verificación'}</button>{selected.user.adminStatus !== 'active' ? <button onClick={() => setAction({ ids: [selected.user.id], status: 'active' })} type="button">Reactivar</button> : <><button onClick={() => setAction({ ids: [selected.user.id], status: 'suspended' })} type="button">Suspender</button><button className={styles.dangerButton} onClick={() => setAction({ ids: [selected.user.id], status: 'banned' })} type="button">Banear</button></>}</div><div className={styles.activityList}><h3>Actividad reciente</h3>{selected.recentActivity.length ? selected.recentActivity.map(item => <div key={`${item.kind}-${item.id}`}><span>{item.kind === 'product' ? 'Producto' : 'Se busca'}</span><strong>{item.title}</strong><time>{formatDate(item.createdAt)}</time></div>) : <p className={styles.muted}>Sin publicaciones recientes.</p>}</div></ActionDialog>}
       {action && <ActionDialog eyebrow="Acción protegida" onClose={closeAction} title={action.reset ? 'Resetear límites diarios' : action.verification !== undefined ? (action.verification ? 'Forzar verificación' : 'Quitar verificación') : `${statusLabel(action.status || '')} ${action.ids.length > 1 ? `${action.ids.length} cuentas` : 'cuenta'}`}><form className={styles.actionForm} onSubmit={submitAction}><p className={styles.warningText}>{action.ids.length > 1 ? 'El servidor generará un backup SQLite verificado antes de tocar las cuentas.' : action.reset ? 'Esto reinicia los cupos diarios; no elimina publicaciones activas.' : 'La sesión actual de la cuenta se invalidará inmediatamente.'}</p>{!action.reset && <label><span>Motivo obligatorio</span><textarea autoFocus maxLength={500} minLength={10} onChange={e => setReasonText(e.target.value)} required value={reasonText} /><small>{reasonText.trim().length}/500 · mínimo 10</small></label>}{action.status === 'suspended' && <label><span>Suspender hasta</span><input min={new Date(Date.now() + 3600000).toISOString().slice(0, 16)} onChange={e => setUntil(e.target.value)} required type="datetime-local" value={until} /></label>}<div className={styles.dialogFooter}><button disabled={working} onClick={closeAction} type="button">Cancelar</button><button className={action.status === 'banned' ? styles.dangerButton : styles.primaryButton} disabled={working || (!action.reset && reasonText.trim().length < 10)} type="submit">{working ? 'Aplicando…' : 'Confirmar acción'}</button></div></form></ActionDialog>}
@@ -197,17 +310,33 @@ function UsersPanel() {
   );
 }
 
-function PublicationsPanel() {
+function PublicationsPanel({ review, onReviewComplete, onExitReview }: {
+  review?: Report | null;
+  onReviewComplete: () => void;
+  onExitReview: () => void;
+}) {
   const [queryInput, setQueryInput] = useState(''); const [query, setQuery] = useState('');
   const [kind, setKind] = useState('all'); const [status, setStatus] = useState('all');
   const [items, setItems] = useState<Publication[]>([]); const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true); const [error, setError] = useState('');
   const [action, setAction] = useState<{ item: Publication; target: 'spam' | 'removed' } | null>(null);
   const [reasonText, setReasonText] = useState(''); const [working, setWorking] = useState(false);
+  const reviewTargetRef = useRef<HTMLTableRowElement>(null);
   const load = () => { setLoading(true); const p = new URLSearchParams({ page: '1', limit: '50', kind, status }); if (query) p.set('q', query); adminFetch<{ publications: Publication[]; total: number }>(`/admin/publications?${p}`).then(r => { setItems(r.publications); setTotal(r.total); }).catch(e => setError(e.message)).finally(() => setLoading(false)); };
   useEffect(load, [query, kind, status]);
+  useEffect(() => {
+    if (!review || (review.target_type !== 'product' && review.target_type !== 'wanted')) return;
+    setKind(review.target_type);
+    setStatus('all');
+    setQueryInput(review.target_id);
+    setQuery(review.target_id);
+  }, [review?.id, review?.target_id, review?.target_type]);
+  const reviewedPublication = review ? items.find(item => item.kind === review.target_type && item.id === review.target_id) : undefined;
+  useEffect(() => {
+    if (!loading && reviewedPublication) reviewTargetRef.current?.focus({ preventScroll: false });
+  }, [loading, reviewedPublication]);
   async function moderate(event: FormEvent) { event.preventDefault(); if (!action) return; setWorking(true); try { const route = `/admin/publications/${action.item.kind}/${encodeURIComponent(action.item.id)}${action.target === 'spam' ? '/spam' : ''}`; await adminFetch(route, { method: action.target === 'spam' ? 'PATCH' : 'DELETE', body: JSON.stringify({ reason: reasonText.trim(), expectedStatus: action.item.moderationStatus }) }); setAction(null); setReasonText(''); load(); } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo moderar.'); } finally { setWorking(false); } }
-  return <section aria-labelledby="publications-title" className={styles.sectionPanel}><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Catálogo global</p><h2 id="publications-title">Publicaciones</h2><p>Modera productos y solicitudes sin destruir la evidencia.</p></div><span className={styles.countPill}>{total} registros</span></div><form className={styles.toolbar} onSubmit={e => { e.preventDefault(); setQuery(queryInput.trim()); }}><label className={styles.searchField}><span>Buscar</span><input maxLength={100} onChange={e => setQueryInput(e.target.value)} placeholder="Título, autor o ID" value={queryInput} /></label><label><span>Tipo</span><select onChange={e => setKind(e.target.value)} value={kind}><option value="all">Todos</option><option value="product">Productos</option><option value="wanted">Se busca</option></select></label><label><span>Moderación</span><select onChange={e => setStatus(e.target.value)} value={status}><option value="all">Todos</option><option value="visible">Visible</option><option value="spam">Spam</option><option value="removed">Retirada</option></select></label><button className={styles.secondaryButton} type="submit">Filtrar</button></form>{error && <PanelState error>{error}</PanelState>}{loading ? <PanelState>Cargando catálogo…</PanelState> : items.length === 0 ? <PanelState>No hay publicaciones con estos filtros.</PanelState> : <div className={styles.tableWrap}><table className={styles.dataTable}><thead><tr><th>Publicación</th><th>Tipo</th><th>Autor</th><th>Fecha</th><th>Estado</th><th>Vistas</th><th><span className={styles.srOnly}>Acciones</span></th></tr></thead><tbody>{items.map(item => <tr key={`${item.kind}-${item.id}`}><td><strong>{item.title}</strong><small>{item.id}</small></td><td>{item.kind === 'product' ? 'Producto' : 'Se busca'}</td><td><strong>{item.ownerName}</strong><small>{item.ownerId}</small></td><td>{formatDate(item.createdAt)}</td><td><StatusBadge status={item.moderationStatus} /></td><td>{item.views}</td><td>{item.moderationStatus === 'visible' ? <div className={styles.rowActions}><button onClick={() => setAction({ item, target: 'spam' })} type="button">Spam</button><button className={styles.dangerText} onClick={() => setAction({ item, target: 'removed' })} type="button">Retirar</button></div> : <span className={styles.muted}>Moderada</span>}</td></tr>)}</tbody></table></div>}{action && <ActionDialog eyebrow="Moderación" onClose={() => setAction(null)} title={action.target === 'spam' ? 'Marcar como spam' : 'Retirar publicación'}><form className={styles.actionForm} onSubmit={moderate}><p className={styles.warningText}>La publicación dejará de aparecer en feeds, búsquedas y detalles, pero la fila se conservará para auditoría.</p><label><span>Motivo obligatorio</span><textarea autoFocus maxLength={500} minLength={10} onChange={e => setReasonText(e.target.value)} required value={reasonText} /><small>{reasonText.trim().length}/500 · mínimo 10</small></label><div className={styles.dialogFooter}><button onClick={() => setAction(null)} type="button">Cancelar</button><button className={styles.dangerButton} disabled={working || reasonText.trim().length < 10} type="submit">{working ? 'Aplicando…' : 'Confirmar moderación'}</button></div></form></ActionDialog>}</section>;
+  return <section aria-labelledby="publications-title" className={styles.sectionPanel}><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Catálogo global</p><h2 id="publications-title">Publicaciones</h2><p>Modera productos y solicitudes sin destruir la evidencia.</p></div><span className={styles.countPill}>{total} registros</span></div>{review && <ReportReviewPanel onComplete={onReviewComplete} onExit={onExitReview} report={review} targetFound={loading ? null : !!reviewedPublication} />}<form className={styles.toolbar} onSubmit={e => { e.preventDefault(); setQuery(queryInput.trim()); }}><label className={styles.searchField}><span>Buscar</span><input maxLength={100} onChange={e => setQueryInput(e.target.value)} placeholder="Título, autor o ID" value={queryInput} /></label><label><span>Tipo</span><select onChange={e => setKind(e.target.value)} value={kind}><option value="all">Todos</option><option value="product">Productos</option><option value="wanted">Se busca</option></select></label><label><span>Moderación</span><select onChange={e => setStatus(e.target.value)} value={status}><option value="all">Todos</option><option value="visible">Visible</option><option value="spam">Spam</option><option value="removed">Retirada</option></select></label><button className={styles.secondaryButton} type="submit">Filtrar</button></form>{error && <PanelState error>{error}</PanelState>}{loading ? <PanelState>Cargando catálogo…</PanelState> : items.length === 0 ? <PanelState>No hay publicaciones con estos filtros.</PanelState> : <div className={styles.tableWrap}><table className={styles.dataTable}><thead><tr><th>Publicación</th><th>Tipo</th><th>Autor</th><th>Fecha</th><th>Estado</th><th>Vistas</th><th><span className={styles.srOnly}>Acciones</span></th></tr></thead><tbody>{items.map(item => { const isReviewTarget = !!review && item.kind === review.target_type && item.id === review.target_id; return <tr className={isReviewTarget ? styles.reviewTarget : undefined} key={`${item.kind}-${item.id}`} ref={isReviewTarget ? reviewTargetRef : undefined} tabIndex={isReviewTarget ? -1 : undefined}><td><strong>{item.title}</strong><small>{item.id}</small></td><td>{item.kind === 'product' ? 'Producto' : 'Se busca'}</td><td><strong>{item.ownerName}</strong><small>{item.ownerId}</small></td><td>{formatDate(item.createdAt)}</td><td><StatusBadge status={item.moderationStatus} /></td><td>{item.views}</td><td>{item.moderationStatus === 'visible' ? <div className={styles.rowActions}><button onClick={() => setAction({ item, target: 'spam' })} type="button">Spam</button><button className={styles.dangerText} onClick={() => setAction({ item, target: 'removed' })} type="button">Retirar</button></div> : <span className={styles.muted}>Moderada</span>}</td></tr>; })}</tbody></table></div>}{action && <ActionDialog eyebrow="Moderación" onClose={() => setAction(null)} title={action.target === 'spam' ? 'Marcar como spam' : 'Retirar publicación'}><form className={styles.actionForm} onSubmit={moderate}><p className={styles.warningText}>La publicación dejará de aparecer en feeds, búsquedas y detalles, pero la fila se conservará para auditoría.</p><label><span>Motivo obligatorio</span><textarea autoFocus maxLength={500} minLength={10} onChange={e => setReasonText(e.target.value)} required value={reasonText} /><small>{reasonText.trim().length}/500 · mínimo 10</small></label><div className={styles.dialogFooter}><button onClick={() => setAction(null)} type="button">Cancelar</button><button className={styles.dangerButton} disabled={working || reasonText.trim().length < 10} type="submit">{working ? 'Aplicando…' : 'Confirmar moderación'}</button></div></form></ActionDialog>}</section>;
 }
 
 function ReportsPanel() {

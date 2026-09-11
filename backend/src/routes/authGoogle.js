@@ -18,6 +18,7 @@
 // con lo que da Google: el registro exige tipo de cuenta, teléfono y al
 // menos un método de pago, y nada de eso viene en un idToken.
 
+const crypto = require('crypto');
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const dbModule = require('../database');
@@ -81,17 +82,21 @@ function crearRutasAuthGoogle({
 }) {
   const router = express.Router();
 
-  // Mismo freno que /api/auth/anon: es un endpoint que crea sesiones y
-  // cuentas, y el coste de verificar un idToken es una llamada de red a
-  // Google. 30/hora por IP no estorba a nadie real (un usuario hace una o
-  // dos) y corta un bucle de reintentos de un cliente roto.
+  // Mismo freno que /api/auth/anon, pero por instalacion/token y nunca por
+  // IP: todo el campus puede compartir NAT. El idToken solo se usa como
+  // respaldo de bucket, no como prueba de identidad; Google lo valida luego.
   const limite = rateLimit({
     windowMs: 60 * 60 * 1000,
     limit: 30,
+    keyGenerator: req => crypto.createHash('sha256').update(String(
+      typeof req.body?.deviceId === 'string' && req.body.deviceId.trim()
+        ? `device:${req.body.deviceId.trim()}`
+        : `token:${req.body?.idToken || 'missing'}`
+    )).digest('base64url'),
     standardHeaders: true,
     legacyHeaders: false,
     message: {
-      error: 'Demasiados intentos desde esta red. Intenta más tarde.'
+      error: 'Demasiados intentos desde esta instalación. Intenta más tarde.'
     }
   });
 

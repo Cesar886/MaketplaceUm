@@ -2,17 +2,18 @@ const db = require('../database');
 const {
   requireAuth
 } = require('../auth');
+const {
+  createReportLimiter
+} = require('../security');
 const TARGET_TYPES = new Set(['user', 'product', 'wanted', 'chat']);
 function safeText(value, max) {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
 }
 function register(app) {
-  app.post('/api/reports', requireAuth, async (req, res) => {
-    if (req.user.anon) {
-      return res.status(403).json({
-        error: 'Inicia sesion para reportar.'
-      });
-    }
+  // Una sesion de invitado es suficiente: cualquier persona puede reportar
+  // sin crear una cuenta, pero el id anonimo firmado evita aceptar una
+  // identidad inventada por el cliente y permite aplicar limites anti-spam.
+  app.post('/api/reports', requireAuth, createReportLimiter(), async (req, res) => {
     const targetType = req.body?.targetType;
     const targetId = safeText(req.body?.targetId, 180);
     const targetUserId = safeText(req.body?.targetUserId, 180) || null;

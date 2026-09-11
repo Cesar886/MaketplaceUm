@@ -14,7 +14,7 @@ process.env.ADMIN_TOTP_ENCRYPTION_KEY = 'totp-secret-reports-privacy-12345678901
 const express = require('express');
 const db = require('../database');
 const { encryptTotpSecret, issueAdminToken } = require('../adminAuth');
-const { generateToken, generateSession } = require('../auth');
+const { generateAnonToken, generateToken, generateSession } = require('../auth');
 const reportsRoute = require('./reports');
 const privacyRoute = require('./privacy');
 const { router: adminRouter } = require('./admin');
@@ -123,6 +123,57 @@ test('un reporte se crea como caso estructurado y admin puede resolverlo con aud
     "SELECT action FROM admin_audit_log WHERE entity_id = ? ORDER BY id DESC LIMIT 1",
   ).get(created.body.report.id);
   assert.equal(audit.action, 'report.update');
+});
+
+test('un invitado puede reportar sin iniciar sesion ni crear una cuenta', async () => {
+  const target = seller();
+  const guest = generateAnonToken();
+
+  const created = await jsonRequest('/api/reports', {
+    method: 'POST',
+    headers: userHeaders(guest),
+    body: {
+      targetType: 'user',
+      targetId: target.id,
+      targetUserId: target.id,
+      reason: 'Posible fraude',
+      details: 'Solicita un pago fuera de la plataforma.',
+    },
+  });
+
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.report.reporter_id, guest.anonId);
+  assert.equal(created.body.report.reporterName, null);
+  assert.equal(created.body.report.status, 'received');
+});
+
+test('reportar sin cuenta conserva una credencial anonima obligatoria', async () => {
+  const created = await jsonRequest('/api/reports', {
+    method: 'POST',
+    body: {
+      targetType: 'user',
+      targetId: 'objetivo-publico',
+      reason: 'Posible fraude',
+    },
+  });
+
+  assert.equal(created.status, 401);
+});
+
+test('invitados distintos en la misma IP nunca comparten límite de reportes', async () => {
+  for (let attempt = 0; attempt < 101; attempt += 1) {
+    const guest = generateAnonToken();
+    const response = await jsonRequest('/api/reports', {
+      method: 'POST',
+      headers: userHeaders(guest),
+      body: {
+        targetType: 'user',
+        targetId: '',
+        reason: 'x',
+      },
+    });
+    assert.equal(response.status, 400);
+  }
 });
 
 test('seguridad lista bloqueados/silenciados y el borrado de cuenta revoca datos personales', async () => {

@@ -93,16 +93,21 @@ function router({
   authenticate = requireRevisionKey
 } = {}) {
   const api = express.Router();
+  api.use(authenticate);
   api.use(rateLimit({
     windowMs: 15 * 60 * 1000,
     limit: 300,
+    // El panel autenticado se limita por administrador. El acceso legacy de
+    // pruebas se limita por su llave compartida. Ninguno usa la IP.
+    keyGenerator: req => crypto.createHash('sha256').update(String(
+      req.admin?.id ? `admin:${req.admin.id}` : `revision:${req.get('x-revision-api-key') || 'missing'}`
+    )).digest('base64url'),
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: {
       error: 'Demasiadas solicitudes al panel. Intenta más tarde.'
     }
   }));
-  api.use(authenticate);
   api.use((_req, res, next) => {
     res.set({
       'Cache-Control': 'private, no-store',

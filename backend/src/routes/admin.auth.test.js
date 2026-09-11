@@ -300,6 +300,17 @@ test('rate limit bloquea fuerza bruta por nombre de administrador', async () => 
   assert.equal(limited, true);
 });
 
+test('nombres administrativos distintos nunca comparten límite por IP', async () => {
+  for (let attempt = 0; attempt < 35; attempt += 1) {
+    const response = await login({
+      username: `cuenta-inexistente-${attempt}`,
+      password: 'incorrecta',
+      totp: '000000',
+    });
+    assert.equal(response.status, 401);
+  }
+});
+
 test('admin_audit_log tiene FK e impone identidad validada y detalles acotados', async () => {
   const foreignKeys = database.prepare("PRAGMA foreign_key_list('admin_audit_log')").all();
   assert.equal(

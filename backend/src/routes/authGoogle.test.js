@@ -144,6 +144,17 @@ test('un idToken rechazado por Google responde 401 con su código', async () => 
   assert.equal(body.error, 'GOOGLE_TOKEN_INVALIDO');
 });
 
+test('instalaciones Google distintas nunca comparten límite por IP', async () => {
+  respuestaGoogle = new GoogleAuthError('Token de Google inválido.', 'GOOGLE_TOKEN_INVALIDO', 401);
+  for (let attempt = 0; attempt < 31; attempt += 1) {
+    const { status } = await postGoogle({
+      idToken: `basura-${attempt}`,
+      deviceId: `campus-google-device-${attempt}`,
+    });
+    assert.equal(status, 401);
+  }
+});
+
 test('mientras falten las credenciales del servidor responde 503', async () => {
   respuestaGoogle = new GoogleAuthError('no configurado', 'GOOGLE_NO_CONFIGURADO', 503);
   const { status, body } = await postGoogle({ idToken: 'x' });

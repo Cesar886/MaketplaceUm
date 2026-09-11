@@ -12,14 +12,6 @@
 // nueva a `products` o a `sellers` no la filtra sola.
 
 const express = require('express');
-const rateLimit = require('express-rate-limit');
-
-// El sitio hace una petición por visita de producto, desde el servidor de
-// Vercel. Ese fetch sale de un puñado de IPs compartidas, así que el límite
-// se cuenta por IP pero con margen: lo que se busca frenar es el raspado del
-// catálogo entero, no el tráfico normal de varias visitas simultáneas.
-const VENTANA_MINUTOS = 1;
-const MAX_PETICIONES = 60;
 
 /**
  * Proyección pública de un producto. Solo estos campos salen a la web.
@@ -151,15 +143,6 @@ function register(app) {
     attachWantedRelations
   } = require('./wanted');
   const router = express.Router();
-  router.use(rateLimit({
-    windowMs: VENTANA_MINUTOS * 60 * 1000,
-    limit: MAX_PETICIONES,
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
-    message: {
-      error: 'Demasiadas peticiones. Inténtalo en un minuto.'
-    }
-  }));
 
   // GET /api/public/productos — SOLO ids y fecha, para el sitemap del sitio.
   //

@@ -2,10 +2,6 @@ const crypto = require('crypto');
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const {
-  ipKeyGenerator
-} = require('express-rate-limit');
-const net = require('net');
-const {
   registrarAuditoriaAdmin
 } = require('../adminAudit');
 const db = require('../database');
@@ -30,30 +26,6 @@ const CONFIG_SELECT = `SELECT key, products_active, products_daily,
 function fingerprint(value) {
   return crypto.createHash('sha256').update(String(value)).digest('base64url');
 }
-function secretBffConfigurado() {
-  const value = String(process.env.ADMIN_BFF_SHARED_SECRET || '');
-  return value.length >= 32 ? value : null;
-}
-
-// Next recibe la IP real desde Apache y la firma antes de hablar por
-// loopback con Express. Sin esta prueba un cliente podria inventar el header
-// para rotar buckets; una prueba ausente/invalida cae a req.ip, que Apache
-// determina con TRUST_PROXY=1 para las llamadas directas al API.
-function clientIpForRateLimit(req) {
-  const sharedSecret = secretBffConfigurado();
-  const forwardedIp = String(req.get('x-admin-client-ip') || '').trim();
-  const timestamp = String(req.get('x-admin-client-time') || '').trim();
-  const signature = String(req.get('x-admin-client-signature') || '').trim();
-  if (sharedSecret && net.isIP(forwardedIp) && /^\d{10}$/.test(timestamp) && /^[a-f0-9]{64}$/.test(signature) && Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp)) <= 60) {
-    const expected = crypto.createHmac('sha256', sharedSecret).update(`${timestamp}.${forwardedIp}`).digest('hex');
-    const expectedBuffer = Buffer.from(expected);
-    const suppliedBuffer = Buffer.from(signature);
-    if (expectedBuffer.length === suppliedBuffer.length && crypto.timingSafeEqual(expectedBuffer, suppliedBuffer)) {
-      return forwardedIp;
-    }
-  }
-  return req.ip;
-}
 function loginLimiter({
   limit,
   keyGenerator
@@ -72,15 +44,11 @@ function loginLimiter({
 }
 function createLoginLimiters() {
   return [
-  // Detiene un ataque distribuido contra el mismo nombre de administrador.
+  // La cuenta es el único bucket. Nunca se limita por IP porque los
+  // administradores también pueden estar detrás del NAT universitario.
   loginLimiter({
     limit: 8,
     keyGenerator: req => fingerprint(normalizeAdminUsername(req.body?.username) || 'usuario-invalido')
-  }),
-  // Y evita que una sola red rote nombres de usuario indefinidamente.
-  loginLimiter({
-    limit: 30,
-    keyGenerator: req => ipKeyGenerator(clientIpForRateLimit(req))
   })];
 }
 function configKeyExists(key) {

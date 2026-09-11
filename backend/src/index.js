@@ -670,8 +670,8 @@ app.post('/api/auth/register', ...authLimiters, async (req, res) => {
 // de distinguir al invitado legítimo de quien copiaba su id de un mensaje;
 // éste lo emite y lo firma el servidor.
 //
-// Con límite por IP porque es el único endpoint que crea sesiones sin
-// credencial alguna: sin freno, es una fuente gratuita de tokens válidos.
+// Con límite por instalación porque es el único endpoint que crea sesiones
+// sin credencial alguna. Nunca se agrupa por IP: el campus comparte NAT.
 app.post('/api/auth/anon', createAnonymousSessionLimiter(), (req, res) => {
   if (typeof req.body?.deviceId !== 'string' || !/^[A-Za-z0-9._:-]{8,180}$/.test(req.body.deviceId)) {
     return res.status(400).json({
