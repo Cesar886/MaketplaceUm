@@ -469,6 +469,8 @@ function router({
         } else {
           await database.prepare('UPDATE sellers SET verified = 1 WHERE id = ?').run(accountId);
         }
+        await database.prepare(`INSERT OR IGNORE INTO insignias_otorgadas
+          (seller_id, clave, otorgada_en) VALUES (?, 'recien_verificado', ?)`).run(accountId, decidedAt);
       } else {
         if (!account.verificationState) {
           const verificationType = account.tipoCuenta === 'estudiante' ? account.sellerVerificationType || 'estudiante' : null;
@@ -680,6 +682,8 @@ function router({
          identidad_confirmada_en = COALESCE(identidad_confirmada_en, ?),
          motivo_rechazo = NULL, campo_rechazado = NULL WHERE usuario_id = ?`).run(decididoEn, decididoEn, solicitud.id);
       await database.prepare('UPDATE sellers SET verified = 1 WHERE id = ?').run(solicitud.id);
+      await database.prepare(`INSERT OR IGNORE INTO insignias_otorgadas
+        (seller_id, clave, otorgada_en) VALUES (?, 'recien_verificado', ?)`).run(solicitud.id, decididoEn);
       await registrarDecision(database, solicitud, 'approved', motivo, decididoEn);
       if (req.admin) {
         await registrarAuditoriaAdmin(database, req, {
@@ -807,6 +811,8 @@ function router({
          identidad_confirmada_en = COALESCE(identidad_confirmada_en, ?),
          motivo_rechazo = NULL, campo_rechazado = NULL WHERE usuario_id = ?`).run(decididoEn, decididoEn, solicitud.id);
       await database.prepare('UPDATE sellers SET verified = 1 WHERE id = ?').run(solicitud.id);
+      await database.prepare(`INSERT OR IGNORE INTO insignias_otorgadas
+        (seller_id, clave, otorgada_en) VALUES (?, 'recien_verificado', ?)`).run(solicitud.id, decididoEn);
       await registrarDecision(database, solicitud, 'restored', motivo, decididoEn);
       if (req.admin) {
         await registrarAuditoriaAdmin(database, req, {

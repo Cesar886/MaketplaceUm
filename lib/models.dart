@@ -186,6 +186,8 @@ class Seller {
     this.respondeRapido = false,
     this.respuestaInstantanea = false,
     this.vendedorConfiable = false,
+    this.recienRegistrado = false,
+    this.recienVerificado = false,
     this.esVendedorNuevo = false,
     this.leyendaMercadito = false,
     this.vendedorDeOro = false,
@@ -244,6 +246,8 @@ class Seller {
       respondeRapido: json['respondeRapido'] as bool? ?? false,
       respuestaInstantanea: json['respuestaInstantanea'] as bool? ?? false,
       vendedorConfiable: json['vendedorConfiable'] as bool? ?? false,
+      recienRegistrado: json['recienRegistrado'] as bool? ?? false,
+      recienVerificado: json['recienVerificado'] as bool? ?? false,
       esVendedorNuevo: json['esVendedorNuevo'] as bool? ?? false,
       leyendaMercadito: json['leyendaMercadito'] as bool? ?? false,
       vendedorDeOro: json['vendedorDeOro'] as bool? ?? false,
@@ -362,6 +366,14 @@ class Seller {
   /// Rating alto sostenido por un mínimo de reseñas, calculado por el
   /// backend. Ver [InsigniaVendedorConfiable] en widgets/badges.dart.
   final bool vendedorConfiable;
+
+  /// La cuenta está dentro de sus primeros siete días desde el registro.
+  /// La ventana la calcula el backend usando la fecha de alta autoritativa.
+  final bool recienRegistrado;
+
+  /// La cuenta está dentro de sus primeros siete días desde que se verificó
+  /// por primera vez. Revocar y restaurar la verificación no reinicia el plazo.
+  final bool recienVerificado;
 
   /// Insignia de bienvenida: cuenta creada hace poco que ya tiene su primera
   /// venta confirmada. A diferencia del resto de insignias, no es

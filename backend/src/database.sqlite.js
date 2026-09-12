@@ -1828,6 +1828,11 @@ function runMigrations() {
       PRIMARY KEY (seller_id, clave),
       FOREIGN KEY (seller_id) REFERENCES sellers(id) ON DELETE CASCADE
     );
+
+    INSERT OR IGNORE INTO insignias_otorgadas (seller_id, clave, otorgada_en)
+      SELECT usuario_id, 'recien_verificado', fecha_verificacion
+        FROM verificaciones
+       WHERE estado = 'verificado' AND fecha_verificacion IS NOT NULL;
   `);
   if (!tablaOtorgadas) {
     // Los umbrales van escritos a mano y no leídos de FEED_WEIGHTS: son los

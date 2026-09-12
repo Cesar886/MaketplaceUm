@@ -117,6 +117,7 @@ function crearRutasVerificacion({
     const asignaciones = columnas.map(c => `${c} = @${c}`).join(', ');
     const columnasSellers = Object.keys(camposSellers);
     const asignacionesSellers = columnasSellers.map(c => `${c} = @${c}`).join(', ');
+    const fecha = ahora();
     await getDb().transaction(async () => {
       await getDb().prepare(`UPDATE verificaciones SET
              estado = 'verificado',
@@ -131,12 +132,17 @@ function crearRutasVerificacion({
              ${asignaciones ? ', ' + asignaciones : ''}
            WHERE usuario_id = @usuarioId`).run({
         usuarioId,
-        fecha: ahora(),
+        fecha,
         ...camposExtra
       });
       await getDb().prepare(`UPDATE sellers SET verified = 1${asignacionesSellers ? ', ' + asignacionesSellers : ''} WHERE id = @usuarioId`).run({
         usuarioId,
         ...camposSellers
+      });
+      await getDb().prepare(`INSERT OR IGNORE INTO insignias_otorgadas
+        (seller_id, clave, otorgada_en) VALUES (@usuarioId, 'recien_verificado', @fecha)`).run({
+        usuarioId,
+        fecha
       });
     })();
     refrescarSellers();
@@ -855,6 +861,7 @@ async function completarVerificacionPendientePorPagos(usuarioId) {
   // verificar aquí saltándose el resto abriría una puerta trasera a todos
   // los demás requisitos.
   if (!(await cumpleTodos(usuarioId))) return false;
+  const fecha = ahora();
   await conexionDb.transaction(async () => {
     await conexionDb.prepare(`UPDATE verificaciones SET
            estado = 'verificado',
@@ -863,7 +870,7 @@ async function completarVerificacionPendientePorPagos(usuarioId) {
            campo_rechazado = NULL
          WHERE usuario_id = @usuarioId`).run({
       usuarioId,
-      fecha: ahora()
+      fecha
     });
 
     // Las mismas banderas rápidas que copia `marcarVerificado`: el perfil las
@@ -873,6 +880,11 @@ async function completarVerificacionPendientePorPagos(usuarioId) {
       usuarioId,
       carrera: fila.carrera ?? null,
       tipo: fila.tipo_verificacion ?? null
+    });
+    await conexionDb.prepare(`INSERT OR IGNORE INTO insignias_otorgadas
+      (seller_id, clave, otorgada_en) VALUES (@usuarioId, 'recien_verificado', @fecha)`).run({
+      usuarioId,
+      fecha
     });
   })();
 

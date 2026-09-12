@@ -1,8 +1,8 @@
-# Migración de Marketplace UM a PostgreSQL
+# Operación de Marketplace UM sobre PostgreSQL
 
-La API usa PostgreSQL como única base de producción. El lector SQLite queda
-instalado únicamente para crear snapshots, importar el archivo histórico y
-ejecutar las pruebas legacy; la API de producción nunca lo selecciona.
+La API, las herramientas administrativas, las pruebas y los despliegues usan
+PostgreSQL como único motor de base de datos. `DATABASE_URL` es obligatoria para
+arrancar cualquier proceso que necesite persistencia.
 
 ## Arquitectura y seguridad
 
@@ -37,7 +37,7 @@ El cliente debe ser de la misma versión mayor del servidor o una posterior.
 
 El script `init/01-roles.sh` sólo corre cuando el volumen está vacío. Si el
 volumen ya existía antes de agregarlo, crea los roles manualmente o recrea un
-volumen vacío antes de importar datos.
+volumen vacío antes de cargar datos mediante un respaldo PostgreSQL verificado.
 
 ## 2. Aplicar el esquema
 
@@ -58,38 +58,12 @@ NODE_ENV=production PG_RUN_MIGRATIONS=true npm run db:migrate
 unset DATABASE_URL
 ```
 
-La migración usa un advisory lock, transacción por archivo y checksum. La API
-de producción sólo verifica que todos los archivos estén aplicados; no posee
-permisos DDL.
+La migración usa un advisory lock, una transacción por archivo y checksum. La
+API de producción sólo verifica que todos los archivos estén aplicados; no
+posee permisos DDL. No edites una migración que ya fue aplicada: agrega el
+siguiente archivo numerado en `migrations/postgres/`.
 
-## 3. Trasladar el SQLite actual
-
-Programa una ventana breve sin escrituras y detén PM2. El comando de snapshot
-usa la API de backup de SQLite, valida tanto el origen como el resultado con
-`quick_check` y llaves foráneas, registra conteos y genera SHA-256. Así consolida
-correctamente cualquier WAL; no copies el `.db` en caliente ignorándolo.
-
-Con PostgreSQL vacío y la API detenida:
-
-```sh
-cd /root/mercaditoUmBack
-pm2 stop mercadito-backend
-npm run db:snapshot-sqlite -- ./mercadito_um.db /root/marketplace-migration-snapshots
-cd /root/marketplace-migration-snapshots
-sha256sum -c mercadito_um-FECHA.db.sha256
-cd /root/mercaditoUmBack
-set -a; source ./.env.migrator; set +a
-NODE_ENV=production npm run db:import-sqlite -- /root/marketplace-migration-snapshots/mercadito_um-FECHA.db --replace
-unset DATABASE_URL
-```
-
-`--replace` sustituye únicamente tablas representadas por el snapshot, nunca
-usa `CASCADE` y sólo debe usarse con la API detenida. El preflight compara todas
-las tablas y columnas en ambos motores; cualquier omisión no clasificada,
-catálogo incompleto, diferencia de conteos o cambio en una tabla preservada
-hace rollback completo. También valida llaves foráneas, orden y secuencias.
-
-## 4. Configurar y arrancar la API
+## 3. Configurar y arrancar la API
 
 En `.env`, usa exclusivamente el rol limitado:
 
@@ -109,12 +83,11 @@ pm2 logs mercadito-backend --lines 100
 curl --fail http://127.0.0.1:3000/api/health
 ```
 
-Prueba además login, lista de productos, chat y un checkout de prueba. Conserva
-el SQLite y el release anterior sin modificaciones hasta cerrar la validación.
+Prueba además login, lista de productos, chat y un checkout de prueba.
 
 ## Respaldos y restauración
 
-`npm run db:backup` produce un dump custom con ACL, lo valida con
+`npm run db:backup` produce un dump custom, lo valida con
 `pg_restore --list` y usa permisos `600`. Instala el timer diario incluido:
 
 ```sh
@@ -133,9 +106,10 @@ Prueba periódicamente una restauración completa, incluidos los privilegios:
 ./scripts/test-postgres-restore.sh infra/postgres/backups/marketplace_um-FECHA.dump
 ```
 
-Para volver atrás durante la primera ventana, detén la API nueva, restaura el
-release anterior junto con la copia SQLite consistente y arráncalo. No habilites
-escrituras simultáneas en SQLite y PostgreSQL: no existe replicación bidireccional.
+Para recuperar producción, detén primero la API, restaura un dump validado en
+una instancia limpia, aplica cualquier migración posterior y sólo entonces
+vuelve a habilitar escrituras. Nunca restaures encima de una instancia que sigue
+recibiendo tráfico.
 
 ## PostgreSQL en otra máquina
 
@@ -147,5 +121,5 @@ PGSSL=true
 PGSSL_CA_FILE=/etc/marketplace-um/postgres-ca.pem
 ```
 
-La aplicación rechaza en producción una conexión remota sin TLS y nunca
-acepta certificados sin verificar.
+La aplicación rechaza en producción una conexión remota sin TLS y nunca acepta
+certificados sin verificar.

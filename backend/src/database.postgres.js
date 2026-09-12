@@ -80,8 +80,6 @@ async function purgarMetodoDePago(conexion, metodo) {
     wanted: 0
   };
   const purgarTabla = async (tabla, columnaId, siQuedaVacio) => {
-    const existe = await conexion.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).get(tabla);
-    if (!existe) return 0;
     const filas = await conexion.prepare(`SELECT ${columnaId} AS id, paymentMethods FROM ${tabla}
        WHERE paymentMethods IS NOT NULL AND paymentMethods LIKE ?`).all(`%${metodo}%`);
     const actualizar = conexion.prepare(`UPDATE ${tabla} SET paymentMethods = ? WHERE ${columnaId} = ?`);
@@ -423,8 +421,9 @@ async function getSellers() {
 }
 async function insertSeller(seller) {
   await db.prepare(`
-    INSERT OR IGNORE INTO sellers (id, name, avatarInitials, major, isBusiness, logoUrl, rating, reviews, verified, created_at)
-    VALUES (@id, @name, @avatarInitials, @major, @isBusiness, @logoUrl, @rating, @reviews, @verified, datetime('now'))
+    INSERT INTO sellers (id, name, avatarInitials, major, isBusiness, logoUrl, rating, reviews, verified, created_at)
+    VALUES (@id, @name, @avatarInitials, @major, @isBusiness, @logoUrl, @rating, @reviews, @verified, CURRENT_TIMESTAMP)
+    ON CONFLICT (id) DO NOTHING
   `).run({
     ...seller,
     isBusiness: seller.isBusiness ? 1 : 0,
@@ -448,7 +447,7 @@ async function getProductById(id) {
         SELECT 1 FROM sellers s WHERE s.id = p.seller AND (
           s.admin_status = 'active'
           OR (s.admin_status = 'suspended' AND s.admin_status_until IS NOT NULL
-            AND datetime(s.admin_status_until) <= datetime('now'))
+            AND s.admin_status_until <= CURRENT_TIMESTAMP)
         )
       )`).get(id);
   return rowToProduct(row);
@@ -458,7 +457,7 @@ async function isSellerPubliclyActive(userId) {
     WHERE id = ? AND (
       admin_status = 'active'
       OR (admin_status = 'suspended' AND admin_status_until IS NOT NULL
-        AND datetime(admin_status_until) <= datetime('now'))
+        AND admin_status_until <= CURRENT_TIMESTAMP)
     )`).get(userId));
 }
 async function getPublicationLimitSince(userId, kind, fallbackIso) {
@@ -473,11 +472,8 @@ async function countProductsSince(userId, isoTimestamp) {
 }
 async function insertProduct(product) {
   const row = productToRow(product);
-  // NUNCA usar INSERT OR REPLACE: en SQLite eso hace un DELETE + INSERT de la
-  // fila existente, y con foreign_keys=ON eso dispara el ON DELETE CASCADE de
-  // product_ratings (y cualquier otra tabla hija), borrando datos relacionados
-  // cada vez que se guarda un producto ya existente. Un upsert real (ON
-  // CONFLICT DO UPDATE) modifica la fila in place sin disparar cascadas.
+  // Un upsert real modifica la fila existente in place; así conserva todas
+  // sus relaciones y no dispara cascadas de borrado.
   await db.prepare(`
     INSERT INTO products (id, title, price, priceNum, category, description, publishedAgo, seller,
       images, imageIcon, imageColor, previousPrice, discountLabel,
@@ -543,8 +539,8 @@ async function incrementProductViews(id) {
  * para un vendedor. No filtra por disponibilidad, vencimiento ni moderacion:
  * vendido, archivado y retirado siguen siendo actividad real acumulada.
  *
- * La agregacion ocurre enteramente en SQLite y usa idx_products_seller; nunca
- * carga la coleccion para sumarla en JavaScript.
+ * La agregación ocurre enteramente en PostgreSQL y usa idx_products_seller;
+ * nunca carga la colección para sumarla en JavaScript.
  */
 async function getSellerProductViews(sellerId) {
   const row = await db.prepare(`
@@ -564,17 +560,17 @@ async function getSellerProductViews(sellerId) {
  */
 async function recordSellerProfileView(profileId, viewerKey, windowHours = 24) {
   if (!profileId || !viewerKey) return false;
-  const windowModifier = `-${Math.max(1, Math.min(Number(windowHours) || 24, 24 * 30))} hours`;
+  const safeWindowHours = Math.max(1, Math.min(Number(windowHours) || 24, 24 * 30));
   return await db.transaction(async () => {
     const recent = await db.prepare(`
       SELECT 1 FROM profile_view_events
        WHERE profile_id = ? AND viewer_key = ?
-         AND viewed_at >= datetime('now', ?)
-    `).get(profileId, viewerKey, windowModifier);
+         AND viewed_at >= CURRENT_TIMESTAMP - (? * INTERVAL '1 hour')
+    `).get(profileId, viewerKey, safeWindowHours);
     if (recent) return false;
     await db.prepare(`
       INSERT INTO profile_view_events (profile_id, viewer_key, viewed_at)
-      VALUES (?, ?, datetime('now'))
+      VALUES (?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(profile_id, viewer_key) DO UPDATE SET viewed_at = excluded.viewed_at
     `).run(profileId, viewerKey);
     await db.prepare('UPDATE sellers SET profile_views = profile_views + 1 WHERE id = ?').run(profileId);
@@ -725,7 +721,7 @@ async function countPriceEditsLastHour(productId) {
 async function insertPriceHistory(productId, price) {
   await db.prepare(`
     INSERT INTO price_history (product_id, price, changed_at)
-    VALUES (?, ?, datetime('now'))
+    VALUES (?, ?, CURRENT_TIMESTAMP)
   `).run(productId, price);
 }
 
@@ -753,13 +749,13 @@ async function upsertProductRating(productId, userId, stars) {
   const existing = await db.prepare('SELECT * FROM product_ratings WHERE product_id = ? AND user_id = ?').get(productId, userId);
   if (existing) {
     await db.prepare(`
-      UPDATE product_ratings SET stars = ?, updated_at = datetime('now')
+      UPDATE product_ratings SET stars = ?, updated_at = CURRENT_TIMESTAMP
       WHERE product_id = ? AND user_id = ?
     `).run(stars, productId, userId);
   } else {
     await db.prepare(`
       INSERT INTO product_ratings (product_id, user_id, stars, created_at, updated_at)
-      VALUES (?, ?, ?, datetime('now'), datetime('now'))
+      VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `).run(productId, userId, stars);
   }
 }
@@ -825,20 +821,15 @@ async function getResponseDeltasMinutes(sellerId) {
     SELECT
       m.conversation_id,
       m.sender_id,
-      -- strftime interpreta created_at como UTC, que es como lo escribe
-      -- datetime('now'). Hacer el delta en JS con Date.parse dependería de
-      -- la zona horaria del servidor.
-      CAST(strftime('%s', m.created_at) AS INTEGER) AS ts
+      -- El cálculo se hace en PostgreSQL sobre TIMESTAMPTZ para que no
+      -- dependa de la zona horaria del proceso de Node.
+      EXTRACT(EPOCH FROM m.created_at)::BIGINT AS ts
     FROM messages m
     JOIN conversations c ON c.id = m.conversation_id
     WHERE c.seller_id = ?
-    -- created_at solo tiene precisión de SEGUNDO (datetime('now') de
-    -- SQLite); dos mensajes en el mismo segundo (un intercambio rápido de
-    -- "sí"/"no", por ejemplo) empatan y SQLite no garantiza su orden real
-    -- en el ORDER BY. El id sí tiene precisión de milisegundo (msg seguido
-    -- del timestamp) y ordena igual que created_at cuando no hay empate,
-    -- así que sirve de desempate sin cambiar el orden en el caso normal.
-    ORDER BY m.conversation_id, m.created_at, m.id
+    -- seq conserva el orden total incluso cuando dos mensajes comparten el
+    -- mismo timestamp.
+    ORDER BY m.conversation_id, m.created_at, m.seq
   `).all(sellerId);
   const deltas = [];
   let conversacionActual = null;
@@ -899,7 +890,7 @@ async function syncSellerResponseTime(sellerId) {
 async function computeRachaPublicaciones(sellerId) {
   const ventanas = new Set((await db.prepare(`
     SELECT DISTINCT
-      CAST((julianday('now') - julianday(created_at)) / 7 AS INTEGER) AS ventana
+      FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - created_at)) / 604800)::INTEGER AS ventana
     FROM products
     WHERE seller = ?
   `).all(sellerId)).map(r => r.ventana));
@@ -932,14 +923,17 @@ async function getInsigniasOtorgadas(sellerId) {
 /**
  * Deja registrado que este vendedor ganó una insignia permanente.
  *
- * INSERT OR IGNORE: se llama desde la lectura del perfil, que puede pasar
- * muchas veces por el mismo caso; la primera escribe y el resto no hace
- * nada. El llamador solo debe invocarla cuando la insignia se acaba de
+ * La inserción es idempotente: se llama desde la lectura del perfil, que
+ * puede pasar muchas veces por el mismo caso; la primera escribe y el resto
+ * no hace nada. El llamador solo debe invocarla cuando la insignia se acaba de
  * cumplir POR LA REGLA — nunca por la excepción de las cuentas del dueño,
  * que la tienen siempre y no necesitan que nadie se la guarde.
  */
 async function registrarInsigniaOtorgada(sellerId, clave) {
-  await db.prepare('INSERT OR IGNORE INTO insignias_otorgadas (seller_id, clave) VALUES (?, ?)').run(sellerId, clave);
+  await db.prepare(`
+    INSERT INTO insignias_otorgadas (seller_id, clave) VALUES (?, ?)
+    ON CONFLICT (seller_id, clave) DO NOTHING
+  `).run(sellerId, clave);
 }
 
 /**
@@ -1039,19 +1033,16 @@ const COMENTARIOS_MAX_POR_PAGINA = 50;
 // ni uno más. Fuera quedan teléfono y correo: un comentario es contenido
 // público y no debe convertir el hilo en un directorio de contacto.
 //
-// created_at se emite como ISO-8601 con 'Z' explícita, no como el
-// 'YYYY-MM-DD HH:MM:SS' crudo que guarda SQLite: ese formato lo interpreta
-// `DateTime.parse` de Dart como hora LOCAL, aunque el valor sea UTC, y el
-// "hace 2 h" saldría corrido por el offset del dispositivo.
+// created_at se emite como ISO-8601 con 'Z' explícita para que el cliente no
+// pueda interpretarlo como hora local y desplazar el "hace 2 h".
 const SELECT_COMENTARIO = `
   SELECT
     c.id                  AS id,
     c.product_id          AS productId,
     c.user_id             AS userId,
     c.texto               AS texto,
-    strftime('%Y-%m-%dT%H:%M:%SZ', c.created_at) AS createdAt,
-    -- Formato crudo de SQLite: es contra ESTE valor que compara el WHERE de
-    -- la página siguiente, así que el cursor tiene que llevarlo tal cual.
+    to_char(c.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS createdAt,
+    -- El cursor conserva el TIMESTAMPTZ real, incluida su precisión completa.
     c.created_at          AS createdAtRaw,
     s.name                AS autorNombre,
     s.avatarInitials      AS autorIniciales,
@@ -1199,7 +1190,7 @@ async function getCommentsReceivedBySeller(sellerId, {
       c.product_id          AS productId,
       c.user_id             AS userId,
       c.texto               AS texto,
-      strftime('%Y-%m-%dT%H:%M:%SZ', c.created_at) AS createdAt,
+      to_char(c.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS createdAt,
       c.created_at          AS createdAtRaw,
       s.name                AS autorNombre,
       s.avatarInitials      AS autorIniciales,
@@ -1280,14 +1271,12 @@ async function createProductComment(id, productId, userId, texto) {
  * Segundos transcurridos desde el último comentario de [userId], o null si
  * nunca ha comentado.
  *
- * El cálculo va entero dentro de SQLite a propósito. `created_at` se guarda
- * con datetime('now'), que es UTC, pero el proceso corre con TZ=America/
- * Monterrey (ver index.js): restarlo contra un `new Date()` de Node daría
- * seis horas de diferencia y el rate limit no frenaría nada.
+ * El cálculo se hace en PostgreSQL sobre TIMESTAMPTZ para que la zona horaria
+ * del proceso no altere el rate limit.
  */
 async function segundosDesdeUltimoComentario(userId) {
   const row = await db.prepare(`
-    SELECT CAST((julianday('now') - julianday(MAX(created_at))) * 86400.0 AS INTEGER) AS segundos
+    SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MAX(created_at)))::INTEGER AS segundos
     FROM product_comments WHERE user_id = ?
   `).get(userId);
   return row && row.segundos != null ? row.segundos : null;
@@ -1301,7 +1290,7 @@ async function segundosDesdeUltimoComentario(userId) {
 async function softDeleteProductComment(commentId, actorId) {
   const info = await db.prepare(`
     UPDATE product_comments
-    SET deleted_at = datetime('now'), deleted_by = ?
+    SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ?
     WHERE id = ? AND deleted_at IS NULL
   `).run(actorId, commentId);
   return info.changes > 0;
@@ -1327,9 +1316,7 @@ async function contarResolucionesEnigma() {
  *
  * El cálculo de la posición y el INSERT van en una transacción porque son
  * un solo hecho: sin ella, dos aciertos simultáneos leerían el mismo COUNT
- * y se declararían ambos "el #1". better-sqlite3 es síncrono y el servidor
- * de un solo hilo, así que hoy no puede pasar; la transacción está para que
- * siga sin poder pasar el día que esto corra en más de un proceso.
+ * y se declararían ambos "el #1".
  *
  * @returns {{posicion: number, solvedAt: string, repetida: boolean}}
  */
@@ -1373,10 +1360,9 @@ const SELECT_PREGUNTA = `
     q.question_text AS questionText,
     q.answer_text   AS answerText,
     q.status        AS status,
-    strftime('%Y-%m-%dT%H:%M:%SZ', q.created_at)  AS createdAt,
-    strftime('%Y-%m-%dT%H:%M:%SZ', q.answered_at) AS answeredAt,
-    -- Formato crudo de SQLite: es contra ESTE valor que compara el WHERE de
-    -- la página siguiente, así que el cursor tiene que llevarlo tal cual.
+    to_char(q.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')  AS createdAt,
+    to_char(q.answered_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS answeredAt,
+    -- El cursor conserva el TIMESTAMPTZ real, incluida su precisión completa.
     q.created_at    AS createdAtRaw,
     s.name              AS autorNombre,
     s.avatarInitials    AS autorIniciales,
@@ -1464,7 +1450,7 @@ async function createProductQuestion(id, productId, sellerId, askedBy, texto) {
 async function answerProductQuestion(id, texto) {
   await db.prepare(`
     UPDATE product_questions
-    SET answer_text = ?, status = 'answered', answered_at = datetime('now')
+    SET answer_text = ?, status = 'answered', answered_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `).run(texto, id);
   return await getProductQuestionById(id);
@@ -1562,13 +1548,12 @@ async function countPendingProductQuestions(productId) {
  * Segundos desde la última pregunta de [userId] en cualquier producto, o
  * null si nunca ha preguntado. Frena el tecleo compulsivo en varios hilos.
  *
- * El cálculo va entero dentro de SQLite por lo mismo que en comentarios:
- * created_at es UTC y el proceso corre en horario de Monterrey, así que
- * restarlo contra un Date de Node daría seis horas de más.
+ * El cálculo se hace en PostgreSQL sobre TIMESTAMPTZ para que la zona horaria
+ * del proceso no altere el resultado.
  */
 async function segundosDesdeUltimaPregunta(userId) {
   const row = await db.prepare(`
-    SELECT CAST((julianday('now') - julianday(MAX(created_at))) * 86400.0 AS INTEGER) AS segundos
+    SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MAX(created_at)))::INTEGER AS segundos
     FROM product_questions WHERE asked_by = ?
   `).get(userId);
   return row && row.segundos != null ? row.segundos : null;
@@ -1583,7 +1568,7 @@ async function contarPreguntasRecientes(userId, productId, horas) {
   const row = await db.prepare(`
     SELECT COUNT(*) AS total FROM product_questions
     WHERE asked_by = ? AND product_id = ?
-      AND created_at >= datetime('now', '-' || ? || ' hours')
+      AND created_at >= CURRENT_TIMESTAMP - (? * INTERVAL '1 hour')
   `).get(userId, productId, horas);
   return row ? row.total : 0;
 }
@@ -1591,7 +1576,10 @@ async function contarPreguntasRecientes(userId, productId, horas) {
 // ─── Category Interests ─────────────────────────────────────────
 
 async function addCategoryInterest(userId, categoryId) {
-  await db.prepare('INSERT OR IGNORE INTO category_interests (user_id, category_id) VALUES (?, ?)').run(userId, categoryId);
+  await db.prepare(`
+    INSERT INTO category_interests (user_id, category_id) VALUES (?, ?)
+    ON CONFLICT (user_id, category_id) DO NOTHING
+  `).run(userId, categoryId);
 }
 async function removeCategoryInterest(userId, categoryId) {
   await db.prepare('DELETE FROM category_interests WHERE user_id = ? AND category_id = ?').run(userId, categoryId);
@@ -1608,7 +1596,7 @@ async function getUsersInterestedInCategory(categoryId) {
 async function createNotification(id, userId, type, title, body, data) {
   await db.prepare(`
     INSERT INTO notifications (id, user_id, type, title, body, data, read, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, 0, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
   `).run(id, userId, type, title, body, JSON.stringify(data || {}));
 }
 async function getNotifications(userId) {
@@ -1637,7 +1625,7 @@ async function markAllNotificationsRead(userId) {
  *  badge de la campana. Sin esto, el contador sigue subiendo aunque el usuario
  *  ya haya leído la conversación.
  *
- *  El `conversationId` vive dentro del JSON de `data`, de ahí el json_extract.
+ *  El `conversationId` vive dentro del JSON de `data`.
  *  Retorna cuántas filas se marcaron, para que quien llame sepa si hace falta
  *  refrescar el badge. */
 async function markNotificationsReadForConversation(userId, conversationId) {
@@ -1645,7 +1633,7 @@ async function markNotificationsReadForConversation(userId, conversationId) {
     UPDATE notifications SET read = 1
     WHERE user_id = ?
       AND read = 0
-      AND json_extract(data, '$.conversationId') = ?
+      AND CASE WHEN data IS JSON THEN data::jsonb ->> 'conversationId' END = ?
   `).run(userId, conversationId);
   return info.changes;
 }
@@ -1659,7 +1647,7 @@ async function getUnreadNotificationCount(userId) {
 async function createConversation(id, productId, buyerId, sellerId) {
   await db.prepare(`
     INSERT INTO conversations (id, product_id, buyer_id, seller_id, created_at, last_message_at, last_message_preview)
-    VALUES (?, ?, ?, ?, datetime('now'), datetime('now'), '')
+    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, '')
   `).run(id, productId, buyerId, sellerId);
 }
 async function findConversation(productId, buyerId, sellerId) {
@@ -1671,7 +1659,7 @@ async function findConversation(productId, buyerId, sellerId) {
 async function createDirectConversation(id, buyerId, sellerId) {
   await db.prepare(`
     INSERT INTO conversations (id, product_id, wanted_post_id, buyer_id, seller_id, created_at, last_message_at, last_message_preview)
-    VALUES (?, NULL, NULL, ?, ?, datetime('now'), datetime('now'), '')
+    VALUES (?, NULL, NULL, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, '')
     ON CONFLICT (LEAST(buyer_id, seller_id), GREATEST(buyer_id, seller_id))
       WHERE product_id IS NULL AND wanted_post_id IS NULL
       DO NOTHING
@@ -1763,7 +1751,7 @@ async function setChatUserSetting(ownerId, targetId, setting, enabled) {
   if (setting !== 'blocked' && setting !== 'muted') return false;
   await db.prepare(`
     INSERT INTO chat_user_settings (owner_id, target_id, ${setting}, updated_at)
-    VALUES (?, ?, ?, datetime('now'))
+    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(owner_id, target_id) DO UPDATE SET
       ${setting} = excluded.${setting},
       updated_at = excluded.updated_at
@@ -1833,7 +1821,7 @@ async function createReport({
     INSERT INTO reports (
       id, reporter_id, target_type, target_id, target_user_id, reason, details,
       status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'received', datetime('now'), datetime('now'))
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'received', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
   `).run(id, reporterId, targetType, String(targetId), targetUserId || null, safeReason, safeDetails);
   return await getReportById(id);
 }
@@ -1919,12 +1907,12 @@ async function updateReportStatus({
   const resolved = status === 'resolved' || status === 'dismissed';
   const updated = await db.prepare(`
     UPDATE reports
-       SET status = ?, admin_note = ?, updated_at = datetime('now'),
-           resolved_at = CASE WHEN ? THEN datetime('now') ELSE NULL END,
-           resolved_by_admin_id = CASE WHEN ? THEN (?::bigint) ELSE NULL END
+       SET status = ?, admin_note = ?, updated_at = CURRENT_TIMESTAMP,
+           resolved_at = CASE WHEN ?::boolean THEN CURRENT_TIMESTAMP ELSE NULL END,
+           resolved_by_admin_id = CASE WHEN ?::boolean THEN (?::bigint) ELSE NULL END
      WHERE id = ? AND status = ?
-  `).run(status, String(adminNote || '').trim().slice(0, 1000), resolved ? 1 : 0,
-    resolved ? 1 : 0, adminId, id, expectedStatus);
+  `).run(status, String(adminNote || '').trim().slice(0, 1000), resolved,
+    resolved, adminId, id, expectedStatus);
   if (updated.changes === 0) {
     const current = await getReportById(id);
     return current
@@ -1942,7 +1930,7 @@ async function anonymizeSellerAccount(userId) {
   const now = new Date().toISOString();
   await db.transaction(async () => {
     await db.prepare('DELETE FROM push_tokens WHERE user_id = ?').run(userId);
-    await db.prepare('UPDATE refresh_sessions SET revoked_at = datetime(\'now\') WHERE user_id = ? AND revoked_at IS NULL').run(userId);
+    await db.prepare('UPDATE refresh_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL').run(userId);
     await db.prepare('DELETE FROM category_interests WHERE user_id = ?').run(userId);
     await db.prepare('DELETE FROM cart WHERE user_id = ?').run(userId);
     await db.prepare('DELETE FROM chat_user_settings WHERE owner_id = ? OR target_id = ?').run(userId, userId);
@@ -1950,7 +1938,7 @@ async function anonymizeSellerAccount(userId) {
     await db.prepare('DELETE FROM verification_documents WHERE usuario_id = ?').run(userId);
     await db.prepare('DELETE FROM verificaciones WHERE usuario_id = ?').run(userId);
     await db.prepare('DELETE FROM product_ratings WHERE user_id = ?').run(userId);
-    await db.prepare("UPDATE product_comments SET texto = '[Comentario eliminado]', deleted_at = datetime('now'), deleted_by = ? WHERE user_id = ? AND deleted_at IS NULL").run(userId, userId);
+    await db.prepare("UPDATE product_comments SET texto = '[Comentario eliminado]', deleted_at = CURRENT_TIMESTAMP, deleted_by = ? WHERE user_id = ? AND deleted_at IS NULL").run(userId, userId);
     await db.prepare("UPDATE product_questions SET question_text = '[Pregunta eliminada]' WHERE asked_by = ?").run(userId);
     await db.prepare("UPDATE product_questions SET answer_text = '[Respuesta eliminada]' WHERE seller_id = ? AND answer_text IS NOT NULL").run(userId);
     await db.prepare(`UPDATE products SET
@@ -1963,7 +1951,7 @@ async function anonymizeSellerAccount(userId) {
       manual_status = 'paused',
       moderation_status = 'removed',
       moderation_reason = 'Cuenta eliminada por el usuario',
-      updated_at = datetime('now')
+      updated_at = CURRENT_TIMESTAMP
       WHERE seller = ?`).run(userId);
     await db.prepare(`UPDATE wanted_posts SET
       title = '[Busqueda eliminada]',
@@ -2015,8 +2003,8 @@ async function getConversationsForUser(userId) {
         OR EXISTS (
           SELECT 1 FROM messages nuevos
           WHERE nuevos.conversation_id = c.id
-            AND nuevos.rowid > COALESCE((
-              SELECT corte.rowid FROM messages corte
+            AND nuevos.seq > COALESCE((
+              SELECT corte.seq FROM messages corte
               WHERE corte.id = d.deleted_through_message_id
             ), 0)
         )
@@ -2052,13 +2040,13 @@ async function deleteConversationForUser(conversationId, userId) {
     const ultimo = await db.prepare(`
       SELECT id FROM messages
       WHERE conversation_id = ?
-      ORDER BY rowid DESC
+      ORDER BY seq DESC
       LIMIT 1
     `).get(conversationId);
     await db.prepare(`
       INSERT INTO conversation_deletions
         (conversation_id, user_id, deleted_through_message_id, deleted_at)
-      VALUES (?, ?, ?, datetime('now'))
+      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(conversation_id, user_id) DO UPDATE SET
         deleted_through_message_id = excluded.deleted_through_message_id,
         deleted_at = excluded.deleted_at
@@ -2073,7 +2061,7 @@ async function deleteConversationForUser(conversationId, userId) {
 }
 async function updateConversationPreview(conversationId, previewText) {
   await db.prepare(`
-    UPDATE conversations SET last_message_at = datetime('now'), last_message_preview = ? WHERE id = ?
+    UPDATE conversations SET last_message_at = CURRENT_TIMESTAMP, last_message_preview = ? WHERE id = ?
   `).run(previewText, conversationId);
 }
 async function getUnreadMessageCount(userId) {
@@ -2085,8 +2073,8 @@ async function getUnreadMessageCount(userId) {
     WHERE (c.buyer_id = ? OR c.seller_id = ?)
       AND m.sender_id != ?
       AND m.read = 0
-      AND m.rowid > COALESCE((
-        SELECT corte.rowid FROM messages corte
+      AND m.seq > COALESCE((
+        SELECT corte.seq FROM messages corte
         WHERE corte.id = d.deleted_through_message_id
       ), 0)
   `).get(userId, userId, userId, userId);
@@ -2098,7 +2086,7 @@ async function getUnreadMessageCount(userId) {
 async function createWantedPost(post) {
   await db.prepare(`
     INSERT INTO wanted_posts (id, user_id, title, description, category_id, type, price_min, price_max, status, created_at, location_lat, location_lng, paymentMethods, expires_at)
-    VALUES (@id, @userId, @title, @description, @categoryId, @type, @priceMin, @priceMax, 'abierta', datetime('now'), @location_lat, @location_lng, @paymentMethods, @expires_at)
+    VALUES (@id, @userId, @title, @description, @categoryId, @type, @priceMin, @priceMax, 'abierta', CURRENT_TIMESTAMP, @location_lat, @location_lng, @paymentMethods, @expires_at)
   `).run({
     id: post.id,
     userId: post.userId,
@@ -2122,7 +2110,7 @@ async function getWantedPostById(id) {
         SELECT 1 FROM sellers s WHERE s.id = w.user_id AND (
           s.admin_status = 'active'
           OR (s.admin_status = 'suspended' AND s.admin_status_until IS NOT NULL
-            AND datetime(s.admin_status_until) <= datetime('now'))
+            AND s.admin_status_until <= CURRENT_TIMESTAMP)
         )
       )`).get(id);
   return rowToWantedPost(row);
@@ -2137,7 +2125,7 @@ async function listWantedPosts({
       SELECT 1 FROM sellers s WHERE s.id = w.user_id AND (
         s.admin_status = 'active'
         OR (s.admin_status = 'suspended' AND s.admin_status_until IS NOT NULL
-          AND datetime(s.admin_status_until) <= datetime('now'))
+          AND s.admin_status_until <= CURRENT_TIMESTAMP)
       )
     )`;
   const params = [];
@@ -2147,7 +2135,7 @@ async function listWantedPosts({
   }
   query += ' AND status = ?';
   params.push(status || 'abierta');
-  query += " AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))";
+  query += ' AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)';
   if (type) {
     query += ' AND type = ?';
     params.push(type);
@@ -2174,7 +2162,7 @@ async function updateWantedPost(id, updates) {
       price_min = @priceMin,
       price_max = @priceMax,
       paymentMethods = @paymentMethods,
-      updated_at = datetime('now')
+      updated_at = CURRENT_TIMESTAMP
     WHERE id = @id
   `).run({
     id,
@@ -2190,7 +2178,7 @@ async function updateWantedPost(id, updates) {
 }
 async function resolveWantedPost(id, resolvedWithUserId) {
   await db.prepare(`
-    UPDATE wanted_posts SET status = 'resuelta', resolved_with_user_id = ?, resolved_at = datetime('now')
+    UPDATE wanted_posts SET status = 'resuelta', resolved_with_user_id = ?, resolved_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `).run(resolvedWithUserId || null, id);
   return await getWantedPostById(id);
@@ -2203,12 +2191,12 @@ async function countActiveWantedPosts(userId) {
   return (await db.prepare(`SELECT COUNT(*) AS count FROM wanted_posts
     WHERE user_id = ? AND status = 'abierta'
       AND moderation_status = 'visible'
-      AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))`).get(userId))?.count ?? 0;
+      AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)`).get(userId))?.count ?? 0;
 }
 async function createWantedConversation(id, wantedPostId, buyerId, sellerId) {
   await db.prepare(`
     INSERT INTO conversations (id, product_id, wanted_post_id, buyer_id, seller_id, created_at, last_message_at, last_message_preview)
-    VALUES (?, NULL, ?, ?, ?, datetime('now'), datetime('now'), '')
+    VALUES (?, NULL, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, '')
   `).run(id, wantedPostId, buyerId, sellerId);
 }
 async function findWantedConversation(wantedPostId, buyerId, sellerId) {
@@ -2219,8 +2207,9 @@ async function findWantedConversation(wantedPostId, buyerId, sellerId) {
 
 async function registerPushToken(userId, playerId, platform) {
   await db.prepare(`
-    INSERT OR IGNORE INTO push_tokens (user_id, player_id, platform, created_at)
-    VALUES (?, ?, ?, datetime('now'))
+    INSERT INTO push_tokens (user_id, player_id, platform, created_at)
+    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT (user_id, player_id) DO NOTHING
   `).run(userId, playerId, platform || 'unknown');
 }
 async function unregisterPushToken(userId, playerId) {
@@ -2238,7 +2227,7 @@ async function unregisterAllPushTokensForUser(userId) {
 async function createMessage(id, conversationId, senderId, text, imageUrl = null, replyToMessageId = null) {
   await db.prepare(`
     INSERT INTO messages (id, conversation_id, sender_id, text, image_url, reply_to_message_id, created_at, read)
-    VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 0)
+    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 0)
   `).run(id, conversationId, senderId, text, imageUrl, replyToMessageId);
   await updateConversationPreview(conversationId, imageUrl ? '📷 Foto' : text);
 
@@ -2281,7 +2270,9 @@ async function getMessages(conversationId, userId = null) {
         SELECT deleted_through_message_id FROM conversation_deletions
         WHERE conversation_id = ? AND user_id = ?
       `).get(conversationId, userId) : null;
-  const deletedThroughRowid = deletion?.deleted_through_message_id ? (await db.prepare('SELECT rowid FROM messages WHERE id = ?').get(deletion.deleted_through_message_id))?.rowid ?? 0 : 0;
+  const deletedThroughSeq = deletion?.deleted_through_message_id
+    ? (await db.prepare('SELECT seq FROM messages WHERE id = ?').get(deletion.deleted_through_message_id))?.seq ?? 0
+    : 0;
 
   // LEFT JOIN y no una consulta por mensaje: un chat de 200 mensajes con
   // respuestas haría 200 SELECT extra.
@@ -2293,9 +2284,9 @@ async function getMessages(conversationId, userId = null) {
            r.image_url  AS reply_image_url
     FROM messages m
     LEFT JOIN messages r ON r.id = m.reply_to_message_id
-    WHERE m.conversation_id = ? AND m.rowid > ?
-    ORDER BY m.created_at ASC
-  `).all(conversationId, deletedThroughRowid)).map(row => rowToMessage(row));
+    WHERE m.conversation_id = ? AND m.seq > ?
+    ORDER BY m.created_at ASC, m.seq ASC
+  `).all(conversationId, deletedThroughSeq)).map(row => rowToMessage(row));
 }
 
 /** Devuelve el resumen del mensaje citado, o null si no existe. */
@@ -2415,7 +2406,7 @@ async function registrarInteraccion({
 }) {
   await db.prepare(`
     INSERT INTO interacciones_dispositivo (device_id, user_id, product_id, category, tipo, created_at)
-    VALUES (?, ?, ?, ?, ?, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
   `).run(deviceId, userId || null, productId, category, tipo);
 }
 
@@ -2444,7 +2435,7 @@ async function limpiarInteraccionesAntiguas({
 } = {}) {
   await db.prepare(`
     DELETE FROM interacciones_dispositivo
-    WHERE created_at < datetime('now', '-' || ? || ' days')
+    WHERE created_at < CURRENT_TIMESTAMP - (? * INTERVAL '1 day')
   `).run(retentionDays);
   await db.prepare(`
     DELETE FROM interacciones_dispositivo
@@ -2480,7 +2471,7 @@ async function getFeedRanked({
         SUM(CASE WHEN tipo = 'favorito' THEN 1 ELSE 0 END) AS favoritos,
         SUM(CASE WHEN tipo = 'contacto' THEN 1 ELSE 0 END) AS contactos
       FROM interacciones_dispositivo
-      WHERE created_at >= datetime('now', '-' || @popularityWindowDays || ' days')
+      WHERE created_at >= CURRENT_TIMESTAMP - (@popularityWindowDays * INTERVAL '1 day')
       GROUP BY product_id
     ),
     device_top_categories AS (
@@ -2489,7 +2480,7 @@ async function getFeedRanked({
         SELECT category, COUNT(*) AS cnt,
           ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC) AS rn
         FROM interacciones_dispositivo
-        WHERE created_at >= datetime('now', '-' || @affinityWindowDays || ' days')
+        WHERE created_at >= CURRENT_TIMESTAMP - (@affinityWindowDays * INTERVAL '1 day')
           AND (device_id = @deviceId OR (@userId IS NOT NULL AND user_id = @userId))
         GROUP BY category
       )
@@ -2504,7 +2495,8 @@ async function getFeedRanked({
       (
         (
           -- Recencia: decae con los días de antigüedad, sin bajar de 0
-          MAX(0, @recencyBase - @recencyDecayPerDay * (julianday('now') - julianday(p.created_at)))
+          GREATEST(0, @recencyBase - @recencyDecayPerDay
+            * (EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - p.created_at)) / 86400.0))
           -- Popularidad: vistas, favoritos y contactos, cada uno con su propio peso
           + CAST(@wViews AS DOUBLE PRECISION) * COALESCE(ps.vistas, 0)
           + CAST(@wFavoritos AS DOUBLE PRECISION) * COALESCE(ps.favoritos, 0)
@@ -2534,7 +2526,7 @@ async function getFeedRanked({
     WHERE p.moderation_status = 'visible'
       AND (s.admin_status = 'active'
         OR (s.admin_status = 'suspended' AND s.admin_status_until IS NOT NULL
-          AND datetime(s.admin_status_until) <= datetime('now')))
+          AND s.admin_status_until <= CURRENT_TIMESTAMP))
     ORDER BY score DESC
     LIMIT @limit OFFSET @offset
   `).all({
@@ -2588,14 +2580,14 @@ const SQL_PRODUCTO_ACTIVO = `
       visible_seller.admin_status = 'active'
       OR (visible_seller.admin_status = 'suspended'
         AND visible_seller.admin_status_until IS NOT NULL
-        AND datetime(visible_seller.admin_status_until) <= datetime('now'))
+        AND visible_seller.admin_status_until <= CURRENT_TIMESTAMP)
     )
   )
   AND
   (p.manual_status IS NULL OR p.manual_status NOT IN ('sold', 'paused'))
   AND (p.status IS NULL OR p.status != 'sold')
   AND (p.stock_quantity IS NULL OR p.stock_quantity > 0)
-  AND (p.expires_at IS NULL OR datetime(p.expires_at) > datetime('now'))
+  AND (p.expires_at IS NULL OR p.expires_at > CURRENT_TIMESTAMP)
 `;
 
 /**
@@ -2606,7 +2598,8 @@ const SQL_PRODUCTO_ACTIVO = `
  * tiendas grandes una y otra vez.
  */
 const SQL_SCORE_RELACIONADOS = `
-  MAX(0, @recencyBase - @recencyDecayPerDay * (julianday('now') - julianday(p.created_at)))
+  GREATEST(0, @recencyBase - @recencyDecayPerDay
+    * (EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - p.created_at)) / 86400.0))
   + CAST(@wViews AS DOUBLE PRECISION) * COALESCE(ps.vistas, 0)
   + CAST(@wFavoritos AS DOUBLE PRECISION) * COALESCE(ps.favoritos, 0)
   + CAST(@wContactos AS DOUBLE PRECISION) * COALESCE(ps.contactos, 0)
@@ -2618,7 +2611,7 @@ const SQL_STATS_POPULARIDAD = `
     SUM(CASE WHEN tipo = 'favorito' THEN 1 ELSE 0 END) AS favoritos,
     SUM(CASE WHEN tipo = 'contacto' THEN 1 ELSE 0 END) AS contactos
   FROM interacciones_dispositivo
-  WHERE created_at >= datetime('now', '-' || @popularityWindowDays || ' days')
+  WHERE created_at >= CURRENT_TIMESTAMP - (@popularityWindowDays * INTERVAL '1 day')
   GROUP BY product_id
 `;
 
@@ -2766,7 +2759,10 @@ let ultimaPurgaSearchQueries = 0;
 async function purgeOldSearchQueries({
   days = SEARCH_QUERY_RETENTION_DAYS
 } = {}) {
-  const info = await db.prepare("DELETE FROM search_queries WHERE created_at < datetime('now', '-' || ? || ' days')").run(days);
+  const info = await db.prepare(`
+    DELETE FROM search_queries
+    WHERE created_at < CURRENT_TIMESTAMP - (? * INTERVAL '1 day')
+  `).run(days);
   ultimaPurgaSearchQueries = Date.now();
   return info.changes;
 }
@@ -2845,7 +2841,7 @@ async function recordSearchQuery(text, deviceId = null) {
     const reciente = await db.prepare(`
       SELECT 1 FROM search_queries
       WHERE device_id = ? AND query_key = ?
-        AND created_at >= datetime('now', '-' || ? || ' seconds')
+        AND created_at >= CURRENT_TIMESTAMP - (? * INTERVAL '1 second')
       LIMIT 1
     `).get(deviceId, key, SEARCH_QUERY_DEDUPE_SECONDS);
     if (reciente) return false;
@@ -2887,14 +2883,14 @@ async function getTrendingSearches({
       SELECT id, query_text, device_id, created_at,
              COALESCE(query_key, query_text) AS clave
       FROM search_queries
-      WHERE created_at >= datetime('now', '-' || @days || ' days')
+      WHERE created_at >= CURRENT_TIMESTAMP - (@days * INTERVAL '1 day')
     ),
     ranking AS (
       SELECT clave,
              COUNT(DISTINCT COALESCE(device_id, 'fila:' || id)) AS personas,
              SUM(CASE
-                   WHEN created_at >= datetime('now', '-1 day')  THEN 3
-                   WHEN created_at >= datetime('now', '-3 days') THEN 2
+                   WHEN created_at >= CURRENT_TIMESTAMP - INTERVAL '1 day'  THEN 3
+                   WHEN created_at >= CURRENT_TIMESTAMP - INTERVAL '3 days' THEN 2
                    ELSE 1
                  END) AS recencia,
              MAX(created_at) AS ultima
@@ -2961,7 +2957,7 @@ async function getFallbackSearchTerms({
         SUM(CASE WHEN tipo = 'favorito' THEN 1 ELSE 0 END) AS favoritos,
         SUM(CASE WHEN tipo = 'contacto' THEN 1 ELSE 0 END) AS contactos
       FROM interacciones_dispositivo
-      WHERE created_at >= datetime('now', '-' || @popularityWindowDays || ' days')
+      WHERE created_at >= CURRENT_TIMESTAMP - (@popularityWindowDays * INTERVAL '1 day')
       GROUP BY product_id
     )
     SELECT
@@ -3012,7 +3008,7 @@ function trackCategoryEngagement(categoryId, eventType) {
     try {
       await db.prepare(`
         INSERT INTO category_engagement_events (category_id, event_type, created_at)
-        VALUES (?, ?, datetime('now'))
+        VALUES (?, ?, CURRENT_TIMESTAMP)
       `).run(categoryId, eventType);
     } catch (err) {
       console.error('trackCategoryEngagement falló:', err.message);
@@ -3039,10 +3035,10 @@ async function getCategoriesRanked() {
     FROM categories c
     LEFT JOIN category_engagement_events e
       ON e.category_id = c.id
-      AND e.created_at >= datetime('now', ?)
+      AND e.created_at >= CURRENT_TIMESTAMP - (? * INTERVAL '1 day')
     GROUP BY c.id
     ORDER BY score DESC, c.id ASC
-  `).all(...weightParams, `-${CATEGORY_ENGAGEMENT_WINDOW_DAYS} days`);
+  `).all(...weightParams, CATEGORY_ENGAGEMENT_WINDOW_DAYS);
   categoriesRankedCache = {
     data: rows,
     expiresAt: Date.now() + CATEGORY_RANKED_CACHE_TTL_MS

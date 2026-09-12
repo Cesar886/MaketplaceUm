@@ -26,6 +26,8 @@ const INSIGNIAS_OCULTABLES = {
   vendedor_confiable: 'vendedorConfiable',
   responde_rapido: 'respondeRapido',
   respuesta_instantanea: 'respuestaInstantanea',
+  recien_llegado: 'recienRegistrado',
+  recien_verificado: 'recienVerificado',
   novato: 'esVendedorNuevo',
   // Las tres de abajo no son booleanos sino contadores, y su campo se apaga
   // con el valor que el cliente ya interpreta como "no la pintes": 0 para
@@ -78,6 +80,26 @@ const CLAVES_INSIGNIAS = Object.keys(INSIGNIAS_OCULTABLES);
  * lee.
  */
 const INSIGNIAS_PERMANENTES = ['leyenda', 'vendedor_de_oro', 'centenario'];
+
+/**
+ * La ventana temporal común de las insignias de bienvenida: siete periodos
+ * completos de 24 horas desde el instante guardado, nunca fechas futuras.
+ * Acepta tanto TIMESTAMPTZ de PostgreSQL como el texto UTC de SQLite.
+ */
+function diasDesde(fecha, ahoraMs = Date.now()) {
+  if (!fecha) return null;
+  const texto = String(fecha);
+  const normalizada = fecha instanceof Date
+    ? fecha
+    : new Date(texto.includes('T') ? texto : `${texto.replace(' ', 'T')}Z`);
+  const edadMs = ahoraMs - normalizada.getTime();
+  return Number.isFinite(edadMs) ? edadMs / 86400000 : null;
+}
+
+function estaEnPrimeraSemana(fecha, ahoraMs = Date.now()) {
+  const dias = diasDesde(fecha, ahoraMs);
+  return dias !== null && dias >= 0 && dias < 7;
+}
 
 /**
  * Valida la lista que manda el cliente en PATCH /api/sellers/:id.
@@ -147,6 +169,8 @@ module.exports = {
   INSIGNIAS_OCULTABLES,
   CLAVES_INSIGNIAS,
   INSIGNIAS_PERMANENTES,
+  diasDesde,
+  estaEnPrimeraSemana,
   validateInsigniasOcultas,
   aplicarInsigniasOcultas,
   insigniasGanadas,

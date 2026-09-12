@@ -37,7 +37,9 @@ const {
 const {
   validateInsigniasOcultas,
   aplicarInsigniasOcultas,
-  insigniasGanadas
+  insigniasGanadas,
+  estaEnPrimeraSemana,
+  diasDesde
 } = require('../validation/insignias');
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
 const upload = multer({
@@ -94,7 +96,11 @@ function register(app) {
     // mismo formato que el resto de columnas datetime('now') del esquema.
     // `new Date` no lo interpreta como UTC sin el separador 'T' y el
     // sufijo 'Z' explícitos.
-    const diasDesdeAlta = seller.createdAt ? (Date.now() - new Date(seller.createdAt.replace(' ', 'T') + 'Z').getTime()) / 86400000 : null;
+    const diasDesdeAlta = diasDesde(seller.createdAt);
+    const otorgamientoVerificacion = await db.getDb().prepare(
+      `SELECT otorgada_en FROM insignias_otorgadas
+        WHERE seller_id = ? AND clave = 'recien_verificado'`,
+    ).get(seller.id);
     // Cuenta propia del admin: todas las insignias de esta pantalla quedan
     // desbloqueadas siempre, sin depender de métricas reales que puedan
     // subir y bajar (racha, tiempo de respuesta, etc.) — ver
@@ -141,6 +147,11 @@ function register(app) {
       // cliente decide cuál mostrar (ver InsigniaCuenta para el mismo patrón
       // con verificado/socio fundador) porque esta implica la otra.
       respuestaInstantanea: todosLosBadges || seller.medianResponseMinutes !== null && seller.medianResponseMinutes <= w.INSTANT_REPLY_MAX_MINUTES,
+      // Insignias temporales de bienvenida. La primera nace con el alta; la
+      // segunda usa el otorgamiento idempotente que se registra al verificar,
+      // de modo que una revocación y restauración no reinicie sus siete días.
+      recienRegistrado: todosLosBadges || estaEnPrimeraSemana(seller.createdAt),
+      recienVerificado: todosLosBadges || seller.verified && estaEnPrimeraSemana(otorgamientoVerificacion?.otorgada_en),
       // "Vendedor confiable": rating alto sostenido por un mínimo de
       // reseñas. Sin el mínimo, un solo comentario de 5 estrellas bastaría
       // para la insignia, que es justo el ruido que el umbral de reseñas

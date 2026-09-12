@@ -215,6 +215,9 @@ test('un estudiante se verifica con el código enviado a su correo institucional
   assert.strictEqual(fila.matricula, '1220326');
   assert.strictEqual(fila.carrera, CARRERA_VALIDA);
   assert.ok(fila.fecha_verificacion);
+  const nuevaInsignia = db.getDb().prepare(`SELECT otorgada_en FROM insignias_otorgadas
+    WHERE seller_id = ? AND clave = 'recien_verificado'`).get(usuario.id);
+  assert.ok(nuevaInsignia?.otorgada_en);
 
   // La carrera se copia a `sellers` (bandera rápida para el perfil), igual
   // que `verified`.

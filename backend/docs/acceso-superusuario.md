@@ -19,8 +19,8 @@ En el servidor deben cumplirse estas condiciones:
   `API_URL=http://127.0.0.1:3000` y el mismo `ADMIN_PANEL_ORIGIN`.
 
 No cambies `ADMIN_TOTP_ENCRYPTION_KEY` después de crear cuentas: esa llave
-cifra sus semillas 2FA. Si vienes de SQLite, conserva exactamente la llave que
-ya usaba producción.
+cifra sus semillas 2FA. Debe conservarse exactamente entre despliegues y
+restauraciones.
 
 ## 1. Comprobar los servicios
 
