@@ -1,6 +1,12 @@
-const { requireAuth } = require('../auth');
+const {
+  requireAuth
+} = require('../auth');
 const db = require('../database');
-const { products, sellers, categories } = require('../data');
+const {
+  products,
+  sellers,
+  categories
+} = require('../data');
 
 // El carrito es PRIVADO de cada usuario. Todos los endpoints exigen
 // autenticación —incluido el GET— y toda consulta va acotada por
@@ -17,77 +23,95 @@ function register(app) {
     return {
       ...p,
       sellerObj: sellers.find(s => s.id === p.seller) || null,
-      categoryObj: categories.find(c => c.id === p.category) || null,
+      categoryObj: categories.find(c => c.id === p.category) || null
     };
   }
-
-  function cartOf(userId) {
-    return db.getCartItems(userId).map(item => ({
+  async function cartOf(userId) {
+    return (await db.getCartItems(userId)).map(item => ({
       id: item.id,
       productId: item.productId,
       quantity: item.quantity,
       meetingPoint: item.meetingPoint,
-      product: enrichProduct(products.find(p => p.id === item.productId) || null),
+      product: enrichProduct(products.find(p => p.id === item.productId) || null)
     }));
   }
 
   // GET /api/cart — solo el carrito de quien pregunta.
-  app.get('/api/cart', requireAuth, (req, res) => {
-    res.json(cartOf(req.user.id));
+  app.get('/api/cart', requireAuth, async (req, res) => {
+    res.json(await cartOf(req.user.id));
   });
 
   // POST /api/cart – agregar item
-  app.post('/api/cart', requireAuth, (req, res) => {
-    const { productId, quantity, meetingPoint } = req.body;
+  app.post('/api/cart', requireAuth, async (req, res) => {
+    const {
+      productId,
+      quantity,
+      meetingPoint
+    } = req.body;
     if (!productId || !quantity) {
-      return res.status(400).json({ error: 'productId y quantity son requeridos' });
+      return res.status(400).json({
+        error: 'productId y quantity son requeridos'
+      });
     }
     const cantidad = Number(quantity);
     if (!Number.isInteger(cantidad) || cantidad < 1) {
-      return res.status(400).json({ error: 'La cantidad debe ser un número entero mayor a cero.' });
+      return res.status(400).json({
+        error: 'La cantidad debe ser un número entero mayor a cero.'
+      });
     }
     if (!products.some(p => p.id === productId)) {
-      return res.status(404).json({ error: 'Producto no encontrado' });
+      return res.status(404).json({
+        error: 'Producto no encontrado'
+      });
     }
-
-    db.upsertCartItem(req.user.id, {
+    await db.upsertCartItem(req.user.id, {
       id: `c${Date.now()}`,
       productId,
       quantity: cantidad,
-      meetingPoint,
+      meetingPoint
     });
-
-    res.status(201).json(cartOf(req.user.id));
+    res.status(201).json(await cartOf(req.user.id));
   });
 
   // PUT /api/cart/:id
-  app.put('/api/cart/:id', requireAuth, (req, res) => {
-    const { quantity, meetingPoint } = req.body;
+  app.put('/api/cart/:id', requireAuth, async (req, res) => {
+    const {
+      quantity,
+      meetingPoint
+    } = req.body;
     if (quantity != null) {
       const cantidad = Number(quantity);
       if (!Number.isInteger(cantidad) || cantidad < 1) {
-        return res.status(400).json({ error: 'La cantidad debe ser un número entero mayor a cero.' });
+        return res.status(400).json({
+          error: 'La cantidad debe ser un número entero mayor a cero.'
+        });
       }
     }
 
     // Un item que no es del usuario responde 404, no 403: confirmar que
     // existe pero es de otra persona ya filtra información.
-    const ok = db.updateCartItem(req.user.id, req.params.id, {
+    const ok = await db.updateCartItem(req.user.id, req.params.id, {
       quantity: quantity != null ? Number(quantity) : null,
-      meetingPoint: meetingPoint ?? null,
+      meetingPoint: meetingPoint ?? null
     });
-    if (!ok) return res.status(404).json({ error: 'Item no encontrado' });
-
-    res.json(cartOf(req.user.id));
+    if (!ok) return res.status(404).json({
+      error: 'Item no encontrado'
+    });
+    res.json(await cartOf(req.user.id));
   });
 
   // DELETE /api/cart/:id
-  app.delete('/api/cart/:id', requireAuth, (req, res) => {
-    if (!db.deleteCartItem(req.user.id, req.params.id)) {
-      return res.status(404).json({ error: 'Item no encontrado' });
+  app.delete('/api/cart/:id', requireAuth, async (req, res) => {
+    if (!(await db.deleteCartItem(req.user.id, req.params.id))) {
+      return res.status(404).json({
+        error: 'Item no encontrado'
+      });
     }
-    res.json({ ok: true });
+    res.json({
+      ok: true
+    });
   });
 }
-
-module.exports = { register };
+module.exports = {
+  register
+};

@@ -7,13 +7,14 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
+import 'anonymous_id.dart';
 
 /// Manejo central de errores de red: clasifica cualquier excepción y produce
 /// un mensaje apto para enseñarle a una persona.
 ///
 /// Existe por un incidente concreto: al caerse el backend, la pantalla de
 /// chat pintaba tal cual "SocketException: Connection refused... address =
-/// 157.245.247.45, port = 47956, uri=http://.../api/chat/send". Es decir, la
+/// 164.90.129.213, port = 47956, uri=http://.../api/chat/send". Es decir, la
 /// app le enseñaba a cualquier usuario la IP, el puerto y la ruta interna de
 /// la API. El texto de una excepción de red NUNCA es para el usuario: es para
 /// quien desarrolla, y ahí es donde tiene que quedarse.
@@ -209,18 +210,20 @@ void _reportarErrorABackend(String contexto, Object error, StackTrace? stack) {
   // 100 con "Invalid status code 0", así que el propio manejador de error
   // lanzaba. El fallo salía como excepción no capturada justo en el caso que
   // quería silenciar — sin red — y por cada error registrado.
-  _clienteDeReporte
-      .post(
-        uri,
-        headers: const {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'contexto': contexto,
-          'error': error.toString(),
-          if (stack != null) 'stack': stack.toString(),
-          'plataforma': defaultTargetPlatform.name,
-        }),
-      )
-      .ignore();
+  () async {
+    final installationId = await AnonymousId.get();
+    await _clienteDeReporte.post(
+      uri,
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'installationId': installationId,
+        'contexto': contexto,
+        'error': error.toString(),
+        if (stack != null) 'stack': stack.toString(),
+        'plataforma': defaultTargetPlatform.name,
+      }),
+    );
+  }().ignore();
 }
 
 /// Excepciones que significan "no se pudo hablar con el servidor".

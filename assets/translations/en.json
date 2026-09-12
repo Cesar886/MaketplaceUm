@@ -667,6 +667,8 @@
     "req_top_rated": "4.5 average with 10 reviews or more",
     "req_instant_replies": "Reply in under 10 minutes",
     "req_fast_replies": "Reply in under 1 hour",
+    "req_just_joined": "Your first 7 days after joining",
+    "req_just_verified": "Your first 7 days after initial verification",
     "req_new_seller": "Your first sale within your first 60 days",
     "req_streak": "Post several weeks in a row",
     "req_anniversary": "One year on MarketplaceUm",
@@ -683,6 +685,8 @@
     "fast_replies": "Replies fast",
     "instant_replies": "Instant replies",
     "top_rated": "Top rated seller",
+    "just_joined": "Just joined",
+    "just_verified": "Just verified",
     "new_seller": "New seller",
     "verified": "Verified",
     "verified_student": "Verified student",
@@ -696,6 +700,8 @@
     "how_top_rated": "4.5 average with 10 reviews or more",
     "how_instant_replies": "Replies in under 10 minutes",
     "how_fast_replies": "Replies in under 1 hour",
+    "how_just_joined": "Joined within the last 7 days",
+    "how_just_verified": "First verified within the last 7 days",
     "how_new_seller": "First sale within their first 60 days",
     "how_streak": "Weeks in a row posting",
     "how_anniversary": "Years since they joined",
@@ -969,7 +975,7 @@
     "report_q": "How do I report a problem?",
     "report_a": "You'll find the report option on a user's profile or inside a chat. Describe the situation and the support team will review it.",
     "support_q": "How do I contact support?",
-    "support_a": "Write to soporte@mercaditoum.site and we'll reply within 48 business hours."
+    "support_a": "Write to soporte@marketplace-um.me and we'll reply within 48 business hours."
   },
   "safety": {
     "verify_profile_t": "Check the profile before meeting up",

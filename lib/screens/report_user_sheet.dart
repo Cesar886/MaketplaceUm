@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../app_theme.dart';
 import '../services/api_error.dart';
 import '../services/api_service.dart';
+import '../services/anon_session.dart';
 
 Future<void> showUserReportSheet({
   required BuildContext context,
@@ -62,6 +63,9 @@ class _UserReportSheetState extends State<_UserReportSheet> {
         ? _detailsController.text.trim()
         : (_reason ?? '').tr();
     try {
+      // No exige cuenta: si el visitante no inicio sesion, obtiene de forma
+      // transparente una sesion de invitado firmada antes de reportar.
+      await AnonSession.ensure();
       await ApiService.createReport(
         targetType: 'user',
         targetId: widget.userId,

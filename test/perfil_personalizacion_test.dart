@@ -56,6 +56,8 @@ void main() {
         'colorAcento': 'salvia',
         'productoFijadoId': 'p9',
         'respondeRapido': true,
+        'recienRegistrado': true,
+        'recienVerificado': true,
         'rachaSemanas': 4,
         'productViews': 321,
         'profileViews': 45,
@@ -64,6 +66,8 @@ void main() {
       expect(seller.colorAcento, 'salvia');
       expect(seller.productoFijadoId, 'p9');
       expect(seller.respondeRapido, isTrue);
+      expect(seller.recienRegistrado, isTrue);
+      expect(seller.recienVerificado, isTrue);
       expect(seller.rachaSemanas, 4);
       expect(seller.productViews, 321);
       expect(seller.profileViews, 45);
@@ -83,6 +87,8 @@ void main() {
       expect(seller.colorAcento, isNull);
       expect(seller.productoFijadoId, isNull);
       expect(seller.respondeRapido, isFalse);
+      expect(seller.recienRegistrado, isFalse);
+      expect(seller.recienVerificado, isFalse);
       expect(seller.rachaSemanas, 0);
       // Un colorAcento null resuelve al swatch de marca.
       expect(AccentSwatch.porId(seller.colorAcento), AccentSwatch.defecto);
@@ -129,6 +135,35 @@ void main() {
 
     expect(find.text('321'), findsOneWidget);
     expect(find.text('45'), findsNothing);
+  });
+
+  testWidgets('el encabezado público muestra las dos insignias temporales', (
+    tester,
+  ) async {
+    const seller = Seller(
+      id: 's_nuevo',
+      name: 'Cuenta nueva',
+      avatarInitials: 'CN',
+      major: '',
+      rating: 0,
+      reviews: 0,
+      verified: true,
+      recienRegistrado: true,
+      recienVerificado: true,
+    );
+
+    await tester.pumpWidget(
+      _app(
+        const SellerProfileHeader(
+          seller: seller,
+          estadoConexion: EstadoConexion.desconocido,
+          colorBanner: Color(0xFF7B2D3B),
+        ),
+      ),
+    );
+
+    expect(find.byType(InsigniaRecienLlegado), findsOneWidget);
+    expect(find.byType(InsigniaRecienVerificado), findsOneWidget);
   });
 
   group('ordenarConFijadoPrimero', () {

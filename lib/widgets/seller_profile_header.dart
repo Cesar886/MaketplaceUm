@@ -252,6 +252,8 @@ class SellerProfileHeader extends StatelessWidget {
       const RespuestaInstantaneaBadge()
     else if (seller.respondeRapido)
       const RespondeRapidoBadge(),
+    if (seller.recienVerificado) const InsigniaRecienVerificado(),
+    if (seller.recienRegistrado) const InsigniaRecienLlegado(),
     if (seller.esVendedorNuevo) const InsigniaVendedorNuevo(),
     // Una sola ventana no es una racha: todo el que publicó algo esta semana
     // tendría el badge y dejaría de significar constancia.

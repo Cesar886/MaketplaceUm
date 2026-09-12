@@ -4,26 +4,36 @@ const crypto = require('crypto');
 const sharp = require('sharp');
 const multer = require('multer');
 const db = require('../database');
-const { sendPush } = require('../push');
-const { presenciaDe } = require('./presenciaHttp');
-const { requireAuth } = require('../auth');
-const { createChatMessageLimiter } = require('../security');
-const { guestPublicProfile } = require('../guestProfile');
-
+const {
+  sendPush
+} = require('../push');
+const {
+  presenciaDe
+} = require('./presenciaHttp');
+const {
+  requireAuth
+} = require('../auth');
+const {
+  createChatMessageLimiter
+} = require('../security');
+const {
+  guestPublicProfile
+} = require('../guestProfile');
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
-
 const upload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
     filename: (_req, file, cb) => {
       const ext = path.extname(file.originalname) || '.jpg';
       cb(null, `chatimg_${Date.now()}_${crypto.randomBytes(12).toString('hex')}${ext}`);
-    },
+    }
   }),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: {
+    fileSize: 10 * 1024 * 1024
+  },
   fileFilter: (_req, file, cb) => {
     cb(null, /\.(jpg|jpeg|png|gif|webp)$/i.test(path.extname(file.originalname)));
-  },
+  }
 });
 
 /** Convierte una imagen recién subida a WebP y borra el original. */
@@ -31,10 +41,10 @@ async function convertToWebp(filePath) {
   const parsed = path.parse(filePath);
   const webpPath = path.join(parsed.dir, parsed.name + '.webp');
   const publicPath = '/uploads/' + parsed.name + '.webp';
-
-  await sharp(filePath).webp({ quality: 80 }).toFile(webpPath);
+  await sharp(filePath).webp({
+    quality: 80
+  }).toFile(webpPath);
   fs.unlinkSync(filePath);
-
   return publicPath;
 }
 
@@ -49,21 +59,47 @@ async function convertToWebp(filePath) {
  * Lanza un objeto { status, error } (no una excepción) para que la ruta
  * que llama decida cómo responder sin try/catch.
  */
-function resolveConversation({ conversationId, productId, sellerId, userId }) {
+async function resolveConversation({
+  conversationId,
+  productId,
+  sellerId,
+  userId
+}) {
   if (conversationId) {
-    const conversation = db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(conversationId);
-    if (!conversation) return { error: { status: 404, error: 'Conversación no encontrada' } };
+    const conversation = await db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(conversationId);
+    if (!conversation) return {
+      error: {
+        status: 404,
+        error: 'Conversación no encontrada'
+      }
+    };
     if (conversation.buyer_id !== userId && conversation.seller_id !== userId) {
-      return { error: { status: 403, error: 'No tienes acceso a esta conversación' } };
+      return {
+        error: {
+          status: 403,
+          error: 'No tienes acceso a esta conversación'
+        }
+      };
     }
-    return { conversation };
+    return {
+      conversation
+    };
   }
-
   if (!sellerId) {
-    return { error: { status: 400, error: 'sellerId es requerido para iniciar una conversación' } };
+    return {
+      error: {
+        status: 400,
+        error: 'sellerId es requerido para iniciar una conversación'
+      }
+    };
   }
   if (userId === sellerId) {
-    return { error: { status: 400, error: 'No puedes enviarte un mensaje a ti mismo' } };
+    return {
+      error: {
+        status: 400,
+        error: 'No puedes enviarte un mensaje a ti mismo'
+      }
+    };
   }
 
   // Sin producto: chat directo, el del botón "Contactar por chat" del perfil
@@ -72,22 +108,26 @@ function resolveConversation({ conversationId, productId, sellerId, userId }) {
   // funcionando pero no dejaba mandar nada. La tabla ya admite `product_id`
   // NULL desde la migración que se hizo para los "se busca".
   if (!productId) {
-    let conversation = db.findDirectConversation(userId, sellerId);
+    let conversation = await db.findDirectConversation(userId, sellerId);
     if (!conversation) {
       const convId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      db.createDirectConversation(convId, userId, sellerId);
-      conversation = db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(convId);
+      // El INSERT es idempotente y el índice simétrico decide cuál petición
+      // concurrente ganó. Nunca asumimos que sobrevivió nuestro `convId`.
+      conversation = await db.createDirectConversation(convId, userId, sellerId);
     }
-    return { conversation };
+    return {
+      conversation
+    };
   }
-
-  let conversation = db.findConversation(productId, userId, sellerId);
+  let conversation = await db.findConversation(productId, userId, sellerId);
   if (!conversation) {
     const convId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    db.createConversation(convId, productId, userId, sellerId);
-    conversation = db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(convId);
+    await db.createConversation(convId, productId, userId, sellerId);
+    conversation = await db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(convId);
   }
-  return { conversation };
+  return {
+    conversation
+  };
 }
 
 /** Valida el mensaje citado de una respuesta.
@@ -98,12 +138,12 @@ function resolveConversation({ conversationId, productId, sellerId, userId }) {
  *  Se exige que el citado sea de la MISMA conversación: sin eso, un cliente
  *  podría citar el id de un mensaje de un chat ajeno y la burbuja mostraría
  *  su texto al otro usuario, filtrando una conversación privada. */
-function validarCita(replyToMessageId, conversationId) {
+async function validarCita(replyToMessageId, conversationId) {
   if (!replyToMessageId) return null;
   if (typeof replyToMessageId !== 'string') {
     return 'replyToMessageId inválido';
   }
-  if (!db.messageBelongsToConversation(replyToMessageId, conversationId)) {
+  if (!(await db.messageBelongsToConversation(replyToMessageId, conversationId))) {
     return 'El mensaje citado no existe en esta conversación';
   }
   return null;
@@ -114,14 +154,14 @@ function validarCita(replyToMessageId, conversationId) {
  * El estado se calcula por pareja de usuarios en la base, no por hilo. Así
  * no se recuperan otros cinco mensajes abriendo otra publicación del mismo
  * negocio. */
-function validarRelacionParaEnvio(senderId, recipientId) {
-  const relationship = db.getChatRelationship(senderId, recipientId);
+async function validarRelacionParaEnvio(senderId, recipientId) {
+  const relationship = await db.getChatRelationship(senderId, recipientId);
   if (relationship.blockedByMe) {
     return {
       status: 403,
       error: 'Desbloquea a esta cuenta para poder enviarle mensajes.',
       code: 'CHAT_BLOCKED_BY_ME',
-      relationship,
+      relationship
     };
   }
   if (relationship.blockedMe) {
@@ -129,7 +169,7 @@ function validarRelacionParaEnvio(senderId, recipientId) {
       status: 403,
       error: 'No puedes enviar mensajes a esta cuenta.',
       code: 'CHAT_BLOCKED_BY_RECIPIENT',
-      relationship,
+      relationship
     };
   }
   if (!relationship.canSend) {
@@ -137,51 +177,40 @@ function validarRelacionParaEnvio(senderId, recipientId) {
       status: 429,
       error: `Ya enviaste ${db.MENSAJES_PRIMER_CONTACTO} mensajes. Podrás continuar cuando la otra cuenta responda.`,
       code: 'FIRST_CONTACT_LIMIT',
-      relationship,
+      relationship
     };
   }
   return null;
 }
-
 function otherParticipant(conversation, userId) {
-  return conversation.buyer_id === userId
-    ? conversation.seller_id
-    : conversation.buyer_id;
+  return conversation.buyer_id === userId ? conversation.seller_id : conversation.buyer_id;
 }
 
 /** Notifica al otro usuario de la conversación (push + notificación in-app + socket). */
-function notifyNewMessage(app, conversation, senderId, previewText) {
+async function notifyNewMessage(app, conversation, senderId, previewText) {
   const otherUserId = conversation.buyer_id === senderId ? conversation.seller_id : conversation.buyer_id;
-  const sender = db.getDb().prepare('SELECT name FROM sellers WHERE id = ?').get(senderId);
+  const sender = await db.getDb().prepare('SELECT name FROM sellers WHERE id = ?').get(senderId);
   const notifId = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  const isFirst = db.getDb().prepare(
-    'SELECT COUNT(*) as c FROM messages WHERE conversation_id = ?'
-  ).get(conversation.id);
+  const isFirst = await db.getDb().prepare('SELECT COUNT(*) as c FROM messages WHERE conversation_id = ?').get(conversation.id);
   const type = isFirst && isFirst.c <= 1 ? 'new_chat' : 'new_message';
 
   // Silenciar no oculta ni descarta mensajes: solo evita interrupciones.
   // El socket de abajo se conserva para que un chat abierto se actualice y
   // el mensaje seguirá apareciendo como no leído en la bandeja.
-  if (!db.isChatUserMuted(otherUserId, senderId)) {
-    db.createNotification(
-      notifId,
-      otherUserId,
-      type,
-      'Nuevo mensaje',
-      `${sender?.name || 'Alguien'} te escribió: "${previewText}"`,
-      { conversationId: conversation.id, productId: conversation.product_id, senderId }
-    );
-
+  if (!(await db.isChatUserMuted(otherUserId, senderId))) {
+    await db.createNotification(notifId, otherUserId, type, 'Nuevo mensaje', `${sender?.name || 'Alguien'} te escribió: "${previewText}"`, {
+      conversationId: conversation.id,
+      productId: conversation.product_id,
+      senderId
+    });
     const senderName = sender?.name || 'Alguien';
-    sendPush(
-      [otherUserId],
-      type === 'new_chat' ? 'Nuevo chat' : 'Nuevo mensaje',
-      `${senderName}: ${previewText}`,
-      { conversationId: conversation.id, productId: conversation.product_id, type }
-    );
+    await sendPush([otherUserId], type === 'new_chat' ? 'Nuevo chat' : 'Nuevo mensaje', `${senderName}: ${previewText}`, {
+      conversationId: conversation.id,
+      productId: conversation.product_id,
+      type
+    });
   }
-
-  const messages = db.getMessages(conversation.id);
+  const messages = await db.getMessages(conversation.id);
   const io = app.get('io');
   if (io) {
     const newMsg = messages[messages.length - 1];
@@ -198,39 +227,34 @@ function notifyNewMessage(app, conversation, senderId, previewText) {
         // usuario tuviera que recargar el chat para ver a qué se respondió,
         // la respuesta en tiempo real llegaría coja.
         replyToMessageId: newMsg.replyToMessageId,
-        replyTo: newMsg.replyTo,
+        replyTo: newMsg.replyTo
       },
-      conversationId: conversation.id,
+      conversationId: conversation.id
     });
     io.to(`user:${otherUserId}`).emit('conversation:updated', {
-      conversationId: conversation.id,
+      conversationId: conversation.id
     });
   }
-
   return messages;
 }
-
 function register(app) {
   const chatMessageLimiter = createChatMessageLimiter();
   // GET /api/chat/conversations - listar conversaciones de un usuario (anónimo o no)
-  app.get('/api/chat/conversations', requireAuth, (req, res) => {
+  app.get('/api/chat/conversations', requireAuth, async (req, res) => {
     // La bandeja es la del token, punto. Antes el `userId` venía en la query,
     // así que pedir la de cualquier otra persona era cambiar un parámetro.
     const userId = req.user.id;
-    const conversations = db.getConversationsForUser(userId);
-    const unreadCount = db.getUnreadMessageCount(userId);
+    const conversations = await db.getConversationsForUser(userId);
+    const unreadCount = await db.getUnreadMessageCount(userId);
 
     // Adjuntar datos del producto y del otro usuario
-    const enriched = conversations.map(conv => {
-      const product = db.getProductById(conv.productId);
-      const wantedPost = conv.productId ? null : db.getWantedPostById(conv.wantedPostId);
+    const enriched = await Promise.all(conversations.map(async conv => {
+      const product = await db.getProductById(conv.productId);
+      const wantedPost = conv.productId ? null : await db.getWantedPostById(conv.wantedPostId);
       const otherUserId = conv.buyerId === userId ? conv.sellerId : conv.buyerId;
-      const otherUser = db.getDb().prepare('SELECT * FROM sellers WHERE id = ?').get(otherUserId);
+      const otherUser = await db.getDb().prepare('SELECT * FROM sellers WHERE id = ?').get(otherUserId);
       const guestUser = otherUser ? null : guestPublicProfile(otherUserId);
-      const lastMessage = db.getDb().prepare(
-        'SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1'
-      ).get(conv.id);
-
+      const lastMessage = await db.getDb().prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1').get(conv.id);
       return {
         ...conv,
         product: product ? {
@@ -239,9 +263,12 @@ function register(app) {
           price: product.price,
           images: product.images,
           imageIcon: product.imageIcon,
-          imageColor: product.imageColor,
+          imageColor: product.imageColor
         } : null,
-        wantedPost: wantedPost ? { id: wantedPost.id, title: wantedPost.title } : null,
+        wantedPost: wantedPost ? {
+          id: wantedPost.id,
+          title: wantedPost.title
+        } : null,
         otherUser: otherUser ? {
           id: otherUser.id,
           name: otherUser.name,
@@ -257,17 +284,14 @@ function register(app) {
           // El objeto se arma a mano aquí (no vía `rowToSeller`), así que la
           // regla de las cuentas del dueño hay que aplicarla explícitamente o
           // el chat sería la única pantalla sin sus insignias.
-          verified:
-            db.esUsuarioTodosLosBadges(otherUser.id) || !!otherUser.verified,
-          socioFundador:
-            db.esUsuarioTodosLosBadges(otherUser.id) ||
-            !!otherUser.socio_fundador,
+          verified: db.esUsuarioTodosLosBadges(otherUser.id) || !!otherUser.verified,
+          socioFundador: db.esUsuarioTodosLosBadges(otherUser.id) || !!otherUser.socio_fundador,
           tipoCuenta: otherUser.tipo_cuenta || 'particular',
           // Presencia ya filtrada por privacidad: quien no tiene permiso
           // recibe exactamente lo mismo que si el otro estuviera offline.
           // El "visor" es el dueño del inbox que se está leyendo, así que
           // esto no concede nada que el endpoint no diera ya.
-          ...presenciaDe(req, userId, otherUser.id),
+          ...(await presenciaDe(req, userId, otherUser.id))
         } : guestUser ? {
           id: guestUser.id,
           name: guestUser.name,
@@ -277,19 +301,21 @@ function register(app) {
           verified: false,
           socioFundador: false,
           tipoCuenta: guestUser.tipoCuenta,
-          ...presenciaDe(req, userId, guestUser.id),
+          ...(await presenciaDe(req, userId, guestUser.id))
         } : null,
         lastMessage: lastMessage ? {
           id: lastMessage.id,
           senderId: lastMessage.sender_id,
           text: lastMessage.text,
           createdAt: lastMessage.created_at,
-          read: !!lastMessage.read,
-        } : null,
+          read: !!lastMessage.read
+        } : null
       };
+    }));
+    res.json({
+      conversations: enriched,
+      unreadCount
     });
-
-    res.json({ conversations: enriched, unreadCount });
   });
 
   // GET /api/chat/conversations/direct/:sellerId - id de la conversación
@@ -301,44 +327,62 @@ function register(app) {
   // historial de una charla previa con la misma persona no aparecía hasta
   // mandar un mensaje nuevo (que ahí sí reutiliza el hilo, vía
   // `findDirectConversation` en `resolveConversation`).
-  app.get('/api/chat/conversations/direct/:sellerId', requireAuth, (req, res) => {
+  app.get('/api/chat/conversations/direct/:sellerId', requireAuth, async (req, res) => {
     const userId = req.user.id;
-    const { sellerId } = req.params;
-    if (userId === sellerId) return res.json({ conversationId: null });
-    const conversation = db.findDirectConversation(userId, sellerId);
-    res.json({ conversationId: conversation ? conversation.id : null });
+    const {
+      sellerId
+    } = req.params;
+    if (userId === sellerId) return res.json({
+      conversationId: null
+    });
+    const conversation = await db.findDirectConversation(userId, sellerId);
+    res.json({
+      conversationId: conversation ? conversation.id : null
+    });
   });
 
   // Preferencias y estado anti-spam con otra cuenta. Se consulta tanto desde
   // el menú del chat como desde los tres puntos del perfil público.
-  app.get('/api/chat/users/:id/relationship', requireAuth, (req, res) => {
+  app.get('/api/chat/users/:id/relationship', requireAuth, async (req, res) => {
     if (req.user.id === req.params.id) {
-      return res.status(400).json({ error: 'No puedes gestionar tu propia cuenta' });
+      return res.status(400).json({
+        error: 'No puedes gestionar tu propia cuenta'
+      });
     }
-    res.json({ relationship: db.getChatRelationship(req.user.id, req.params.id) });
+    res.json({
+      relationship: await db.getChatRelationship(req.user.id, req.params.id)
+    });
   });
-
-  app.put('/api/chat/users/:id/block', requireAuth, (req, res) => {
+  app.put('/api/chat/users/:id/block', requireAuth, async (req, res) => {
     if (req.user.id === req.params.id || typeof req.body?.blocked !== 'boolean') {
-      return res.status(400).json({ error: 'Solicitud de bloqueo inválida' });
+      return res.status(400).json({
+        error: 'Solicitud de bloqueo inválida'
+      });
     }
-    db.setChatUserSetting(req.user.id, req.params.id, 'blocked', req.body.blocked);
-    res.json({ relationship: db.getChatRelationship(req.user.id, req.params.id) });
+    await db.setChatUserSetting(req.user.id, req.params.id, 'blocked', req.body.blocked);
+    res.json({
+      relationship: await db.getChatRelationship(req.user.id, req.params.id)
+    });
   });
-
-  app.put('/api/chat/users/:id/mute', requireAuth, (req, res) => {
+  app.put('/api/chat/users/:id/mute', requireAuth, async (req, res) => {
     if (req.user.id === req.params.id || typeof req.body?.muted !== 'boolean') {
-      return res.status(400).json({ error: 'Solicitud de silencio inválida' });
+      return res.status(400).json({
+        error: 'Solicitud de silencio inválida'
+      });
     }
-    db.setChatUserSetting(req.user.id, req.params.id, 'muted', req.body.muted);
-    res.json({ relationship: db.getChatRelationship(req.user.id, req.params.id) });
+    await db.setChatUserSetting(req.user.id, req.params.id, 'muted', req.body.muted);
+    res.json({
+      relationship: await db.getChatRelationship(req.user.id, req.params.id)
+    });
   });
 
   // GET /api/chat/conversations/:id/messages - obtener mensajes de una conversación
-  app.get('/api/chat/conversations/:id/messages', requireAuth, (req, res) => {
+  app.get('/api/chat/conversations/:id/messages', requireAuth, async (req, res) => {
     const userId = req.user.id;
-    const conv = db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(req.params.id);
-    if (!conv) return res.status(404).json({ error: 'Conversación no encontrada' });
+    const conv = await db.getDb().prepare('SELECT * FROM conversations WHERE id = ?').get(req.params.id);
+    if (!conv) return res.status(404).json({
+      error: 'Conversación no encontrada'
+    });
 
     // Este era el agujero más directo de todos: la comprobación de
     // pertenencia existía, pero solo decidía si marcar como leído — los
@@ -346,65 +390,81 @@ function register(app) {
     // conversación siendo `conv_<timestamp>_<6 chars>`, enumerar y leer
     // conversaciones ajenas era cuestión de un bucle (hallazgo C-01).
     if (conv.buyer_id !== userId && conv.seller_id !== userId) {
-      return res.status(403).json({ error: 'No tienes acceso a esta conversación' });
+      return res.status(403).json({
+        error: 'No tienes acceso a esta conversación'
+      });
     }
-
-    const messages = db.getMessages(req.params.id, userId);
-    db.markConversationMessagesRead(req.params.id, userId);
-
-    res.json({ messages });
+    const messages = await db.getMessages(req.params.id, userId);
+    await db.markConversationMessagesRead(req.params.id, userId);
+    res.json({
+      messages
+    });
   });
 
   // POST /api/chat/send - enviar un mensaje de texto (anónimo, no requiere auth)
-  app.post('/api/chat/send', requireAuth, chatMessageLimiter, (req, res) => {
-    const { productId, sellerId, text, conversationId, replyToMessageId } = req.body;
+  app.post('/api/chat/send', requireAuth, chatMessageLimiter, async (req, res) => {
+    const {
+      productId,
+      sellerId,
+      text,
+      conversationId,
+      replyToMessageId
+    } = req.body;
     // `senderId` ya no se lee del cuerpo: era lo que permitía enviar mensajes
     // firmados con el nombre de otra persona.
     const userId = req.user.id;
-
     if (!text || !text.trim()) {
-      return res.status(400).json({ error: 'El mensaje no puede estar vacío' });
+      return res.status(400).json({
+        error: 'El mensaje no puede estar vacío'
+      });
     }
 
     // Si es un hilo nuevo, revisar el cupo ANTES de crearlo. Sin esta
     // comprobación, el cuarto intento sería rechazado pero dejaría una
     // conversación vacía por cada publicación usada para evadir el límite.
     if (!conversationId && sellerId && sellerId !== userId) {
-      const earlyRelationshipError = validarRelacionParaEnvio(userId, sellerId);
+      const earlyRelationshipError = await validarRelacionParaEnvio(userId, sellerId);
       if (earlyRelationshipError) {
         return res.status(earlyRelationshipError.status).json({
           error: earlyRelationshipError.error,
           code: earlyRelationshipError.code,
-          relationship: earlyRelationshipError.relationship,
+          relationship: earlyRelationshipError.relationship
         });
       }
     }
-
-    const { conversation, error } = resolveConversation({ conversationId, productId, sellerId, userId });
-    if (error) return res.status(error.status).json({ error: error.error });
-
+    const {
+      conversation,
+      error
+    } = await resolveConversation({
+      conversationId,
+      productId,
+      sellerId,
+      userId
+    });
+    if (error) return res.status(error.status).json({
+      error: error.error
+    });
     const recipientId = otherParticipant(conversation, userId);
-    const relationshipError = validarRelacionParaEnvio(userId, recipientId);
+    const relationshipError = await validarRelacionParaEnvio(userId, recipientId);
     if (relationshipError) {
       return res.status(relationshipError.status).json({
         error: relationshipError.error,
         code: relationshipError.code,
-        relationship: relationshipError.relationship,
+        relationship: relationshipError.relationship
       });
     }
-
-    const replyError = validarCita(replyToMessageId, conversation.id);
-    if (replyError) return res.status(400).json({ error: replyError });
-
+    const replyError = await validarCita(replyToMessageId, conversation.id);
+    if (replyError) return res.status(400).json({
+      error: replyError
+    });
     const trimmedText = text.trim();
     const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    db.createMessage(msgId, conversation.id, userId, trimmedText, null, replyToMessageId || null);
-
-    const messages = notifyNewMessage(app, conversation, userId, trimmedText.slice(0, 100));
+    await db.createMessage(msgId, conversation.id, userId, trimmedText, null, replyToMessageId || null);
+    const messages = await notifyNewMessage(app, conversation, userId, trimmedText.slice(0, 100));
     res.status(201).json({
       messages,
       conversationId: conversation.id,
-      relationship: db.getChatRelationship(userId, recipientId),
+      relationship: await db.getChatRelationship(userId, recipientId)
     });
   });
 
@@ -412,114 +472,130 @@ function register(app) {
   // La imagen se convierte a WebP antes de guardarse para que pese menos,
   // igual que se hace con las fotos de producto y el logo de negocio.
   app.post('/api/chat/send-image', requireAuth, chatMessageLimiter, (req, res) => {
-    upload.single('image')(req, res, async (err) => {
+    upload.single('image')(req, res, async err => {
       if (err) {
-        return res.status(400).json({ error: 'Error al procesar la imagen: ' + err.message });
+        return res.status(400).json({
+          error: 'Error al procesar la imagen: ' + err.message
+        });
       }
       if (!req.file) {
-        return res.status(400).json({ error: 'No se envió ninguna imagen' });
+        return res.status(400).json({
+          error: 'No se envió ninguna imagen'
+        });
       }
-
-      const { productId, sellerId, conversationId, replyToMessageId } = req.body;
+      const {
+        productId,
+        sellerId,
+        conversationId,
+        replyToMessageId
+      } = req.body;
       const userId = req.user.id;
-
       if (!conversationId && sellerId && sellerId !== userId) {
-        const earlyRelationshipError = validarRelacionParaEnvio(userId, sellerId);
+        const earlyRelationshipError = await validarRelacionParaEnvio(userId, sellerId);
         if (earlyRelationshipError) {
           fs.unlink(req.file.path, () => {});
           return res.status(earlyRelationshipError.status).json({
             error: earlyRelationshipError.error,
             code: earlyRelationshipError.code,
-            relationship: earlyRelationshipError.relationship,
+            relationship: earlyRelationshipError.relationship
           });
         }
       }
-
-      const { conversation, error } = resolveConversation({ conversationId, productId, sellerId, userId });
+      const {
+        conversation,
+        error
+      } = await resolveConversation({
+        conversationId,
+        productId,
+        sellerId,
+        userId
+      });
       if (error) {
         fs.unlink(req.file.path, () => {});
-        return res.status(error.status).json({ error: error.error });
+        return res.status(error.status).json({
+          error: error.error
+        });
       }
-
       const recipientId = otherParticipant(conversation, userId);
-      const relationshipError = validarRelacionParaEnvio(userId, recipientId);
+      const relationshipError = await validarRelacionParaEnvio(userId, recipientId);
       if (relationshipError) {
         fs.unlink(req.file.path, () => {});
         return res.status(relationshipError.status).json({
           error: relationshipError.error,
           code: relationshipError.code,
-          relationship: relationshipError.relationship,
+          relationship: relationshipError.relationship
         });
       }
-
-      const replyError = validarCita(replyToMessageId, conversation.id);
+      const replyError = await validarCita(replyToMessageId, conversation.id);
       if (replyError) {
         fs.unlink(req.file.path, () => {});
-        return res.status(400).json({ error: replyError });
+        return res.status(400).json({
+          error: replyError
+        });
       }
-
       let imageUrl;
       try {
         imageUrl = await convertToWebp(req.file.path);
       } catch (convErr) {
         console.error('Error convirtiendo imagen de chat a WebP:', convErr);
         fs.unlink(req.file.path, () => {});
-        return res.status(400).json({ error: 'La imagen no tiene un formato válido.' });
+        return res.status(400).json({
+          error: 'La imagen no tiene un formato válido.'
+        });
       }
 
       // La conversión es asíncrona: otro envío pudo consumir el último lugar
       // del cupo mientras Sharp trabajaba. Se revalida justo antes del INSERT
       // y se retira el WebP si ya no corresponde guardarlo.
-      const finalRelationshipError = validarRelacionParaEnvio(userId, recipientId);
+      const finalRelationshipError = await validarRelacionParaEnvio(userId, recipientId);
       if (finalRelationshipError) {
         fs.unlink(path.join(UPLOADS_DIR, path.basename(imageUrl)), () => {});
         return res.status(finalRelationshipError.status).json({
           error: finalRelationshipError.error,
           code: finalRelationshipError.code,
-          relationship: finalRelationshipError.relationship,
+          relationship: finalRelationshipError.relationship
         });
       }
-
       const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      db.createMessage(msgId, conversation.id, userId, '', imageUrl, replyToMessageId || null);
-
-      const messages = notifyNewMessage(app, conversation, userId, '📷 Foto');
+      await db.createMessage(msgId, conversation.id, userId, '', imageUrl, replyToMessageId || null);
+      const messages = await notifyNewMessage(app, conversation, userId, '📷 Foto');
       res.status(201).json({
         messages,
         conversationId: conversation.id,
-        relationship: db.getChatRelationship(userId, recipientId),
+        relationship: await db.getChatRelationship(userId, recipientId)
       });
     });
   });
 
   // DELETE /api/chat/conversations/:id - retirar un chat de la bandeja propia
-  app.delete('/api/chat/conversations/:id', requireAuth, (req, res) => {
+  app.delete('/api/chat/conversations/:id', requireAuth, async (req, res) => {
     const userId = req.user.id;
-    const deleted = db.deleteConversationForUser(req.params.id, userId);
+    const deleted = await db.deleteConversationForUser(req.params.id, userId);
     if (!deleted) {
       // La misma respuesta cubre inexistente y ajena para no revelar ids de
       // conversaciones privadas a quien no participa.
       return res.status(404).json({
-        error: 'Conversación no encontrada o no tienes permiso para eliminarla',
+        error: 'Conversación no encontrada o no tienes permiso para eliminarla'
       });
     }
-
     res.json({
       success: true,
-      unreadCount: db.getUnreadMessageCount(userId),
+      unreadCount: await db.getUnreadMessageCount(userId)
     });
   });
 
   // DELETE /api/chat/messages/:id - eliminar un mensaje propio (el senderId debe coincidir)
-  app.delete('/api/chat/messages/:id', requireAuth, (req, res) => {
+  app.delete('/api/chat/messages/:id', requireAuth, async (req, res) => {
     // `db.deleteMessage` ya exigía que el mensaje fuera del `senderId` que se
     // le pasara; el problema era que ese senderId lo elegía quien llamaba, así
     // que la comprobación se cumplía siempre. Ahora es el del token.
     const senderId = req.user.id;
-    const msg = db.getDb().prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id);
-    const deleted = db.deleteMessage(req.params.id, senderId);
+    const msg = await db.getDb().prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id);
+    const deleted = await db.deleteMessage(req.params.id, senderId);
     if (!deleted) {
-      return res.status(404).json({ error: 'Mensaje no encontrado o no tienes permiso para eliminarlo' });
+      return res.status(404).json({
+        error: 'Mensaje no encontrado o no tienes permiso para eliminarlo'
+      });
     }
 
     // Emitir evento de eliminación via Socket.IO
@@ -527,12 +603,14 @@ function register(app) {
     if (io && msg) {
       io.to(`conv:${msg.conversation_id}`).emit('message:deleted', {
         messageId: req.params.id,
-        conversationId: msg.conversation_id,
+        conversationId: msg.conversation_id
       });
     }
-
-    res.json({ success: true });
+    res.json({
+      success: true
+    });
   });
 }
-
-module.exports = { register };
+module.exports = {
+  register
+};

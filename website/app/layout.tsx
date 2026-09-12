@@ -30,10 +30,24 @@ const cuerpo = Work_Sans({
 // transparencia en el icono de la pantalla de inicio y la pinta de negro.
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: 'Marketplace UM',
+  title: 'Marketplace UM — Todo dentro de tu comunidad',
   description:
-    'Compra y vende dentro de la Universidad de Montemorelos.',
+    'Descubre, compra y vende dentro de la comunidad de la Universidad de Montemorelos.',
   applicationName: 'Marketplace UM',
+  openGraph: {
+    type: 'website',
+    locale: 'es_MX',
+    siteName: 'Marketplace UM',
+    title: 'Marketplace UM',
+    description: 'Todo lo que buscas, dentro de tu comunidad.',
+    images: [{ url: '/og.png', width: 1536, height: 1024, alt: 'Marketplace UM' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Marketplace UM',
+    description: 'Todo lo que buscas, dentro de tu comunidad.',
+    images: ['/og.png'],
+  },
 };
 
 export const viewport = {

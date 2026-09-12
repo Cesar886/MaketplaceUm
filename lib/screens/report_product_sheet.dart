@@ -5,6 +5,7 @@ import '../app_theme.dart';
 import '../models.dart';
 import '../services/api_error.dart';
 import '../services/api_service.dart';
+import '../services/anon_session.dart';
 
 enum _ReportTarget { product, account }
 
@@ -80,8 +81,17 @@ class _ProductReportSheetState extends State<_ProductReportSheet> {
     final product = widget.product;
 
     try {
+      // No exige cuenta: si el visitante no inicio sesion, obtiene de forma
+      // transparente una sesion de invitado firmada antes de reportar.
+      await AnonSession.ensure();
       await ApiService.createReport(
-        targetType: _target == _ReportTarget.product ? 'product' : 'user',
+        // Las publicaciones "Se busca" se adaptan a Product para reutilizar
+        // la pantalla de detalle, pero en el backend viven en wanted_posts.
+        // Enviarlas como product hace que /api/reports busque el id en la
+        // tabla equivocada y rechace el reporte con 404.
+        targetType: _target == _ReportTarget.product
+            ? (product.isWantedPost ? 'wanted' : 'product')
+            : 'user',
         targetId: _target == _ReportTarget.product
             ? product.id
             : product.seller.id,

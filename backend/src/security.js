@@ -126,6 +126,21 @@ function createChatMessageLimiter() {
   });
 }
 
+function createReportLimiter() {
+  // Nunca agrupar por IP: miles de personas pueden compartir la salida de la
+  // universidad. La cuenta o sesion de invitado firmada es la unidad real.
+  return rateLimit({
+    windowMs: 60 * 60 * 1000,
+    limit: 5,
+    keyGenerator: req => fingerprint(`report:${req.user?.id || 'missing'}`),
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: {
+      error: 'Has enviado varios reportes. Espera un poco antes de enviar otro.',
+    },
+  });
+}
+
 function configureProxy(app) {
   // Evita el parser anidado `qs`: la API solo usa pares clave=valor. Ademas
   // elimina de la superficie los objetos profundos y arrays construidos con
@@ -149,5 +164,6 @@ module.exports = {
   createAuthLimiters,
   createAnonymousSessionLimiter,
   createChatMessageLimiter,
+  createReportLimiter,
   configureProxy,
 };

@@ -10,7 +10,7 @@ process.env.MERCADITO_DB_PATH = path.join(testDir, 'admin.db');
 process.env.JWT_SECRET = 'seller-jwt-secret-that-is-not-the-admin-secret';
 process.env.ADMIN_JWT_SECRET = 'admin-jwt-secret-with-at-least-thirty-two-characters';
 process.env.ADMIN_TOTP_ENCRYPTION_KEY = 'admin-totp-encryption-key-at-least-32-chars';
-process.env.ADMIN_PANEL_ORIGIN = 'https://mercaditoum.site';
+process.env.ADMIN_PANEL_ORIGIN = 'https://marketplace-um.me';
 
 const bcrypt = require('bcryptjs');
 const cors = require('cors');
@@ -300,14 +300,25 @@ test('rate limit bloquea fuerza bruta por nombre de administrador', async () => 
   assert.equal(limited, true);
 });
 
-test('admin_audit_log tiene FK e impone identidad validada y detalles acotados', () => {
+test('nombres administrativos distintos nunca comparten límite por IP', async () => {
+  for (let attempt = 0; attempt < 35; attempt += 1) {
+    const response = await login({
+      username: `cuenta-inexistente-${attempt}`,
+      password: 'incorrecta',
+      totp: '000000',
+    });
+    assert.equal(response.status, 401);
+  }
+});
+
+test('admin_audit_log tiene FK e impone identidad validada y detalles acotados', async () => {
   const foreignKeys = database.prepare("PRAGMA foreign_key_list('admin_audit_log')").all();
   assert.equal(
     foreignKeys.some(key => key.table === 'admins' && key.from === 'admin_id'),
     true,
   );
-  assert.throws(
-    () => registrarAuditoriaAdmin(database, {}, {
+  await assert.rejects(
+    registrarAuditoriaAdmin(database, {}, {
       action: 'verification.approve',
       entityType: 'verification',
       entityId: 'cuenta-sin-admin',

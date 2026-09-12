@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 import RevisionQueue from './revision-queue';
 import styles from './admin-panel.module.css';
@@ -38,6 +38,19 @@ type Report = {
   reason: string; details?: string | null;
   status: 'received' | 'reviewing' | 'resolved' | 'dismissed';
   admin_note?: string | null; created_at: string; updated_at: string;
+};
+type ReviewPanelProps = {
+  report: Report;
+  targetFound: boolean | null;
+  onComplete: () => void;
+  onExit: () => void;
+};
+type ReportUpdateResult = {
+  report: Report;
+  reporterMessageSent: boolean;
+  reporterMessageAlreadySent?: boolean;
+  reporterMessageSkipped?: string | null;
+  warning?: string;
 };
 type ConfigRow = {
   key: string; productsActive: number; productsDaily: number; wantedActive: number;
@@ -76,6 +89,119 @@ function StatusBadge({ status }: { status: string }) {
 
 function PanelState({ children, error = false }: { children: ReactNode; error?: boolean }) {
   return <div className={`${styles.panelState} ${error ? styles.panelError : ''}`} role={error ? 'alert' : 'status'}>{children}</div>;
+}
+
+function reportTargetLabel(report: Report) {
+  if (report.target_type === 'user') return `Usuario ${report.targetUserName || report.target_id}`;
+  if (report.target_type === 'chat') return `Usuario del chat ${report.targetUserName || report.target_user_id || report.target_id}`;
+  return `${report.target_type === 'product' ? 'Producto' : 'Se busca'} ${report.target_id}`;
+}
+
+function reportUserTargetId(report: Report) {
+  if (report.target_type === 'user') return report.target_id;
+  if (report.target_type === 'chat') return report.target_user_id || '';
+  return '';
+}
+
+function reportDestination(report: Report): Section {
+  return report.target_type === 'product' || report.target_type === 'wanted' ? 'publicaciones' : 'usuarios';
+}
+
+function internalReportReason(report: Report) {
+  return `Medida administrativa vinculada al reporte ${report.id}: ${report.reason}`.slice(0, 500);
+}
+
+const defaultReporterMessage = 'Gracias por tu reporte. Ya revisamos el caso y finalizamos la revisión.';
+
+function ReportReviewPanel({ report, targetFound, onComplete, onExit }: ReviewPanelProps) {
+  const [sendMessage, setSendMessage] = useState(false);
+  const [reporterMessage, setReporterMessage] = useState('');
+  const [working, setWorking] = useState<Report['status'] | ''>('');
+  const [error, setError] = useState('');
+  const [completion, setCompletion] = useState<{ status: 'resolved' | 'dismissed'; warning: string } | null>(null);
+
+  useEffect(() => {
+    setSendMessage(false);
+    setReporterMessage('');
+    setError('');
+    setCompletion(null);
+  }, [report.id]);
+
+  async function closeReport(status: 'resolved' | 'dismissed') {
+    setWorking(status);
+    setError('');
+    try {
+      const result = await adminFetch<ReportUpdateResult>(`/admin/reports/${encodeURIComponent(report.id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status,
+          expectedStatus: report.status,
+          reporterMessage: sendMessage ? reporterMessage.trim() : undefined,
+        }),
+      });
+      if (result.warning) {
+        setCompletion({ status, warning: result.warning });
+        return;
+      }
+      onComplete();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo cerrar el reporte.');
+    } finally {
+      setWorking('');
+    }
+  }
+
+  const invalidMessage = sendMessage && reporterMessage.trim().length < 3;
+  const alreadyClosed = report.status === 'resolved' || report.status === 'dismissed';
+  return (
+    <aside aria-labelledby="active-report-title" className={styles.reportReview}>
+      <div className={styles.reportReviewHeading}>
+        <div>
+          <p className={styles.eyebrow}>Revisión activa · {report.id}</p>
+          <h3 id="active-report-title">{reportTargetLabel(report)}</h3>
+          <p className={styles.reportMeta}>Reportó <strong>{report.reporterName || report.reporter_id}</strong> · {formatDate(report.created_at)}</p>
+          <p><strong>{report.reason}</strong>{report.details ? ` · ${report.details}` : ''}</p>
+        </div>
+        <StatusBadge status={completion?.status || (report.status === 'received' ? 'reviewing' : report.status)} />
+      </div>
+      {targetFound === false && (
+        <div className={styles.targetMissing} role="status">
+          El objetivo ya no está disponible o no tiene un usuario asociado.{alreadyClosed ? '' : ' Aun así puedes resolver o descartar el reporte.'}
+        </div>
+      )}
+      {alreadyClosed && !completion && <div className={styles.inlineWarning} role="status">Este reporte ya tiene una decisión definitiva.</div>}
+      {!alreadyClosed && !completion && <div className={styles.reportResolution}>
+        <label className={styles.optionalMessageToggle}>
+          <input checked={sendMessage} onChange={event => {
+            const checked = event.target.checked;
+            setSendMessage(checked);
+            if (checked && !reporterMessage.trim()) setReporterMessage(defaultReporterMessage);
+          }} type="checkbox" />
+          <span><strong>Enviar mensaje al reportante</strong><small>Opcional · desactivado por defecto</small></span>
+        </label>
+        {sendMessage && (
+          <label className={styles.reportMessageField}>
+            <span>Mensaje de cierre</span>
+            <textarea
+              autoFocus
+              maxLength={1000}
+              onChange={event => setReporterMessage(event.target.value)}
+              placeholder="Ejemplo: Revisamos tu reporte y tomamos las medidas correspondientes."
+              value={reporterMessage}
+            />
+            <small>Se enviará desde Reportes · cesar8herrera@gmail.com · {reporterMessage.trim().length}/1000</small>
+          </label>
+        )}
+      </div>}
+      {completion && <div className={styles.inlineWarning} role="status">{completion.warning}</div>}
+      {error && <div className={styles.inlineError} role="alert">{error}</div>}
+      <div className={styles.reportReviewActions}>
+        <button disabled={!!working} onClick={completion ? onComplete : onExit} type="button">Volver a reportes</button>
+        {!alreadyClosed && !completion && <button className={styles.dangerText} disabled={!!working || invalidMessage} onClick={() => closeReport('dismissed')} type="button">{working === 'dismissed' ? 'Descartando…' : 'Descartar'}</button>}
+        {!alreadyClosed && !completion && <button className={styles.primaryButton} disabled={!!working || invalidMessage} onClick={() => closeReport('resolved')} type="button">{working === 'resolved' ? 'Resolviendo…' : 'Marcar como resuelto'}</button>}
+      </div>
+    </aside>
+  );
 }
 
 function ActionDialog({ title, eyebrow, children, onClose }: {
@@ -122,9 +248,14 @@ function DashboardPanel() {
   );
 }
 
-function UsersPanel() {
-  const [queryInput, setQueryInput] = useState('');
-  const [query, setQuery] = useState('');
+function UsersPanel({ review, onReviewComplete, onExitReview }: {
+  review?: Report | null;
+  onReviewComplete: () => void;
+  onExitReview: () => void;
+}) {
+  const reviewTargetId = review ? reportUserTargetId(review) : '';
+  const [queryInput, setQueryInput] = useState(reviewTargetId);
+  const [query, setQuery] = useState(reviewTargetId);
   const [status, setStatus] = useState('all');
   const [users, setUsers] = useState<User[]>([]);
   const [total, setTotal] = useState(0);
@@ -136,6 +267,7 @@ function UsersPanel() {
   const [reasonText, setReasonText] = useState('');
   const [until, setUntil] = useState('');
   const [working, setWorking] = useState(false);
+  const reviewTargetRef = useRef<HTMLTableRowElement>(null);
 
   const load = () => {
     setLoading(true); setError('');
@@ -146,6 +278,18 @@ function UsersPanel() {
       .catch(e => setError(e.message)).finally(() => setLoading(false));
   };
   useEffect(load, [query, status]);
+
+  useEffect(() => {
+    if (!review) return;
+    setStatus('all');
+    setQueryInput(reviewTargetId);
+    setQuery(reviewTargetId);
+  }, [review?.id, reviewTargetId]);
+
+  const reviewedUser = reviewTargetId ? users.find(user => user.id === reviewTargetId) : undefined;
+  useEffect(() => {
+    if (!loading && reviewedUser) reviewTargetRef.current?.focus({ preventScroll: false });
+  }, [loading, reviewedUser]);
 
   async function openDetail(id: string) {
     try { setSelected(await adminFetch(`/admin/users/${encodeURIComponent(id)}`)); }
@@ -159,18 +303,20 @@ function UsersPanel() {
     if (!action) return;
     setWorking(true); setError('');
     try {
+      const reportContext = review && action.ids.length === 1 && action.ids[0] === reviewTargetId;
+      const actionReason = reportContext ? internalReportReason(review) : reasonText.trim();
       if (action.reset) {
         await adminFetch(`/admin/users/${encodeURIComponent(action.ids[0])}/reset-limits`, { method: 'POST', body: JSON.stringify({ scope: 'all' }) });
       } else if (action.verification !== undefined) {
         const user = users.find(item => item.id === action.ids[0]) || selected?.user;
         await adminFetch(`?id=${encodeURIComponent(action.ids[0])}&action=set-verification`, {
-          method: 'POST', body: JSON.stringify({ verified: action.verification, expectedVerified: !!user?.verified, requestId: crypto.randomUUID(), reason: reasonText.trim() }),
+          method: 'POST', body: JSON.stringify({ verified: action.verification, expectedVerified: !!user?.verified, requestId: crypto.randomUUID(), reason: actionReason }),
         });
       } else if (action.ids.length > 1) {
-        await adminFetch('/admin/users/bulk/status', { method: 'POST', body: JSON.stringify({ ids: action.ids, status: action.status, reason: reasonText.trim(), until: action.status === 'suspended' ? new Date(until).toISOString() : null }) });
+        await adminFetch('/admin/users/bulk/status', { method: 'POST', body: JSON.stringify({ ids: action.ids, status: action.status, reason: actionReason, until: action.status === 'suspended' ? new Date(until).toISOString() : null }) });
       } else {
         const user = users.find(item => item.id === action.ids[0]) || selected?.user;
-        await adminFetch(`/admin/users/${encodeURIComponent(action.ids[0])}/status`, { method: 'PATCH', body: JSON.stringify({ status: action.status, expectedStatus: user?.adminStatus, reason: reasonText.trim(), until: action.status === 'suspended' ? new Date(until).toISOString() : null }) });
+        await adminFetch(`/admin/users/${encodeURIComponent(action.ids[0])}/status`, { method: 'PATCH', body: JSON.stringify({ status: action.status, expectedStatus: user?.adminStatus, reason: actionReason, until: action.status === 'suspended' ? new Date(until).toISOString() : null }) });
       }
       setAction(null); setReasonText(''); setUntil(''); setSelected(null); load();
     } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo aplicar la acción.'); }
@@ -178,9 +324,11 @@ function UsersPanel() {
   }
 
   const allSelected = users.length > 0 && users.every(user => selectedIds.has(user.id));
+  const actionUsesReportContext = Boolean(review && action && action.ids.length === 1 && action.ids[0] === reviewTargetId);
   return (
     <section aria-labelledby="users-title" className={styles.sectionPanel}>
       <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Control de cuentas</p><h2 id="users-title">Usuarios</h2><p>Busca, revisa actividad y aplica medidas con trazabilidad.</p></div><span className={styles.countPill}>{total} cuentas</span></div>
+      {review && <ReportReviewPanel onComplete={onReviewComplete} onExit={onExitReview} report={review} targetFound={loading ? null : !!reviewedUser} />}
       <form className={styles.toolbar} onSubmit={event => { event.preventDefault(); setQuery(queryInput.trim()); }}>
         <label className={styles.searchField}><span>Buscar cuenta</span><input maxLength={100} onChange={e => setQueryInput(e.target.value)} placeholder="Nombre, correo o ID" value={queryInput} /></label>
         <label><span>Estado</span><select onChange={e => setStatus(e.target.value)} value={status}><option value="all">Todos</option><option value="active">Activas</option><option value="suspended">Suspendidas</option><option value="banned">Baneadas</option></select></label>
@@ -189,63 +337,105 @@ function UsersPanel() {
       {selectedIds.size > 0 && <div className={styles.selectionBar}><strong>{selectedIds.size} seleccionadas</strong><span>Se creará y verificará un backup antes de una acción masiva.</span><button onClick={() => setAction({ ids: [...selectedIds], status: 'suspended' })} type="button">Suspender</button><button className={styles.dangerText} onClick={() => setAction({ ids: [...selectedIds], status: 'banned' })} type="button">Banear</button></div>}
       {error && <PanelState error>{error}</PanelState>}
       {loading ? <PanelState>Cargando usuarios…</PanelState> : users.length === 0 ? <PanelState>No hay cuentas con estos filtros.</PanelState> : (
-        <div className={styles.tableWrap}><table className={styles.dataTable}><thead><tr><th><input aria-label="Seleccionar todas" checked={allSelected} onChange={e => setSelectedIds(e.target.checked ? new Set(users.map(user => user.id)) : new Set())} type="checkbox" /></th><th>Cuenta</th><th>Tipo</th><th>Actividad</th><th>Verificación</th><th>Estado</th><th><span className={styles.srOnly}>Acciones</span></th></tr></thead><tbody>{users.map(user => <tr key={user.id}><td><input aria-label={`Seleccionar ${user.name}`} checked={selectedIds.has(user.id)} onChange={e => { const next = new Set(selectedIds); e.target.checked ? next.add(user.id) : next.delete(user.id); setSelectedIds(next); }} type="checkbox" /></td><td><strong>{user.name}</strong><small>{user.email || user.id}</small></td><td>{user.isBusiness ? 'Negocio' : user.accountType === 'particular' ? 'Externo' : 'UM'}</td><td><strong>{user.productCount + user.wantedCount}</strong><small>{formatDate(user.lastActive)}</small></td><td>{user.verified ? <span className={styles.verified}>Verificada</span> : <span className={styles.muted}>Sin verificar</span>}</td><td><StatusBadge status={user.adminStatus} /></td><td><button className={styles.rowButton} onClick={() => openDetail(user.id)} type="button">Administrar</button></td></tr>)}</tbody></table></div>
+        <div className={styles.tableWrap}><table className={styles.dataTable}><thead><tr><th><input aria-label="Seleccionar todas" checked={allSelected} onChange={e => setSelectedIds(e.target.checked ? new Set(users.map(user => user.id)) : new Set())} type="checkbox" /></th><th>Cuenta</th><th>Tipo</th><th>Actividad</th><th>Verificación</th><th>Estado</th><th><span className={styles.srOnly}>Acciones</span></th></tr></thead><tbody>{users.map(user => { const isReviewTarget = !!review && user.id === reviewTargetId; return <tr className={isReviewTarget ? styles.reviewTarget : undefined} key={user.id} ref={isReviewTarget ? reviewTargetRef : undefined} tabIndex={isReviewTarget ? -1 : undefined}><td><input aria-label={`Seleccionar ${user.name}`} checked={selectedIds.has(user.id)} onChange={e => { const next = new Set(selectedIds); e.target.checked ? next.add(user.id) : next.delete(user.id); setSelectedIds(next); }} type="checkbox" /></td><td><strong>{user.name}</strong><small>{user.email || user.id}</small></td><td>{user.isBusiness ? 'Negocio' : user.accountType === 'particular' ? 'Externo' : 'UM'}</td><td><strong>{user.productCount + user.wantedCount}</strong><small>{formatDate(user.lastActive)}</small></td><td>{user.verified ? <span className={styles.verified}>Verificada</span> : <span className={styles.muted}>Sin verificar</span>}</td><td><StatusBadge status={user.adminStatus} /></td><td><button className={styles.rowButton} onClick={() => openDetail(user.id)} type="button">Administrar</button></td></tr>; })}</tbody></table></div>
       )}
       {selected && <ActionDialog eyebrow="Expediente de cuenta" onClose={() => setSelected(null)} title={selected.user.name}><div className={styles.detailGrid}><div><span>Correo</span><strong>{selected.user.email || 'Sin correo'}</strong></div><div><span>Estado</span><StatusBadge status={selected.user.adminStatus} /></div><div><span>Publicaciones</span><strong>{selected.user.productCount} productos · {selected.user.wantedCount} búsquedas</strong></div><div><span>Visitas al perfil</span><strong>{selected.user.profileViews ?? 0}</strong></div><div><span>Conversaciones</span><strong>{selected.user.conversationCount ?? 0}</strong></div><div><span>Última actividad</span><strong>{formatDate(selected.user.lastActive)}</strong></div><div><span>Alta</span><strong>{formatDate(selected.user.createdAt)}</strong></div></div><div className={styles.dialogActions}><button onClick={() => setAction({ ids: [selected.user.id], reset: true })} type="button">Resetear cupos</button><button onClick={() => setAction({ ids: [selected.user.id], verification: !selected.user.verified })} type="button">{selected.user.verified ? 'Quitar verificación' : 'Forzar verificación'}</button>{selected.user.adminStatus !== 'active' ? <button onClick={() => setAction({ ids: [selected.user.id], status: 'active' })} type="button">Reactivar</button> : <><button onClick={() => setAction({ ids: [selected.user.id], status: 'suspended' })} type="button">Suspender</button><button className={styles.dangerButton} onClick={() => setAction({ ids: [selected.user.id], status: 'banned' })} type="button">Banear</button></>}</div><div className={styles.activityList}><h3>Actividad reciente</h3>{selected.recentActivity.length ? selected.recentActivity.map(item => <div key={`${item.kind}-${item.id}`}><span>{item.kind === 'product' ? 'Producto' : 'Se busca'}</span><strong>{item.title}</strong><time>{formatDate(item.createdAt)}</time></div>) : <p className={styles.muted}>Sin publicaciones recientes.</p>}</div></ActionDialog>}
-      {action && <ActionDialog eyebrow="Acción protegida" onClose={closeAction} title={action.reset ? 'Resetear límites diarios' : action.verification !== undefined ? (action.verification ? 'Forzar verificación' : 'Quitar verificación') : `${statusLabel(action.status || '')} ${action.ids.length > 1 ? `${action.ids.length} cuentas` : 'cuenta'}`}><form className={styles.actionForm} onSubmit={submitAction}><p className={styles.warningText}>{action.ids.length > 1 ? 'El servidor generará un backup SQLite verificado antes de tocar las cuentas.' : action.reset ? 'Esto reinicia los cupos diarios; no elimina publicaciones activas.' : 'La sesión actual de la cuenta se invalidará inmediatamente.'}</p>{!action.reset && <label><span>Motivo obligatorio</span><textarea autoFocus maxLength={500} minLength={10} onChange={e => setReasonText(e.target.value)} required value={reasonText} /><small>{reasonText.trim().length}/500 · mínimo 10</small></label>}{action.status === 'suspended' && <label><span>Suspender hasta</span><input min={new Date(Date.now() + 3600000).toISOString().slice(0, 16)} onChange={e => setUntil(e.target.value)} required type="datetime-local" value={until} /></label>}<div className={styles.dialogFooter}><button disabled={working} onClick={closeAction} type="button">Cancelar</button><button className={action.status === 'banned' ? styles.dangerButton : styles.primaryButton} disabled={working || (!action.reset && reasonText.trim().length < 10)} type="submit">{working ? 'Aplicando…' : 'Confirmar acción'}</button></div></form></ActionDialog>}
+      {action && <ActionDialog eyebrow="Acción protegida" onClose={closeAction} title={action.reset ? 'Resetear límites diarios' : action.verification !== undefined ? (action.verification ? 'Forzar verificación' : 'Quitar verificación') : `${statusLabel(action.status || '')} ${action.ids.length > 1 ? `${action.ids.length} cuentas` : 'cuenta'}`}><form className={styles.actionForm} onSubmit={submitAction}><p className={styles.warningText}>{actionUsesReportContext ? `La referencia interna se generará desde ${review?.id}; no tienes que escribir ni enviar una explicación.` : action.ids.length > 1 ? 'El servidor generará un backup SQLite verificado antes de tocar las cuentas.' : action.reset ? 'Esto reinicia los cupos diarios; no elimina publicaciones activas.' : 'La sesión actual de la cuenta se invalidará inmediatamente.'}</p>{!action.reset && !actionUsesReportContext && <label><span>Motivo obligatorio</span><textarea autoFocus maxLength={500} minLength={10} onChange={e => setReasonText(e.target.value)} required value={reasonText} /><small>{reasonText.trim().length}/500 · mínimo 10</small></label>}{action.status === 'suspended' && <label><span>Suspender hasta</span><input min={new Date(Date.now() + 3600000).toISOString().slice(0, 16)} onChange={e => setUntil(e.target.value)} required type="datetime-local" value={until} /></label>}<div className={styles.dialogFooter}><button disabled={working} onClick={closeAction} type="button">Cancelar</button><button className={action.status === 'banned' ? styles.dangerButton : styles.primaryButton} disabled={working || (!action.reset && !actionUsesReportContext && reasonText.trim().length < 10)} type="submit">{working ? 'Aplicando…' : 'Confirmar acción'}</button></div></form></ActionDialog>}
     </section>
   );
 }
 
-function PublicationsPanel() {
-  const [queryInput, setQueryInput] = useState(''); const [query, setQuery] = useState('');
-  const [kind, setKind] = useState('all'); const [status, setStatus] = useState('all');
+function PublicationsPanel({ review, onReviewComplete, onExitReview }: {
+  review?: Report | null;
+  onReviewComplete: () => void;
+  onExitReview: () => void;
+}) {
+  const initialTargetId = review?.target_id || '';
+  const initialKind = review?.target_type === 'product' || review?.target_type === 'wanted' ? review.target_type : 'all';
+  const [queryInput, setQueryInput] = useState(initialTargetId); const [query, setQuery] = useState(initialTargetId);
+  const [kind, setKind] = useState(initialKind); const [status, setStatus] = useState('all');
   const [items, setItems] = useState<Publication[]>([]); const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true); const [error, setError] = useState('');
   const [action, setAction] = useState<{ item: Publication; target: 'spam' | 'removed' } | null>(null);
   const [reasonText, setReasonText] = useState(''); const [working, setWorking] = useState(false);
+  const reviewTargetRef = useRef<HTMLTableRowElement>(null);
   const load = () => { setLoading(true); const p = new URLSearchParams({ page: '1', limit: '50', kind, status }); if (query) p.set('q', query); adminFetch<{ publications: Publication[]; total: number }>(`/admin/publications?${p}`).then(r => { setItems(r.publications); setTotal(r.total); }).catch(e => setError(e.message)).finally(() => setLoading(false)); };
   useEffect(load, [query, kind, status]);
-  async function moderate(event: FormEvent) { event.preventDefault(); if (!action) return; setWorking(true); try { const route = `/admin/publications/${action.item.kind}/${encodeURIComponent(action.item.id)}${action.target === 'spam' ? '/spam' : ''}`; await adminFetch(route, { method: action.target === 'spam' ? 'PATCH' : 'DELETE', body: JSON.stringify({ reason: reasonText.trim(), expectedStatus: action.item.moderationStatus }) }); setAction(null); setReasonText(''); load(); } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo moderar.'); } finally { setWorking(false); } }
-  return <section aria-labelledby="publications-title" className={styles.sectionPanel}><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Catálogo global</p><h2 id="publications-title">Publicaciones</h2><p>Modera productos y solicitudes sin destruir la evidencia.</p></div><span className={styles.countPill}>{total} registros</span></div><form className={styles.toolbar} onSubmit={e => { e.preventDefault(); setQuery(queryInput.trim()); }}><label className={styles.searchField}><span>Buscar</span><input maxLength={100} onChange={e => setQueryInput(e.target.value)} placeholder="Título, autor o ID" value={queryInput} /></label><label><span>Tipo</span><select onChange={e => setKind(e.target.value)} value={kind}><option value="all">Todos</option><option value="product">Productos</option><option value="wanted">Se busca</option></select></label><label><span>Moderación</span><select onChange={e => setStatus(e.target.value)} value={status}><option value="all">Todos</option><option value="visible">Visible</option><option value="spam">Spam</option><option value="removed">Retirada</option></select></label><button className={styles.secondaryButton} type="submit">Filtrar</button></form>{error && <PanelState error>{error}</PanelState>}{loading ? <PanelState>Cargando catálogo…</PanelState> : items.length === 0 ? <PanelState>No hay publicaciones con estos filtros.</PanelState> : <div className={styles.tableWrap}><table className={styles.dataTable}><thead><tr><th>Publicación</th><th>Tipo</th><th>Autor</th><th>Fecha</th><th>Estado</th><th>Vistas</th><th><span className={styles.srOnly}>Acciones</span></th></tr></thead><tbody>{items.map(item => <tr key={`${item.kind}-${item.id}`}><td><strong>{item.title}</strong><small>{item.id}</small></td><td>{item.kind === 'product' ? 'Producto' : 'Se busca'}</td><td><strong>{item.ownerName}</strong><small>{item.ownerId}</small></td><td>{formatDate(item.createdAt)}</td><td><StatusBadge status={item.moderationStatus} /></td><td>{item.views}</td><td>{item.moderationStatus === 'visible' ? <div className={styles.rowActions}><button onClick={() => setAction({ item, target: 'spam' })} type="button">Spam</button><button className={styles.dangerText} onClick={() => setAction({ item, target: 'removed' })} type="button">Retirar</button></div> : <span className={styles.muted}>Moderada</span>}</td></tr>)}</tbody></table></div>}{action && <ActionDialog eyebrow="Moderación" onClose={() => setAction(null)} title={action.target === 'spam' ? 'Marcar como spam' : 'Retirar publicación'}><form className={styles.actionForm} onSubmit={moderate}><p className={styles.warningText}>La publicación dejará de aparecer en feeds, búsquedas y detalles, pero la fila se conservará para auditoría.</p><label><span>Motivo obligatorio</span><textarea autoFocus maxLength={500} minLength={10} onChange={e => setReasonText(e.target.value)} required value={reasonText} /><small>{reasonText.trim().length}/500 · mínimo 10</small></label><div className={styles.dialogFooter}><button onClick={() => setAction(null)} type="button">Cancelar</button><button className={styles.dangerButton} disabled={working || reasonText.trim().length < 10} type="submit">{working ? 'Aplicando…' : 'Confirmar moderación'}</button></div></form></ActionDialog>}</section>;
+  useEffect(() => {
+    if (!review || (review.target_type !== 'product' && review.target_type !== 'wanted')) return;
+    setKind(review.target_type);
+    setStatus('all');
+    setQueryInput(review.target_id);
+    setQuery(review.target_id);
+  }, [review?.id, review?.target_id, review?.target_type]);
+  const reviewedPublication = review ? items.find(item => item.kind === review.target_type && item.id === review.target_id) : undefined;
+  const actionUsesReportContext = Boolean(review && action && action.item.kind === review.target_type && action.item.id === review.target_id);
+  useEffect(() => {
+    if (!loading && reviewedPublication) reviewTargetRef.current?.focus({ preventScroll: false });
+  }, [loading, reviewedPublication]);
+  async function moderate(event: FormEvent) { event.preventDefault(); if (!action) return; setWorking(true); try { const route = `/admin/publications/${action.item.kind}/${encodeURIComponent(action.item.id)}${action.target === 'spam' ? '/spam' : ''}`; const actionReason = actionUsesReportContext && review ? internalReportReason(review) : reasonText.trim(); await adminFetch(route, { method: action.target === 'spam' ? 'PATCH' : 'DELETE', body: JSON.stringify({ reason: actionReason, expectedStatus: action.item.moderationStatus, ...(actionUsesReportContext ? { notifyOwner: false } : {}) }) }); setAction(null); setReasonText(''); load(); } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo moderar.'); } finally { setWorking(false); } }
+  return <section aria-labelledby="publications-title" className={styles.sectionPanel}><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Catálogo global</p><h2 id="publications-title">Publicaciones</h2><p>Modera productos y solicitudes sin destruir la evidencia.</p></div><span className={styles.countPill}>{total} registros</span></div>{review && <ReportReviewPanel onComplete={onReviewComplete} onExit={onExitReview} report={review} targetFound={loading ? null : !!reviewedPublication} />}<form className={styles.toolbar} onSubmit={e => { e.preventDefault(); setQuery(queryInput.trim()); }}><label className={styles.searchField}><span>Buscar</span><input maxLength={100} onChange={e => setQueryInput(e.target.value)} placeholder="Título, autor o ID" value={queryInput} /></label><label><span>Tipo</span><select onChange={e => setKind(e.target.value)} value={kind}><option value="all">Todos</option><option value="product">Productos</option><option value="wanted">Se busca</option></select></label><label><span>Moderación</span><select onChange={e => setStatus(e.target.value)} value={status}><option value="all">Todos</option><option value="visible">Visible</option><option value="spam">Spam</option><option value="removed">Retirada</option></select></label><button className={styles.secondaryButton} type="submit">Filtrar</button></form>{error && <PanelState error>{error}</PanelState>}{loading ? <PanelState>Cargando catálogo…</PanelState> : items.length === 0 ? <PanelState>No hay publicaciones con estos filtros.</PanelState> : <div className={styles.tableWrap}><table className={styles.dataTable}><thead><tr><th>Publicación</th><th>Tipo</th><th>Autor</th><th>Fecha</th><th>Estado</th><th>Vistas</th><th><span className={styles.srOnly}>Acciones</span></th></tr></thead><tbody>{items.map(item => { const isReviewTarget = !!review && item.kind === review.target_type && item.id === review.target_id; return <tr className={isReviewTarget ? styles.reviewTarget : undefined} key={`${item.kind}-${item.id}`} ref={isReviewTarget ? reviewTargetRef : undefined} tabIndex={isReviewTarget ? -1 : undefined}><td><strong>{item.title}</strong><small>{item.id}</small></td><td>{item.kind === 'product' ? 'Producto' : 'Se busca'}</td><td><strong>{item.ownerName}</strong><small>{item.ownerId}</small></td><td>{formatDate(item.createdAt)}</td><td><StatusBadge status={item.moderationStatus} /></td><td>{item.views}</td><td>{item.moderationStatus === 'visible' ? <div className={styles.rowActions}><button onClick={() => setAction({ item, target: 'spam' })} type="button">Spam</button><button className={styles.dangerText} onClick={() => setAction({ item, target: 'removed' })} type="button">Retirar</button></div> : <span className={styles.muted}>Moderada</span>}</td></tr>; })}</tbody></table></div>}{action && <ActionDialog eyebrow="Moderación" onClose={() => setAction(null)} title={action.target === 'spam' ? 'Marcar como spam' : 'Retirar publicación'}><form className={styles.actionForm} onSubmit={moderate}><p className={styles.warningText}>{actionUsesReportContext ? `La referencia interna se generará desde ${review?.id}; no se enviará una explicación al propietario.` : 'La publicación dejará de aparecer en feeds, búsquedas y detalles, pero la fila se conservará para auditoría.'}</p>{!actionUsesReportContext && <label><span>Motivo obligatorio</span><textarea autoFocus maxLength={500} minLength={10} onChange={e => setReasonText(e.target.value)} required value={reasonText} /><small>{reasonText.trim().length}/500 · mínimo 10</small></label>}<div className={styles.dialogFooter}><button onClick={() => setAction(null)} type="button">Cancelar</button><button className={styles.dangerButton} disabled={working || (!actionUsesReportContext && reasonText.trim().length < 10)} type="submit">{working ? 'Aplicando…' : 'Confirmar moderación'}</button></div></form></ActionDialog>}</section>;
 }
 
-function ReportsPanel() {
-  const [status, setStatus] = useState('received');
+function ReportsPanel({ initialStatus = 'received', onReview }: { initialStatus?: string; onReview: (report: Report) => void }) {
+  const pageSize = 50;
+  const [status, setStatus] = useState(() => ['all', 'received', 'reviewing', 'resolved', 'dismissed'].includes(initialStatus) ? initialStatus : 'received');
   const [targetType, setTargetType] = useState('all');
+  const [page, setPage] = useState(1);
   const [reports, setReports] = useState<Report[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [action, setAction] = useState<{ report: Report; status: Report['status'] } | null>(null);
-  const [note, setNote] = useState('');
-  const [working, setWorking] = useState(false);
+  const [openingId, setOpeningId] = useState('');
   const load = () => {
     setLoading(true); setError('');
-    const params = new URLSearchParams({ page: '1', limit: '50', status, targetType });
+    const params = new URLSearchParams({ page: String(page), limit: String(pageSize), status, targetType });
     adminFetch<{ reports: Report[]; total: number }>(`/admin/reports?${params}`)
-      .then(result => { setReports(result.reports); setTotal(result.total); })
+      .then(result => {
+        setReports(result.reports);
+        setTotal(result.total);
+        const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
+        if (page > lastPage) setPage(lastPage);
+      })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   };
-  useEffect(load, [status, targetType]);
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!action) return;
-    setWorking(true);
+  useEffect(load, [status, targetType, page]);
+
+  async function openReview(report: Report) {
+    setOpeningId(report.id);
+    setError('');
     try {
-      await adminFetch(`/admin/reports/${encodeURIComponent(action.report.id)}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: action.status, adminNote: note.trim() }),
-      });
-      setAction(null); setNote(''); load();
+      if (report.status === 'received') {
+        await adminFetch(`/admin/reports/${encodeURIComponent(report.id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: 'reviewing', expectedStatus: report.status }),
+        });
+      }
+      onReview({ ...report, status: report.status === 'received' ? 'reviewing' : report.status });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo actualizar el reporte.');
+      setError(e instanceof Error ? e.message : 'No se pudo abrir la revisión.');
     } finally {
-      setWorking(false);
+      setOpeningId('');
     }
   }
-  return <section aria-labelledby="reports-title" className={styles.sectionPanel}><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Confianza y seguridad</p><h2 id="reports-title">Reportes</h2><p>Casos creados desde perfiles, chats y publicaciones.</p></div><span className={styles.countPill}>{total} reportes</span></div><form className={styles.toolbar}><label><span>Estado</span><select onChange={e => setStatus(e.target.value)} value={status}><option value="all">Todos</option><option value="received">Recibidos</option><option value="reviewing">En revisión</option><option value="resolved">Resueltos</option><option value="dismissed">Descartados</option></select></label><label><span>Tipo</span><select onChange={e => setTargetType(e.target.value)} value={targetType}><option value="all">Todos</option><option value="user">Usuario</option><option value="product">Producto</option><option value="wanted">Se busca</option><option value="chat">Chat</option></select></label></form>{error && <PanelState error>{error}</PanelState>}{loading ? <PanelState>Cargando reportes…</PanelState> : reports.length === 0 ? <PanelState>No hay reportes con estos filtros.</PanelState> : <div className={styles.tableWrap}><table className={styles.dataTable}><thead><tr><th>Reporte</th><th>Reporta</th><th>Objetivo</th><th>Motivo</th><th>Estado</th><th>Fecha</th><th><span className={styles.srOnly}>Acciones</span></th></tr></thead><tbody>{reports.map(report => <tr key={report.id}><td><strong>{report.id}</strong><small>{report.details || 'Sin detalle adicional'}</small></td><td><strong>{report.reporterName || report.reporter_id}</strong><small>{report.reporter_id}</small></td><td><strong>{report.target_type}: {report.target_id}</strong><small>{report.targetUserName || report.target_user_id || 'Sin usuario asociado'}</small></td><td>{report.reason}</td><td><StatusBadge status={report.status} /></td><td>{formatDate(report.created_at)}</td><td><div className={styles.rowActions}>{report.status !== 'reviewing' && <button onClick={() => setAction({ report, status: 'reviewing' })} type="button">Revisar</button>}{report.status !== 'resolved' && <button onClick={() => setAction({ report, status: 'resolved' })} type="button">Resolver</button>}{report.status !== 'dismissed' && <button className={styles.dangerText} onClick={() => setAction({ report, status: 'dismissed' })} type="button">Descartar</button>}</div></td></tr>)}</tbody></table></div>}{action && <ActionDialog eyebrow="Reporte" onClose={() => setAction(null)} title={`${statusLabel(action.status)} ${action.report.id}`}><form className={styles.actionForm} onSubmit={submit}><p className={styles.warningText}>La decisión quedará en auditoría y el reporte conservará su evidencia.</p><label><span>Nota interna</span><textarea autoFocus maxLength={1000} onChange={e => setNote(e.target.value)} value={note} /></label><div className={styles.dialogFooter}><button onClick={() => setAction(null)} type="button">Cancelar</button><button className={action.status === 'dismissed' ? styles.dangerButton : styles.primaryButton} disabled={working} type="submit">{working ? 'Guardando…' : 'Guardar estado'}</button></div></form></ActionDialog>}</section>;
+  return (
+    <section aria-labelledby="reports-title" className={styles.sectionPanel}>
+      <div className={styles.sectionHeading}>
+        <div><p className={styles.eyebrow}>Confianza y seguridad</p><h2 id="reports-title">Reportes</h2><p>Abre el objetivo, toma la medida necesaria y cierra el caso desde su contexto.</p></div>
+        <span className={styles.countPill}>{total} reportes</span>
+      </div>
+      <form className={styles.toolbar}>
+        <label><span>Estado</span><select onChange={e => { setStatus(e.target.value); setPage(1); }} value={status}><option value="all">Todos</option><option value="received">Recibidos</option><option value="reviewing">En revisión</option><option value="resolved">Resueltos</option><option value="dismissed">Descartados</option></select></label>
+        <label><span>Tipo</span><select onChange={e => { setTargetType(e.target.value); setPage(1); }} value={targetType}><option value="all">Todos</option><option value="user">Usuario</option><option value="product">Producto</option><option value="wanted">Se busca</option><option value="chat">Chat</option></select></label>
+      </form>
+      {error && <PanelState error>{error}</PanelState>}
+      {loading ? <PanelState>Cargando reportes…</PanelState> : reports.length === 0 ? <PanelState>No hay reportes con estos filtros.</PanelState> : (
+        <div className={styles.tableWrap}><table className={styles.dataTable}><thead><tr><th>Reporte</th><th>Reporta</th><th>Objetivo</th><th>Motivo</th><th>Estado</th><th>Fecha</th><th><span className={styles.srOnly}>Acciones</span></th></tr></thead><tbody>{reports.map(report => <tr key={report.id}><td><strong>{report.id}</strong><small>{report.details || 'Sin detalle adicional'}</small></td><td><strong>{report.reporterName || report.reporter_id}</strong><small>{report.reporter_id}</small></td><td><strong>{report.target_type}: {report.target_id}</strong><small>{report.targetUserName || report.target_user_id || 'Sin usuario asociado'}</small></td><td>{report.reason}</td><td><StatusBadge status={report.status} /></td><td>{formatDate(report.created_at)}</td><td><button className={styles.rowButton} disabled={Boolean(openingId)} onClick={() => openReview(report)} type="button">{openingId === report.id ? 'Abriendo…' : 'Revisar objetivo'}</button></td></tr>)}</tbody></table></div>
+      )}
+      {total > pageSize && <nav aria-label="Páginas de reportes" className={styles.pagination}><button disabled={loading || page === 1} onClick={() => setPage(current => Math.max(1, current - 1))} type="button">Anterior</button><span>Página {page} de {Math.ceil(total / pageSize)}</span><button disabled={loading || page * pageSize >= total} onClick={() => setPage(current => current + 1)} type="button">Siguiente</button></nav>}
+    </section>
+  );
 }
 
 const configNames: Record<string, string> = { negocio_verificado: 'Negocio verificado', negocio_sin_verificar: 'Negocio sin verificar', um_verificado: 'UM verificado', um_sin_verificar: 'UM sin verificar', externo: 'Externo' };
@@ -267,14 +457,65 @@ function AuditPanel() {
 }
 
 export default function AdminPanel() {
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const [activeReview, setActiveReview] = useState<Report | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(() => Boolean(searchParams.get('report')));
+  const [reviewError, setReviewError] = useState('');
   const requested = searchParams.get('section') as Section | null;
   const active = useMemo<Section>(() => sections.some(([key]) => key === requested) ? requested! : 'verificaciones', [requested]);
+  const reportId = searchParams.get('report') || '';
+
+  useEffect(() => {
+    if (!reportId) {
+      if (activeReview) setActiveReview(null);
+      setReviewLoading(false);
+      setReviewError('');
+      return;
+    }
+    if (activeReview?.id === reportId) {
+      const destination = reportDestination(activeReview);
+      setReviewLoading(false);
+      setReviewError('');
+      if (active !== destination) router.replace(`?section=${destination}&report=${encodeURIComponent(reportId)}`);
+      return;
+    }
+
+    let cancelled = false;
+    setActiveReview(null);
+    setReviewLoading(true);
+    setReviewError('');
+    adminFetch<{ report: Report }>(`/admin/reports/${encodeURIComponent(reportId)}`)
+      .then(({ report }) => {
+        if (cancelled) return;
+        setActiveReview(report);
+        const destination = reportDestination(report);
+        if (active !== destination) router.replace(`?section=${destination}&report=${encodeURIComponent(report.id)}`);
+      })
+      .catch(cause => {
+        if (!cancelled) setReviewError(cause instanceof Error ? cause.message : 'No se pudo recuperar la revisión.');
+      })
+      .finally(() => { if (!cancelled) setReviewLoading(false); });
+    return () => { cancelled = true; };
+  }, [active, activeReview, reportId, router]);
+
+  function beginReview(report: Report) {
+    setActiveReview(report);
+    setReviewError('');
+    const destination = reportDestination(report);
+    router.push(`?section=${destination}&report=${encodeURIComponent(report.id)}`);
+  }
+
+  function leaveReview(completed = false) {
+    setActiveReview(null);
+    router.push(`?section=reportes&reportStatus=${completed ? 'received' : 'reviewing'}`);
+  }
+
   return (
     <div className={styles.shell}>
       <header className={styles.hero}><div className={styles.brandMark} aria-hidden="true">UM</div><div><p className={styles.eyebrow}>Marketplace UM · Operaciones</p><h1>Centro de administración</h1><p>Confianza, catálogo y límites en un solo lugar.</p></div><div className={styles.securitySeal}><span aria-hidden="true">◆</span><div><strong>Sesión reforzada</strong><small>JWT · 2FA · Auditoría</small></div></div></header>
-      <nav aria-label="Secciones administrativas" className={styles.nav}>{sections.map(([key, label], index) => <a aria-current={active === key ? 'page' : undefined} href={`?section=${key}`} key={key}><span>{String(index + 1).padStart(2, '0')}</span>{label}</a>)}</nav>
-      <div className={styles.workspace}>{active === 'verificaciones' && <section className={styles.sectionPanel}><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Confianza de la comunidad</p><h2>Verificaciones</h2><p>La cola original permanece completa: pendientes, padrón e historial.</p></div></div><RevisionQueue /></section>}{active === 'dashboard' && <DashboardPanel />}{active === 'reportes' && <ReportsPanel />}{active === 'usuarios' && <UsersPanel />}{active === 'publicaciones' && <PublicationsPanel />}{active === 'configuracion' && <ConfigPanel />}{active === 'auditoria' && <AuditPanel />}</div>
+      <nav aria-label="Secciones administrativas" className={styles.nav}>{sections.map(([key, label], index) => <a aria-current={active === key ? 'page' : undefined} href={`?section=${key}`} key={key} onClick={() => setActiveReview(null)}><span>{String(index + 1).padStart(2, '0')}</span>{label}</a>)}</nav>
+      <div className={styles.workspace}>{reportId && !activeReview && reviewLoading ? <PanelState>Cargando contexto del reporte…</PanelState> : reportId && !activeReview && reviewError ? <PanelState error>{reviewError} Puedes volver a Reportes desde la navegación superior.</PanelState> : <>{active === 'verificaciones' && <section className={styles.sectionPanel}><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Confianza de la comunidad</p><h2>Verificaciones</h2><p>La cola original permanece completa: pendientes, padrón e historial.</p></div></div><RevisionQueue /></section>}{active === 'dashboard' && <DashboardPanel />}{active === 'reportes' && <ReportsPanel initialStatus={searchParams.get('reportStatus') || undefined} onReview={beginReview} />}{active === 'usuarios' && <UsersPanel onExitReview={() => leaveReview(false)} onReviewComplete={() => leaveReview(true)} review={activeReview} />}{active === 'publicaciones' && <PublicationsPanel onExitReview={() => leaveReview(false)} onReviewComplete={() => leaveReview(true)} review={activeReview} />}{active === 'configuracion' && <ConfigPanel />}{active === 'auditoria' && <AuditPanel />}</>}</div>
       <footer className={styles.footer}><span>Marketplace UM</span><p>Panel privado · Todas las acciones sensibles quedan registradas.</p></footer>
     </div>
   );

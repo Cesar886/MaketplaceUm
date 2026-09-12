@@ -979,7 +979,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 
   /// Comparte la publicación usando share_plus.
   ///
-  /// El texto termina en un link real a mercaditoum.site, no en texto suelto:
+  /// El texto termina en un link real a marketplace-um.me, no en texto suelto:
   ///   - Si quien lo abre tiene la app, Android intercepta el link (App Links,
   ///     ver AndroidManifest.xml) y cae directo en esta misma pantalla.
   ///   - Si no la tiene, abre la versión web de la publicación, que además

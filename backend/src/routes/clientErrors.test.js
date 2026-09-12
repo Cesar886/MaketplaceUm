@@ -39,11 +39,11 @@ test.afterEach(() => {
   console.error = originalConsoleError;
 });
 
-async function postError(body) {
+async function postError(body, { installationId = 'installation-test-default' } = {}) {
   return fetch(`${baseUrl}/api/client-errors`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ installationId, ...body }),
   });
 }
 
@@ -134,7 +134,7 @@ test('un body vacío o incompleto no revienta', async () => {
   assert.strictEqual(res2.status, 204);
 });
 
-test('el rate limit corta una ráfaga desde la misma IP', async () => {
+test('el rate limit corta una ráfaga de la misma instalación', async () => {
   // La ráfaga real que motivó esto: ~14 POSTs distintos en minuto y medio.
   // El límite de la ruta es 20/min, así que 25 seguidos deben ver algunos
   // 204 "silenciosos" del rate limiter una vez agotado el cupo.
@@ -153,4 +153,16 @@ test('el rate limit corta una ráfaga desde la misma IP', async () => {
     `se logueó de más pese al límite: ${logueados} entradas`,
   );
   assert.ok(logueados > 0, 'el límite no debería bloquear TODO el tráfico normal');
+});
+
+test('instalaciones distintas en la misma IP nunca comparten límite', async () => {
+  const respuestas = [];
+  for (let i = 0; i < 25; i += 1) {
+    respuestas.push(await postError(
+      { plataforma: 'android', error: `instalación ${i}` },
+      { installationId: `installation-campus-${i}` },
+    ));
+  }
+  assert.ok(respuestas.every(r => r.status === 204));
+  assert.equal(logs.filter(l => l.includes('[client-error]')).length, 25);
 });

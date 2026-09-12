@@ -15,10 +15,8 @@ const fs = require('fs');
 // ───────────────────────────────────────────────────────────────────
 
 let initialized = false;
-
 function ensureInitialized() {
   if (initialized) return;
-
   let serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   const projectId = process.env.FIREBASE_PROJECT_ID;
@@ -30,15 +28,12 @@ function ensureInitialized() {
       serviceAccountPath = rootPath;
     }
   }
-
   if (!serviceAccountPath && !serviceAccountJson && !projectId) {
     console.warn('⚠️  Firebase no configurado. Define FIREBASE_SERVICE_ACCOUNT_PATH o FIREBASE_SERVICE_ACCOUNT_JSON');
     return;
   }
-
   try {
     let serviceAccount;
-
     if (serviceAccountPath) {
       const resolvedPath = path.resolve(serviceAccountPath);
       const raw = fs.readFileSync(resolvedPath, 'utf-8');
@@ -46,16 +41,11 @@ function ensureInitialized() {
     } else if (serviceAccountJson) {
       serviceAccount = JSON.parse(serviceAccountJson);
     }
-
-    const credential = serviceAccount
-      ? admin.credential.cert(serviceAccount)
-      : admin.credential.applicationDefault();
-
+    const credential = serviceAccount ? admin.credential.cert(serviceAccount) : admin.credential.applicationDefault();
     admin.initializeApp({
       credential,
-      projectId: projectId || (serviceAccount ? serviceAccount.project_id : undefined),
+      projectId: projectId || (serviceAccount ? serviceAccount.project_id : undefined)
     });
-
     initialized = true;
     console.log('🔥 Firebase Admin SDK inicializado');
   } catch (err) {
@@ -78,14 +68,11 @@ function ensureInitialized() {
 async function sendPush(userIds, title, body, data = {}) {
   // Cargar database aquí dentro para evitar dependencia circular
   const db = require('./database');
-
   ensureInitialized();
-
   if (!initialized) {
     console.warn('⚠️  Firebase no inicializado. No se puede enviar push.');
     return false;
   }
-
   if (!userIds || userIds.length === 0) {
     return false;
   }
@@ -93,15 +80,13 @@ async function sendPush(userIds, title, body, data = {}) {
   // Recolectar todos los tokens de los usuarios destino
   const tokens = [];
   for (const userId of userIds) {
-    const userTokens = db.getPushTokensForUser(userId);
+    const userTokens = await db.getPushTokensForUser(userId);
     tokens.push(...userTokens);
   }
-
   if (tokens.length === 0) {
     console.log(`📭 Sin tokens push para ${userIds.length} usuario(s)`);
     return false;
   }
-
   console.log(`📨 Enviando push a ${tokens.length} dispositivo(s) para ${userIds.length} usuario(s)`);
 
   // ─── Agrupación por conversación ─────────────────────────────────
@@ -116,30 +101,33 @@ async function sendPush(userIds, title, body, data = {}) {
   // Un `tag` fijo por conversación rompería justo eso.
   const conversationId = data.conversationId ? String(data.conversationId) : null;
   const threadId = conversationId ? `chat_${conversationId}` : null;
-  const androidTag = threadId
-    ? `${threadId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-    : undefined;
+  const androidTag = threadId ? `${threadId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}` : undefined;
 
   // Construir payload base
   const messageBase = {
     notification: {
       title,
-      body,
+      body
     },
-    data: Object.fromEntries(
-      Object.entries({ ...data }).map(([k, v]) => [k, String(v ?? '')])
-    ),
+    data: Object.fromEntries(Object.entries({
+      ...data
+    }).map(([k, v]) => [k, String(v ?? '')])),
     apns: {
       payload: {
         aps: {
-          alert: { title, body },
+          alert: {
+            title,
+            body
+          },
           sound: 'default',
           badge: 1,
           // Agrupa las notificaciones del mismo chat en un solo hilo de iOS
           // y permite ubicarlas para borrarlas al abrir la conversación.
-          ...(threadId ? { 'thread-id': threadId } : {}),
-        },
-      },
+          ...(threadId ? {
+            'thread-id': threadId
+          } : {})
+        }
+      }
     },
     android: {
       priority: 'high',
@@ -147,37 +135,43 @@ async function sendPush(userIds, title, body, data = {}) {
         channelId: 'mercadito_um_default',
         notificationPriority: 'PRIORITY_HIGH',
         defaultSound: true,
-        ...(androidTag ? { tag: androidTag } : {}),
+        ...(androidTag ? {
+          tag: androidTag
+        } : {}),
         // Silueta blanca sobre transparente (android/app/.../drawable-*/ic_notification.png).
         // Ya está como default en el manifest, pero se declara explícito
         // acá para que quede claro sin tener que ir a leer el manifest.
         icon: 'ic_notification',
-        color: '#3D5C70',
-      },
-    },
+        color: '#3D5C70'
+      }
+    }
   };
 
   // Enviar a cada token individualmente para poder detectar tokens inválidos
-  const results = await Promise.allSettled(
-    tokens.map(async (token) => {
-      try {
-        const response = await admin.messaging().send({
-          token,
-          ...messageBase,
-        });
-        console.log(`[Push Debug] Éxito al enviar a token ${token.slice(0, 10)}... Response ID:`, response);
-        return { token, success: true, response };
-      } catch (err) {
-        console.log(`[Push Debug] Fallo al enviar a token ${token.slice(0, 10)}... Error:`, err.message);
-        return { token, success: false, error: err };
-      }
-    })
-  );
-
+  const results = await Promise.allSettled(tokens.map(async token => {
+    try {
+      const response = await admin.messaging().send({
+        token,
+        ...messageBase
+      });
+      console.log(`[Push Debug] Éxito al enviar a token ${token.slice(0, 10)}... Response ID:`, response);
+      return {
+        token,
+        success: true,
+        response
+      };
+    } catch (err) {
+      console.log(`[Push Debug] Fallo al enviar a token ${token.slice(0, 10)}... Error:`, err.message);
+      return {
+        token,
+        success: false,
+        error: err
+      };
+    }
+  }));
   let successCount = 0;
   let failCount = 0;
   const tokensToRemove = [];
-
   for (const result of results) {
     if (result.status === 'fulfilled' && result.value.success) {
       successCount++;
@@ -187,11 +181,7 @@ async function sendPush(userIds, title, body, data = {}) {
       const token = result.value.token;
 
       // Códigos de error que indican token inválido/expirado
-      if (
-        error.code === 'messaging/registration-token-not-registered' ||
-        error.code === 'messaging/invalid-registration-token' ||
-        error.code === 'messaging/invalid-argument'
-      ) {
+      if (error.code === 'messaging/registration-token-not-registered' || error.code === 'messaging/invalid-registration-token' || error.code === 'messaging/invalid-argument') {
         tokensToRemove.push(token);
         console.log(`  🗑️ Token inválido detectado, será eliminado: ${token.slice(0, 20)}...`);
       } else {
@@ -202,20 +192,19 @@ async function sendPush(userIds, title, body, data = {}) {
 
   // Eliminar tokens inválidos de la BD
   if (tokensToRemove.length > 0) {
-    const removeStmt = db.getDb().prepare(
-      'DELETE FROM push_tokens WHERE player_id = ?'
-    );
-    const removeMany = db.getDb().transaction((tokens) => {
+    const removeStmt = db.getDb().prepare('DELETE FROM push_tokens WHERE player_id = ?');
+    const removeMany = db.getDb().transaction(async tokens => {
       for (const t of tokens) {
-        removeStmt.run(t);
+        await removeStmt.run(t);
       }
     });
-    removeMany(tokensToRemove);
+    await removeMany(tokensToRemove);
     console.log(`  🧹 Eliminados ${tokensToRemove.length} token(s) inválido(s)`);
   }
-
   console.log(`📬 Push completado: ${successCount} éxito, ${failCount} fallo(s)`);
   return successCount > 0;
 }
-
-module.exports = { sendPush, ensureInitialized };
+module.exports = {
+  sendPush,
+  ensureInitialized
+};

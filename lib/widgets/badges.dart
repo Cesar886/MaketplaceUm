@@ -580,6 +580,51 @@ class InsigniaVendedorNuevo extends StatelessWidget {
   }
 }
 
+/// Bienvenida que acompaña a toda cuenta durante sus primeros siete días,
+/// sin exigir que haya publicado o vendido algo todavía.
+class InsigniaRecienLlegado extends StatelessWidget {
+  const InsigniaRecienLlegado({super.key, this.compact = false});
+
+  final bool compact;
+
+  static const _violeta = Color(0xFF7656C9);
+
+  @override
+  Widget build(BuildContext context) {
+    return _Badge(
+      icon: Icons.waving_hand_rounded,
+      label: 'badge.just_joined'.tr(),
+      tooltip: 'badge.how_just_joined'.tr(),
+      foreground: _violeta,
+      background: _violeta.withValues(alpha: 0.10),
+      compact: compact,
+    );
+  }
+}
+
+/// Reconoce la primera verificación durante exactamente siete días. El
+/// backend conserva el primer otorgamiento, por lo que reverificar no la
+/// vuelve a activar ni extiende su vigencia.
+class InsigniaRecienVerificado extends StatelessWidget {
+  const InsigniaRecienVerificado({super.key, this.compact = false});
+
+  final bool compact;
+
+  static const _verde = Color(0xFF16836B);
+
+  @override
+  Widget build(BuildContext context) {
+    return _Badge(
+      icon: Icons.verified_user_rounded,
+      label: 'badge.just_verified'.tr(),
+      tooltip: 'badge.how_just_verified'.tr(),
+      foreground: _verde,
+      background: _verde.withValues(alpha: 0.10),
+      compact: compact,
+    );
+  }
+}
+
 /// "N años en MarketplaceUm": contador desde el alta de la cuenta
 /// (`aniversarioAnios` en el backend). Solo se pinta desde 1 año — el call
 /// site condiciona por `aniversarioAnios > 0`, igual que [RachaBadge]

@@ -10,7 +10,7 @@ import 'deep_link_parser.dart';
 import 'publicacion_lookup.dart';
 
 /// Abre la app en el detalle de una publicación cuando el sistema le entrega
-/// un link de mercaditoum.site.
+/// un link de marketplace-um.me.
 ///
 /// Android decide si el link llega aquí o al navegador según la verificación
 /// de `/.well-known/assetlinks.json` (ver AndroidManifest.xml). Cuando llega

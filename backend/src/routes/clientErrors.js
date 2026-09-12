@@ -1,14 +1,14 @@
+const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 
 // A diferencia de casi todo el resto de la API, este endpoint no tiene
 // requireAuth: se dispara desde el arranque de la app y en medio de fallos
 // de red, momentos en los que puede no haber sesión ni token todavía. Eso
-// lo deja alcanzable por cualquiera que sepa la IP del servidor, así que el
-// endpoint entero es: acotar cuánto puede escribir (tamaño y frecuencia) y
-// nunca confiar en el texto que manda como si fuera seguro de imprimir tal
-// cual en los logs.
+// lo deja alcanzable por cualquiera que sepa la IP del servidor. La
+// frecuencia se acota por instalación y nunca por IP: una sola salida NAT
+// puede representar a toda la universidad.
 const VENTANA_MINUTOS = 1;
-const MAX_PETICIONES_POR_IP = 20;
+const MAX_PETICIONES_POR_INSTALACION = 20;
 
 // Tope de caracteres por campo antes de loguear. No es una validación de
 // "forma" (no rechaza el request) — es un tope duro para que un payload de
@@ -65,7 +65,14 @@ function register(app) {
     '/api/client-errors',
     rateLimit({
       windowMs: VENTANA_MINUTOS * 60 * 1000,
-      limit: MAX_PETICIONES_POR_IP,
+      limit: MAX_PETICIONES_POR_INSTALACION,
+      keyGenerator: req => crypto.createHash('sha256').update(
+        `client-error:${String(req.body?.installationId || '')}`,
+      ).digest('base64url'),
+      // Clientes antiguos todavía no envían installationId. No se les mete
+      // en un bucket global que volvería a bloquear a toda la universidad.
+      skip: req => typeof req.body?.installationId !== 'string'
+        || !/^[A-Za-z0-9._:-]{8,180}$/.test(req.body.installationId),
       standardHeaders: 'draft-7',
       legacyHeaders: false,
       // 204 y no un error: este endpoint es fire-and-forget, así que un

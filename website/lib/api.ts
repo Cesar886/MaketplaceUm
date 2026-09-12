@@ -4,11 +4,11 @@ import type { PublicacionPublica } from './tipos';
  * URL del backend. Sin `NEXT_PUBLIC_` porque el fetch ocurre en el servidor
  * (Server Component): así la IP del backend no viaja al bundle del cliente.
  */
-const API_URL = process.env.API_URL ?? 'http://157.245.247.45:3000';
+const API_URL = process.env.API_URL ?? 'http://127.0.0.1:3000';
 
 /** URL pública del sitio, para canonical, OG y el QR. */
 export const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL ?? 'https://mercaditoum.site';
+  process.env.NEXT_PUBLIC_SITE_URL ?? 'https://marketplace-um.me';
 
 /**
  * Vuelve absoluta una ruta de imagen del backend. Las fotos se guardan como
@@ -24,7 +24,7 @@ export const SITE_URL =
  * una página https.
  *
  * El dominio público funciona porque Apache proxea /uploads/ al backend (ver
- * /etc/apache2/sites-enabled/mercaditoum.site-le-ssl.conf), así que la foto
+ * /etc/apache2/sites-enabled/marketplace-um.me-le-ssl.conf), así que la foto
  * sale por HTTPS y del mismo origen que la página.
  */
 export function urlFoto(ruta: string): string {
@@ -62,4 +62,39 @@ export async function obtenerPublicacion(
     );
   }
   return (await res.json()) as PublicacionPublica;
+}
+
+/** Selección pública, pequeña y segura para la vitrina de inicio. */
+export async function obtenerProductosParaPortada(
+  limite = 3,
+): Promise<Extract<PublicacionPublica, { tipo: 'producto' }>[]> {
+  try {
+    const listado = await fetch(`${API_URL}/api/public/productos`, {
+      next: { revalidate: 300 },
+    });
+    if (!listado.ok) return [];
+
+    const cuerpo = (await listado.json()) as {
+      productos?: { id: string; actualizado: string | null }[];
+    };
+    const candidatos = [...(cuerpo.productos ?? [])]
+      .sort((a, b) => String(b.actualizado).localeCompare(String(a.actualizado)))
+      .slice(0, 18);
+    const resultados = await Promise.allSettled(
+      candidatos.map(({ id }) => obtenerPublicacion(id)),
+    );
+
+    return resultados
+      .flatMap(resultado => resultado.status === 'fulfilled' && resultado.value
+        ? [resultado.value]
+        : [])
+      .filter((publicacion): publicacion is Extract<PublicacionPublica, { tipo: 'producto' }> =>
+        publicacion.tipo === 'producto'
+        && publicacion.fotos.length > 0
+        && publicacion.estado === 'available'
+        && publicacion.categoria?.id !== 'other')
+      .slice(0, limite);
+  } catch {
+    return [];
+  }
 }

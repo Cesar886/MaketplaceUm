@@ -50,7 +50,7 @@ function createSeller(overrides = {}) {
   return id;
 }
 
-function invokeMiddleware(middleware, token) {
+async function invokeMiddleware(middleware, token) {
   const req = { headers: token ? { authorization: `Bearer ${token}` } : {} };
   const res = {
     statusCode: 200,
@@ -59,7 +59,7 @@ function invokeMiddleware(middleware, token) {
     json(body) { this.body = body; return this; },
   };
   let nextCalls = 0;
-  middleware(req, res, () => { nextCalls += 1; });
+  await middleware(req, res, () => { nextCalls += 1; });
   return { req, res, nextCalls };
 }
 
@@ -81,7 +81,7 @@ test('la migracion agrega estado seguro y rechaza valores fuera del catalogo', (
   );
 });
 
-test('active permite acceso; banned y suspension vigente fallan cerrados', () => {
+test('active permite acceso; banned y suspension vigente fallan cerrados', async () => {
   const active = createSeller();
   const banned = createSeller({ adminStatus: 'banned', reason: 'fraude confirmado' });
   const suspended = createSeller({
@@ -90,23 +90,23 @@ test('active permite acceso; banned y suspension vigente fallan cerrados', () =>
     until: new Date(Date.now() + 60_000).toISOString(),
   });
 
-  assert.equal(getSellerAccess(database, active).allowed, true);
-  assert.equal(getSellerAccess(database, banned).code, 'ACCOUNT_BANNED');
-  assert.equal(getSellerAccess(database, banned).reason, 'fraude confirmado');
-  const suspendedAccess = getSellerAccess(database, suspended);
+  assert.equal((await getSellerAccess(database, active)).allowed, true);
+  assert.equal((await getSellerAccess(database, banned)).code, 'ACCOUNT_BANNED');
+  assert.equal((await getSellerAccess(database, banned)).reason, 'fraude confirmado');
+  const suspendedAccess = await getSellerAccess(database, suspended);
   assert.equal(suspendedAccess.code, 'ACCOUNT_SUSPENDED');
   assert.equal(suspendedAccess.reason, 'revision temporal');
   assert.ok(suspendedAccess.suspendedUntil);
 });
 
-test('una suspension vencida vuelve a active y limpia sus metadatos', () => {
+test('una suspension vencida vuelve a active y limpia sus metadatos', async () => {
   const id = createSeller({
     adminStatus: 'suspended',
     reason: 'ya cumplida',
     until: '2024-01-01 00:00:00',
   });
 
-  assert.equal(getSellerAccess(database, id, { nowMs: Date.parse('2024-01-02T00:00:00Z') }).allowed, true);
+  assert.equal((await getSellerAccess(database, id, { nowMs: Date.parse('2024-01-02T00:00:00Z') })).allowed, true);
   assert.deepEqual(
     database.prepare(
       `SELECT admin_status, admin_status_reason, admin_status_until
@@ -116,50 +116,50 @@ test('una suspension vencida vuelve a active y limpia sus metadatos', () => {
   );
 });
 
-test('una fecha de suspension corrupta no levanta la sancion por accidente', () => {
+test('una fecha de suspension corrupta no levanta la sancion por accidente', async () => {
   const id = createSeller({ adminStatus: 'suspended', until: 'fecha-imposible' });
-  assert.equal(getSellerAccess(database, id).code, 'ACCOUNT_SUSPENDED');
+  assert.equal((await getSellerAccess(database, id)).code, 'ACCOUNT_SUSPENDED');
   assert.equal(
     database.prepare('SELECT admin_status FROM sellers WHERE id = ?').get(id).admin_status,
     'suspended',
   );
 });
 
-test('un usuario inexistente o claim sin identidad nunca se autoriza', () => {
-  assert.equal(getSellerAccess(database, 'no-existe').code, 'SESSION_INVALIDATED');
-  assert.equal(getSellerTokenAccess(database, {}).allowed, false);
+test('un usuario inexistente o claim sin identidad nunca se autoriza', async () => {
+  assert.equal((await getSellerAccess(database, 'no-existe')).code, 'SESSION_INVALIDATED');
+  assert.equal((await getSellerTokenAccess(database, {})).allowed, false);
 });
 
-test('auth_invalid_before corta incluso JWT emitidos en el mismo segundo', () => {
+test('auth_invalid_before corta incluso JWT emitidos en el mismo segundo', async () => {
   const id = createSeller({ invalidBefore: 1_800_000_000_456 });
-  assert.equal(getSellerTokenAccess(database, {
+  assert.equal((await getSellerTokenAccess(database, {
     sub: id,
     iat: 1_800_000_000,
     auth_time_ms: 1_800_000_000_455,
-  }).code, 'SESSION_INVALIDATED');
-  assert.equal(getSellerTokenAccess(database, {
+  })).code, 'SESSION_INVALIDATED');
+  assert.equal((await getSellerTokenAccess(database, {
     sub: id,
     iat: 1_800_000_000,
     auth_time_ms: 1_800_000_000_456,
-  }).allowed, true);
+  })).allowed, true);
 
   // Compatibilidad con JWT anteriores al claim de milisegundos.
   database.prepare('UPDATE sellers SET auth_invalid_before = ? WHERE id = ?')
     .run(1_800_000_001_000, id);
-  assert.equal(getSellerTokenAccess(database, { sub: id, iat: 1_800_000_000 }).allowed, false);
-  assert.equal(getSellerTokenAccess(database, { sub: id, iat: 1_800_000_001 }).allowed, true);
+  assert.equal((await getSellerTokenAccess(database, { sub: id, iat: 1_800_000_000 })).allowed, false);
+  assert.equal((await getSellerTokenAccess(database, { sub: id, iat: 1_800_000_001 })).allowed, true);
 });
 
-test('invalidar sesiones es monotono, atomico y revoca todos los refresh tokens', () => {
+test('invalidar sesiones es monotono, atomico y revoca todos los refresh tokens', async () => {
   const id = createSeller();
-  const first = generateSession(id);
-  const second = generateSession(id);
-  assert.ok(refreshSession(first.refreshToken));
-  assert.ok(refreshSession(second.refreshToken));
+  const first = await generateSession(id);
+  const second = await generateSession(id);
+  assert.ok(await refreshSession(first.refreshToken));
+  assert.ok(await refreshSession(second.refreshToken));
 
-  assert.equal(invalidateSellerSessions(database, id, { nowMs: 5_000 }), true);
-  assert.equal(refreshSession(first.refreshToken), null);
-  assert.equal(refreshSession(second.refreshToken), null);
+  assert.equal(await invalidateSellerSessions(database, id, { nowMs: 5_000 }), true);
+  assert.equal(await refreshSession(first.refreshToken), null);
+  assert.equal(await refreshSession(second.refreshToken), null);
   assert.equal(
     database.prepare(
       'SELECT COUNT(*) AS count FROM refresh_sessions WHERE user_id = ? AND revoked_at IS NULL',
@@ -171,64 +171,64 @@ test('invalidar sesiones es monotono, atomico y revoca todos los refresh tokens'
     5_001,
   );
 
-  invalidateSellerSessions(database, id, { nowMs: 4_000 });
+  await invalidateSellerSessions(database, id, { nowMs: 4_000 });
   assert.equal(
     database.prepare('SELECT auth_invalid_before FROM sellers WHERE id = ?').get(id).auth_invalid_before,
     5_001,
   );
-  assert.equal(invalidateSellerSessions(database, 'ausente'), false);
+  assert.equal(await invalidateSellerSessions(database, 'ausente'), false);
 });
 
-test('requireAuth bloquea estado/corte y optionalAuth degrada a visitante', () => {
+test('requireAuth bloquea estado/corte y optionalAuth degrada a visitante', async () => {
   const id = createSeller();
   const token = generateToken(id);
-  assert.equal(invokeMiddleware(requireAuth, token).nextCalls, 1);
+  assert.equal((await invokeMiddleware(requireAuth, token)).nextCalls, 1);
 
   database.prepare(
     `UPDATE sellers SET admin_status = 'suspended', admin_status_until = ? WHERE id = ?`,
   ).run(new Date(Date.now() + 60_000).toISOString(), id);
 
-  const required = invokeMiddleware(requireAuth, token);
+  const required = await invokeMiddleware(requireAuth, token);
   assert.equal(required.nextCalls, 0);
   assert.equal(required.res.statusCode, 403);
   assert.equal(required.res.body.error, 'ACCOUNT_SUSPENDED');
 
-  const optional = invokeMiddleware(optionalAuth, token);
+  const optional = await invokeMiddleware(optionalAuth, token);
   assert.equal(optional.nextCalls, 1);
   assert.equal(optional.req.user, undefined);
-  assert.equal(verificarToken(token), null);
+  assert.equal(await verificarToken(token), null);
 });
 
-test('un token de invitado valido conserva REST opcional/obligatorio y sockets', () => {
+test('un token de invitado valido conserva REST opcional/obligatorio y sockets', async () => {
   const guest = generateAnonToken();
-  const required = invokeMiddleware(requireAuth, guest.token);
-  const optional = invokeMiddleware(optionalAuth, guest.token);
+  const required = await invokeMiddleware(requireAuth, guest.token);
+  const optional = await invokeMiddleware(optionalAuth, guest.token);
 
   assert.equal(required.nextCalls, 1);
   assert.deepEqual(required.req.user.anon, true);
   assert.equal(optional.nextCalls, 1);
   assert.deepEqual(optional.req.user, { id: guest.anonId, anon: true });
-  assert.equal(verificarToken(guest.token), guest.anonId);
+  assert.equal(await verificarToken(guest.token), guest.anonId);
 
   const forgedShape = jwt.sign(
     { sub: 'cuenta-real', anon: true },
     process.env.JWT_SECRET,
     { algorithm: 'HS256' },
   );
-  assert.equal(invokeMiddleware(requireAuth, forgedShape).res.statusCode, 401);
-  assert.equal(verificarToken(forgedShape), null);
+  assert.equal((await invokeMiddleware(requireAuth, forgedShape)).res.statusCode, 401);
+  assert.equal(await verificarToken(forgedShape), null);
 });
 
-test('refresh no permite rodear suspension o baneo', () => {
+test('refresh no permite rodear suspension o baneo', async () => {
   const suspended = createSeller();
-  const suspendedSession = generateSession(suspended);
+  const suspendedSession = await generateSession(suspended);
   database.prepare(
     `UPDATE sellers SET admin_status = 'suspended', admin_status_until = ? WHERE id = ?`,
   ).run(new Date(Date.now() + 60_000).toISOString(), suspended);
-  assert.equal(refreshSession(suspendedSession.refreshToken), null);
+  assert.equal(await refreshSession(suspendedSession.refreshToken), null);
 
   const banned = createSeller();
-  const bannedSession = generateSession(banned);
+  const bannedSession = await generateSession(banned);
   database.prepare("UPDATE sellers SET admin_status = 'banned' WHERE id = ?").run(banned);
-  assert.equal(refreshSession(bannedSession.refreshToken), null);
+  assert.equal(await refreshSession(bannedSession.refreshToken), null);
 });

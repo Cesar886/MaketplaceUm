@@ -3,7 +3,9 @@
 // ni a SQLite y pueda probarse en aislamiento.
 
 const db = require('../database');
-const { describirPresencia } = require('../presence');
+const {
+  presenciaVisible
+} = require('../presence');
 
 /**
  * Campos de presencia de `objetivoId` tal y como los ve `visorId`, listos
@@ -15,14 +17,27 @@ const { describirPresencia } = require('../presence');
  *
  * @returns {{isOnline: boolean, lastActive: string|null}}
  */
-function presenciaDe(req, visorId, objetivoId) {
+async function presenciaDe(req, visorId, objetivoId) {
+  if (!visorId || !objetivoId) return {
+    isOnline: false,
+    lastActive: null
+  };
   const registro = req.app.get('presencia');
-  return describirPresencia({
-    visorId,
-    objetivoId,
-    estaEnLinea: registro ? (id) => registro.estaEnLinea(id) : () => false,
-    getPresencia: (id) => db.getPresencia(id),
-  });
+  const [visor, objetivo] = await Promise.all([await db.getPresencia(visorId), await db.getPresencia(objetivoId)]);
+  if (!presenciaVisible({
+    visorComparte: visor.comparteEstado,
+    objetivoComparte: objetivo.comparteEstado
+  })) {
+    return {
+      isOnline: false,
+      lastActive: null
+    };
+  }
+  return {
+    isOnline: registro ? registro.estaEnLinea(objetivoId) : false,
+    lastActive: registro && registro.estaEnLinea(objetivoId) ? null : objetivo.lastActive
+  };
 }
-
-module.exports = { presenciaDe };
+module.exports = {
+  presenciaDe
+};

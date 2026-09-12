@@ -2,7 +2,7 @@ import type { MetadataRoute } from 'next';
 
 import { SITE_URL } from '@/lib/api';
 
-const API_URL = process.env.API_URL ?? 'http://157.245.247.45:3000';
+const API_URL = process.env.API_URL ?? 'http://127.0.0.1:3000';
 
 /**
  * Sitemap con una entrada por producto.

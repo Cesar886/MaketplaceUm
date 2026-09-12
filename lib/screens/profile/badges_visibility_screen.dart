@@ -89,6 +89,16 @@ List<_InsigniaDelCatalogo> _catalogo() => [
     requisito: 'badge_visibility.req_new_seller'.tr(),
   ),
   _InsigniaDelCatalogo(
+    clave: 'recien_llegado',
+    chip: const InsigniaRecienLlegado(),
+    requisito: 'badge_visibility.req_just_joined'.tr(),
+  ),
+  _InsigniaDelCatalogo(
+    clave: 'recien_verificado',
+    chip: const InsigniaRecienVerificado(),
+    requisito: 'badge_visibility.req_just_verified'.tr(),
+  ),
+  _InsigniaDelCatalogo(
     clave: 'racha',
     // Números de muestra: el chip es un ejemplo de cómo se verá, no el valor
     // real de esta cuenta, que solo el perfil conoce.

@@ -17,25 +17,27 @@ const VENTANA_METRICAS_DIAS = 30;
 // de la métrica los envíos demasiado recientes para estar decididos; si no,
 // publicar mucho justo antes de consultar hunde artificialmente el open rate.
 const GRACIA_APERTURA_HORAS = 24;
-
 function tasa(enviadas, abiertas) {
-  return enviadas > 0 ? Math.round((abiertas / enviadas) * 1000) / 10 : 0;
+  return enviadas > 0 ? Math.round(abiertas / enviadas * 1000) / 10 : 0;
 }
 
 /**
  * @param {number} dias ventana hacia atrás
  * @returns {{ventanaDias, porTipo: [], porCategoria: []}} porcentajes de apertura
  */
-function getOpenRate({ dias = VENTANA_METRICAS_DIAS } = {}) {
+async function getOpenRate({
+  dias = VENTANA_METRICAS_DIAS
+} = {}) {
   const raw = db.getDb();
-
   const filtro = `
     sent_at >= datetime('now', '-' || @dias || ' days')
     AND sent_at <= datetime('now', '-' || @gracia || ' hours')
   `;
-  const params = { dias, gracia: GRACIA_APERTURA_HORAS };
-
-  const porTipo = raw.prepare(`
+  const params = {
+    dias,
+    gracia: GRACIA_APERTURA_HORAS
+  };
+  const porTipo = await raw.prepare(`
     SELECT
       type                                             AS tipo,
       COUNT(*)                                         AS enviadas,
@@ -45,8 +47,7 @@ function getOpenRate({ dias = VENTANA_METRICAS_DIAS } = {}) {
     GROUP BY type
     ORDER BY enviadas DESC
   `).all(params);
-
-  const porCategoria = raw.prepare(`
+  const porCategoria = await raw.prepare(`
     SELECT
       nl.type                                             AS tipo,
       nl.category_id                                      AS categoryId,
@@ -60,13 +61,21 @@ function getOpenRate({ dias = VENTANA_METRICAS_DIAS } = {}) {
     GROUP BY nl.type, nl.category_id
     ORDER BY enviadas DESC
   `).all(params);
-
   return {
     ventanaDias: dias,
     graciaAperturaHoras: GRACIA_APERTURA_HORAS,
-    porTipo: porTipo.map(f => ({ ...f, openRate: tasa(f.enviadas, f.abiertas) })),
-    porCategoria: porCategoria.map(f => ({ ...f, openRate: tasa(f.enviadas, f.abiertas) })),
+    porTipo: porTipo.map(f => ({
+      ...f,
+      openRate: tasa(f.enviadas, f.abiertas)
+    })),
+    porCategoria: porCategoria.map(f => ({
+      ...f,
+      openRate: tasa(f.enviadas, f.abiertas)
+    }))
   };
 }
-
-module.exports = { VENTANA_METRICAS_DIAS, GRACIA_APERTURA_HORAS, getOpenRate };
+module.exports = {
+  VENTANA_METRICAS_DIAS,
+  GRACIA_APERTURA_HORAS,
+  getOpenRate
+};

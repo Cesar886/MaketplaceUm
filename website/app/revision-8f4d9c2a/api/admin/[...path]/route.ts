@@ -20,13 +20,14 @@ const CONFIG_KEY = /^(negocio_verificado|negocio_sin_verificar|um_verificado|um_
 function allowedPath(method: string, segments: string[]) {
   const joined = segments.join('/');
   if (method === 'GET') {
-    if (['dashboard', 'users', 'publications', 'config', 'audit-log'].includes(joined)) return true;
-    return segments.length === 2 && segments[0] === 'users' && ID.test(segments[1]);
+    if (['dashboard', 'users', 'publications', 'config', 'audit-log', 'reports'].includes(joined)) return true;
+    return segments.length === 2 && ['users', 'reports'].includes(segments[0]) && ID.test(segments[1]);
   }
   if (method === 'PUT' || method === 'DELETE') {
     if (segments.length === 2 && segments[0] === 'config' && CONFIG_KEY.test(segments[1])) return true;
   }
   if (method === 'PATCH') {
+    if (segments.length === 2 && segments[0] === 'reports' && ID.test(segments[1])) return true;
     if (segments.length === 3 && segments[0] === 'users'
         && ID.test(segments[1]) && segments[2] === 'status') return true;
     if (segments.length === 4 && segments[0] === 'publications'

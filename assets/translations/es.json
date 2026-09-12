@@ -667,6 +667,8 @@
     "req_top_rated": "4.5 de promedio con 10 reseñas o más",
     "req_instant_replies": "Contestar en menos de 10 minutos",
     "req_fast_replies": "Contestar en menos de 1 hora",
+    "req_just_joined": "Tus primeros 7 días desde el registro",
+    "req_just_verified": "Tus primeros 7 días desde la primera verificación",
     "req_new_seller": "Tu primera venta en tus primeros 60 días",
     "req_streak": "Publicar varias semanas seguidas",
     "req_anniversary": "Cumplir un año en MarketplaceUm",
@@ -683,6 +685,8 @@
     "fast_replies": "Responde rápido",
     "instant_replies": "Respuesta instantánea",
     "top_rated": "Vendedor confiable",
+    "just_joined": "Recién llegado",
+    "just_verified": "Recién verificado",
     "new_seller": "Novato",
     "verified": "Verificado",
     "verified_student": "Estudiante verificado",
@@ -696,6 +700,8 @@
     "how_top_rated": "4.5 de promedio con 10 reseñas o más",
     "how_instant_replies": "Contesta en menos de 10 minutos",
     "how_fast_replies": "Contesta en menos de 1 hora",
+    "how_just_joined": "Se registró durante los últimos 7 días",
+    "how_just_verified": "Se verificó por primera vez durante los últimos 7 días",
     "how_new_seller": "Su primera venta en los primeros 60 días",
     "how_streak": "Semanas seguidas publicando",
     "how_anniversary": "Años desde que se registró",
@@ -969,7 +975,7 @@
     "report_q": "¿Cómo reporto un problema?",
     "report_a": "En el perfil del usuario o dentro de un chat encontrarás la opción de reportar. Describe la situación y el equipo de soporte la revisará.",
     "support_q": "¿Cómo contacto a soporte?",
-    "support_a": "Escríbenos a soporte@mercaditoum.site y te responderemos en un plazo máximo de 48 horas hábiles."
+    "support_a": "Escríbenos a soporte@marketplace-um.me y te responderemos en un plazo máximo de 48 horas hábiles."
   },
   "safety": {
     "verify_profile_t": "Verifica el perfil antes de reunirte",

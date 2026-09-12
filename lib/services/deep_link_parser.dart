@@ -37,10 +37,10 @@ String? _idValido(String crudo) {
 String? idDePublicacionEnLink(Uri uri) {
   final segmentos = uri.pathSegments;
 
-  // App Link del sitio: https://mercaditoum.site/producto/<id>
+  // App Link del sitio: https://marketplace-um.me/producto/<id>
   if (uri.scheme == 'https' || uri.scheme == 'http') {
     // Se compara el host COMPLETO, nunca con `contains`: un dominio como
-    // 'mercaditoum.site.malo.com' contiene el nuestro y no es nuestro.
+    // 'marketplace-um.me.malo.com' contiene el nuestro y no es nuestro.
     if (!_esHostDelSitio(uri.host)) return null;
     if (segmentos.length != 2 || segmentos.first != rutaPublicacion) {
       return null;

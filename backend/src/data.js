@@ -1,47 +1,57 @@
+'use strict';
+
 const db = require('./database');
 
-// ─── Inicializar base de datos (se ejecuta al importar) ────
-db.initDatabase();
-// Corrige también las cuentas oficiales que ya existían antes de esta regla.
-db.anularMetodosPagoCuentasDueno();
-
-// ─── Exportar datos como arrays (compatible con las rutas existentes) ────
-
-const categories = db.getCategories();
-const sellers = db.getSellers();
-const highlightPlans = db.getHighlightPlans();
-
-// Recarga la caché compartida después de una decisión administrativa que
-// cambie `sellers.verified`. Las rutas antiguas leen este array directamente.
-function refrescarSellers() {
-  db.refrescarCuentasDueno();
-  sellers.length = 0;
-  sellers.push(...db.getSellers());
+// Se conservan las referencias a estos arrays porque varias rutas antiguas
+// las importan una vez. initializeData rellena las mismas instancias antes de
+// abrir el puerto HTTP, de modo que ninguna petición ve una carga parcial.
+const categories = [];
+const sellers = [];
+const highlightPlans = [];
+const products = [];
+const ownListings = [];
+let initialization;
+function replaceContents(target, values) {
+  target.splice(0, target.length, ...values);
 }
-
-// Limpiar ofertas expiradas al arrancar
-db.expireStaleOffers();
-
-// Cargar products, cart y ownListings desde SQLite
-let products = db.getAllProducts();
-
-// El carrito NO se cachea en memoria: es por usuario y se consulta siempre
-// contra SQLite desde routes/cart.js. La versión anterior lo mantenía como
-// un array global que `saveData()` volcaba con DELETE+INSERT, lo que además
-// de compartir el carrito entre usuarios borraba el de todos cada vez que
-// se guardaba cualquier producto.
-
-let ownListings = db.getAllListings().map(row => ({
-  id: row.id,
-  productId: row.productId,
-}));
-
-// ─── Registrar un nuevo vendedor (DB + en memoria) ────────────
-function registerSeller(sellerData) {
-  // Insertar en SQLite
-  db.getDb().prepare(`
-    INSERT OR IGNORE INTO sellers (id, name, email, phone, avatarInitials, major, isBusiness, logoUrl, rating, reviews, verified, password_hash, businessHours, paymentMethods, tipo_cuenta, created_at)
-    VALUES (@id, @name, @email, @phone, @avatarInitials, @major, @isBusiness, @logoUrl, @rating, @reviews, @verified, @password_hash, @businessHours, @paymentMethods, @tipo_cuenta, datetime('now'))
+async function initializeData() {
+  if (initialization) return initialization;
+  initialization = (async () => {
+    await db.initDatabase();
+    await db.anularMetodosPagoCuentasDueno();
+    await db.expireStaleOffers();
+    const [categoryRows, sellerRows, plans, productRows, listingRows] = await Promise.all([await db.getCategories(), await db.getSellers(), await db.getHighlightPlans(), await db.getAllProducts(), await db.getAllListings()]);
+    replaceContents(categories, categoryRows);
+    replaceContents(sellers, sellerRows);
+    replaceContents(highlightPlans, plans);
+    replaceContents(products, productRows);
+    replaceContents(ownListings, listingRows.map(row => ({
+      id: row.id,
+      productId: row.productId
+    })));
+  })();
+  try {
+    await initialization;
+  } catch (error) {
+    initialization = null;
+    throw error;
+  }
+}
+async function refrescarSellers() {
+  await db.refrescarCuentasDueno();
+  replaceContents(sellers, await db.getSellers());
+}
+async function registerSeller(sellerData) {
+  await db.getDb().prepare(`
+    INSERT OR IGNORE INTO sellers (
+      id, name, email, phone, avatarInitials, major, isBusiness, logoUrl,
+      rating, reviews, verified, password_hash, businessHours,
+      paymentMethods, tipo_cuenta, created_at
+    ) VALUES (
+      @id, @name, @email, @phone, @avatarInitials, @major, @isBusiness,
+      @logoUrl, @rating, @reviews, @verified, @password_hash, @businessHours,
+      @paymentMethods, @tipo_cuenta, datetime('now')
+    )
   `).run({
     ...sellerData,
     email: sellerData.email || null,
@@ -54,50 +64,55 @@ function registerSeller(sellerData) {
     logoUrl: sellerData.logoUrl || null,
     password_hash: sellerData.password_hash || null,
     businessHours: JSON.stringify(sellerData.businessHours || {}),
-    paymentMethods: JSON.stringify(sellerData.paymentMethods || []),
+    paymentMethods: JSON.stringify(sellerData.paymentMethods || [])
   });
-  // Las cuentas oficiales nunca anuncian métodos de pago.
-  db.anularMetodosPagoCuentasDueno();
-  // Refrescar la lista en memoria desde DB
-  sellers.length = 0;
-  sellers.push(...db.getSellers());
+  await db.anularMetodosPagoCuentasDueno();
+  await refrescarSellers();
 }
-
-// ─── Persistencia ─────────────────────────────────────────────
-function saveData() {
-  // products → SQLite (upsert, NUNCA borrar-y-reinsertar).
-  // product_ratings tiene ON DELETE CASCADE hacia products: un DELETE FROM
-  // products aquí (aunque se reinserten los mismos IDs después) borra
-  // permanentemente TODAS las calificaciones de TODOS los productos en cada
-  // guardado. insertProduct ya hace INSERT OR REPLACE, así que un upsert por
-  // fila logra lo mismo sin ese efecto secundario. Los productos eliminados
-  // de verdad se borran explícitamente en su propio endpoint (db.deleteProduct).
-  db.getDb().transaction(() => {
-    for (const p of products) {
-      db.insertProduct(p);
-    }
-
-    // Listings
-    db.getDb().prepare('DELETE FROM listings').run();
-    for (const l of ownListings) {
-      db.addListing(l);
-    }
+async function saveData() {
+  await db.getDb().transaction(async () => {
+    for (const product of products) await db.insertProduct(product);
+    await db.getDb().prepare('DELETE FROM listings').run();
+    for (const listing of ownListings) await db.addListing(listing);
   })();
 }
-
-function updateSellerField(sellerId, field, value) {
-  // La regla está en la capa de escritura para que ningún flujo pueda
-  // restaurar métodos de pago en las cuentas del dueño.
-  const valorPersistido =
-    field === 'paymentMethods' && db.esUsuarioTodosLosBadges(sellerId)
-      ? null
-      : value;
-  db.getDb().prepare(
-    `UPDATE sellers SET ${field} = ? WHERE id = ?`
-  ).run(valorPersistido, sellerId);
-  // Refrescar la lista en memoria desde DB
-  sellers.length = 0;
-  sellers.push(...db.getSellers());
+async function updateSellerField(sellerId, field, value) {
+  // Los nombres de columna nunca vienen de una petición directa. Esta lista
+  // evita que una futura llamada accidental convierta el template en SQL
+  // inyectable.
+  const allowedFields = new Set(['password_hash', 'phone', 'name', 'avatarInitials', 'major', 'isBusiness', 'logoUrl', 'businessDescription', 'businessCategory', 'businessHours', 'paymentMethods', 'location_lat', 'location_lng', 'colorAcento', 'producto_fijado_id', 'facebook_url', 'instagram_url', 'whatsapp_number', 'tiktok_url', 'twitter_url', 'insignias_ocultas', 'socio_fundador']);
+  if (!allowedFields.has(field)) throw new Error(`Campo de vendedor no permitido: ${field}`);
+  const valorPersistido = field === 'paymentMethods' && db.esUsuarioTodosLosBadges(sellerId) ? null : value;
+  await db.getDb().prepare(`UPDATE sellers SET ${field} = ? WHERE id = ?`).run(valorPersistido, sellerId);
+  await refrescarSellers();
 }
 
-module.exports = { categories, sellers, products, ownListings, highlightPlans, saveData, registerSeller, updateSellerField, refrescarSellers };
+// La suite existente usa SQLite temporal y consulta estos arrays justo al
+// importar el módulo. Mantener esta carga síncrona en NODE_ENV=test permite
+// validar el comportamiento legacy mientras producción usa sólo PostgreSQL.
+if (process.env.NODE_ENV === 'test' && process.env.MERCADITO_DB_PATH && !process.env.DATABASE_URL) {
+  db.initDatabase();
+  db.anularMetodosPagoCuentasDueno();
+  db.expireStaleOffers();
+  replaceContents(categories, db.getCategories());
+  replaceContents(sellers, db.getSellers());
+  replaceContents(highlightPlans, db.getHighlightPlans());
+  replaceContents(products, db.getAllProducts());
+  replaceContents(ownListings, db.getAllListings().map(row => ({
+    id: row.id,
+    productId: row.productId,
+  })));
+  initialization = Promise.resolve();
+}
+module.exports = {
+  categories,
+  sellers,
+  products,
+  ownListings,
+  highlightPlans,
+  initializeData,
+  saveData,
+  registerSeller,
+  updateSellerField,
+  refrescarSellers
+};

@@ -1,9 +1,8 @@
 const ORDEN_DOCUMENTO = {
   responsible_ine_front: 0,
   responsible_ine_back: 1,
-  additional_evidence: 2,
+  additional_evidence: 2
 };
-
 function parsearJson(valor, respaldo) {
   if (!valor) return respaldo;
   try {
@@ -12,19 +11,10 @@ function parsearJson(valor, respaldo) {
     return respaldo;
   }
 }
-
-function obtenerDocumentos(database, usuarioId) {
+async function obtenerDocumentos(database, usuarioId) {
   const vistos = new Set();
-  return database.prepare(
-    'SELECT id, doc_type AS type, file_url AS url, '
-      + 'mime_type AS mimeType, original_name AS originalName, '
-      + 'uploaded_at AS uploadedAt, content_hash AS contentHash '
-      + 'FROM verification_documents WHERE usuario_id = ? '
-      + 'ORDER BY uploaded_at DESC, id DESC',
-  ).all(usuarioId).filter(documento => {
-    const clave = documento.type === 'additional_evidence'
-      ? documento.type + ':' + (documento.contentHash || documento.id)
-      : documento.type;
+  return (await database.prepare('SELECT id, doc_type AS type, file_url AS url, ' + 'mime_type AS mimeType, original_name AS originalName, ' + 'uploaded_at AS uploadedAt, content_hash AS contentHash ' + 'FROM verification_documents WHERE usuario_id = ? ' + 'ORDER BY uploaded_at DESC, id DESC').all(usuarioId)).filter(documento => {
+    const clave = documento.type === 'additional_evidence' ? documento.type + ':' + (documento.contentHash || documento.id) : documento.type;
     if (vistos.has(clave)) return false;
     vistos.add(clave);
     return true;
@@ -34,15 +24,11 @@ function obtenerDocumentos(database, usuarioId) {
     url: documento.url,
     mimeType: documento.mimeType,
     originalName: documento.originalName,
-    uploadedAt: documento.uploadedAt,
-  })).sort((a, b) =>
-    (ORDEN_DOCUMENTO[a.type] ?? 99) - (ORDEN_DOCUMENTO[b.type] ?? 99),
-  );
+    uploadedAt: documento.uploadedAt
+  })).sort((a, b) => (ORDEN_DOCUMENTO[a.type] ?? 99) - (ORDEN_DOCUMENTO[b.type] ?? 99));
 }
-
-function obtenerExpedienteVerificacion(database, usuarioId) {
-  const row = database.prepare(
-    `SELECT v.usuario_id AS id, v.creado_en AS submittedAt,
+async function obtenerExpedienteVerificacion(database, usuarioId) {
+  const row = await database.prepare(`SELECT v.usuario_id AS id, v.creado_en AS submittedAt,
        v.nombre_negocio AS requestedName,
        v.responsable_negocio AS responsibleName,
        v.ubicacion_lat AS requestedLat, v.ubicacion_lng AS requestedLng,
@@ -56,15 +42,10 @@ function obtenerExpedienteVerificacion(database, usuarioId) {
        s.twitter_url AS twitterUrl
      FROM verificaciones v
      JOIN sellers s ON s.id = v.usuario_id
-     WHERE v.usuario_id = ? AND v.tipo_cuenta = 'negocio'`,
-  ).get(usuarioId);
+     WHERE v.usuario_id = ? AND v.tipo_cuenta = 'negocio'`).get(usuarioId);
   if (!row) return null;
-
-  const tieneUbicacionSolicitud = Number.isFinite(row.requestedLat)
-    && Number.isFinite(row.requestedLng);
-  const tieneUbicacionPerfil = Number.isFinite(row.profileLat)
-    && Number.isFinite(row.profileLng);
-
+  const tieneUbicacionSolicitud = Number.isFinite(row.requestedLat) && Number.isFinite(row.requestedLng);
+  const tieneUbicacionPerfil = Number.isFinite(row.profileLat) && Number.isFinite(row.profileLng);
   return {
     id: row.id,
     submittedAt: row.submittedAt || null,
@@ -79,23 +60,28 @@ function obtenerExpedienteVerificacion(database, usuarioId) {
       logoUrl: row.logoUrl || null,
       accountCreatedAt: row.accountCreatedAt || null,
       businessHours: parsearJson(row.businessHours, {}),
-      paymentMethods: parsearJson(row.paymentMethods, []),
+      paymentMethods: parsearJson(row.paymentMethods, [])
     },
-    location: tieneUbicacionSolicitud
-      ? { lat: row.requestedLat, lng: row.requestedLng, source: 'request' }
-      : tieneUbicacionPerfil
-        ? { lat: row.profileLat, lng: row.profileLng, source: 'profile' }
-        : null,
+    location: tieneUbicacionSolicitud ? {
+      lat: row.requestedLat,
+      lng: row.requestedLng,
+      source: 'request'
+    } : tieneUbicacionPerfil ? {
+      lat: row.profileLat,
+      lng: row.profileLng,
+      source: 'profile'
+    } : null,
     socialLinks: {
       submitted: row.submittedSocialLink || null,
       facebook: row.facebookUrl || null,
       instagram: row.instagramUrl || null,
       whatsapp: row.whatsappNumber || null,
       tiktok: row.tiktokUrl || null,
-      twitter: row.twitterUrl || null,
+      twitter: row.twitterUrl || null
     },
-    documents: obtenerDocumentos(database, row.id),
+    documents: await obtenerDocumentos(database, row.id)
   };
 }
-
-module.exports = { obtenerExpedienteVerificacion };
+module.exports = {
+  obtenerExpedienteVerificacion
+};

@@ -94,7 +94,7 @@ test('dashboard y operaciones quedan protegidos por el JWT admin', async () => {
 
 test('suspender una cuenta corta JWT y refresh y registra auditoría atómica', async () => {
   const id = seller();
-  const session = generateSession(id);
+  const session = await generateSession(id);
   const response = await request(`/api/admin/users/${id}/status`, {
     method: 'PATCH',
     body: {
@@ -104,7 +104,7 @@ test('suspender una cuenta corta JWT y refresh y registra auditoría atómica', 
     },
   });
   assert.equal(response.status, 200, await response.text());
-  assert.equal(refreshSession(session.refreshToken), null);
+  assert.equal(await refreshSession(session.refreshToken), null);
   const row = database.prepare('SELECT admin_status FROM sellers WHERE id = ?').get(id);
   assert.equal(row.admin_status, 'suspended');
   const audit = database.prepare(
@@ -186,6 +186,28 @@ test('spam y eliminación lógica ocultan publicaciones públicas y conservan ev
   assert.equal(JSON.parse(notifications[1].data).publicationId, wantedId);
 });
 
+test('una moderación desde reportes puede omitir toda explicación al propietario', async () => {
+  const owner = seller();
+  const productId = product(owner, 'Producto reportado');
+
+  const response = await request(`/api/admin/publications/product/${productId}/spam`, {
+    method: 'PATCH',
+    body: {
+      reason: 'Medida administrativa vinculada al reporte rep_prueba',
+      expectedStatus: 'visible',
+      notifyOwner: false,
+    },
+  });
+  assert.equal(response.status, 200, await response.text());
+  assert.equal(database.prepare(
+    'SELECT COUNT(*) AS total FROM notifications WHERE user_id = ?',
+  ).get(owner).total, 0);
+  const audit = database.prepare(
+    'SELECT details_json FROM admin_audit_log WHERE entity_id = ? ORDER BY id DESC LIMIT 1',
+  ).get(productId);
+  assert.equal(JSON.parse(audit.details_json).ownerNotified, false);
+});
+
 test('operación masiva aborta si no puede respaldar y crea backup antes de aplicar', async () => {
   const first = seller();
   const second = seller();
@@ -230,6 +252,42 @@ test('listados de usuarios, publicaciones y auditoría son paginados', async () 
     assert.equal(payload.limit, 10);
     assert.equal(typeof payload.total, 'number');
   }
+});
+
+test('publicaciones se pueden localizar por id exacto para enfocar un reporte', async () => {
+  const owner = seller();
+  const productId = product(owner, 'Título que no contiene el identificador');
+  const wantedId = wanted(owner, 'Solicitud sin el identificador en el título');
+
+  for (const [kind, id] of [['product', productId], ['wanted', wantedId]]) {
+    const response = await request(`/api/admin/publications?q=${encodeURIComponent(id)}&kind=${kind}`);
+    const responseText = await response.text();
+    assert.equal(response.status, 200, responseText);
+    const payload = JSON.parse(responseText);
+    assert.equal(payload.total, 1);
+    assert.equal(payload.publications[0].id, id);
+    assert.equal(payload.publications[0].kind, kind);
+  }
+});
+
+test('un enlace de revisión recupera el reporte exacto después de recargar', async () => {
+  const reporterId = seller();
+  const targetId = seller();
+  const report = db.createReport({
+    reporterId,
+    targetType: 'user',
+    targetId,
+    targetUserId: targetId,
+    reason: 'Actividad sospechosa',
+  });
+
+  const response = await request(`/api/admin/reports/${encodeURIComponent(report.id)}`);
+  const responseText = await response.text();
+  assert.equal(response.status, 200, responseText);
+  const payload = JSON.parse(responseText);
+  assert.equal(payload.report.id, report.id);
+  assert.equal(payload.report.reporter_id, reporterId);
+  assert.equal(payload.report.target_user_id, targetId);
 });
 
 test('el detalle administrativo expone las visitas acumuladas del perfil', async () => {
