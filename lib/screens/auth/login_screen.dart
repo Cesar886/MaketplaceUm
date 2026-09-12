@@ -12,8 +12,7 @@ import '../../services/support_conversation.dart';
 import '../../config/google_auth_config.dart';
 import '../../widgets/app_logo.dart';
 import '../../widgets/google_sign_in_button.dart';
-import '../../main.dart' show mainShellKey;
-import '../main_shell.dart';
+import '../../main.dart' show abrirInicio;
 import '../chat_screen.dart';
 import 'google_auth_flow.dart';
 import 'register_type_screen.dart';
@@ -228,12 +227,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                       .read<AccentProvider>()
                                       .sincronizarDesdeBackend(sellerId);
                                 }
-                                Navigator.of(context).pushAndRemoveUntil(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) =>
-                                        MainShell(key: mainShellKey),
-                                  ),
-                                  (_) => false,
+                                abrirInicio(
+                                  Navigator.of(context),
+                                  sesionRecienIniciada: true,
                                 );
                               } else {
                                 ScaffoldMessenger.of(context).showSnackBar(

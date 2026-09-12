@@ -649,8 +649,9 @@ class _AccountSection extends StatelessWidget {
           _VerifyBanner(
             colors: colors,
             onTap: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).push(
+              final navigator = Navigator.of(context);
+              navigator.pop();
+              navigator.push(
                 MaterialPageRoute<bool>(
                   builder: (_) => VerificationScreen(tipo: auth.accountType),
                 ),
@@ -664,8 +665,9 @@ class _AccountSection extends StatelessWidget {
           icon: Icons.inventory_2_rounded,
           label: 'profile.my_listings'.tr(),
           onTap: () {
-            Navigator.of(context).pop();
-            Navigator.of(context).push(
+            final navigator = Navigator.of(context);
+            navigator.pop();
+            navigator.push(
               MaterialPageRoute<void>(builder: (_) => const MyListingsScreen()),
             );
           },
@@ -677,8 +679,9 @@ class _AccountSection extends StatelessWidget {
             label: 'profile.comments'.tr(),
             onTap: () {
               final sellerId = auth.backendSellerId!;
-              Navigator.of(context).pop();
-              Navigator.of(context).push(
+              final navigator = Navigator.of(context);
+              navigator.pop();
+              navigator.push(
                 MaterialPageRoute<void>(
                   builder: (_) => MyCommentsScreen(userId: sellerId),
                 ),
@@ -705,8 +708,9 @@ class _AccountSection extends StatelessWidget {
           icon: Icons.language_rounded,
           label: 'home.sidebar_language'.tr(),
           onTap: () {
-            Navigator.of(context).pop();
-            Navigator.of(context).push(
+            final navigator = Navigator.of(context);
+            navigator.pop();
+            navigator.push(
               MaterialPageRoute<void>(builder: (_) => const LanguageScreen()),
             );
           },
@@ -716,8 +720,9 @@ class _AccountSection extends StatelessWidget {
           icon: Icons.settings_rounded,
           label: 'settings.title'.tr(),
           onTap: () {
-            Navigator.of(context).pop();
-            Navigator.of(context).push(
+            final navigator = Navigator.of(context);
+            navigator.pop();
+            navigator.push(
               MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
             );
           },

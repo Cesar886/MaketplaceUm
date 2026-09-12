@@ -228,10 +228,11 @@ class _WantedPostScreenState extends State<WantedPostScreen> {
               : null,
         );
         if (!mounted) return;
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.of(context).pop(true);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('publish.changes_saved'.tr())));
+        messenger.showSnackBar(
+          SnackBar(content: Text('publish.changes_saved'.tr())),
+        );
       } else {
         // Publicar también requiere sesión real (JWT): el backend usa
         // requireAuth para que el autor salga del token, no del body.

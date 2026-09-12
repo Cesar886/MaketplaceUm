@@ -6,7 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../app_theme.dart';
 import '../config/app_config.dart';
-import '../main.dart' show mainShellKey;
+import '../main.dart' show abrirInicio;
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/anonymous_id.dart';
@@ -1208,8 +1208,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       // retiramos las rutas apiladas (detalle, búsqueda, perfil, etc.).
       final navigator = Navigator.of(context);
       final messenger = ScaffoldMessenger.of(context);
-      mainShellKey.currentState?.selectTab(0);
-      navigator.popUntil((route) => route.isFirst);
+      abrirInicio(navigator);
       messenger.showSnackBar(SnackBar(content: Text('product.deleted'.tr())));
     } catch (e) {
       if (!mounted) return;

@@ -6,8 +6,7 @@ import '../../app_theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/app_logo.dart';
 import '../../widgets/badges.dart';
-import '../../main.dart' show mainShellKey;
-import '../main_shell.dart';
+import '../../main.dart' show abrirInicio;
 
 class AccountCreatedScreen extends StatelessWidget {
   const AccountCreatedScreen({super.key});
@@ -116,11 +115,9 @@ class AccountCreatedScreen extends StatelessWidget {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () {
-                    Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute<void>(
-                        builder: (_) => MainShell(key: mainShellKey),
-                      ),
-                      (_) => false,
+                    abrirInicio(
+                      Navigator.of(context),
+                      sesionRecienIniciada: true,
                     );
                   },
                   child: Text('auth.go_home'.tr()),

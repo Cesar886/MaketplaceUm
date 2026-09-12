@@ -7,8 +7,7 @@ import '../../providers/accent_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/google_sign_in_service.dart';
-import '../../main.dart' show mainShellKey;
-import '../main_shell.dart';
+import '../../main.dart' show abrirInicio;
 import 'register_type_screen.dart';
 
 /// Lo que hace el botón "Continuar con Google", desde cualquier pantalla.
@@ -51,9 +50,7 @@ Future<void> continuarConGoogle(BuildContext context) async {
     );
     return;
   } catch (_) {
-    mensajero.showSnackBar(
-      SnackBar(content: Text('auth.google_failed'.tr())),
-    );
+    mensajero.showSnackBar(SnackBar(content: Text('auth.google_failed'.tr())));
     return;
   }
 
@@ -68,10 +65,7 @@ Future<void> continuarConGoogle(BuildContext context) async {
       // servidor, no lo que dejó la sesión anterior en este teléfono.
       final sellerId = auth.backendSellerId;
       if (sellerId != null) accent.sincronizarDesdeBackend(sellerId);
-      navegador.pushAndRemoveUntil(
-        MaterialPageRoute<void>(builder: (_) => MainShell(key: mainShellKey)),
-        (_) => false,
-      );
+      abrirInicio(navegador, sesionRecienIniciada: true);
 
     case final GoogleRegistroPendiente pendiente:
       // Google confirmó quién es, pero falta lo que un idToken no puede

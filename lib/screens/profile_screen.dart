@@ -15,6 +15,7 @@ import '../widgets/product_card.dart';
 import '../widgets/profile_banner.dart';
 import '../widgets/user_role.dart';
 import 'auth/login_screen.dart';
+import '../main.dart' show abrirLogin;
 import 'auth/verification_screen.dart';
 import 'my_listings_screen.dart';
 import 'product_detail_screen.dart';
@@ -509,12 +510,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onPressed: () async {
                   await auth.logout();
                   if (!context.mounted) return;
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const LoginScreen(),
-                    ),
-                    (_) => false,
-                  );
+                  abrirLogin(Navigator.of(context));
                 },
                 icon: const Icon(Icons.logout_rounded),
                 label: Text('profile.logout'.tr()),

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../app_theme.dart';
 import '../../config/locales.dart';
+import '../../main.dart' show abrirLogin;
 import '../../providers/accent_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
@@ -172,6 +173,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await ApiService.deleteMyAccount();
       if (!mounted) return;
       await context.read<AuthProvider>().logout();
+      if (!mounted) return;
+      abrirLogin(Navigator.of(context));
     } catch (error, stack) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

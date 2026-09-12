@@ -33,6 +33,39 @@ final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 /// pida.
 final mainShellKey = GlobalKey<MainShellState>();
 
+/// Entra a Inicio sin crear dos [MainShell] durante una transición.
+///
+/// Login también puede abrirse encima del shell (por ejemplo, desde el
+/// detalle de un producto). En ese caso construir otro shell con la misma
+/// [mainShellKey] hace que ambos coexistan durante la animación y rompe el
+/// árbol de navegación. Si ya existe, se reutiliza; si no, se crea como raíz.
+void abrirInicio(
+  NavigatorState navegador, {
+  bool sesionRecienIniciada = false,
+}) {
+  final shell = mainShellKey.currentState;
+  if (shell != null) {
+    if (sesionRecienIniciada) shell.sincronizarSesionActiva();
+    shell.selectTab(0);
+    navegador.popUntil((route) => route.isFirst);
+    return;
+  }
+
+  navegador.pushAndRemoveUntil(
+    MaterialPageRoute<void>(builder: (_) => MainShell(key: mainShellKey)),
+    (_) => false,
+  );
+}
+
+/// Login sí reemplaza toda la sesión: ninguna ruta autenticada debe quedar
+/// debajo después de cerrar sesión, borrar la cuenta o invalidar el token.
+void abrirLogin(NavigatorState navegador) {
+  navegador.pushAndRemoveUntil(
+    MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+    (_) => false,
+  );
+}
+
 /// La renovación persistente fue rechazada: la sesión fue revocada o ya no
 /// existe. Un JWT vencido o firmado con una clave anterior se renueva antes
 /// de llegar aquí; solo este rechazo definitivo manda de nuevo al login.
@@ -48,10 +81,8 @@ Future<void> _cerrarSesionExpirada() async {
 
   // Se vacía la pila entera: cualquier pantalla que quedara abajo pertenece a
   // la sesión que acaba de morir y volvería a fallar con 401.
-  navigatorKey.currentState?.pushAndRemoveUntil(
-    MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
-    (_) => false,
-  );
+  final navegador = navigatorKey.currentState;
+  if (navegador != null) abrirLogin(navegador);
 }
 
 Future<void> _mostrarCuentaRestringida(
@@ -61,10 +92,8 @@ Future<void> _mostrarCuentaRestringida(
   if (contexto == null) return;
   final auth = contexto.read<AuthProvider>();
   await auth.logout();
-  navigatorKey.currentState?.pushAndRemoveUntil(
-    MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
-    (_) => false,
-  );
+  final navegador = navigatorKey.currentState;
+  if (navegador != null) abrirLogin(navegador);
   await Future<void>.delayed(Duration.zero);
   final dialogContext = navigatorKey.currentContext;
   if (dialogContext == null || !dialogContext.mounted) return;

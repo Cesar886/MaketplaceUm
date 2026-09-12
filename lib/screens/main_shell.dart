@@ -230,6 +230,13 @@ class MainShellState extends State<MainShell> with WidgetsBindingObserver {
     if (index == 4 || index == 0) recargarContadores();
   }
 
+  /// Activa los servicios que no pudieron arrancar si el shell se construyó
+  /// durante una sesión anónima y luego Login se abrió como ruta encima.
+  void sincronizarSesionActiva() {
+    _abrirPresencia();
+    recargarContadores();
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
