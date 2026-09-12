@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../app_theme.dart';
 import '../config/app_config.dart';
+import '../main.dart' show mainShellKey;
 import '../models.dart';
 import '../providers/auth_provider.dart';
 import '../services/anonymous_id.dart';
@@ -40,7 +41,6 @@ import '../widgets/user_role.dart';
 import '../widgets/views_counter.dart';
 import 'auth/login_screen.dart';
 import 'chat_screen.dart';
-import 'home_screen.dart';
 import 'report_product_sheet.dart';
 import 'publish_product_screen.dart';
 import 'qr_display_screen.dart';
@@ -333,7 +333,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   ),
                   IconButton.filled(
                     style: _appBarIconButtonStyle,
-                    onPressed: () => _confirmDelete(context),
+                    onPressed: _confirmDelete,
                     icon: const Icon(
                       Icons.delete_rounded,
                       color: AppColors.danger,
@@ -1174,7 +1174,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     }
   }
 
-  Future<void> _confirmDelete(BuildContext context) async {
+  Future<void> _confirmDelete() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1201,14 +1201,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     try {
       await ApiService.deleteProduct(product.id);
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('product.deleted'.tr())));
-      // Volver al inicio
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-        (_) => false,
-      );
+
+      // HomeScreen forma parte de MainShell: montarla sola después de borrar
+      // deja fuera el Scaffold, la navegación inferior y el estado visual del
+      // shell. Conservamos la ruta raíz que ya existe, seleccionamos Inicio y
+      // retiramos las rutas apiladas (detalle, búsqueda, perfil, etc.).
+      final navigator = Navigator.of(context);
+      final messenger = ScaffoldMessenger.of(context);
+      mainShellKey.currentState?.selectTab(0);
+      navigator.popUntil((route) => route.isFirst);
+      messenger.showSnackBar(SnackBar(content: Text('product.deleted'.tr())));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

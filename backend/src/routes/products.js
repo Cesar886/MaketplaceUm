@@ -590,8 +590,8 @@ function register(app) {
       const productAtributos = atributosResult.value;
 
       // Convertir cada imagen a WebP usando Promise.all
-      const conversionPromises = (req.files || []).map(async file => {
-        return (await convertToWebp(file.path)).catch(convErr => {
+      const conversionPromises = (req.files || []).map(file => {
+        return convertToWebp(file.path).catch(convErr => {
           console.error('Error convirtiendo a WebP:', convErr);
           fs.unlink(file.path, () => {});
           throw new Error('Una imagen no tiene un formato válido.');
@@ -826,8 +826,8 @@ function register(app) {
         }
         const keptImages = Array.isArray(existingImagesInput) ? existingImagesInput.filter(url => product.images.includes(url)) : product.images; // si no mandan el campo, no se toca ninguna imagen
 
-        const conversionPromises = (req.files || []).map(async file => {
-          return (await convertToWebp(file.path)).catch(convErr => {
+        const conversionPromises = (req.files || []).map(file => {
+          return convertToWebp(file.path).catch(convErr => {
             console.error('Error convirtiendo a WebP:', convErr);
             fs.unlink(file.path, () => {});
             throw new Error('Una imagen no tiene un formato válido.');
