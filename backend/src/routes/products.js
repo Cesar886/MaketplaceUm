@@ -52,7 +52,7 @@ const RELACIONADOS_MAX = 10;
 // El mismo piso está en el formulario de la app
 // (`lib/screens/publish_product_screen.dart`); acá es donde se hace cumplir,
 // porque la validación del cliente se puede saltar.
-const MINIMO_TITULO = 10;
+const MINIMO_TITULO = 3;
 const MINIMO_DESCRIPCION = 20;
 
 /**
@@ -474,6 +474,20 @@ function register(app) {
       await db.trackCategoryEngagement(product.category, 'product_view');
     }
     res.status(204).end();
+  });
+
+  // Política efectiva de la cuenta autenticada. El formulario de Flutter la
+  // consulta al abrirse para que el aviso use la misma fila de `config` que
+  // aplican POST /api/products y POST /api/wanted, incluida cualquier
+  // modificación hecha desde el panel administrativo.
+  app.get('/api/me/publication-policy', requireAuth, async (req, res) => {
+    const sellerRecord = sellers.find(seller => seller.id === req.user.id);
+    const policy = await getPublicationPolicy(sellerRecord);
+    res.set({
+      'Cache-Control': 'private, no-store',
+      Pragma: 'no-cache'
+    });
+    res.json(policy);
   });
 
   // POST /api/products – crear nuevo producto (con imágenes opcionales)

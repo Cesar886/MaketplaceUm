@@ -43,12 +43,12 @@ class PublishProductScreen extends StatefulWidget {
 ///
 /// No son un capricho de UI: el título y la descripción son literalmente lo
 /// que se dibuja como `og:title` y `og:description` en la vista previa del
-/// link compartido (ver `website/app/producto/[id]/page.tsx`). Diez y veinte
-/// caracteres son el mínimo con el que un preview se lee como una
-/// publicación real y no como un link basura. Duplicados a propósito en el
-/// backend (`backend/src/routes/products.js`), que es la única barrera que
-/// un cliente no puede saltarse.
-const _minimoTitulo = 10;
+/// link compartido (ver `website/app/producto/[id]/page.tsx`). Tres caracteres
+/// para el título y veinte para la descripción son los mínimos acordados.
+/// Estos valores están duplicados a propósito en el backend
+/// (`backend/src/routes/products.js`), la única barrera que un cliente no
+/// puede saltarse.
+const _minimoTitulo = 3;
 const _minimoDescripcion = 20;
 
 class _PublishProductScreenState extends State<PublishProductScreen> {

@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
 
 typedef PublicationLimits = ({int active, int daily, int days});
 
@@ -33,7 +36,7 @@ PublicationLimits publicationLimitsFor(
       : (active: 8, daily: 2, days: 30);
 }
 
-class PublicationLimitNotice extends StatelessWidget {
+class PublicationLimitNotice extends StatefulWidget {
   const PublicationLimitNotice({
     super.key,
     required this.auth,
@@ -43,13 +46,84 @@ class PublicationLimitNotice extends StatelessWidget {
   final AuthProvider auth;
   final bool wanted;
 
-  ({int active, int daily, int days}) get _limits {
-    return publicationLimitsFor(auth, wanted: wanted);
+  @override
+  State<PublicationLimitNotice> createState() => _PublicationLimitNoticeState();
+}
+
+class _PublicationLimitNoticeState extends State<PublicationLimitNotice>
+    with WidgetsBindingObserver {
+  PublicationLimits? _serverLimits;
+  Timer? _refreshTimer;
+  bool _loadingLimits = false;
+
+  PublicationLimits get _fallbackLimits {
+    return publicationLimitsFor(widget.auth, wanted: widget.wanted);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _loadLimits();
+    // Solo existe mientras el formulario de publicación está visible. Así un
+    // cambio administrativo aparece aun si el usuario dejó la pantalla
+    // abierta, sin convertirlo en tráfico permanente del resto de la app.
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _loadLimits(),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant PublicationLimitNotice oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.wanted != widget.wanted ||
+        oldWidget.auth.backendSellerId != widget.auth.backendSellerId) {
+      _loadLimits();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _loadLimits();
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  Future<void> _loadLimits() async {
+    if (_loadingLimits) return;
+    _loadingLimits = true;
+    try {
+      final policy = await ApiService.getPublicationPolicy();
+      final activeKey = widget.wanted ? 'wantedActive' : 'productsActive';
+      final dailyKey = widget.wanted ? 'wantedDaily' : 'productsDaily';
+      final active = policy[activeKey];
+      final daily = policy[dailyKey];
+      final days = policy['durationDays'];
+      if (active is! int || daily is! int || days is! int) {
+        throw const FormatException('Política de publicación inválida');
+      }
+      if (!mounted) return;
+      setState(() {
+        _serverLimits = (active: active, daily: daily, days: days);
+      });
+    } catch (_) {
+      // El aviso no debe bloquear el formulario si no hay conexión. En ese
+      // caso conserva los defaults conocidos; el backend sigue siendo quien
+      // aplica el límite real al guardar.
+    } finally {
+      _loadingLimits = false;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final limits = _limits;
+    final limits = _serverLimits ?? _fallbackLimits;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(

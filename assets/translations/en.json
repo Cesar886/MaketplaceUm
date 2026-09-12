@@ -444,7 +444,7 @@
     "price_update_error": "The price couldn't be updated: {reason}",
     "stock_update_error": "The stock couldn't be updated: {reason}",
     "error_title_required": "Write a title for the product",
-    "error_title_too_short": "That title is too short. Describe what you're selling, e.g. \"Casio fx-991 scientific calculator\"",
+    "error_title_too_short": "The title must be at least 3 characters long",
     "error_description_required": "Write a description of the product",
     "error_description_too_short": "That description is too short. Say what condition it's in, what's included and where you hand it over",
     "error_price_required": "Enter the product price",

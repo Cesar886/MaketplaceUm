@@ -444,7 +444,7 @@
     "price_update_error": "El precio no se pudo actualizar: {reason}",
     "stock_update_error": "El stock no se pudo actualizar: {reason}",
     "error_title_required": "Escribe un título para el producto",
-    "error_title_too_short": "El título es muy corto. Describe qué vendes, ej. \"Calculadora científica Casio fx-991\"",
+    "error_title_too_short": "El título debe tener al menos 3 caracteres",
     "error_description_required": "Escribe una descripción del producto",
     "error_description_too_short": "La descripción es muy corta. Cuenta el estado, qué incluye y dónde lo entregas",
     "error_price_required": "Escribe el precio del producto",

@@ -764,6 +764,33 @@ class ApiService {
     }
   }
 
+  /// Límites de publicación efectivos para la cuenta autenticada.
+  ///
+  /// El backend los lee de la configuración editable del panel; no se
+  /// conservan en caché en el cliente para que cada apertura del formulario
+  /// refleje los cambios administrativos más recientes.
+  static Future<Map<String, dynamic>> getPublicationPolicy() async {
+    final res = await _getWithRetry(
+      _uri('/me/publication-policy'),
+      headers: _authHeaders,
+    );
+    if (res.statusCode != 200) {
+      String? message;
+      try {
+        message =
+            (jsonDecode(res.body) as Map<String, dynamic>)['error'] as String?;
+      } catch (_) {
+        // Una respuesta no JSON se clasifica igualmente por status abajo.
+      }
+      throw ApiException.deRespuesta(
+        res.statusCode,
+        mensajeDelServidor: message,
+        detalleTecnico: res.body,
+      );
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   // ─── Categories ─────────────────────────────────────────
   static Future<List<MarketplaceCategory>> getCategories() async {
     final res = await _getWithRetry(_uri('/categories'));

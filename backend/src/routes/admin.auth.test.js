@@ -640,6 +640,14 @@ test('products y wanted consumen el limite actualizado sin reiniciar el servidor
     data.refrescarSellers();
     const sellerToken = userAuth.generateToken(sellerId);
 
+    const policyResponse = await fetch(`${baseUrl}/api/me/publication-policy`, {
+      headers: headers({ Authorization: `Bearer ${sellerToken}` }),
+    });
+    const policyBody = await policyResponse.json();
+    assert.equal(policyResponse.status, 200, JSON.stringify(policyBody));
+    assert.match(policyResponse.headers.get('cache-control'), /no-store/);
+    assert.deepEqual(configurableValues(policyBody), liveValues);
+
     const productResponse = await fetch(`${baseUrl}/api/products`, {
       method: 'POST',
       headers: headers({ Authorization: `Bearer ${sellerToken}` }),
